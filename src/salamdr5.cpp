@@ -1226,12 +1226,8 @@ BOOL FileNameIsInvalid(const char* name, BOOL isFullName, BOOL ignInvalidName)
 
 BOOL SalMoveFile(const char* srcName, const char* destName)
 {
-    // if the name ends with a space or period, we must append '\\', otherwise MoveFile
-    // trims the spaces or periods and therefore works with a different name
-    char srcNameCopy[3 * MAX_PATH];
-    MakeCopyWithBackslashIfNeeded(srcName, srcNameCopy);
-    char destNameCopy[3 * MAX_PATH];
-    MakeCopyWithBackslashIfNeeded(destName, destNameCopy);
+    // MoveFileW with an extended path uses the exact filename; an extra
+    // backslash would make a trailing-dot file invalid.
 
     if (!SalWidePaths::MoveFileFromNarrow(srcName, destName))
     {
