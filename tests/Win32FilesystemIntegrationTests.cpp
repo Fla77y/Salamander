@@ -8,6 +8,7 @@
 
 #include <windows.h>
 #include <array>
+#include <cstring>
 #include <iostream>
 #include <stdexcept>
 #include <string>
@@ -227,6 +228,24 @@ void TestNativeNarrowPathsWhenRepresentable()
     Check(!Exists(src) && !Exists(dest), "ANSI adapter left renamed file behind");
 }
 
+void TestTrailingDotNameCannotDeleteOtherFile()
+{
+    // Arrange: extended-length paths distinguish names with trailing dots.
+    Sandbox sandbox;
+    const auto normal = Join(sandbox.root, L"report.txt");
+    const auto unusual = Join(sandbox.root, L"report.txt.");
+    sandbox.AddFile(normal, "keep");
+    sandbox.AddFile(unusual, "remove");
+
+    // Act: the unusual name must not alias the normal file.
+    Check(SalWidePaths::DeleteFileFromWide(unusual.c_str()) != 0,
+          "Failed to delete the trailing-dot entry");
+
+    // Assert: the different, normal file must survive unchanged.
+    Check(ReadFileAt(normal) == "keep", "Deleting trailing-dot name touched a different file");
+    Check(!Exists(unusual), "Trailing-dot entry still exists");
+}
+
 void TestInvalidInputDoesNotTouchFiles()
 {
     // Arrange.
@@ -253,6 +272,7 @@ int main()
         TestLongUnicodeFileOperations();
         TestLongDirectoryRenameAndDelete();
         TestMoveDoesNotOverwriteAndDoesNotDeleteWrongFile();
+        TestTrailingDotNameCannotDeleteOtherFile();
         TestNativeNarrowPathsWhenRepresentable();
         TestInvalidInputDoesNotTouchFiles();
         std::cout << "Win32FilesystemIntegrationTests: PASS\n";
