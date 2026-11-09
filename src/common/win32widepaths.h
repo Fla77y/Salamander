@@ -30,35 +30,70 @@ inline bool MakeExtendedPath(const wchar_t* path, std::wstring& extended)
     if (wcsncmp(path, L"\\\\?\\", 4) == 0 ||
         wcsncmp(path, L"\\\\.\\", 4) == 0)
     {
+        if (wcslen(path) > 32760)
+        {
+            SetLastError(ERROR_FILENAME_EXCED_RANGE);
+            return false;
+        }
         extended.assign(path);
         return true;
     }
 
-    // GetFullPathNameW resolves relative components before the \\?\ prefix,
-    // where '.' and '..' would otherwise be treated literally by Win32.
-    const DWORD required = GetFullPathNameW(path, 0, nullptr, nullptr);
-    if (required == 0)
-        return false;
-    if (required > 32760)
-    {
-        SetLastError(ERROR_FILENAME_EXCED_RANGE);
-        return false;
-    }
-
-    std::vector<wchar_t> buffer(required);
-    const DWORD written = GetFullPathNameW(path, required, buffer.data(), nullptr);
-    if (written == 0)
-        return false;
-    if (written >= required)
-    {
-        SetLastError(ERROR_INSUFFICIENT_BUFFER);
-        return false;
-    }
-    std::wstring absolute(buffer.data(), written);
+    std::wstring absolute(path);
     for (wchar_t& character : absolute)
     {
         if (character == L'/')
             character = L'\\';
+    }
+
+    // Win32 GetFullPathNameW is itself subject to MAX_PATH without an
+    // OS/process opt-in. Already absolute paths without dot components can
+    // be prefixed directly, including paths longer than MAX_PATH.
+    const bool driveAbsolute =
+        absolute.size() >= 3 &&
+        ((absolute[0] >= L'A' && absolute[0] <= L'Z') ||
+         (absolute[0] >= L'a' && absolute[0] <= L'z')) &&
+        absolute[1] == L':' && absolute[2] == L'\\';
+    const bool uncAbsolute = absolute.compare(0, 2, L"\\\\") == 0;
+
+    bool hasDotSegment = false;
+    for (size_t i = 0; i < absolute.size();)
+    {
+        const size_t end = absolute.find(L'\\', i);
+        const size_t length = (end == std::wstring::npos ? absolute.size() : end) - i;
+        if ((length == 1 && absolute[i] == L'.') ||
+            (length == 2 && absolute[i] == L'.' && absolute[i + 1] == L'.'))
+        {
+            hasDotSegment = true;
+            break;
+        }
+        if (end == std::wstring::npos)
+            break;
+        i = end + 1;
+    }
+
+    if (!driveAbsolute && !uncAbsolute || hasDotSegment)
+    {
+        // Normalize relative paths and explicit "."/".." components before
+        // applying \\?\, because the extended namespace does not normalize them.
+        const DWORD required = GetFullPathNameW(absolute.c_str(), 0, nullptr, nullptr);
+        if (required == 0)
+            return false;
+        if (required > 32760)
+        {
+            SetLastError(ERROR_FILENAME_EXCED_RANGE);
+            return false;
+        }
+        std::vector<wchar_t> buffer(required);
+        const DWORD written = GetFullPathNameW(absolute.c_str(), required, buffer.data(), nullptr);
+        if (written == 0)
+            return false;
+        if (written >= required)
+        {
+            SetLastError(ERROR_INSUFFICIENT_BUFFER);
+            return false;
+        }
+        absolute.assign(buffer.data(), written);
     }
 
     if (absolute.compare(0, 2, L"\\\\") == 0)
