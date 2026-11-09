@@ -20,6 +20,7 @@ if ($env:OS -ne 'Windows_NT') { throw 'Windows is required.' }
 $repository = $PSScriptRoot
 $solution = Join-Path $repository 'src\vcxproj\salamand.sln'
 $testProject = Join-Path $repository 'tests\ShellFileOperationNameListTests.vcxproj'
+$integrationTestProject = Join-Path $repository 'tests\Win32FilesystemIntegrationTests.vcxproj'
 $artifacts = Join-Path $repository 'artifacts'
 $timestamp = Get-Date -Format 'yyyyMMdd-HHmmss'
 $log = Join-Path $artifacts "UpdateBuildAndDeploy-$timestamp.log"
@@ -109,6 +110,19 @@ try {
             throw "Test executable missing: $testExecutable"
         }
         Invoke-Checked -Executable $testExecutable -Arguments @()
+
+        Write-Host "=== Build and run real Windows filesystem integration tests: $architecture ==="
+        Invoke-Checked -Executable $msbuild -Arguments @(
+            $integrationTestProject, '/t:Rebuild', '/nr:false', '/v:minimal',
+            '/p:Configuration=Release', "/p:Platform=$architecture",
+            "/p:OutDir=$($testOutput.TrimEnd('\'))\",
+            "/p:IntDir=$($testIntermediate.TrimEnd('\'))\"
+        )
+        $integrationExecutable = Join-Path $testOutput 'Win32FilesystemIntegrationTests.exe'
+        if (-not (Test-Path -LiteralPath $integrationExecutable -PathType Leaf)) {
+            throw "Integration test executable missing: $integrationExecutable"
+        }
+        Invoke-Checked -Executable $integrationExecutable -Arguments @()
 
         Write-Host "=== Stage runtime files: $architecture ==="
         $stageRoot = Join-Path $artifacts "stage-$shortPlatform-$timestamp"
