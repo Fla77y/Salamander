@@ -121,6 +121,26 @@ try {
             throw 'Staging did not include salamand.exe.'
         }
 
+        # Stage data files required by the portable runtime. These source
+        # assets are not produced by MSBuild or by !populate_build_dir.cmd.
+        $runtimeDirectories = @(
+            @{ Source = 'src\res\toolbars'; Target = 'toolbars' },
+            @{ Source = 'convert\centeuro'; Target = 'convert\centeuro' },
+            @{ Source = 'convert\cyrillic'; Target = 'convert\cyrillic' },
+            @{ Source = 'convert\westeuro'; Target = 'convert\westeuro' },
+            @{ Source = 'src\plugins\automation\sample-scripts'; Target = 'plugins\automation\scripts' },
+            @{ Source = 'src\plugins\ieviewer\cmark-gfm\css'; Target = 'plugins\ieviewer\css' }
+        )
+        foreach ($directory in $runtimeDirectories) {
+            $sourceDirectory = Join-Path $repository $directory.Source
+            if (-not (Test-Path -LiteralPath $sourceDirectory -PathType Container)) {
+                throw "Required runtime assets missing: $sourceDirectory"
+            }
+            $destinationDirectory = Join-Path $stage $directory.Target
+            New-Item -ItemType Directory -Force -Path $destinationDirectory | Out-Null
+            Copy-Item -Path (Join-Path $sourceDirectory '*') -Destination $destinationDirectory -Recurse -Force
+        }
+
         $archive = Join-Path $artifacts "Salamander-Release-$shortPlatform-$timestamp.7z"
         Push-Location -LiteralPath $stageRoot
         try {
