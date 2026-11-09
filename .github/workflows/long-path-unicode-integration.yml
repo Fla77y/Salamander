@@ -1,0 +1,53 @@
+name: Long-path and Unicode integration
+
+on:
+  push:
+    branches:
+      - bugfix/longandunicodefilenames
+  pull_request:
+    paths:
+      - 'src/common/win32widepaths.h'
+      - 'src/common/shellfileopnames.h'
+      - 'src/salamdr5.cpp'
+      - 'src/worker.cpp'
+      - 'src/fileswn6.cpp'
+      - 'tests/**'
+      - 'UpdateBuildAndDeploy.ps1'
+      - '.github/workflows/long-path-unicode-integration.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows-release-integration:
+    name: Release ${{ matrix.platform }} plus filesystem integration tests
+    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [Win32, x64]
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      - name: MSBuild from Visual Studio 2022
+        uses: microsoft/setup-msbuild@v2
+
+      - name: Build, run tests, and verify archive
+        run: |
+          .\UpdateBuildAndDeploy.ps1 -Platform '${{ matrix.platform }}'
+          if ($LASTEXITCODE -ne 0) {
+            throw "UpdateBuildAndDeploy.ps1 failed: $LASTEXITCODE"
+          }
+
+      - name: Upload logs and release archive
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: long-unicode-${{ matrix.platform }}-${{ github.run_number }}
+          path: artifacts/
+          if-no-files-found: warn
