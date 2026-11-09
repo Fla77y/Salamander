@@ -97,13 +97,17 @@ try {
 
         Write-Host "=== Build and run regression tests: $architecture ==="
         $testOutput = Join-Path $BuildRoot "Tests\Release_$shortPlatform"
-        $testIntermediate = Join-Path $BuildRoot "Tests\Intermediate_$shortPlatform"
-        New-Item -ItemType Directory -Force -Path $testOutput, $testIntermediate | Out-Null
+        # MSBuild projects must not share IntDir (MSB8028): their incremental
+        # build metadata and cleaning outputs are project-specific.
+        $testIntermediateRoot = Join-Path $BuildRoot "Tests\Intermediate_$shortPlatform"
+        $unitTestIntermediate = Join-Path $testIntermediateRoot 'ShellFileOperationNameListTests'
+        $integrationTestIntermediate = Join-Path $testIntermediateRoot 'Win32FilesystemIntegrationTests'
+        New-Item -ItemType Directory -Force -Path $testOutput, $unitTestIntermediate, $integrationTestIntermediate | Out-Null
         Invoke-Checked -Executable $msbuild -Arguments @(
             $testProject, '/t:Rebuild', '/nr:false', '/v:minimal',
             '/p:Configuration=Release', "/p:Platform=$architecture",
             "/p:OutDir=$($testOutput.TrimEnd('\'))\",
-            "/p:IntDir=$($testIntermediate.TrimEnd('\'))\"
+            "/p:IntDir=$($unitTestIntermediate.TrimEnd('\'))\"
         )
         $testExecutable = Join-Path $testOutput 'ShellFileOperationNameListTests.exe'
         if (-not (Test-Path -LiteralPath $testExecutable -PathType Leaf)) {
@@ -116,7 +120,7 @@ try {
             $integrationTestProject, '/t:Rebuild', '/nr:false', '/v:minimal',
             '/p:Configuration=Release', "/p:Platform=$architecture",
             "/p:OutDir=$($testOutput.TrimEnd('\'))\",
-            "/p:IntDir=$($testIntermediate.TrimEnd('\'))\"
+            "/p:IntDir=$($integrationTestIntermediate.TrimEnd('\'))\"
         )
         $integrationExecutable = Join-Path $testOutput 'Win32FilesystemIntegrationTests.exe'
         if (-not (Test-Path -LiteralPath $integrationExecutable -PathType Leaf)) {
