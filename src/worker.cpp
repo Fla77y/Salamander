@@ -6,6 +6,7 @@
 
 #include "cfgdlg.h"
 #include "worker.h"
+#include "common/shellfileopnames.h"
 
 #include <Aclapi.h>
 #include <Ntsecapi.h>
@@ -6207,10 +6208,12 @@ BOOL DoDeleteFile(HWND hProgressDlg, char* name, const CQuadWord& size, COperati
             if (useRecycleBin)
             {
                 char nameList[MAX_PATH + 1];
-                int l = (int)strlen(name) + 1;
-                memmove(nameList, name, l);
-                nameList[l] = 0;
-                if (!PathContainsValidComponents(nameList, FALSE))
+                // SHFileOperationA requires two NUL terminators; never overflow this buffer.
+                if (!BuildShellFileOperationNameList(name, nameList, _countof(nameList)))
+                {
+                    err = ERROR_FILENAME_EXCED_RANGE;
+                }
+                else if (!PathContainsValidComponents(nameList, FALSE))
                 {
                     err = ERROR_INVALID_NAME;
                 }
