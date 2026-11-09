@@ -228,6 +228,69 @@ void TestNativeNarrowPathsWhenRepresentable()
     Check(!Exists(src) && !Exists(dest), "ANSI adapter left renamed file behind");
 }
 
+void TestExtendedNamespaceConversion()
+{
+    // Arrange.
+    std::wstring output;
+
+    // Act.
+    const bool unc = SalWidePaths::MakeExtendedPath(L"\\\\server\\share\\folder", output);
+
+    // Assert.
+    Check(unc && output == L"\\\\?\\UNC\\server\\share\\folder",
+          "UNC paths must use the extended UNC namespace");
+
+    // Act: a prefixed path must not acquire another prefix.
+    const bool alreadyExtended = SalWidePaths::MakeExtendedPath(L"\\\\?\\C:\\data\\file", output);
+
+    // Assert.
+    Check(alreadyExtended && output == L"\\\\?\\C:\\data\\file",
+          "Extended paths were prefixed twice");
+}
+
+void TestLongNativeAnsiAdapter()
+{
+    // Arrange: ASCII-only deep path so both common legacy ANSI code pages
+    // and UTF-8 ACP can represent it without loss.
+    Sandbox sandbox;
+    std::wstring directory = sandbox.root;
+    for (int i = 0; i < 5; ++i)
+    {
+        directory = Join(directory, L"long-ascii-" + std::wstring(50, L'q') + std::to_wstring(i));
+        sandbox.AddDirectory(directory);
+    }
+    const auto source = Join(directory, L"source.txt");
+    const auto target = Join(directory, L"target.txt");
+    std::string narrowSource, narrowTarget;
+    if (!TryEncodeWithoutSubstitution(source, narrowSource) ||
+        !TryEncodeWithoutSubstitution(target, narrowTarget))
+    {
+        std::cout << "SKIP: temporary root cannot be encoded in ANSI\n";
+        return;
+    }
+    sandbox.AddFile(source, "original payload");
+    Check(source.length() > MAX_PATH, "Native ANSI test path must be long");
+
+    // Act: these exact entry points are used by the copy/move/delete worker.
+    HANDLE handle = SalWidePaths::CreateFileFromNarrow(
+        narrowSource.c_str(), GENERIC_READ, FILE_SHARE_READ,
+        nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    Check(handle != INVALID_HANDLE_VALUE, "Cannot open a long source path");
+    std::array<char, 32> data{};
+    DWORD read = 0;
+    const bool readOk = ReadFile(handle, data.data(), static_cast<DWORD>(data.size()), &read, nullptr) != 0;
+    CloseHandle(handle);
+    Check(readOk && std::string(data.data(), read) == "original payload", "Copied data differs");
+
+    Check(SalWidePaths::MoveFileFromNarrow(narrowSource.c_str(), narrowTarget.c_str()) != 0,
+          "Cannot move long ANSI path");
+    Check(SalWidePaths::DeleteFileFromNarrow(narrowTarget.c_str()) != 0,
+          "Cannot delete long ANSI path");
+
+    // Assert.
+    Check(!Exists(source) && !Exists(target), "Long ANSI file remains after delete");
+}
+
 void TestTrailingDotNameCannotDeleteOtherFile()
 {
     // Arrange: extended-length paths distinguish names with trailing dots.
@@ -271,6 +334,8 @@ int main()
     {
         TestLongUnicodeFileOperations();
         TestLongDirectoryRenameAndDelete();
+        TestExtendedNamespaceConversion();
+        TestLongNativeAnsiAdapter();
         TestMoveDoesNotOverwriteAndDoesNotDeleteWrongFile();
         TestTrailingDotNameCannotDeleteOtherFile();
         TestNativeNarrowPathsWhenRepresentable();
