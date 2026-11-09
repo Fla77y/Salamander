@@ -11,6 +11,7 @@
 #include "pack.h"
 #include "codetbl.h"
 #include "dialogs.h"
+#include "common/win32widepaths.h"
 
 CSystemPolicies SystemPolicies;
 
@@ -1232,7 +1233,7 @@ BOOL SalMoveFile(const char* srcName, const char* destName)
     char destNameCopy[3 * MAX_PATH];
     MakeCopyWithBackslashIfNeeded(destName, destNameCopy);
 
-    if (!MoveFile(srcName, destName))
+    if (!SalWidePaths::MoveFileFromNarrow(srcName, destName))
     {
         DWORD err = GetLastError();
         if (err == ERROR_ACCESS_DENIED)
@@ -1240,16 +1241,16 @@ BOOL SalMoveFile(const char* srcName, const char* destName)
             DWORD attr = SalGetFileAttributes(srcName);
             if (attr != 0xFFFFFFFF && (attr & FILE_ATTRIBUTE_READONLY))
             {
-                SetFileAttributes(srcName, FILE_ATTRIBUTE_ARCHIVE);
-                if (MoveFile(srcName, destName))
+                SalWidePaths::SetFileAttributesFromNarrow(srcName, FILE_ATTRIBUTE_ARCHIVE);
+                if (SalWidePaths::MoveFileFromNarrow(srcName, destName))
                 {
-                    SetFileAttributes(destName, attr);
+                    SalWidePaths::SetFileAttributesFromNarrow(destName, attr);
                     return TRUE;
                 }
                 else
                 {
                     err = GetLastError();
-                    SetFileAttributes(srcName, attr);
+                    SalWidePaths::SetFileAttributesFromNarrow(srcName, attr);
                 }
             }
             SetLastError(err);
@@ -1490,14 +1491,9 @@ BOOL SalGetFileSize2(const char* fileName, CQuadWord& size, DWORD* err)
 DWORD SalGetFileAttributes(const char* fileName)
 {
     CALL_STACK_MESSAGE2("SalGetFileAttributes(%s)", fileName);
-    // if the path ends with a space or period, we must append '\\'; otherwise GetFileAttributes
-    // trims spaces and periods and works with a different path; although this does not work for files,
-    // it is still better than retrieving attributes of a different file or directory (for "c:\\file.txt   "
-    // it works with the name "c:\\file.txt")
-    char fileNameCopy[3 * MAX_PATH];
-    MakeCopyWithBackslashIfNeeded(fileName, fileNameCopy);
-
-    return GetFileAttributes(fileName);
+    // Extended-length UTF-16 paths preserve trailing spaces and dots and
+    // avoid silently querying a different, normalized ANSI name.
+    return SalWidePaths::GetFileAttributesFromNarrow(fileName);
 }
 
 BOOL ClearReadOnlyAttr(const char* name, DWORD attr)
@@ -1509,7 +1505,7 @@ BOOL ClearReadOnlyAttr(const char* name, DWORD attr)
         // clear only the RO flag (for hard links it changes the attributes of the other hard links to the same file, so keep it to the minimum)
         if ((attr & FILE_ATTRIBUTE_READONLY) != 0)
         {
-            if (!SetFileAttributes(name, attr & ~FILE_ATTRIBUTE_READONLY))
+            if (!SalWidePaths::SetFileAttributesFromNarrow(name, attr & ~FILE_ATTRIBUTE_READONLY))
                 TRACE_E("ClearReadOnlyAttr(): error setting attrs (0x" << std::hex << (attr & ~FILE_ATTRIBUTE_READONLY) << std::dec << "): " << name);
             return TRUE;
         }
@@ -1517,7 +1513,7 @@ BOOL ClearReadOnlyAttr(const char* name, DWORD attr)
     else
     {
         TRACE_E("ClearReadOnlyAttr(): error getting attrs: " << name);
-        if (!SetFileAttributes(name, FILE_ATTRIBUTE_ARCHIVE)) // cannot read attributes; try at least to write them (we no longer care whether it is needed)
+        if (!SalWidePaths::SetFileAttributesFromNarrow(name, FILE_ATTRIBUTE_ARCHIVE)) // cannot read attributes; try at least to write them (we no longer care whether it is needed)
             TRACE_E("ClearReadOnlyAttr(): error setting attrs (FILE_ATTRIBUTE_ARCHIVE): " << name);
         return TRUE;
     }
