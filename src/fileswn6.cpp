@@ -1286,30 +1286,6 @@ BOOL CFilesWindow::BuildScriptMain(COperations* script, CActionType type,
 
     char* useName = (oneFile != NULL ? oneFile->Name : NULL);
     char* useDOSName = (oneFile != NULL ? oneFile->DosName : NULL);
-    if (type == atDelete && selCount <= 1 && oneFile != NULL && oneFile->DosName != NULL)
-    {
-        char* s = sourcePath + strlen(sourcePath);
-        char* end = s;
-        if (s > sourcePath && *(s - 1) != '\\')
-            *s++ = '\\';
-        strcpy(s, oneFile->Name);
-        // try whether the file name is valid; if not, try its DOS name
-        // (handles files accessible only via Unicode or DOS names)
-        if (SalGetFileAttributes(sourcePath) == 0xffffffff)
-        {
-            DWORD err = GetLastError();
-            if (err == ERROR_FILE_NOT_FOUND || err == ERROR_INVALID_NAME)
-            {
-                strcpy(s, oneFile->DosName);
-                if (SalGetFileAttributes(sourcePath) != 0xffffffff)
-                {
-                    useName = oneFile->DosName;
-                    useDOSName = NULL;
-                }
-            }
-        }
-        *end = 0; // restore sourcePath
-    }
 
     if (selCount > 0 || oneFile != NULL)
     {
@@ -1332,6 +1308,37 @@ BOOL CFilesWindow::BuildScriptMain(COperations* script, CActionType type,
                 oneFile = (selection[i] < Dirs->Count) ? &Dirs->At(selection[i]) : &Files->At(selection[i] - Dirs->Count);
                 useName = oneFile->Name;
                 useDOSName = oneFile->DosName;
+            }
+            // The ANSI API may not be able to reopen a name returned by enumeration.
+            // Apply the existing DOS short-name fallback to every selected entry,
+            // not only to a single file, and do not overrun sourcePath.
+            if (type == atDelete && oneFile != NULL && oneFile->DosName != NULL)
+            {
+                const size_t baseLength = strlen(sourcePath);
+                const size_t separatorLength =
+                    baseLength != 0 && sourcePath[baseLength - 1] != '\\' ? 1 : 0;
+                const size_t available = sizeof(sourcePath) - baseLength - separatorLength;
+                if (strlen(oneFile->Name) < available && strlen(oneFile->DosName) < available)
+                {
+                    char* suffix = sourcePath + baseLength;
+                    if (separatorLength != 0)
+                        *suffix++ = '\\';
+                    strcpy(suffix, oneFile->Name);
+                    if (SalGetFileAttributes(sourcePath) == INVALID_FILE_ATTRIBUTES)
+                    {
+                        const DWORD error = GetLastError();
+                        if (error == ERROR_FILE_NOT_FOUND || error == ERROR_INVALID_NAME)
+                        {
+                            strcpy(suffix, oneFile->DosName);
+                            if (SalGetFileAttributes(sourcePath) != INVALID_FILE_ATTRIBUTES)
+                            {
+                                useName = oneFile->DosName;
+                                useDOSName = NULL;
+                            }
+                        }
+                    }
+                    sourcePath[baseLength] = 0;
+                }
             }
             i++;
             // oneFile points to the selected or caret item in the filebox
