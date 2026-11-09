@@ -5616,7 +5616,7 @@ BOOL DoMoveFile(COperation* op, HWND hProgressDlg, void* buffer,
             dirTimeModifiedIsValid = GetDirTime(sourceNameMvDir, &dirTimeModified);
         while (1)
         {
-            if (!invalidName && !*novellRenamePatch && MoveFile(sourceNameMvDir, targetNameMvDir))
+            if (!invalidName && !*novellRenamePatch && SalWidePaths::MoveFileFromNarrow(op->SourceName, op->TargetName))
             {
                 if (script->CopyAttrs && (op->Attr & FILE_ATTRIBUTE_ARCHIVE) == 0) // Archive attribute was not set, MoveFile turned it on, clear it again
                     SalWidePaths::SetFileAttributesFromNarrow(targetNameMvDir, op->Attr);                  // leave without handling or retry, not important (it normally toggles chaotically)
@@ -5733,7 +5733,7 @@ BOOL DoMoveFile(COperation* op, HWND hProgressDlg, void* buffer,
                 {
                     DWORD attr = SalGetFileAttributes(sourceNameMvDir);
                     BOOL setAttr = ClearReadOnlyAttr(sourceNameMvDir, attr);
-                    if (MoveFile(sourceNameMvDir, targetNameMvDir))
+                    if (SalWidePaths::MoveFileFromNarrow(op->SourceName, op->TargetName))
                     {
                         if (!*novellRenamePatch)
                             *novellRenamePatch = TRUE; // the next operations will go straight through here
@@ -6119,9 +6119,10 @@ BOOL DoMoveFile(COperation* op, HWND hProgressDlg, void* buffer,
 BOOL DoDeleteFile(HWND hProgressDlg, char* name, const CQuadWord& size, COperations* script,
                   CQuadWord& totalDone, DWORD attr, CProgressDlgData& dlgData)
 {
-    // if the path ends with a space or dot, it is invalid and we must not delete it,
-    // because DeleteFile would trim the spaces/dots and delete a different file
-    BOOL invalidName = FileNameIsInvalid(name, TRUE);
+    // The wide extended-path backend deletes the exact entry. Still reject
+    // invalid stream separators; the legacy Recycle Bin route additionally
+    // rejects trailing spaces/dots because SHFileOperationA can normalize them.
+    BOOL invalidName = FileNameIsInvalid(name, TRUE, TRUE);
 
     DWORD err;
     while (1)
@@ -6210,7 +6211,11 @@ BOOL DoDeleteFile(HWND hProgressDlg, char* name, const CQuadWord& size, COperati
             {
                 char nameList[MAX_PATH + 1];
                 // SHFileOperationA requires two NUL terminators; never overflow this buffer.
-                if (!BuildShellFileOperationNameList(name, nameList, _countof(nameList)))
+                if (FileNameIsInvalid(name, TRUE))
+                {
+                    err = ERROR_INVALID_NAME;
+                }
+                else if (!BuildShellFileOperationNameList(name, nameList, _countof(nameList)))
                 {
                     err = ERROR_FILENAME_EXCED_RANGE;
                 }
@@ -6812,11 +6817,8 @@ BOOL DoDeleteDir(HWND hProgressDlg, char* name, const CQuadWord& size, COperatio
     int AutoRetryCounter = 0;
     DWORD startTime = GetTickCount();
 
-    // if the path ends with a space/dot, we must append '\\'; otherwise SetFileAttributes
-    // and RemoveDirectory trim the spaces/dots and operate on a different path
+    // Wide filesystem calls address the exact entry, including trailing dots.
     const char* nameRmDir = name;
-    char nameRmDirCopy[3 * MAX_PATH];
-    MakeCopyWithBackslashIfNeeded(nameRmDir, nameRmDirCopy);
 
     while (1)
     {
@@ -6831,7 +6833,11 @@ BOOL DoDeleteDir(HWND hProgressDlg, char* name, const CQuadWord& size, COperatio
             char nameList[MAX_PATH + 1];
             // Shell's ANSI name list needs two terminating NUL bytes.
             // Reject long names before accessing this fixed-size buffer.
-            if (!BuildShellFileOperationNameList(name, nameList, _countof(nameList)))
+            if (FileNameIsInvalid(name, TRUE))
+            {
+                err = ERROR_INVALID_NAME;
+            }
+            else if (!BuildShellFileOperationNameList(name, nameList, _countof(nameList)))
             {
                 err = ERROR_FILENAME_EXCED_RANGE;
             }
