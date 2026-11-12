@@ -12,6 +12,7 @@
 #include "cfgdlg.h"
 #include "zip.h"
 #include "spl_file.h"
+#include "common/win32_long_path.h"
 
 CSalamanderSafeFile SalSafeFile;
 
@@ -41,9 +42,38 @@ BOOL CSalamanderSafeFile::SafeFileOpen(SAFE_FILE* file,
 
     HANDLE hFile;
     int fileNameLen = (int)strlen(fileName);
+
+    // Keep the legacy ANSI behavior for paths below MAX_PATH. Callers
+    // that can supply a longer absolute ANSI path may now open it safely
+    // through the Unicode API without changing SAFE_FILE's public layout.
+    // This does not make the caller's fixed-size buffers or plugins
+    // Unicode/long-path aware.
+    std::wstring extendedFileName;
+    DWORD extendedFileNameError = ERROR_SUCCESS;
+    if (fileNameLen >= MAX_PATH)
+    {
+        Salamander::TryMakeExtendedLengthPathFromAnsi(
+            fileName, extendedFileName, extendedFileNameError);
+    }
+
     do
     {
-        hFile = fileNameLen >= MAX_PATH ? INVALID_HANDLE_VALUE : HANDLES_Q(CreateFile(fileName, dwDesiredAccess, dwShareMode, NULL, dwCreationDisposition, dwFlagsAndAttributes, NULL));
+        if (fileNameLen < MAX_PATH)
+        {
+            hFile = HANDLES_Q(CreateFile(fileName, dwDesiredAccess, dwShareMode, NULL,
+                                         dwCreationDisposition, dwFlagsAndAttributes, NULL));
+        }
+        else if (extendedFileNameError == ERROR_SUCCESS)
+        {
+            hFile = HANDLES_Q(CreateFileW(extendedFileName.c_str(), dwDesiredAccess,
+                                          dwShareMode, NULL, dwCreationDisposition,
+                                          dwFlagsAndAttributes, NULL));
+        }
+        else
+        {
+            hFile = INVALID_HANDLE_VALUE;
+            SetLastError(extendedFileNameError);
+        }
         if (hFile == INVALID_HANDLE_VALUE)
         {
             DWORD dlgRet;
@@ -51,7 +81,7 @@ BOOL CSalamanderSafeFile::SafeFileOpen(SAFE_FILE* file,
                 dlgRet = DIALOG_SKIP;
             else
             {
-                DWORD lastError = fileNameLen >= MAX_PATH ? ERROR_FILENAME_EXCED_RANGE : GetLastError();
+                DWORD lastError = GetLastError();
                 dlgRet = DialogError(hParent, (flags & BUTTONS_MASK), fileName,
                                      GetErrorText(lastError), LoadStr(IDS_ERROROPENINGFILE));
             }
