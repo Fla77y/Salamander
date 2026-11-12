@@ -20,6 +20,26 @@ foreach ($file in $scriptFiles) {
     }
 }
 
+# MSBuild writes intermediate outputs beside .vcxproj files. Those generated
+# directories must not block the pipeline's safe Git fast-forward update.
+$repository = (Resolve-Path -LiteralPath (Join-Path $toolsDir '..\\..')).ProviderPath
+foreach ($generated in @(
+    'src/vcxproj/salamander/Debug_x64/test.obj',
+    'src/vcxproj/salmon/salamander/Release_x64/test.obj',
+    'src/plugins/zip/vcxproj/salamander/Debug_x64/test.obj',
+    'src/plugins/7zip/vcxproj/7ZA/salamander/Debug_x64/test.obj',
+    'src/plugins/pictview/vcxproj/exif/salamander/Release_x64/test.obj'
+)) {
+    & git -C $repository check-ignore --quiet -- $generated
+    if ($LASTEXITCODE -ne 0) {
+        throw "Generated MSBuild output is not ignored: $generated"
+    }
+}
+& git -C $repository check-ignore --quiet -- 'src/plugins/zip/salamander/source.cpp'
+if ($LASTEXITCODE -ne 1) {
+    throw "Git ignore rules unexpectedly exclude non-build source paths, or git failed (exit $LASTEXITCODE)."
+}
+
 . (Join-Path $toolsDir 'Package-Helpers.ps1')
 
 function Assert-Throws {
