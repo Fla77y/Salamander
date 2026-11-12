@@ -15,6 +15,14 @@ if not defined MSVC_REDIST_PATH (
   )
 )
 
+for %%F in ("x86\Microsoft.VC143.CRT\vcruntime140.dll" "x64\Microsoft.VC143.CRT\vcruntime140.dll" "debug_nonredist\x86\Microsoft.VC143.DebugCRT\vcruntime140d.dll" "debug_nonredist\x64\Microsoft.VC143.DebugCRT\vcruntime140d.dll") do (
+  if defined MSVC_REDIST_PATH if not exist "%MSVC_REDIST_PATH%\%%~F" (
+    >&2 echo ERROR: Missing MSVC v143 runtime: "%MSVC_REDIST_PATH%\%%~F"
+    popd
+    exit /b 1
+  )
+)
+
 if not defined UCRT_REDIST_PATH set "UCRT_REDIST_PATH=%ProgramFiles(x86)%\Windows Kits\10\Redist\10.0.26100.0"
 if not defined UCRTD_REDIST_PATH set "UCRTD_REDIST_PATH=%ProgramFiles(x86)%\Microsoft SDKs\Windows Kits\10\ExtensionSDKs\Microsoft.UniversalCRT.Debug\10.0.26100.0"
 
@@ -170,7 +178,7 @@ exit /b
 
 echo Copying %~2\%~1...
 
-if not exist %3 mkdir %3
+if not exist "%~3" mkdir "%~3"
 
 copy "%~2\%~1" "%~3\%~1"
 if errorlevel 1 (
@@ -217,7 +225,7 @@ exit /b
 :mycopy_dir
 
 robocopy %1 %2 >nul
-if not errorlevel 1 (
+if errorlevel 8 (
   echo.
   echo !!!!!!!!!!!!!!!!!!!   ERROR   !!!!!!!!!!!!!!!!!!!
   echo !!!!!!!!!!!!!!!!!!!   ERROR   !!!!!!!!!!!!!!!!!!!
