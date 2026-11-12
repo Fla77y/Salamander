@@ -106,8 +106,168 @@ function Copy-Runtime {
     }
 }
 
+function Assert-CoreHelpMappings {
+    param([string]$Repository)
+
+    # F1 uses HH_HELP_CONTEXT. The help viewer can display the default topic
+    # even when the CHM was compiled without the numeric [MAP] data.
+    $projectPath = Join-Path $Repository 'help\src\salamand.hhp'
+    $projectDir = Split-Path -Parent $projectPath
+    $projectText = [IO.File]::ReadAllText($projectPath)
+
+    $mapSection = [regex]::Match(
+        $projectText,
+        '(?ms)^\[MAP\]\s*\r?\n(?<lines>.*?)(?=^\[[^\]]+\]|\z)')
+    if (-not $mapSection.Success) {
+        throw "The core help project is missing its [MAP] section: $projectPath"
+    }
+
+    $headers = [regex]::Matches(
+        $mapSection.Groups['lines'].Value, '(?m)^\s*#include\s+"([^"]+)"')
+    if ($headers.Count -eq 0) {
+        throw "The core help project's [MAP] section contains no header includes."
+    }
+
+    $mappedSymbols = [System.Collections.Generic.HashSet[string]]::new(
+        [StringComparer]::OrdinalIgnoreCase)
+    foreach ($header in $headers) {
+        $headerPath = [IO.Path]::GetFullPath((Join-Path $projectDir $header.Groups[1].Value))
+        if (-not (Test-Path -LiteralPath $headerPath -PathType Leaf)) {
+            throw "Core help [MAP] include does not exist: $($header.Groups[1].Value) (resolved to $headerPath)"
+        }
+        $headerText = [IO.File]::ReadAllText($headerPath)
+        foreach ($definition in [regex]::Matches($headerText, '(?m)^\s*#define\s+([A-Za-z_]\w*)\s+\d+\b')) {
+            [void]$mappedSymbols.Add($definition.Groups[1].Value)
+        }
+    }
+
+    foreach ($symbol in @('IDH_INTRODUCTION', 'CM_HELP_KEYBOARD')) {
+        if (-not $mappedSymbols.Contains($symbol)) {
+            throw "Core help [MAP] does not define the numeric context ID $symbol."
+        }
+        if ($projectText -notmatch "(?m)^\s*$symbol\s*=\s*(\S+)") {
+            throw "Core help is missing the [ALIAS] topic for $symbol."
+        }
+    }
+
+    $stopListMatch = [regex]::Match(
+        $projectText, '(?mi)^\s*Full text search stop list file\s*=\s*(.+?)\s*
+    param([string]$Repository, [string]$HhcExe, [string[]]$OutputDirectories)
+    $mainHelp = Get-Item -LiteralPath (Join-Path $Repository 'help\src\salamand.hhp')
+    $pluginHelp = @(Get-ChildItem -LiteralPath (Join-Path $Repository 'src\plugins') -File -Filter '*.hhp' -Recurse |
+        Where-Object { $_.Directory.Name -eq 'help' } | Sort-Object FullName)
+    $projects = @($mainHelp) + $pluginHelp
+    Write-Host "Compiling $($projects.Count) HTML Help projects..."
+
+    foreach ($project in $projects) {
+        $text = [IO.File]::ReadAllText($project.FullName)
+        $compiledMatch = [regex]::Match($text, '(?mi)^\s*Compiled file\s*=\s*(.+?)\s*$')
+        if (-not $compiledMatch.Success) { throw "Missing 'Compiled file=' in $($project.FullName)" }
+        $compiledName = $compiledMatch.Groups[1].Value.Trim().Trim('"')
+        if ([IO.Path]::GetFileName($compiledName) -ne $compiledName -or
+            -not $compiledName.EndsWith('.chm', [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Unsafe or unsupported CHM output name in $($project.FullName): $compiledName"
+        }
+        $compiledFile = Join-Path $project.DirectoryName $compiledName
+        Remove-Item -LiteralPath $compiledFile -Force -ErrorAction SilentlyContinue
+        Write-Host "  $($project.FullName)"
+        $process = Start-Process -FilePath $HhcExe -ArgumentList @($project.Name) -WorkingDirectory $project.DirectoryName -Wait -PassThru -NoNewWindow
+        # hhc.exe can return 1 even on success. Validate the actual new output.
+        if (-not (Test-Path -LiteralPath $compiledFile -PathType Leaf) -or
+            (Get-Item -LiteralPath $compiledFile).Length -lt 1024) {
+            throw "HTML Help Compiler failed (exit code $($process.ExitCode)): $($project.FullName)"
+        }
+        foreach ($directory in $OutputDirectories) {
+            $destination = Join-Path $directory 'help\english'
+            New-Item -ItemType Directory -Force -Path $destination | Out-Null
+            Copy-Item -LiteralPath $compiledFile -Destination (Join-Path $destination $compiledName) -Force
+        }
+        Remove-Item -LiteralPath $compiledFile -Force
+    }
+}
+
+function New-DistributionStage {
+    param([string]$BuiltDirectory, [string]$Stage, [string]$Repository, [string]$Configuration, [hashtable]$CrtFolders)
+    if (-not (Test-Path -LiteralPath (Join-Path $BuiltDirectory 'salamand.exe'))) {
+        throw "Build output is missing salamand.exe: $BuiltDirectory"
+    }
+    if (Test-Path -LiteralPath $Stage) { Remove-Item -LiteralPath $Stage -Recurse -Force }
+    New-Item -ItemType Directory -Path $Stage -Force | Out-Null
+    & robocopy.exe $BuiltDirectory $Stage '/E' '/XD' 'Intermediate' '/XF' '*.obj' '*.pch' '*.idb' '*.ilk' '*.tlog' '*.lastbuildstate' | Out-Null
+    if ($LASTEXITCODE -ge 8) { throw "Staging copy failed with robocopy exit code $LASTEXITCODE" }
+    Add-ApplicationResources -Repository $Repository -Stage $Stage
+    Copy-Runtime -Stage $Stage -Configuration $Configuration -CrtFolders $CrtFolders
+}
+
+function Test-DistributionStage {
+    param([string]$Stage, [string]$Configuration, [string]$DumpbinExe)
+    foreach ($required in @('salamand.exe', 'help\english\salamand.chm', 'LICENSE', 'vcruntime140.dll', 'msvcp140.dll')) {
+        if (-not (Test-Path -LiteralPath (Join-Path $Stage $required) -PathType Leaf)) {
+            throw "Distribution is incomplete. Missing: $required in $Stage"
+        }
+    }
+    if ($Configuration -eq 'Debug') {
+        foreach ($required in @('vcruntime140d.dll', 'msvcp140d.dll', 'ucrtbased.dll', 'INTERNAL-TEST-ONLY.txt')) {
+            if (-not (Test-Path -LiteralPath (Join-Path $Stage $required) -PathType Leaf)) {
+                throw "Debug test distribution is incomplete. Missing: $required"
+            }
+        }
+    } else {
+        $debugDlls = @(Get-ChildItem -LiteralPath $Stage -File | Where-Object {
+            $_.Name -match '^(?:msvcp\d+(?:_\d+)?|vcruntime\d+(?:_\d+)?|concrt\d*)d\.dll$|^ucrtbased\.dll$'
+        })
+        if ($debugDlls.Count -ne 0) {
+            throw "Release distribution contains forbidden debug runtime DLLs: $($debugDlls.Name -join ', ')"
+        }
+    }
+
+    # Check direct imports of every executable, DLL and Salamander plug-in against
+    # the staged application and Windows system DLLs. An actual clean-VM test is
+    # still required because this cannot validate delayed dynamic LoadLibrary calls.
+    $windows = Join-Path $env:SystemRoot 'System32'
+    $unresolved = [System.Collections.Generic.List[string]]::new()
+    $binaries = @(Get-ChildItem -LiteralPath $Stage -Recurse -File |
+        Where-Object { $_.Extension -in @('.exe', '.dll', '.spl') })
+    foreach ($binary in $binaries) {
+        $output = @(& $DumpbinExe '/dependents' $binary.FullName 2>&1)
+        if ($LASTEXITCODE -ne 0) { throw "dumpbin failed for $($binary.FullName)" }
+        foreach ($line in $output) {
+            if ($line -notmatch '^\s*([A-Za-z0-9_.-]+\.dll)\s*$') { continue }
+            $dll = $Matches[1]
+            if ($dll -match '^(api-ms-win-|ext-ms-win-)') { continue }
+            if ((Test-Path -LiteralPath (Join-Path $binary.DirectoryName $dll)) -or
+                (Test-Path -LiteralPath (Join-Path $Stage $dll)) -or
+                (Test-Path -LiteralPath (Join-Path $windows $dll))) { continue }
+            $unresolved.Add("$($binary.Name): $dll")
+        }
+    }
+    if ($unresolved.Count -gt 0) {
+        throw "Unresolved PE imports (potential missing runtime dependencies): $($unresolved -join '; ')"
+    }
+
+    $manifest = Join-Path $Stage 'SHA256SUMS.txt'
+    $files = @(Get-ChildItem -LiteralPath $Stage -File -Recurse |
+        Where-Object { $_.Name -ne 'SHA256SUMS.txt' } | Sort-Object FullName)
+    $entries = foreach ($file in $files) {
+        $relative = [IO.Path]::GetRelativePath($Stage, $file.FullName).Replace('\', '/')
+        '{0} *{1}' -f (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $relative
+    }
+    $entries | Set-Content -LiteralPath $manifest -Encoding utf8
+    Write-Host "Validated $($binaries.Count) PE files and $($files.Count) package files: $Configuration"
+}
+)
+    if ($stopListMatch.Success) {
+        $stopList = [IO.Path]::GetFullPath(
+            (Join-Path $projectDir $stopListMatch.Groups[1].Value.Trim()))
+        if (-not (Test-Path -LiteralPath $stopList -PathType Leaf)) {
+            throw "Core HTML Help stop-list file does not exist: $stopList"
+        }
+    }
+}
+
 function Build-CompiledHelp {
     param([string]$Repository, [string]$HhcExe, [string[]]$OutputDirectories)
+    Assert-CoreHelpMappings -Repository $Repository
     $mainHelp = Get-Item -LiteralPath (Join-Path $Repository 'help\src\salamand.hhp')
     $pluginHelp = @(Get-ChildItem -LiteralPath (Join-Path $Repository 'src\plugins') -File -Filter '*.hhp' -Recurse |
         Where-Object { $_.Directory.Name -eq 'help' } | Sort-Object FullName)
