@@ -10,22 +10,9 @@ if "%~1"=="help" (
   goto :eof
 )
 
-:: Check for MSBuild in the PATH
-where msbuild >nul 2>&1
-if %errorlevel% neq 0 set NO_MSBUILD=1
-
-:: Assume a default location (as per the authors of OpenSalamander preference)
-set MSB=C:\Program Files\Microsoft Visual Studio\2022\Community\Msbuild\Current\Bin\MSBuild.exe
-
-if not exist "%MSB%" (
-  if defined NO_MSBUILD (
-    echo MSBuild.exe not found. Please open a Developer Command Prompt for Visual Studio.
-    echo.
-    goto :eof
-  ) else (
-    set MSB=msbuild
-  )
-)
+:: Resolve the VS 2026 MSBuild installation, independently of the shell PATH.
+call "%~dp0find-vs2026.cmd"
+if errorlevel 1 exit /b 1
 
 if "%OPENSAL_BUILD_DIR%"=="" (
   echo Please set OPENSAL_BUILD_DIR environment variable.
@@ -47,6 +34,5 @@ goto :eof
 
 :build
   echo Building %~1/%2
-  if exist %3 del /q %3
   "%msb%" salamand.sln /t:build "/p:Configuration=%~1" /p:Platform=%2 /m:%NUMBER_OF_PROCESSORS%
-  exit /b
+  exit /b %errorlevel%
