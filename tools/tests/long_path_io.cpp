@@ -182,6 +182,56 @@ int main()
         enumError != ERROR_INVALID_NAME || !invalidEntries.empty())
         return Fail("relative directory enumeration must be rejected");
 
+    // Exercise the exact file-open helper used by SAFE_FILE, including the
+    // second open that read/write error retries must perform.
+    std::wstring legacyFilename = current + L"\\legacy-long-file.txt";
+    std::wstring extendedLegacyFile;
+    if (!Convert(legacyFilename, extendedLegacyFile))
+        return Fail("prepare legacy-open filename");
+    const int ansiLength = WideCharToMultiByte(CP_ACP, 0, legacyFilename.c_str(),
+                                              -1, nullptr, 0, nullptr, nullptr);
+    if (ansiLength < 2)
+        return Fail("encode test path for legacy ANSI adapter");
+    std::string legacyAnsi(static_cast<std::size_t>(ansiLength), '\0');
+    if (WideCharToMultiByte(CP_ACP, 0, legacyFilename.c_str(), -1,
+                            &legacyAnsi[0], ansiLength, nullptr, nullptr) != ansiLength)
+        return Fail("encode legacy ANSI test path");
+    legacyAnsi.pop_back();
+    if (legacyAnsi.size() < MAX_PATH)
+        return Fail("legacy opening fixture is not a long path");
+
+    HANDLE legacyHandle = Salamander::OpenFileWithLegacyPath(
+        legacyAnsi.c_str(), GENERIC_WRITE, FILE_SHARE_READ, CREATE_NEW,
+        FILE_ATTRIBUTE_NORMAL);
+    if (legacyHandle == INVALID_HANDLE_VALUE)
+        return Fail("legacy SAFE_FILE long path initial CreateFileW");
+    DWORD legacyWritten = 0;
+    const char legacyPayload[] = "retry-path";
+    const bool legacyWriteOk = WriteFile(
+        legacyHandle, legacyPayload, sizeof(legacyPayload), &legacyWritten, nullptr) &&
+        legacyWritten == sizeof(legacyPayload);
+    CloseHandle(legacyHandle);
+    if (!legacyWriteOk)
+        return Fail("write via long legacy path");
+
+    legacyHandle = Salamander::OpenFileWithLegacyPath(
+        legacyAnsi.c_str(), GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL);
+    if (legacyHandle == INVALID_HANDLE_VALUE)
+        return Fail("legacy SAFE_FILE long path reopen");
+    char legacyRead[sizeof(legacyPayload)] = {};
+    DWORD legacyBytesRead = 0;
+    const bool legacyReadOk = ReadFile(
+        legacyHandle, legacyRead, sizeof(legacyRead), &legacyBytesRead, nullptr) &&
+        legacyBytesRead == sizeof(legacyPayload) &&
+        std::string(legacyRead, legacyBytesRead) ==
+            std::string(legacyPayload, sizeof(legacyPayload));
+    CloseHandle(legacyHandle);
+    if (!legacyReadOk)
+        return Fail("read back through long legacy path");
+    if (!DeleteFileW(extendedLegacyFile.c_str()))
+        return Fail("delete legacy long-path fixture");
+
     if (!DeleteFileW(extendedMaxFile.c_str()))
         return Fail("DeleteFileW maximum filename");
     if (!DeleteFileW(result.c_str()))
