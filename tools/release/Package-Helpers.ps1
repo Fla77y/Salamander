@@ -137,6 +137,7 @@ function Build-CompiledHelp {
             New-Item -ItemType Directory -Force -Path $destination | Out-Null
             Copy-Item -LiteralPath $compiledFile -Destination (Join-Path $destination $compiledName) -Force
         }
+        Remove-Item -LiteralPath $compiledFile -Force
     }
 }
 
@@ -200,7 +201,8 @@ function Test-DistributionStage {
     }
 
     $manifest = Join-Path $Stage 'SHA256SUMS.txt'
-    $files = @(Get-ChildItem -LiteralPath $Stage -File -Recurse | Sort-Object FullName)
+    $files = @(Get-ChildItem -LiteralPath $Stage -File -Recurse |
+        Where-Object { $_.Name -ne 'SHA256SUMS.txt' } | Sort-Object FullName)
     $entries = foreach ($file in $files) {
         $relative = [IO.Path]::GetRelativePath($Stage, $file.FullName).Replace('\', '/')
         '{0} *{1}' -f (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $relative
