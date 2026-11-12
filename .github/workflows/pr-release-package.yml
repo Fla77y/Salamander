@@ -30,11 +30,15 @@ jobs:
             '--add', 'Microsoft.VisualStudio.Component.VC.14.44.17.14.x86.x64',
             '--add', 'Microsoft.VisualStudio.Component.VC.14.44.17.14.ATL',
             '--add', 'Microsoft.Component.VC.Runtime.UCRTSDK',
-            '--quiet', '--norestart', '--wait'
+            '--quiet', '--norestart'
           )
-          & $installer @args
-          if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) {
-            throw "Visual Studio component installation failed: $LASTEXITCODE"
+          $arguments = ($args | ForEach-Object {
+            if ($_ -eq $vs) { '"' + $_ + '"' } else { $_ }
+          }) -join ' '
+          # setup.exe does not accept --wait. Start-Process -Wait tracks the installer process.
+          $process = Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru
+          if ($process.ExitCode -ne 0 -and $process.ExitCode -ne 3010) {
+            throw "Visual Studio component installation failed: $($process.ExitCode)"
           }
 
       - name: Install Inno Setup and 7-Zip for packaging
