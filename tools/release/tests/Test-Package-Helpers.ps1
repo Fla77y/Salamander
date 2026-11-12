@@ -42,6 +42,9 @@ if ($LASTEXITCODE -ne 1) {
 
 . (Join-Path $toolsDir 'Package-Helpers.ps1')
 
+# Prevent CHM builds that display their default page but fail F1 context lookup.
+Assert-CoreHelpMappings -Repository $repository
+
 function Assert-Throws {
     param([scriptblock]$Action, [string]$Description)
     $threw = $false
