@@ -41,6 +41,10 @@ code units on NTFS).
   `MAX_PATH`, it now converts to UTF-16 and calls `CreateFileW`.
   Its parent callers, panel path representation and plug-in ABI **are not
   upgraded** by this change.
+- The initial open and all read/write retries now share the same path-aware
+  helper. Retries use `OPEN_EXISTING`, not the original `CREATE_ALWAYS` or
+  `CREATE_NEW` disposition, to avoid truncating previously written bytes.
+  The regression test verifies preservation and non-creation of deleted files.
 - `tools/tests/long_path_io.cpp` tests real Unicode Win32 I/O on Windows,
   including >260-character paths, a 255-unit filename, and boundary cases.
 
