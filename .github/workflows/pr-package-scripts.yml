@@ -1,0 +1,21 @@
+name: Package script checks
+
+on:
+  pull_request:
+    branches: ["**"]
+    paths:
+      - "tools/release/**"
+      - ".github/workflows/pr-package-scripts.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test-package-scripts:
+    runs-on: windows-2025-vs2026
+    steps:
+      - uses: actions/checkout@v4
+      - name: PowerShell parser and distribution validation regression tests
+        shell: pwsh
+        run: ./tools/release/tests/Test-Package-Helpers.ps1
