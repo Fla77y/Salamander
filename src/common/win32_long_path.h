@@ -8,11 +8,103 @@
 
 namespace Salamander
 {
-// Temporary implementation used to verify that the behavior test fails.
-inline bool TryMakeExtendedLengthPath(const wchar_t*, std::wstring& result, DWORD& error)
+// A Win32 extended-length path must be fully qualified and must not contain
+// unnormalized "." / ".." components. It also disables slash normalization.
+// No registry or longPathAware manifest setting is needed for callers using
+// explicit Unicode file I/O functions with this prefix.
+//
+// The caller owns resolution of relative paths and validation of component
+// lengths according to the actual filesystem.
+inline bool TryMakeExtendedLengthPath(const wchar_t* absolutePath,
+                                      std::wstring& extendedPath,
+                                      DWORD& error)
 {
-    result.clear();
+    extendedPath.clear();
     error = ERROR_INVALID_NAME;
-    return false;
+
+    if (absolutePath == nullptr)
+    {
+        error = ERROR_INVALID_PARAMETER;
+        return false;
+    }
+
+    const std::wstring path(absolutePath);
+    if (path.empty() || path.find(L'/') != std::wstring::npos)
+        return false;
+
+    const bool drivePath =
+        path.size() >= 3 &&
+        ((path[0] >= L'A' && path[0] <= L'Z') ||
+         (path[0] >= L'a' && path[0] <= L'z')) &&
+        path[1] == L':' && path[2] == L'\\';
+
+    bool uncPath = false;
+    std::size_t firstComponent = 0;
+
+    if (drivePath)
+    {
+        firstComponent = 3;
+    }
+    else if (path.size() >= 5 && path[0] == L'\\' && path[1] == L'\\' &&
+             path[2] != L'?' && path[2] != L'.' && path[2] != L'\\')
+    {
+        const auto serverEnd = path.find(L'\\', 2);
+        if (serverEnd == std::wstring::npos || serverEnd == 2)
+            return false;
+
+        const auto shareStart = serverEnd + 1;
+        if (shareStart == path.size() || path[shareStart] == L'\\')
+            return false;
+
+        const auto shareEnd = path.find(L'\\', shareStart);
+        if (shareEnd == std::wstring::npos)
+            firstComponent = path.size();
+        else
+            firstComponent = shareEnd + 1;
+        uncPath = true;
+    }
+    else
+    {
+        return false;
+    }
+
+    // The extended-length namespace does no normalization of "." or "..".
+    // Reject ambiguous and empty interior components instead of accidentally
+    // accessing a different file from the one requested.
+    for (std::size_t start = firstComponent; start < path.size();)
+    {
+        const auto end = path.find(L'\\', start);
+        const auto count = (end == std::wstring::npos ? path.size() : end) - start;
+        if (count == 0 ||
+            (count == 1 && path[start] == L'.') ||
+            (count == 2 && path[start] == L'.' && path[start + 1] == L'.'))
+            return false;
+
+        if (end == std::wstring::npos || end == path.size() - 1)
+            break;
+        start = end + 1;
+    }
+
+    constexpr std::size_t maxExtendedPathWithNull = 32767;
+    const std::size_t prefixExtra = drivePath ? 4 : 6;
+    if (path.size() + prefixExtra >= maxExtendedPathWithNull)
+    {
+        error = ERROR_FILENAME_EXCED_RANGE;
+        return false;
+    }
+
+    if (uncPath)
+    {
+        extendedPath.assign(L"\\\\?\\UNC\\");
+        extendedPath.append(path, 2, std::wstring::npos);
+    }
+    else
+    {
+        extendedPath.assign(L"\\\\?\\");
+        extendedPath.append(path);
+    }
+
+    error = ERROR_SUCCESS;
+    return true;
 }
 } // namespace Salamander
