@@ -5,6 +5,7 @@
 
 #include <windows.h>
 #include <string>
+#include <cstring>
 
 namespace Salamander
 {
@@ -139,6 +140,39 @@ inline bool TryMakeExtendedLengthPathFromAnsi(const char* absolutePath,
 
     widePath.resize(static_cast<std::size_t>(wideLength - 1));
     return TryMakeExtendedLengthPath(widePath.c_str(), extendedPath, error);
+}
+
+// Shared opening path for the legacy SAFE_FILE code. The same route is used
+// for initial open and for read/write retries, preventing a retry from falling
+// back to an ANSI API that cannot reopen the long file.
+inline HANDLE OpenFileWithLegacyPath(const char* fileName,
+                                    DWORD desiredAccess,
+                                    DWORD shareMode,
+                                    DWORD creationDisposition,
+                                    DWORD flagsAndAttributes)
+{
+    if (fileName == nullptr)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return INVALID_HANDLE_VALUE;
+    }
+
+    if (std::strlen(fileName) < MAX_PATH)
+    {
+        return CreateFileA(fileName, desiredAccess, shareMode, nullptr,
+                           creationDisposition, flagsAndAttributes, nullptr);
+    }
+
+    std::wstring extendedPath;
+    DWORD pathError = ERROR_SUCCESS;
+    if (!TryMakeExtendedLengthPathFromAnsi(fileName, extendedPath, pathError))
+    {
+        SetLastError(pathError);
+        return INVALID_HANDLE_VALUE;
+    }
+
+    return CreateFileW(extendedPath.c_str(), desiredAccess, shareMode, nullptr,
+                       creationDisposition, flagsAndAttributes, nullptr);
 }
 
 } // namespace Salamander
