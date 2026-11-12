@@ -18,3 +18,7 @@ Thumbs.db
 # Generated Microsoft HTML Help files
 *.chm
 *.chw
+
+# Generated MSBuild per-project output directories (x86/x64, Debug/Release)
+# Keep scope narrow: do not ignore real Salamander source directories.
+/src/**/vcxproj/**/salamander/
