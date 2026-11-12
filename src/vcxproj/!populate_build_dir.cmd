@@ -51,14 +51,16 @@ if "%OPENSAL_BUILD_DIR%"=="" (
   echo Please set OPENSAL_BUILD_DIR environment variable.
   echo.
   pause
-  exit /b
+  popd
+  exit /b 1
 )
 
 if not exist "%OPENSAL_BUILD_DIR%salamander" (
   echo Target directory does not exist: %OPENSAL_BUILD_DIR%salamander
   echo.
   pause
-  exit /b
+  popd
+  exit /b 1
 )
 
 powershell.exe -Command "$s=(New-Object -ComObject WScript.Shell).CreateShortcut($env:OPENSAL_BUILD_DIR+'salamander\salamander.lnk'); $s.TargetPath=$env:SAL_POPULATE_ROOT+'salamand.sln'; $s.Save()"
@@ -91,7 +93,7 @@ echo -Build all language versions of Salamander and plugins.
 echo.
 pause
 popd
-exit /b 1
+exit /b 0
 
 
 :sfx_make_all
