@@ -28,6 +28,27 @@ code units on NTFS).
   boundaries. The helper is unit-tested in
   `tools/tests/quicksearch_bounds.cpp`.
 
+## Phase 1b: Explicit Unicode Win32 I/O foundation
+
+- `src/common/win32_long_path.h` converts **fully qualified** UTF-16
+  drive/UNC paths into extended-length Win32 syntax. It rejects relative,
+  device-namespace, slash-mixed and unnormalized dot-segment paths.
+- `src/common/win32_long_directory.h` enumerates entries with
+  `FindFirstFileW` and `FindNextFileW`, preserving full UTF-16 names and
+  attributes without converting them to the system ANSI code page.
+- `CSalamanderSafeFile::SafeFileOpen` retains the existing short ANSI path
+  behavior; for absolute **ANSI-representable** paths of length at least
+  `MAX_PATH`, it now converts to UTF-16 and calls `CreateFileW`.
+  Its parent callers, panel path representation and plug-in ABI **are not
+  upgraded** by this change.
+- `tools/tests/long_path_io.cpp` tests real Unicode Win32 I/O on Windows,
+  including >260-character paths, a 255-unit filename, and boundary cases.
+
+**Not fixed by this layer:** GUI navigation, `CFileData::Name` ANSI
+enumeration, Unicode names outside the active ANSI code page, copying and
+renaming long paths, and the `SafeFileCreate` path/overwrite flow. Those
+require the following phases. Do not remove current `MAX_PATH` checks.
+
 ## Phase 2: Owned Unicode and long-path representation
 
 Introduce a dedicated UTF-16, dynamically sized representation for
