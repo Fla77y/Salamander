@@ -47,6 +47,10 @@ jobs:
         with:
           arch: x64
 
+      - name: Regression test - discover VS2026 from paths with spaces
+        shell: cmd
+        run: call src\vcxproj\tests\test-find-vs2026.cmd
+
       - name: Register MSVC problem matcher
         uses: ammaraskar/msvc-problem-matcher@master
 
