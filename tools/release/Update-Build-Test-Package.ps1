@@ -52,8 +52,19 @@ if (-not $SkipUpdate) {
     if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace($currentBranch)) {
         throw 'Cannot update while HEAD is detached.'
     }
+    $beforeUpdate = (& git -C $repository rev-parse HEAD).Trim()
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to read current Git revision.' }
     Invoke-Checked 'git' @('-C', $repository, 'fetch', '--prune', 'origin')
     Invoke-Checked 'git' @('-C', $repository, 'pull', '--ff-only', 'origin', $currentBranch)
+    $afterUpdate = (& git -C $repository rev-parse HEAD).Trim()
+    if ($LASTEXITCODE -ne 0) { throw 'Unable to read updated Git revision.' }
+    if ($afterUpdate -ne $beforeUpdate) {
+        $changedPipeline = @(& git -C $repository diff --name-only $beforeUpdate $afterUpdate -- 'tools/release/Update-Build-Test-Package.ps1' 'tools/release/Package-Helpers.ps1' 'tools/release/OpenSalamander.iss')
+        if ($LASTEXITCODE -ne 0) { throw 'Unable to compare pipeline versions after Git update.' }
+        if ($changedPipeline.Count -gt 0) {
+            throw 'The update changed release pipeline scripts. Run the command again to load the new version safely.'
+        }
+    }
 }
 
 $vsDir = Get-VisualStudio2026
@@ -150,6 +161,15 @@ foreach ($configuration in @('Debug', 'Release')) {
         }
     }
 }
+
+$artifactManifest = Join-Path $artifactDir 'SHA256SUMS.txt'
+$packages = @(Get-ChildItem -LiteralPath $artifactDir -File |
+    Where-Object { $_.Extension -eq '.7z' -or $_.Name -like '*-Setup.exe' } |
+    Sort-Object Name)
+$checksums = foreach ($package in $packages) {
+    '{0} *{1}' -f (Get-FileHash -LiteralPath $package.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $package.Name
+}
+$checksums | Set-Content -LiteralPath $artifactManifest -Encoding utf8
 
 Write-Host ''
 Write-Host 'Package generation complete. Artifacts:'
