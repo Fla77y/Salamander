@@ -6,6 +6,7 @@ on:
     paths:
       - "src/common/buffer_bounds.h"
       - "src/common/win32_long_path.h"
+      - "src/common/win32_long_directory.h"
       - "src/safefile.cpp"
       - "src/fileswn0.cpp"
       - "tools/tests/**"
