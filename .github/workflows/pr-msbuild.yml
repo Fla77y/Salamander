@@ -16,7 +16,7 @@ concurrency:
 jobs:
   build:
     name: Build ${{ matrix.platform }} Debug (fail on warnings)
-    runs-on: windows-2022
+    runs-on: windows-2025-vs2026
 
     strategy:
       fail-fast: false
@@ -39,7 +39,7 @@ jobs:
         with:
           path: s
 
-      - name: Setup MSBuild in PATH (VS2022)
+      - name: Setup MSBuild in PATH (VS2026)
         uses: microsoft/setup-msbuild@v2
 
       - name: Setup MSVC Developer Command Prompt (x64 toolchain)
