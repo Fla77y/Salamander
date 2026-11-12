@@ -39,9 +39,9 @@ try {
     # Total path longer than MAX_PATH, but no individual component is too long.
     $deepDir = $source
     foreach ($segment in @(
-        'long-directory-one-' + ('a' * 70),
-        'long-directory-two-' + ('b' * 70),
-        'long-directory-three-' + ('c' * 70)
+        ('long-directory-one-' + ('a' * 70))
+        ('long-directory-two-' + ('b' * 70))
+        ('long-directory-three-' + ('c' * 70))
     )) {
         $deepDir = Join-Path $deepDir $segment
         [void][IO.Directory]::CreateDirectory($deepDir)
