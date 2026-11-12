@@ -201,7 +201,7 @@ int main()
         return Fail("legacy opening fixture is not a long path");
 
     HANDLE legacyHandle = Salamander::OpenFileWithLegacyPath(
-        legacyAnsi.c_str(), GENERIC_WRITE, FILE_SHARE_READ, CREATE_NEW,
+        legacyAnsi.c_str(), GENERIC_WRITE, FILE_SHARE_READ, CREATE_ALWAYS,
         FILE_ATTRIBUTE_NORMAL);
     if (legacyHandle == INVALID_HANDLE_VALUE)
         return Fail("legacy SAFE_FILE long path initial CreateFileW");
@@ -214,9 +214,9 @@ int main()
     if (!legacyWriteOk)
         return Fail("write via long legacy path");
 
-    legacyHandle = Salamander::OpenFileWithLegacyPath(
-        legacyAnsi.c_str(), GENERIC_READ, FILE_SHARE_READ, OPEN_EXISTING,
-        FILE_ATTRIBUTE_NORMAL);
+    // The retry path must not repeat CREATE_ALWAYS, or earlier bytes vanish.
+    legacyHandle = Salamander::ReopenExistingFileWithLegacyPath(
+        legacyAnsi.c_str(), GENERIC_READ, FILE_SHARE_READ, FILE_ATTRIBUTE_NORMAL);
     if (legacyHandle == INVALID_HANDLE_VALUE)
         return Fail("legacy SAFE_FILE long path reopen");
     char legacyRead[sizeof(legacyPayload)] = {};
@@ -231,6 +231,13 @@ int main()
         return Fail("read back through long legacy path");
     if (!DeleteFileW(extendedLegacyFile.c_str()))
         return Fail("delete legacy long-path fixture");
+    legacyHandle = Salamander::ReopenExistingFileWithLegacyPath(
+        legacyAnsi.c_str(), GENERIC_READ, FILE_SHARE_READ, FILE_ATTRIBUTE_NORMAL);
+    if (legacyHandle != INVALID_HANDLE_VALUE)
+    {
+        CloseHandle(legacyHandle);
+        return Fail("retry must not recreate a deleted file");
+    }
 
     if (!DeleteFileW(extendedMaxFile.c_str()))
         return Fail("DeleteFileW maximum filename");
