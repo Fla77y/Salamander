@@ -17,7 +17,7 @@ We would like to thank [Fine company](https://www.finesoftware.eu/) for making t
 ### Prerequisites
 - Windows 11 or newer
 - [Visual Studio Community 2026](https://visualstudio.microsoft.com/downloads/) (or another Visual Studio 2026 edition)
-- [Desktop development with C++](https://learn.microsoft.com/en-us/cpp/build/vscpp-step-0-installation) workload and the MSVC v143 (14.44) toolset installed in VS 2026; import the repository `.vsconfig` in Visual Studio Installer
+- [Desktop development with C++](https://learn.microsoft.com/en-us/cpp/build/vscpp-step-0-installation) workload and the MSVC v143 (14.44) toolset and matching v143 ATL libraries installed in VS 2026; import the repository `.vsconfig` in Visual Studio Installer
 - [Windows 11 SDK (10.0.26100)](https://developer.microsoft.com/en-us/windows/downloads/windows-sdk/) installed in VS 2026
 
 ### Optional requirements
