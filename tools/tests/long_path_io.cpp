@@ -143,21 +143,47 @@ int main()
     if (!nameOk)
         return Fail("Unicode filename preserved during enumeration");
 
+    // Maximum-length single filename (255 UTF-16 code units) beneath a
+    // long path. This must remain distinct from the total path limit.
+    const std::wstring maxName = L"東京" + std::wstring(249, L'a') + L".txt";
+    if (maxName.size() != 255)
+        return Fail("test filename length");
+    const std::wstring maxFilename = current + L"\\" + maxName;
+    std::wstring extendedMaxFile;
+    if (!Convert(maxFilename, extendedMaxFile))
+        return Fail("prepare max-length Unicode filename");
+    HANDLE maxFile = CreateFileW(extendedMaxFile.c_str(), GENERIC_WRITE, 0, nullptr,
+                                 CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (maxFile == INVALID_HANDLE_VALUE)
+        return Fail("create 255-unit Unicode filename on long path");
+    CloseHandle(maxFile);
+
     // Directory enumeration must preserve the exact UTF-16 filename. This
     // is needed before replacing Salamander's ANSI CFileData.Name flow.
     std::vector<Salamander::LongDirectoryEntry> entries;
     DWORD enumError = ERROR_SUCCESS;
     if (!Salamander::TryEnumerateLongDirectory(current.c_str(), entries, enumError) ||
-        enumError != ERROR_SUCCESS || entries.size() != 1 ||
-        entries[0].name != L"Größe_東京_😀.txt" ||
-        (entries[0].attributes & FILE_ATTRIBUTE_DIRECTORY) != 0)
+        enumError != ERROR_SUCCESS || entries.size() != 2)
         return Fail("Unicode long directory enumeration");
+    bool foundUnicode = false;
+    bool foundMaxName = false;
+    for (const auto& entry : entries)
+    {
+        if ((entry.attributes & FILE_ATTRIBUTE_DIRECTORY) != 0)
+            return Fail("unexpected directory in fixture");
+        foundUnicode |= entry.name == L"Größe_東京_😀.txt";
+        foundMaxName |= entry.name == maxName;
+    }
+    if (!foundUnicode || !foundMaxName)
+        return Fail("directory enumeration must preserve UTF-16 filenames");
 
     std::vector<Salamander::LongDirectoryEntry> invalidEntries;
     if (Salamander::TryEnumerateLongDirectory(L"relative\\directory", invalidEntries, enumError) ||
         enumError != ERROR_INVALID_NAME || !invalidEntries.empty())
         return Fail("relative directory enumeration must be rejected");
 
+    if (!DeleteFileW(extendedMaxFile.c_str()))
+        return Fail("DeleteFileW maximum filename");
     if (!DeleteFileW(result.c_str()))
         return Fail("DeleteFileW");
     for (auto i = directories.rbegin(); i != directories.rend(); ++i)
