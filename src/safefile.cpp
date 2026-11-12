@@ -949,9 +949,9 @@ BOOL CSalamanderSafeFile::SafeFileRead(SAFE_FILE* file, LPVOID lpBuffer,
                     HANDLES(CloseHandle(file->HFile)); // close the invalid handle because we could not read from it anyway
                 }
 
-                file->HFile = HANDLES_Q(Salamander::OpenFileWithLegacyPath(
+                file->HFile = HANDLES_Q(Salamander::ReopenExistingFileWithLegacyPath(
                     file->FileName, file->dwDesiredAccess, file->dwShareMode,
-                    file->dwCreationDisposition, file->dwFlagsAndAttributes));
+                    file->dwFlagsAndAttributes));
                 if (file->HFile != INVALID_HANDLE_VALUE) // opened; now set the offset
                 {
                 SEEK:
@@ -1034,9 +1034,9 @@ BOOL CSalamanderSafeFile::SafeFileWrite(SAFE_FILE* file, LPVOID lpBuffer,
                     HANDLES(CloseHandle(file->HFile)); // close the invalid handle because we could not read from it anyway
                 }
 
-                file->HFile = HANDLES_Q(Salamander::OpenFileWithLegacyPath(
+                file->HFile = HANDLES_Q(Salamander::ReopenExistingFileWithLegacyPath(
                     file->FileName, file->dwDesiredAccess, file->dwShareMode,
-                    file->dwCreationDisposition, file->dwFlagsAndAttributes));
+                    file->dwFlagsAndAttributes));
                 if (file->HFile != INVALID_HANDLE_VALUE) // opened; now set the offset
                 {
                     //SEEK:
