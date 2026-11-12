@@ -3,6 +3,7 @@
 
 // Standalone MSVC/Win32 regression test: does NOT require the Salamander UI.
 #include "../../src/common/win32_long_path.h"
+#include "../../src/common/win32_long_directory.h"
 
 #include <windows.h>
 
@@ -141,6 +142,21 @@ int main()
     FindClose(found);
     if (!nameOk)
         return Fail("Unicode filename preserved during enumeration");
+
+    // Directory enumeration must preserve the exact UTF-16 filename. This
+    // is needed before replacing Salamander's ANSI CFileData.Name flow.
+    std::vector<Salamander::LongDirectoryEntry> entries;
+    DWORD enumError = ERROR_SUCCESS;
+    if (!Salamander::TryEnumerateLongDirectory(current.c_str(), entries, enumError) ||
+        enumError != ERROR_SUCCESS || entries.size() != 1 ||
+        entries[0].name != L"Größe_東京_😀.txt" ||
+        (entries[0].attributes & FILE_ATTRIBUTE_DIRECTORY) != 0)
+        return Fail("Unicode long directory enumeration");
+
+    std::vector<Salamander::LongDirectoryEntry> invalidEntries;
+    if (Salamander::TryEnumerateLongDirectory(L"relative\\directory", invalidEntries, enumError) ||
+        enumError != ERROR_INVALID_NAME || !invalidEntries.empty())
+        return Fail("relative directory enumeration must be rejected");
 
     if (!DeleteFileW(result.c_str()))
         return Fail("DeleteFileW");
