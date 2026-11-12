@@ -931,7 +931,7 @@ BOOL CSalamanderSafeFile::SafeFileRead(SAFE_FILE* file, LPVOID lpBuffer,
             DWORD lastError;
             DWORD dlgRet;
             if (silentMask != NULL && (*silentMask & SILENT_SKIP_FILE_READ) && ButtonsContainsSkip(flags))
-                dlgRet |= DIALOG_SKIP;
+                dlgRet = DIALOG_SKIP;
             else
             {
                 lastError = GetLastError();
@@ -1017,7 +1017,7 @@ BOOL CSalamanderSafeFile::SafeFileWrite(SAFE_FILE* file, LPVOID lpBuffer,
             DWORD lastError = GetLastError();
             DWORD dlgRet;
             if (silentMask != NULL && (*silentMask & SILENT_SKIP_FILE_WRITE) && ButtonsContainsSkip(flags))
-                dlgRet |= DIALOG_SKIP;
+                dlgRet = DIALOG_SKIP;
             else
             {
                 dlgRet = DialogError((hParent == HWND_STORED) ? file->HParentWnd : hParent, (flags & BUTTONS_MASK),
