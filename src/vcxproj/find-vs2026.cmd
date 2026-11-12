@@ -10,7 +10,12 @@ if not exist "%VSWHERE%" (
   exit /b 1
 )
 
-for /f "usebackq delims=" %%I in (`"%VSWHERE%" -latest -products * -version "[18.0,19.0)" -requires Microsoft.Component.MSBuild -property installationPath`) do set "VS2026_INSTALL_DIR=%%I"
+rem FOR /F passes its command to cmd.exe /c. Running a fully qualified
+rem executable path with spaces there needs nested quoting; instead run the
+rem executable by name from its installation directory.
+pushd "%ProgramFiles(x86)%\Microsoft Visual Studio\Installer" || exit /b 1
+for /f "usebackq delims=" %%I in (`vswhere.exe -latest -products * -version "[18.0,19.0)" -requires Microsoft.Component.MSBuild -property installationPath`) do set "VS2026_INSTALL_DIR=%%I"
+popd
 
 if not defined VS2026_INSTALL_DIR (
   >&2 echo ERROR: Visual Studio 2026 with MSBuild was not found.
