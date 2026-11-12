@@ -1,18 +1,44 @@
 @echo off
+set "SAL_POPULATE_ROOT=%~dp0"
+pushd "%SAL_POPULATE_ROOT%" || exit /b 1
 
-set SAL_POPULATE_ROOT=%~dp0%
+call "%SAL_POPULATE_ROOT%find-vs2026.cmd"
+if errorlevel 1 (
+  popd
+  exit /b 1
+)
 
-rem set MSVC_REDIST_PATH=C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Redist\MSVC\14.38.33130
-set MSVC_REDIST_PATH=C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Redist\MSVC\14.44.35112
+rem Allow explicit overrides; otherwise discover VS 2026 and Windows SDK paths.
+if not defined MSVC_REDIST_PATH (
+  for /f "delims=" %%D in ('dir /b /ad /o-n "%VS2026_INSTALL_DIR%\VC\Redist\MSVC" 2^>nul') do (
+    if not defined MSVC_REDIST_PATH if exist "%VS2026_INSTALL_DIR%\VC\Redist\MSVC\%%D\x64\Microsoft.VC143.CRT\vcruntime140.dll" set "MSVC_REDIST_PATH=%VS2026_INSTALL_DIR%\VC\Redist\MSVC\%%D"
+  )
+)
 
-set UCRT_REDIST_PATH=C:\Program Files (x86)\Windows Kits\10\Redist\10.0.22621.0
-set UCRTD_REDIST_PATH=C:\Program Files (x86)\Microsoft SDKs\Windows Kits\10\ExtensionSDKs\Microsoft.UniversalCRT.Debug\10.0.22621.0
+if not defined UCRT_REDIST_PATH set "UCRT_REDIST_PATH=%ProgramFiles(x86)%\Windows Kits\10\Redist\10.0.26100.0"
+if not defined UCRTD_REDIST_PATH set "UCRTD_REDIST_PATH=%ProgramFiles(x86)%\Microsoft SDKs\Windows Kits\10\ExtensionSDKs\Microsoft.UniversalCRT.Debug\10.0.26100.0"
+
+if not defined MSVC_REDIST_PATH (
+  >&2 echo ERROR: MSVC v143 redistributable DLLs not found in Visual Studio 2026.
+  >&2 echo Set MSVC_REDIST_PATH to the directory containing x86 and x64 CRT subdirectories.
+  popd
+  exit /b 1
+)
+if not exist "%UCRT_REDIST_PATH%\ucrt\DLLs\x64" (
+  >&2 echo ERROR: UCRT release files not found: "%UCRT_REDIST_PATH%"
+  popd
+  exit /b 1
+)
+if not exist "%UCRTD_REDIST_PATH%\Redist\Debug\x64" (
+  >&2 echo ERROR: UCRT debug files not found: "%UCRTD_REDIST_PATH%"
+  popd
+  exit /b 1
+)
 
 echo Populate Open Salamander Build directory with redistributable DLLs and optionally
 echo with SFX packages and helps.
 echo.
-echo Please UPDATE paths to redistributable DLLs MANUALLY for VC2022 and last SDK:
-echo MSCV:
+echo Visual Studio 2026 runtime location:
 echo %MSVC_REDIST_PATH%
 echo Universal CRT RELEASE:
 echo %UCRT_REDIST_PATH%
@@ -21,7 +47,6 @@ echo %UCRTD_REDIST_PATH%
 echo.
 pause
 echo.
-
 if "%OPENSAL_BUILD_DIR%"=="" (
   echo Please set OPENSAL_BUILD_DIR environment variable.
   echo.
@@ -65,7 +90,8 @@ echo -Build WinSCP plugin.
 echo -Build all language versions of Salamander and plugins.
 echo.
 pause
-exit /b
+popd
+exit /b 1
 
 
 :sfx_make_all
