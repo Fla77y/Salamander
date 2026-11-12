@@ -14,6 +14,7 @@
 #include "zip.h"
 #include "shellib.h"
 #include "toolbar.h"
+#include "common/buffer_bounds.h"
 
 //*****************************************************************************
 //
@@ -39,7 +40,7 @@ BOOL CFilesWindow::QSFindNext(int currentIndex, BOOL next, BOOL skip, BOOL whole
     int len = (int)strlen(QuickSearchMask);
     if (newChar != 0)
     {
-        if (len >= MAX_PATH)
+        if (!Salamander::CanAppendNullTerminatedCharacter(len, sizeof(QuickSearchMask)))
             return FALSE;
         QuickSearchMask[len] = newChar;
         len++;
@@ -1420,17 +1421,19 @@ BOOL CFilesWindow::OnSysKeyDown(UINT uMsg, WPARAM wParam, LPARAM lParam, LRESULT
             if (FocusedIndex >= 0 && FocusedIndex < Dirs->Count + Files->Count)
             {
                 char* name = (FocusedIndex < Dirs->Count) ? Dirs->At(FocusedIndex).Name : Files->At(FocusedIndex - Dirs->Count).Name;
-                int len = (int)strlen(QuickSearch); // we add a character
+                int len = (int)strlen(QuickSearch);
+                int maskLen = (int)strlen(QuickSearchMask);
                 if ((FocusedIndex > Dirs->Count || FocusedIndex != 0 ||
                      strcmp(name, "..") != 0) &&
-                    name[len] != 0)
+                    Salamander::CanAppendNullTerminatedCharacter(len, sizeof(QuickSearch)) &&
+                    Salamander::CanAppendNullTerminatedCharacter(maskLen, sizeof(QuickSearchMask)) &&
+                    len < (int)strlen(name))
                 {
-                    // if there is another one
+                    // Append only when both fixed-size buffers can hold the next character and NUL.
                     QuickSearch[len] = name[len];
                     QuickSearch[len + 1] = 0;
-                    int len2 = (int)strlen(QuickSearchMask);
-                    QuickSearchMask[len2] = name[len];
-                    QuickSearchMask[len2 + 1] = 0;
+                    QuickSearchMask[maskLen] = name[len];
+                    QuickSearchMask[maskLen + 1] = 0;
                     SetQuickSearchCaretPos();
                 }
             }
