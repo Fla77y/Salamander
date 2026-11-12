@@ -55,6 +55,22 @@ int main()
         !Reject(L"C:\\folder/file.txt", ERROR_INVALID_NAME))
         return Fail("invalid paths must be rejected");
 
+    // The legacy ANSI facade must preserve long ASCII paths without
+    // truncating, and must reject relative paths and null pointers.
+    std::string longAnsiPath = "C:\\";
+    longAnsiPath.append(300, 'a');
+    DWORD ansiError = ERROR_SUCCESS;
+    if (!Salamander::TryMakeExtendedLengthPathFromAnsi(longAnsiPath.c_str(), result, ansiError) ||
+        ansiError != ERROR_SUCCESS ||
+        result != L"\\\\?\\C:\\" + std::wstring(300, L'a'))
+        return Fail("legacy ANSI-to-wide long path conversion");
+    if (Salamander::TryMakeExtendedLengthPathFromAnsi("relative\\name.txt", result, ansiError) ||
+        ansiError != ERROR_INVALID_NAME || !result.empty())
+        return Fail("legacy ANSI adapter must reject relative path");
+    if (Salamander::TryMakeExtendedLengthPathFromAnsi(nullptr, result, ansiError) ||
+        ansiError != ERROR_INVALID_PARAMETER || !result.empty())
+        return Fail("legacy ANSI adapter must reject null path");
+
     DWORD error = ERROR_SUCCESS;
     result = L"must be cleared";
     if (Salamander::TryMakeExtendedLengthPath(nullptr, result, error) ||
