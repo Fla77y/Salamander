@@ -175,4 +175,15 @@ inline HANDLE OpenFileWithLegacyPath(const char* fileName,
                        creationDisposition, flagsAndAttributes, nullptr);
 }
 
+// A retry must NEVER repeat CREATE_ALWAYS, CREATE_NEW or TRUNCATE_EXISTING:
+// it must preserve bytes written before the failure.
+inline HANDLE ReopenExistingFileWithLegacyPath(const char* fileName,
+                                               DWORD desiredAccess,
+                                               DWORD shareMode,
+                                               DWORD flagsAndAttributes)
+{
+    return OpenFileWithLegacyPath(fileName, desiredAccess, shareMode,
+                                  OPEN_EXISTING, flagsAndAttributes);
+}
+
 } // namespace Salamander
