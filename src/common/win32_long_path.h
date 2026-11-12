@@ -107,4 +107,38 @@ inline bool TryMakeExtendedLengthPath(const wchar_t* absolutePath,
     error = ERROR_SUCCESS;
     return true;
 }
+// Transitional adapter for Salamander APIs that still pass CP_ACP filenames.
+// It cannot recover Unicode characters that were already lost during ANSI
+// enumeration; new code should use the wchar_t overload directly.
+inline bool TryMakeExtendedLengthPathFromAnsi(const char* absolutePath,
+                                              std::wstring& extendedPath,
+                                              DWORD& error)
+{
+    extendedPath.clear();
+    if (absolutePath == nullptr)
+    {
+        error = ERROR_INVALID_PARAMETER;
+        return false;
+    }
+
+    const int wideLength = MultiByteToWideChar(
+        CP_ACP, MB_ERR_INVALID_CHARS, absolutePath, -1, nullptr, 0);
+    if (wideLength == 0)
+    {
+        error = GetLastError();
+        return false;
+    }
+
+    std::wstring widePath(static_cast<std::size_t>(wideLength), L'\0');
+    if (MultiByteToWideChar(CP_ACP, MB_ERR_INVALID_CHARS, absolutePath, -1,
+                            &widePath[0], wideLength) != wideLength)
+    {
+        error = GetLastError();
+        return false;
+    }
+
+    widePath.resize(static_cast<std::size_t>(wideLength - 1));
+    return TryMakeExtendedLengthPath(widePath.c_str(), extendedPath, error);
+}
+
 } // namespace Salamander
