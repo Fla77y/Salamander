@@ -39,6 +39,28 @@ jobs:
         with:
           path: s
 
+      - name: Install matching MSVC v143 and ATL components
+        shell: pwsh
+        run: |
+          $installer = Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Microsoft Visual Studio\Installer\setup.exe'
+          if (-not (Test-Path -LiteralPath $installer)) {
+            throw "Visual Studio Installer not found: $installer"
+          }
+          $vs = 'C:\Program Files\Microsoft Visual Studio\18\Enterprise'
+          $args = @(
+            'modify', '--installPath', $vs,
+            '--add', 'Microsoft.VisualStudio.Component.VC.14.44.17.14.x86.x64',
+            '--add', 'Microsoft.VisualStudio.Component.VC.14.44.17.14.ATL',
+            '--quiet', '--norestart'
+          )
+          $arguments = ($args | ForEach-Object {
+            if ($_ -eq $vs) { '"' + $_ + '"' } else { $_ }
+          }) -join ' '
+          $process = Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru
+          if ($process.ExitCode -ne 0 -and $process.ExitCode -ne 3010) {
+            throw "VS Installer failed: $($process.ExitCode)"
+          }
+
       - name: Setup MSBuild in PATH (VS2026)
         uses: microsoft/setup-msbuild@v2
 
