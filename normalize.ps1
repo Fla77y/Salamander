@@ -485,6 +485,7 @@ function Resolve-ClangFormatPath {
     } elseif ($platform -eq 'macOS') {
         $candidatePaths.Add('/opt/homebrew/opt/llvm@19/bin/clang-format')
     } elseif ($platform -eq 'WSL') {
+        $candidatePaths.Add('/mnt/c/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/Llvm/bin/clang-format.exe')
         $candidatePaths.Add('/mnt/c/Program Files/Microsoft Visual Studio/2022/Community/VC/Tools/Llvm/bin/clang-format.exe')
         $candidatePaths.Add('/mnt/c/Program Files/LLVM/bin/clang-format.exe')
     }
