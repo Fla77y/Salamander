@@ -6,6 +6,8 @@
 #include "win32_long_path.h"
 
 #include <cstdint>
+#include <cwchar>
+#include <utility>
 #include <string>
 #include <vector>
 
