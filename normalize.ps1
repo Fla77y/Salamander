@@ -480,6 +480,9 @@ function Resolve-ClangFormatPath {
 
     if ($IsWindows) {
         # Mirror the documented install paths to minimise surprises for contributors.
+        $candidatePaths.Add('C:\Program Files\Microsoft Visual Studio\18\Community\VC\Tools\Llvm\bin\clang-format.exe')
+        $candidatePaths.Add('C:\Program Files\Microsoft Visual Studio\18\Professional\VC\Tools\Llvm\bin\clang-format.exe')
+        $candidatePaths.Add('C:\Program Files\Microsoft Visual Studio\18\Enterprise\VC\Tools\Llvm\bin\clang-format.exe')
         $candidatePaths.Add('C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Tools\Llvm\bin\clang-format.exe')
         $candidatePaths.Add('C:\Program Files\LLVM\bin\clang-format.exe')
     } elseif ($platform -eq 'macOS') {
