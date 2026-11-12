@@ -1,13 +1,18 @@
 @echo off
+pushd "%~dp0" || exit /b 1
 
 call "%~dp0find-vs2026.cmd"
-if errorlevel 1 exit /b 1
+if errorlevel 1 (
+  popd
+  exit /b 1
+)
 
 if "%OPENSAL_BUILD_DIR%"=="" (
   echo Please set OPENSAL_BUILD_DIR environment variable.
   echo.
   pause
-  exit /b
+  popd
+  exit /b 1
 )
 
 echo Rebuild Menu:
@@ -30,7 +35,8 @@ goto :choice_is_ok
 echo Invalid selection, exiting...
 echo.
 pause
-exit /b
+popd
+exit /b 1
   
 :choice_is_ok
 set __skip_debug=no
@@ -86,7 +92,7 @@ if "%__skip_release%"=="no" (
   if errorlevel 1 set "__build_failed=1"
   if "%__skip_release_x64%"=="no" (
     call :rebuild Release         x64   rebuild_release_x64.log
-  if errorlevel 1 set "__build_failed=1"
+    if errorlevel 1 set "__build_failed=1"
   )
 )
 
@@ -120,7 +126,9 @@ if exist *.log.wrn (
 
 echo.
 pause
-exit /b %__build_failed%
+set "FINAL_EXIT_CODE=%__build_failed%"
+popd
+exit /b %FINAL_EXIT_CODE%
 
 :rebuild <target> <platform> <logfile>
 echo Building %~1/%2
@@ -129,8 +137,8 @@ set "BUILD_ERRORLEVEL=%errorlevel%"
 call ..\..\tools\duration.cmd "%BUILDSTART%" "%time%" "%~1/%2: Build Duration: " >>%TIMESLOG%
 call :remove_file_if_empty %3.wrn
 call :remove_file_if_empty %3.err
-if not "%BUILD_ERRORLEVEL%"=="0" exit /b %BUILD_ERRORLEVEL%
 set BUILDSTART=%time%
+if not "%BUILD_ERRORLEVEL%"=="0" exit /b %BUILD_ERRORLEVEL%
 exit /b
 
 :remove_files <wildcard>
