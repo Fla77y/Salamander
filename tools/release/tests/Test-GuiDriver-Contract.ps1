@@ -49,8 +49,10 @@ if ($navigate.Extent.Text -notmatch 'Assert-True\s+\(\$diagnostics\.PanelPath\s+
 # The baseline's Go-ToPath invocation already establishes the panel path.
 # Do not repeat Read-PanelPath immediately outside that function either.
 $driverText = $tree.Extent.Text
-if ($driverText -match 'Assert-True\s+\(\(Read-PanelPath\)\s+-ceq\s+\$source\)') {
-    throw 'Baseline must reuse the verified navigation result, not issue a second WM_COMMAND 711.'
+# Read-PanelPath after a later panel switch is legitimate: prohibit only
+# the immediate extra assertion following the *initial* Go-ToPath $source.
+if ($driverText -match 'Go-ToPath\s+\$source\s+Assert-True\s+\(\(Read-PanelPath\)\s+-ceq\s+\$source\)') {
+    throw 'Initial baseline must reuse the verified navigation result, not issue a second WM_COMMAND 711.'
 }
 if ($driverText -notmatch 'Go-ToPath\s+\$source') {
     throw 'Baseline must still navigate and verify its short ASCII source path.'
