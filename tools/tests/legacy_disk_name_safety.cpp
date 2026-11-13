@@ -61,6 +61,16 @@ int main()
         SelectionContainsLossyDiskName(entries.size(), 0, entries.size(), item))
         return Fail("safe selection and invalid indices must not be misidentified");
 
+    // A Unicode name may be converted through best-fit to ASCII *without*
+    // any question mark. The directory identity index must be able to flag
+    // that entry explicitly; '?'-only checks are not sufficient.
+    selected[1].unsafeIdentity = true;
+    if (!SelectionContainsLossyDiskName(selected.size(), 1, 1, selectedItem))
+        return Fail("best-fit alias with no question mark must be refused");
+    selected[1].unsafeIdentity = false;
+    if (SelectionContainsLossyDiskName(selected.size(), 1, 1, selectedItem))
+        return Fail("lossless ASCII name must remain safe");
+
     std::puts("PASS: fail-closed ANSI disk name operation selection, focus and batch semantics");
     return 0;
 }
