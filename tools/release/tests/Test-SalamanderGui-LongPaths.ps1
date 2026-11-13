@@ -281,12 +281,12 @@ function Send-Keys {
 }
 
 # Salamander resource.rh2: CM_CLIPPASTE=775, CM_CLIPCOPYFULLPATH=711,
-# CM_CLIPCOPYNAME=710. Dispatch synchronously to avoid racing with clipboard
+# CM_CLIPCOPYNAME=710, CM_CLIPCOPYFULLNAME=709. Dispatch synchronously to avoid racing with clipboard
 # contents: SendKeys posts input, after which the test used to overwrite the
 # clipboard before Salamander had consumed the original path.
 function Invoke-SalamanderCommand {
     param(
-        [ValidateSet(710,711,775)][int]$CommandId
+        [ValidateSet(709,710,711,775)][int]$CommandId
     )
     $process.Refresh()
     if ($process.HasExited) { throw 'Salamander exited while dispatching a GUI command.' }
@@ -407,6 +407,13 @@ function Read-FocusedFilename {
     Set-ClipboardText 'SENTINEL_NOT_FILENAME'
     Invoke-SalamanderCommand -CommandId 710
     Wait-Until { (Get-ClipboardText) -ne 'SENTINEL_NOT_FILENAME' } 'focused file name clipboard shortcut'
+    return (Get-ClipboardText).TrimEnd([char]13, [char]10)
+}
+
+function Read-FocusedFullname {
+    Set-ClipboardText 'SENTINEL_NOT_FULLNAME'
+    Invoke-SalamanderCommand -CommandId 709
+    Wait-Until { (Get-ClipboardText) -ne 'SENTINEL_NOT_FULLNAME' } 'focused full path clipboard shortcut'
     return (Get-ClipboardText).TrimEnd([char]13, [char]10)
 }
 
@@ -632,6 +639,7 @@ try {
         $actualName = Read-FocusedFilename
         Write-Host "GUI best-fit filename comparison: expected='$bestFitName'; actual='$actualName'"
         Assert-True ($actualName -ceq $bestFitName) 'Unicode best-fit filename recovered without question mark'
+        Assert-True ((Read-FocusedFullname) -ceq $bestFitFile) 'Best-fit Unicode full path recovered without question mark'
         Assert-True (Test-Content $bestFitFile) 'Best-fit Unicode file content remains intact'
         $passed = $true
         Write-Host 'PASS: Unicode GUI filename round-trip survives non-question-mark ANSI best-fit mapping.'
@@ -726,6 +734,7 @@ try {
         $actualUnits = ([char[]]$actualName | ForEach-Object { '{0:X4}' -f [int]$_ }) -join ' '
         Write-Host "GUI filename UTF-16 units: expected=[$expectedUnits]; actual=[$actualUnits]"
         Assert-True ($actualName -ceq $utfName) 'Short Unicode name preserved in Salamander panel'
+        Assert-True ((Read-FocusedFullname) -ceq $unicodeShortFile) 'Short Unicode full path preserved in clipboard'
         Assert-True (Test-Content $unicodeShortFile) 'Unicode-only file bytes preserved'
         $passed = $true
         Write-Host 'PASS: Salamander GUI supports a Unicode name on a short path.'
