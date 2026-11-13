@@ -20,6 +20,7 @@ param(
     [switch]$BaselineOnly,
     [switch]$ShortUnicodeOnly,
     [switch]$ShortUnicodeCollisionOnly,
+    [switch]$ShortUnicodeUnsafeOperationsOnly,
     [switch]$ShortOperationsOnly
 )
 
@@ -437,16 +438,20 @@ try {
         [IO.File]::WriteAllBytes($unicodeShortFile, $payload)
         Assert-True ($unicodeShortFile.Length -lt 260) 'Unicode filename fixture fits below MAX_PATH'
     }
-    if ($ShortUnicodeCollisionOnly) {
+    if ($ShortUnicodeCollisionOnly -or $ShortUnicodeUnsafeOperationsOnly) {
         # These distinct UTF-16 names may have the same CP_ACP alias.
         # A distinct marker protects against cross-file identity errors.
+        if ($ShortUnicodeUnsafeOperationsOnly) {
+            [IO.Directory]::CreateDirectory($destination) | Out-Null
+        }
         $collisionFile = Join-Path $source $utfCollisionName
         $collisionPayload = [Text.Encoding]::UTF8.GetBytes('DISTINCT-OSAKA-FILE')
         [IO.File]::WriteAllBytes($collisionFile, $collisionPayload)
         Assert-True ($collisionFile.Length -lt 260) 'Unicode collision fixture uses a short path'
     }
     if (-not $BaselineOnly -and -not $ShortUnicodeOnly -and
-        -not $ShortUnicodeCollisionOnly -and -not $ShortOperationsOnly) {
+        -not $ShortUnicodeCollisionOnly -and
+        -not $ShortUnicodeUnsafeOperationsOnly -and -not $ShortOperationsOnly) {
         [IO.Directory]::CreateDirectory($destination) | Out-Null
         [IO.Directory]::CreateDirectory($moveDir) | Out-Null
         [IO.Directory]::CreateDirectory($maxDir) | Out-Null
@@ -568,6 +573,55 @@ try {
 
         $passed = $true
         Write-Host 'PASS: real short ASCII F5/F2/F6/F8 GUI operation baseline.'
+        return
+    }
+
+    if ($ShortUnicodeUnsafeOperationsOnly) {
+        # Destructive shortcuts are only sent to disposable fixture names,
+        # and the operation MUST be rejected by the new production guard.
+        # An unexpected native rename/confirmation dialog is not accepted.
+        $aliasA = [SalamanderGuiNative]::GetLegacyFilenameAliasHex($utfName)
+        $aliasB = [SalamanderGuiNative]::GetLegacyFilenameAliasHex($utfCollisionName)
+        if ($aliasA -cne $aliasB) {
+            $passed = $true
+            Write-Host 'SKIP: current Windows ANSI code page does not conflate the Unicode test names.'
+            return
+        }
+
+        Send-Keys '{END}'
+        foreach ($operation in @(
+            @{ Key = '{F2}'; Name = 'F2 rename' },
+            @{ Key = '{F5}'; Name = 'F5 copy' },
+            @{ Key = '{F6}'; Name = 'F6 move' },
+            @{ Key = '{F8}'; Name = 'F8 delete' }
+        )) {
+            if ($operation.Name -eq 'F5 copy') {
+                Send-Keys '{TAB}'
+                Go-ToPath $destination
+                Send-Keys '{TAB}'
+                Send-Keys '{END}'
+            }
+
+            Send-Keys $operation.Key
+            $blocked = @{ Dialog = '<none>' }
+            Wait-Until {
+                $blocked.Dialog = Get-TestDialog
+                return $blocked.Dialog -match 'legacy ANSI file-operation engine'
+            } "safe refusal dialog for $($operation.Name)"
+            Write-Host "PASS: $($operation.Name) refused unsafe Unicode identity"
+            Send-Keys '{ESC}'
+            Wait-Until { -not (Get-TestDialog) } "dismissal of $($operation.Name) refusal dialog"
+
+            Assert-True ((Test-Content $unicodeShortFile) -and
+                [Linq.Enumerable]::SequenceEqual[byte](
+                    [IO.File]::ReadAllBytes($collisionFile), $collisionPayload
+                )) "Original Unicode files intact after $($operation.Name)"
+            Assert-True (-not [IO.File]::Exists((Join-Path $destination $utfName)) -and
+                -not [IO.File]::Exists((Join-Path $destination $utfCollisionName))) "No Unicode destination created by $($operation.Name)"
+        }
+
+        $passed = $true
+        Write-Host 'PASS: F2/F5/F6/F8 reject lossy disk filenames without changing either file.'
         return
     }
 
