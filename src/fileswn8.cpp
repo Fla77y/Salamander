@@ -280,8 +280,8 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
     }
 
     if (type == atMove)
-        MainWindow->PostChangeOnPathNotification(GetPath(), FALSE);
-    MainWindow->PostChangeOnPathNotification(target->GetPath(), FALSE);
+        MainWindow->PostChangeOnPathNotification(sourcePanelPath.c_str(), FALSE);
+    MainWindow->PostChangeOnPathNotification(targetPanelPath.c_str(), FALSE);
     return TRUE;
 }
 
