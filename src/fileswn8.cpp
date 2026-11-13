@@ -160,7 +160,8 @@ void CFilesWindow::FilesAction(CActionType type, CFilesWindow* target, int count
                     index < static_cast<std::size_t>(dirCount)
                         ? Dirs->At(static_cast<int>(index))
                         : Files->At(static_cast<int>(index) - dirCount);
-                return {entry.Name, entry.Selected != 0};
+                return {entry.Name, entry.Selected != 0,
+                        UnicodeDiskNames.IsUnsafeAnsiName(entry.Name)};
             });
         if (unsafe)
         {
