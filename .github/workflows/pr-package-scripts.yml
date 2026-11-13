@@ -5,6 +5,8 @@ on:
     branches: ["**"]
     paths:
       - "tools/release/**"
+      - "tools/Manage-Salamander.ps1"
+      - "manage.cmd"
       - ".github/workflows/pr-package-scripts.yml"
   workflow_dispatch:
 
@@ -19,3 +21,16 @@ jobs:
       - name: PowerShell parser and distribution validation regression tests
         shell: pwsh
         run: ./tools/release/tests/Test-Package-Helpers.ps1
+      - name: Windows Unicode and path data-integrity tests
+        shell: pwsh
+        run: ./tools/release/tests/Test-FilenamesAndPaths.ps1
+      - name: Management CLI lists available options with no arguments
+        shell: pwsh
+        run: |
+          & .\manage.cmd
+          if ($LASTEXITCODE -ne 0) { throw "Management help without args failed: $LASTEXITCODE" }
+      - name: Management CLI routes test action and preserves exit status
+        shell: pwsh
+        run: |
+          & .\manage.cmd --test
+          if ($LASTEXITCODE -ne 0) { throw "Management --test failed: $LASTEXITCODE" }
