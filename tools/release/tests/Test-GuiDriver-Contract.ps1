@@ -46,6 +46,17 @@ if ($reads.Count -ne 1) {
 if ($navigate.Extent.Text -notmatch 'Assert-True\s+\(\$diagnostics\.PanelPath\s+-ceq\s+\$Path\)') {
     throw 'Go-ToPath must assert the path already observed in the successful polling iteration.'
 }
+# The baseline's Go-ToPath invocation already establishes the panel path.
+# Do not repeat Read-PanelPath immediately outside that function either.
+$driverText = $tree.Extent.Text
+if ($driverText -match 'Assert-True\s+\(\(Read-PanelPath\)\s+-ceq\s+\$source\)') {
+    throw 'Baseline must reuse the verified navigation result, not issue a second WM_COMMAND 711.'
+}
+if ($driverText -notmatch 'Go-ToPath\s+\$source') {
+    throw 'Baseline must still navigate and verify its short ASCII source path.'
+}
+Write-Host 'PASS: GUI baseline has no redundant read after verified navigation.'
+
 Write-Host 'PASS: GUI navigation reuses the observed path without a redundant WM_COMMAND.'
 
 $dispatch = Get-FunctionSource 'Invoke-SalamanderCommand'
