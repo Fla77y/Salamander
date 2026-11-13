@@ -151,6 +151,9 @@ function Build-Variants {
 function Run-Tests {
     Write-Host '=== TESTS ==='
 
+    $guiDriverContract = Join-Path $repository 'tools\release\tests\Test-GuiDriver-Contract.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $guiDriverContract)
+
     $regression = Join-Path $repository 'tools\release\tests\Test-Package-Helpers.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $regression)
 
