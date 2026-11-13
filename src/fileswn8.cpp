@@ -259,6 +259,22 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
         return TRUE;
     }
 
+    // A different process may replace a regular file with a junction,
+    // symlink or larger object while the confirmation dialog is open.
+    WIN32_FILE_ATTRIBUTE_DATA currentAttributes = {};
+    if (!GetFileAttributesExW(
+            wideSource.c_str(), GetFileExInfoStandard, &currentAttributes) ||
+        (currentAttributes.dwFileAttributes &
+            (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0 ||
+        ((static_cast<ULONGLONG>(currentAttributes.nFileSizeHigh) << 32) |
+         currentAttributes.nFileSizeLow) > MaxSynchronousTransferBytes)
+    {
+        MessageBoxW(HWindow, L"The source file type or size changed. "
+                     L"No files were changed.", L"Unicode transfer",
+                    MB_OK | MB_ICONWARNING);
+        return TRUE;
+    }
+
     // Refresh may be delayed until the operation completes. All filesystem
     // paths are owned UTF-16 values; no pointer to panel entry survives.
     BeginSuspendMode();
