@@ -73,3 +73,13 @@ if ($errorCapture -lt 0 -or $dialogLookup -lt 0 -or
     throw 'SendMessageTimeout last-error must be captured before invoking any diagnostic Win32 call.'
 }
 Write-Host 'PASS: GUI driver captures the original SendMessageTimeout Win32 error.'
+
+# Before adding GUI collision coverage, specify its non-destructive behavior.
+$collisionBranch = $tree.Extent.Text
+if ($collisionBranch -notmatch '\[switch\]\$ShortUnicodeCollisionOnly' -or
+    $collisionBranch -notmatch 'SENTINEL_COLLISION' -or
+    $collisionBranch -notmatch 'Unicode filename collision refuses clipboard export' -or
+    $collisionBranch -notmatch 'Collision retained both original file contents') {
+    throw 'GUI Unicode collision regression must be present and check fail-closed export and data integrity.'
+}
+Write-Host 'PASS: Unicode collision regression is present and non-destructive.'
