@@ -100,6 +100,13 @@ if ($driverText -notmatch '\[switch\]\$ShortUnicodeBestFitOnly' -or
 }
 Write-Host 'PASS: Non-question-mark best-fit Unicode GUI regression is present.'
 
+if ($driverText -notmatch '\[switch\]\$ShortUnicodeRenameOnly' -or
+    $driverText -notmatch 'UTF-16 F2 rename without ANSI narrowing' -or
+    $driverText -notmatch 'Unicode F2 renamed file preserves original bytes') {
+    throw 'True Unicode F2 GUI acceptance must verify name change and content preservation.'
+}
+Write-Host 'PASS: interactive Unicode F2 rename regression contract is present.'
+
 # Compile the embedded C# Win32 interop in the headless Windows test process.
 # PowerShell's AST check alone would not catch invalid P/Invoke signatures.
 $interopSource = [regex]::Match(
