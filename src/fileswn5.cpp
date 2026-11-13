@@ -21,6 +21,8 @@
 #include "find.h"
 #include "menu.h"
 #include "common/legacy_disk_name_safety.h"
+#include "common/win32_unicode_file_ops.h"
+#include "common/win32_unicode_rename_dialog.h"
 
 //
 // ****************************************************************************
@@ -2352,16 +2354,122 @@ void CFilesWindow::RenameFile(int specialIndex)
     BOOL isDir = i < Dirs->Count;
     f = isDir ? &Dirs->At(i) : &Files->At(i - Dirs->Count);
 
-    // F2 uses the same lossy ANSI disk name as F5/F6/F8. Refuse to
-    // rename an item whose original UTF-16 identity is not available.
-    // Plugin and archive contracts are intentionally unchanged.
+    // A uniquely mapped lossy filename can now be renamed with a native
+    // UTF-16 editor and a no-overwrite Win32 W operation. Ambiguous or
+    // missing identities must still be refused before prompting.
     if (Is(ptDisk) && UnicodeDiskNames.IsUnsafeAnsiName(f->Name))
     {
-        SalMessageBox(HWindow,
-                      "This disk filename cannot be represented safely by the "
-                      "legacy ANSI file-operation engine. No files were changed.",
-                      LoadStr(IDS_ERRORTITLE), MB_OK | MB_ICONEXCLAMATION);
-        return;
+        std::wstring originalName;
+        if (!UnicodeDiskNames.TryGetLossy(f->Name, originalName))
+        {
+            SalMessageBox(HWindow,
+                          "This disk filename cannot be represented safely by the "
+                          "legacy ANSI file-operation engine. No files were changed.",
+                          LoadStr(IDS_ERRORTITLE), MB_OK | MB_ICONEXCLAMATION);
+            return;
+        }
+
+        std::wstring directory;
+        if (!Salamander::TryGetUnicodePanelDirectory(GetPath(), directory))
+        {
+            SalMessageBox(HWindow, GetErrorText(ERROR_INVALID_NAME),
+                          LoadStr(IDS_ERRORRENAMINGFILE), MB_OK | MB_ICONEXCLAMATION);
+            return;
+        }
+
+        // The old snapshot can be stale; the exact wide name must still
+        // resolve uniquely at the time of the operation.
+        std::wstring resolvedName;
+        DWORD error = ERROR_SUCCESS;
+        if (Salamander::ResolveUnicodePanelFileName(
+                directory.c_str(), f->Name, resolvedName, error) !=
+                Salamander::UnicodePanelNameResult::Unique ||
+            resolvedName != originalName)
+        {
+            SalMessageBox(HWindow,
+                          "The Unicode filename changed or became ambiguous. "
+                          "Refresh the panel and retry. No files were changed.",
+                          LoadStr(IDS_ERRORRENAMINGFILE), MB_OK | MB_ICONEXCLAMATION);
+            return;
+        }
+
+        Salamander::Utf16DiskPath directoryPath;
+        Salamander::Utf16PathError pathError;
+        const std::u16string directoryUnits(directory.begin(), directory.end());
+        if (!Salamander::Utf16DiskPath::TryCreateAbsolute(
+                directoryUnits, directoryPath, pathError))
+        {
+            SalMessageBox(HWindow, GetErrorText(ERROR_INVALID_NAME),
+                          LoadStr(IDS_ERRORRENAMINGFILE), MB_OK | MB_ICONEXCLAMATION);
+            return;
+        }
+
+        const std::u16string originalUnits(originalName.begin(), originalName.end());
+        Salamander::Utf16FileName sourceComponent;
+        Salamander::Utf16DiskPath sourcePath;
+        if (!Salamander::Utf16FileName::TryCreate(
+                originalUnits, sourceComponent, pathError) ||
+            !directoryPath.TryAppend(sourceComponent, sourcePath, pathError))
+        {
+            SalMessageBox(HWindow, GetErrorText(ERROR_INVALID_NAME),
+                          LoadStr(IDS_ERRORRENAMINGFILE), MB_OK | MB_ICONEXCLAMATION);
+            return;
+        }
+
+        std::wstring requestedName = originalName;
+        for (;;)
+        {
+            std::wstring inputName;
+            if (!Salamander::TryPromptUnicodeRename(
+                    HWindow, requestedName, isDir != FALSE,
+                    Configuration.QuickRenameSelectAll != FALSE, inputName))
+                return;
+
+            const std::u16string requestedUnits(inputName.begin(), inputName.end());
+            Salamander::Utf16FileName targetComponent;
+            Salamander::Utf16DiskPath targetPath;
+            if (!Salamander::Utf16FileName::TryCreate(
+                    requestedUnits, targetComponent, pathError) ||
+                !directoryPath.TryAppend(targetComponent, targetPath, pathError))
+            {
+                SalMessageBox(HWindow, GetErrorText(ERROR_INVALID_NAME),
+                              LoadStr(IDS_ERRORRENAMINGFILE), MB_OK | MB_ICONEXCLAMATION);
+                requestedName = inputName;
+                continue;
+            }
+
+            if (requestedName == inputName && inputName == originalName)
+                return; // no rename needed
+
+            // A second wide enumeration limits stale-listing mistakes if
+            // external software changed the directory while editing.
+            resolvedName.clear();
+            if (Salamander::ResolveUnicodePanelFileName(
+                    directory.c_str(), f->Name, resolvedName, error) !=
+                    Salamander::UnicodePanelNameResult::Unique ||
+                resolvedName != originalName)
+            {
+                SalMessageBox(HWindow,
+                              "The Unicode filename changed or became ambiguous. "
+                              "Refresh the panel and retry. No files were changed.",
+                              LoadStr(IDS_ERRORRENAMINGFILE), MB_OK | MB_ICONEXCLAMATION);
+                return;
+            }
+
+            BeginSuspendMode();
+            const bool renamed = Salamander::TryMoveUnicodeFileNoOverwrite(
+                sourcePath, targetPath, error);
+            if (renamed)
+                MainWindow->PostChangeOnPathNotification(GetPath(), isDir);
+            EndSuspendMode();
+
+            if (renamed)
+                return;
+
+            SalMessageBox(HWindow, GetErrorText(error),
+                          LoadStr(IDS_ERRORRENAMINGFILE), MB_OK | MB_ICONEXCLAMATION);
+            requestedName = inputName;
+        }
     }
 
     char formatedFileName[MAX_PATH];
