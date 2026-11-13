@@ -21,6 +21,7 @@ param(
     [switch]$ShortUnicodeOnly,
     [switch]$ShortUnicodeRenameOnly,
     [switch]$ShortUnicodeTransferOnly,
+    [switch]$ShortUnicodeTransferCollisionOnly,
     [switch]$ShortUnicodeBestFitOnly,
     [switch]$ShortUnicodeCollisionOnly,
     [switch]$ShortUnicodeUnsafeOperationsOnly,
@@ -584,7 +585,7 @@ try {
             }
         }
     }
-    if ($ShortUnicodeTransferOnly) {
+    if ($ShortUnicodeTransferOnly -or $ShortUnicodeTransferCollisionOnly) {
         [IO.Directory]::CreateDirectory($destination) | Out-Null
         [IO.Directory]::CreateDirectory($moveDir) | Out-Null
     }
@@ -602,7 +603,7 @@ try {
     if (-not $BaselineOnly -and -not $ShortUnicodeOnly -and
         -not $ShortUnicodeCollisionOnly -and
         -not $ShortUnicodeBestFitOnly -and -not $ShortUnicodeRenameOnly -and
-        -not $ShortUnicodeTransferOnly -and
+        -not $ShortUnicodeTransferOnly -and -not $ShortUnicodeTransferCollisionOnly -and
         -not $ShortUnicodeUnsafeOperationsOnly -and -not $ShortOperationsOnly) {
         [IO.Directory]::CreateDirectory($destination) | Out-Null
         [IO.Directory]::CreateDirectory($moveDir) | Out-Null
@@ -743,6 +744,34 @@ try {
         Assert-True (Test-Content $bestFitFile) 'Best-fit Unicode file content remains intact'
         $passed = $true
         Write-Host 'PASS: Unicode GUI filename round-trip survives non-question-mark ANSI best-fit mapping.'
+        return
+    }
+
+    if ($ShortUnicodeTransferCollisionOnly) {
+        # Arrange: two distinct payloads under the same UTF-16 name.
+        $protected = Join-Path $destination $utfName
+        $marker = [Text.Encoding]::UTF8.GetBytes('TARGET-MUST-STAY-IN-PLACE')
+        [IO.File]::WriteAllBytes($protected, $marker)
+        Send-Keys '{TAB}'
+        Go-ToPath $destination
+        Send-Keys '{TAB}'
+        Send-Keys '{END}'
+        Assert-True ((Read-FocusedFilename) -ceq $utfName) 'Unicode collision source selected'
+        foreach ($operation in @('{F5}', '{F6}')) {
+            # Act: a name collision must never silently overwrite.
+            Send-Keys $operation
+            Start-Sleep -Milliseconds 250
+            Send-Keys '{ENTER}'
+            Wait-Until { (Get-TestDialog) -match 'Unicode operation failed' } 'Unicode transfer overwrite refusal'
+            Send-Keys '{ESC}'
+            Wait-Until { -not (Get-TestDialog) } 'Unicode collision error dismissal'
+            # Assert: both files retain their independent bytes.
+            Assert-True (Test-Content $unicodeShortFile) 'Unicode transfer collision source intact'
+            Assert-True ([Linq.Enumerable]::SequenceEqual[byte](
+                [IO.File]::ReadAllBytes($protected), $marker)) 'Unicode transfer collision target intact'
+        }
+        $passed = $true
+        Write-Host 'PASS: UTF-16 F5/F6 do not overwrite existing Unicode destinations.'
         return
     }
 
