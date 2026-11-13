@@ -180,6 +180,8 @@ function Run-Tests {
         'tools\tests\quicksearch_bounds.cpp',
         'tools\tests\utf16_disk_path.cpp',
         'tools\tests\legacy_disk_name_safety.cpp',
+        'tools\tests\win32_unicode_rename_dialog.cpp',
+        'tools\tests\win32_unicode_recycle.cpp',
         'tools\tests\long_path_io.cpp'
     )
     $available = @($cppTests | Where-Object {
@@ -199,6 +201,13 @@ function Run-Tests {
             $exe = Join-Path $testDir ($testName + '.exe')
             $object = Join-Path $testDir ($testName + '.obj')
             $cmdPath = Join-Path $testDir ('compile-' + $testName + '.cmd')
+            # The shell and Unicode dialog require explicit platform libraries.
+            # Keep other standalone tests independent of these dependencies.
+            $platformLibraries = switch ($testName) {
+                'win32_unicode_rename_dialog' { ' user32.lib' }
+                'win32_unicode_recycle' { ' ole32.lib shell32.lib uuid.lib' }
+                default { '' }
+            }
             # cmd.exe reads this file, keeping paths with spaces quoted. Test
             # outputs stay outside Git and all failures propagate to PowerShell.
             @(
@@ -206,7 +215,7 @@ function Run-Tests {
                 'call "' + $vcvars + '" >nul'
                 'if errorlevel 1 exit /b 1'
                 'cl /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /Fo:"' +
-                    $object + '" /Fe:"' + $exe + '" "' + $source + '"'
+                    $object + '" /Fe:"' + $exe + '" "' + $source + '"' + $platformLibraries
                 'if errorlevel 1 exit /b 1'
                 '"' + $exe + '"'
                 'exit /b %errorlevel%'
