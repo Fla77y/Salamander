@@ -1,0 +1,67 @@
+name: Release portability packages (Windows 2026)
+
+on:
+  pull_request:
+    branches: ["**"]
+    paths:
+      - "tools/release/**"
+      - ".github/workflows/pr-release-package.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    name: Build and package x64 Debug/Release; publish Release only
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 75
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install matching v143 ATL and Windows SDK UCRT components
+        shell: pwsh
+        run: |
+          $installer = Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Microsoft Visual Studio\Installer\setup.exe'
+          if (-not (Test-Path -LiteralPath $installer)) { throw "Visual Studio installer missing: $installer" }
+          $vs = 'C:\Program Files\Microsoft Visual Studio\18\Enterprise'
+          $args = @(
+            'modify', '--installPath', $vs,
+            '--add', 'Microsoft.VisualStudio.Component.VC.14.44.17.14.x86.x64',
+            '--add', 'Microsoft.VisualStudio.Component.VC.14.44.17.14.ATL',
+            '--add', 'Microsoft.Component.VC.Runtime.UCRTSDK',
+            '--quiet', '--norestart'
+          )
+          $arguments = ($args | ForEach-Object {
+            if ($_ -eq $vs) { '"' + $_ + '"' } else { $_ }
+          }) -join ' '
+          # setup.exe does not accept --wait. Start-Process -Wait tracks the installer process.
+          $process = Start-Process -FilePath $installer -ArgumentList $arguments -Wait -PassThru
+          if ($process.ExitCode -ne 0 -and $process.ExitCode -ne 3010) {
+            throw "Visual Studio component installation failed: $($process.ExitCode)"
+          }
+
+      - name: Install Inno Setup and 7-Zip for packaging
+        shell: pwsh
+        run: |
+          choco install innosetup 7zip --yes --no-progress --limit-output
+          if ($LASTEXITCODE -ne 0) { throw "Chocolatey prerequisite installation failed: $LASTEXITCODE" }
+
+      - name: Run parser and package regression tests
+        shell: pwsh
+        run: ./tools/release/tests/Test-Package-Helpers.ps1
+
+      - name: Rebuild Debug and Release, compile help and produce packages
+        shell: pwsh
+        run: ./tools/release/Update-Build-Test-Package.ps1 -SkipUpdate -BuildRoot (Join-Path $env:RUNNER_TEMP 'OpenSal')
+
+      # Never expose Debug CRT DLLs via public workflow artifacts.
+      - name: Upload redistributable Release outputs only
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: OpenSalamander-Release-x64
+          path: |
+            ${{ runner.temp }}\OpenSal\dist\OpenSalamander-Release-x64.7z
+            ${{ runner.temp }}\OpenSal\dist\OpenSalamander-Release-x64-Setup.exe
+          if-no-files-found: error
