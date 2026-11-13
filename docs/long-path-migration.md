@@ -204,6 +204,35 @@ before release. Other GUI operation routes, long panel paths, plugins,
 sort/filter and icon/tile/thumbnail displays still need migration.
 The refusal message is temporarily English and needs localization.
 
+## Interactive GUI foreground reliability (13 November 2026)
+
+Windows desktop acceptance of 5.1 and normal short-path ASCII F2/F5/F6/F8
+passed on the user's machine at 17:01. An earlier run at 16:48 failed **before
+any keyboard input**: `Timeout waiting for test application to be foreground`.
+
+The test driver has been hardened without changing production Win32 code:
+- It still refuses to attach to an existing Salamander instance and resolves
+  the launched main HWND through process-owned top-level Win32 enumeration.
+- `Focus-TestProcess` retries activation of **only that verified HWND**.
+  The C# Win32 helper first tries `SW_RESTORE` and `SetForegroundWindow`,
+  then makes at most two brief `AttachThreadInput`-assisted attempts.
+  It rechecks PID ownership, detaches with `finally`, and never sends
+  keystrokes as part of focus recovery.
+- It requires the *exact target HWND* to become foreground, instead of
+  accepting any top-level popup of the same process.
+- A failed activation reports the expected HWND/PID, actual foreground
+  HWND/PID/title, all top-level windows of the launched process and
+  attempt count. `Send-Keys` still refuses when the foreground PID differs.
+- `Test-GuiDriver-Contract.ps1` compiles the C# helper on Windows CI
+  and checks invalid HWND and foreign-PID refusals.
+
+Foreground activation is ultimately restricted by Windows, and may be
+refused on a locked desktop, another desktop or during UAC/dialog focus.
+Do not force it by sending Alt/Tab or other input to an unrelated window.
+A fresh interactive `manage.cmd --test-gui-baseline` run is required
+to validate this driver's resilience on the affected desktop. No
+rebuild is necessary for this test-script-only change.
+
 ## Phase 1: Baseline and bounded operations
 
 - `tools/tests/Test-LongPaths.ps1` generates disposable cases for total
