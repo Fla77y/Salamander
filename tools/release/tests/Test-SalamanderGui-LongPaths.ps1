@@ -38,6 +38,9 @@ public static class SalamanderGuiNative
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [StructLayout(LayoutKind.Sequential)]
+    public struct GuiRect { public int Left, Top, Right, Bottom; }
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out GuiRect rect);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
 }
 '@
@@ -159,11 +162,17 @@ function Test-Content {
 
 function Save-FailureScreenshot {
     try {
-        $b = [Windows.Forms.Screen]::PrimaryScreen.Bounds
-        $bitmap = [Drawing.Bitmap]::new($b.Width, $b.Height)
+        # Save only the app window; other desktop windows may contain private data.
+        if ($null -eq $process -or $process.HasExited) { return }
+        $b = [SalamanderGuiNative+GuiRect]::new()
+        if (-not [SalamanderGuiNative]::GetWindowRect($process.MainWindowHandle, [ref]$b)) { return }
+        $width = $b.Right - $b.Left
+        $height = $b.Bottom - $b.Top
+        if ($width -le 0 -or $height -le 0) { return }
+        $bitmap = [Drawing.Bitmap]::new($width, $height)
         try {
             $graphics = [Drawing.Graphics]::FromImage($bitmap)
-            try { $graphics.CopyFromScreen($b.Left, $b.Top, 0, 0, $b.Size) }
+            try { $graphics.CopyFromScreen($b.Left, $b.Top, 0, 0, [Drawing.Size]::new($width, $height)) }
             finally { $graphics.Dispose() }
             $file = Join-Path $root 'gui-failure.png'
             $bitmap.Save($file, [Drawing.Imaging.ImageFormat]::Png)
