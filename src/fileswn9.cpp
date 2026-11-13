@@ -1879,17 +1879,10 @@ BOOL CFilesWindow::CopyFocusedNameToClipboard(CCopyFocusedNameModeEnum mode)
     // different names have the same legacy alias.
     if (mode == cfnmShort && Is(ptDisk) && strchr(focusedItem->Name, '?') != NULL)
     {
-        std::wstring unicodeDirectory;
-        if (!Salamander::TryGetUnicodePanelDirectory(GetPath(), unicodeDirectory))
-            return FALSE;
-
         std::wstring exactName;
-        DWORD error = ERROR_SUCCESS;
-        const auto resolution = Salamander::ResolveUnicodePanelFileName(
-            unicodeDirectory.c_str(), focusedItem->Name, exactName, error);
-        if (resolution != Salamander::UnicodePanelNameResult::Unique)
+        if (!UnicodeDiskNames.TryGet(focusedItem->Name, exactName))
         {
-            TRACE_E("Cannot resolve Unicode disk name uniquely (error " << error << ")");
+            TRACE_E("Cannot resolve non-ANSI disk name uniquely");
             return FALSE; // Never publish a guessed filename.
         }
         return Salamander::TryCopyUnicodeNameToClipboard(MainWindow->HWindow, exactName) ? TRUE : FALSE;
