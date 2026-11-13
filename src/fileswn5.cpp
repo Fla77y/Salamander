@@ -2359,8 +2359,9 @@ void CFilesWindow::RenameFile(int specialIndex)
     // missing identities must still be refused before prompting.
     if (Is(ptDisk) && UnicodeDiskNames.IsUnsafeAnsiName(f->Name))
     {
+        const std::string legacyAlias(f->Name);
         std::wstring originalName;
-        if (!UnicodeDiskNames.TryGetLossy(f->Name, originalName))
+        if (!UnicodeDiskNames.TryGetLossy(legacyAlias.c_str(), originalName))
         {
             SalMessageBox(HWindow,
                           "This disk filename cannot be represented safely by the "
@@ -2382,7 +2383,7 @@ void CFilesWindow::RenameFile(int specialIndex)
         std::wstring resolvedName;
         DWORD error = ERROR_SUCCESS;
         if (Salamander::ResolveUnicodePanelFileName(
-                directory.c_str(), f->Name, resolvedName, error) !=
+                directory.c_str(), legacyAlias.c_str(), resolvedName, error) !=
                 Salamander::UnicodePanelNameResult::Unique ||
             resolvedName != originalName)
         {
@@ -2445,7 +2446,7 @@ void CFilesWindow::RenameFile(int specialIndex)
             // external software changed the directory while editing.
             resolvedName.clear();
             if (Salamander::ResolveUnicodePanelFileName(
-                    directory.c_str(), f->Name, resolvedName, error) !=
+                    directory.c_str(), legacyAlias.c_str(), resolvedName, error) !=
                     Salamander::UnicodePanelNameResult::Unique ||
                 resolvedName != originalName)
             {
