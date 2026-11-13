@@ -115,6 +115,43 @@ per-listing index and invalidation. The real GUI gate remains
 `manage.cmd --test-gui-names`, plus visual inspection in Brief/Detailed
 mode and the already-passing ASCII operations baseline.
 
+## Fail-closed legacy disk action gate (13 November 2026)
+
+The **real Windows GUI alias collision test passed** on the user desktop:
+`manage.cmd --test-gui-name-collisions` (16:02) retained both files'
+original bytes and refused a guessed `CM_CLIPCOPYNAME` result.
+The **real short ASCII F2/F5/F6/F8 baseline** also passed (16:01).
+
+After these pre-change tests, `src/common/legacy_disk_name_safety.h`
+and `tools/tests/legacy_disk_name_safety.cpp` were added test-first.
+The helper detects replacement `?` in legacy disk file names and
+checks all explicitly selected entries (or only the focused entry when
+there is no explicit selection).
+
+The actual disk operation entry points are guarded before side effects:
+- `src/fileswn5.cpp::RenameFile`: refuse F2 on a lossy ANSI filename.
+- `src/fileswn8.cpp::FilesAction`: refuse the full F5/F6/F8 (and
+  change-case) selection if any entry has a lossy ANSI filename.
+- ZIP and plugin-FS operations remain on their original code paths.
+
+The user-facing refusal message is currently in English and needs proper
+localization before release. This **temporary guard is incomplete**:
+ANSI best-fit substitutions that do not contain `?`, shell/context
+menu/drag-and-drop operations that bypass these entry points, recursive
+operations and plugin paths still require audit and Unicode-safe
+identity handling. It is **not** the full F2/F5/F6/F8 Unicode migration.
+
+Regression gates:
+- The portable `legacy_disk_name_safety.cpp` checks selected/focused
+  semantics, multiple selections and no false positives on ordinary
+  ASCII names. Wired into `manage.cmd --test` and Windows CI.
+- New `manage.cmd --test-gui-unsafe-unicode-operations` creates two
+  disposable colliding Unicode names and requires F2/F5/F6/F8 to show
+  the refusal dialog and leave both source files and the target
+  unchanged. This needs an interactive desktop and a **fresh build**.
+- Re-run `--test-gui-operations-baseline` to detect regressions to
+  ordinary ASCII file operations.
+
 ## Phase 1: Baseline and bounded operations
 
 - `tools/tests/Test-LongPaths.ps1` generates disposable cases for total
