@@ -160,6 +160,7 @@ function Run-Tests {
     # when the tests (or the production code using them) are absent.
     $cppTests = @(
         'tools\tests\quicksearch_bounds.cpp',
+        'tools\tests\utf16_disk_path.cpp',
         'tools\tests\long_path_io.cpp'
     )
     $available = @($cppTests | Where-Object {
