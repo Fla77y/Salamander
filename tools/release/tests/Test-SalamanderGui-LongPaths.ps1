@@ -713,6 +713,9 @@ try {
         Set-ClipboardText 'SENTINEL_COLLISION'
         Invoke-SalamanderCommand -CommandId 710
         Assert-True ((Get-ClipboardText) -ceq 'SENTINEL_COLLISION') 'Unicode filename collision refuses clipboard export'
+        Set-ClipboardText 'SENTINEL_COLLISION_FULLNAME'
+        Invoke-SalamanderCommand -CommandId 709
+        Assert-True ((Get-ClipboardText) -ceq 'SENTINEL_COLLISION_FULLNAME') 'Unicode collision refuses ambiguous full-path export'
         Assert-True ((Test-Content $unicodeShortFile) -and
             [Linq.Enumerable]::SequenceEqual[byte](
                 [IO.File]::ReadAllBytes($collisionFile), $collisionPayload
