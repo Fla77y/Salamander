@@ -472,8 +472,8 @@ try {
         # Retain the strict Unicode assertion; make a mismatch diagnosable.
         # A fallback to the ANSI-transliterated name would conceal a defect.
         Write-Host "GUI filename comparison: expected='$utfName'; actual='$actualName'"
-        $expectedUnits = [string]::Join(' ', [char[]]$utfName | ForEach-Object { '{0:X4}' -f [int]$_ })
-        $actualUnits = [string]::Join(' ', [char[]]$actualName | ForEach-Object { '{0:X4}' -f [int]$_ })
+        $expectedUnits = ([char[]]$utfName | ForEach-Object { '{0:X4}' -f [int]$_ }) -join ' '
+        $actualUnits = ([char[]]$actualName | ForEach-Object { '{0:X4}' -f [int]$_ }) -join ' '
         Write-Host "GUI filename UTF-16 units: expected=[$expectedUnits]; actual=[$actualUnits]"
         Assert-True ($actualName -ceq $utfName) 'Short Unicode name preserved in Salamander panel'
         Assert-True (Test-Content $unicodeShortFile) 'Unicode-only file bytes preserved'
