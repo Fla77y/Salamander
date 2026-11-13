@@ -15,6 +15,7 @@
 #include "mapi.h"
 #include "common/legacy_disk_name_safety.h"
 #include "common/win32_unicode_file_ops.h"
+#include "common/win32_unicode_recycle.h"
 
 //
 // ****************************************************************************
@@ -132,6 +133,117 @@ void PluginFSConvertPathToExternal(char* path)
         if (plugin != NULL && plugin->InitDLL(MainWindow->HWindow, FALSE, TRUE, FALSE)) // the plugin may not be loaded yet; load it if necessary
             plugin->GetPluginInterfaceForFS()->ConvertPathToExternal(fsName, fsNameIndex, fsUserPart);
     }
+}
+
+// A Unicode F8 path must preserve the user's configured Recycle Bin policy.
+// Unsupported cases return FALSE and stay behind the legacy fail-closed guard.
+BOOL CFilesWindow::TryUnicodeSingleFileRecycle()
+{
+    if (!Is(ptDisk))
+        return FALSE;
+
+    const BOOL invertRecycleBin = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+    const int recycleMode = invertRecycleBin
+        ? (Configuration.UseRecycleBin == 0 ? 1 : 0)
+        : Configuration.UseRecycleBin;
+    if (recycleMode != 1 || MyGetDriveType(GetPath()) != DRIVE_FIXED)
+        return FALSE; // Never silently replace permanent-delete semantics
+
+    if (CheckPath(TRUE) != ERROR_SUCCESS)
+        return TRUE; // The panel may change during CheckPath; never fall back
+
+    const int selected = GetSelCount();
+    if (selected > 1)
+        return FALSE;
+    int index = GetCaretIndex();
+    if (selected == 1 && GetSelItems(1, &index) != 1)
+        return FALSE;
+    if (index < Dirs->Count || index >= Dirs->Count + Files->Count)
+        return FALSE;
+
+    const CFileData& entry = Files->At(index - Dirs->Count);
+    if ((entry.Attr & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0)
+        return FALSE;
+
+    const std::string alias(entry.Name);
+    std::wstring originalName;
+    if (!UnicodeDiskNames.TryGetLossy(alias.c_str(), originalName))
+        return FALSE; // ambiguous or missing identity
+
+    const std::string panelPath(GetPath());
+    std::wstring directory;
+    if (!Salamander::TryGetUnicodePanelDirectory(panelPath.c_str(), directory))
+        return FALSE;
+
+    Salamander::Utf16PathError validationError;
+    Salamander::Utf16DiskPath ownedDirectory, source;
+    Salamander::Utf16FileName component;
+    if (!Salamander::Utf16DiskPath::TryCreateAbsolute(
+            std::u16string(directory.begin(), directory.end()),
+            ownedDirectory, validationError) ||
+        !Salamander::Utf16FileName::TryCreate(
+            std::u16string(originalName.begin(), originalName.end()),
+            component, validationError) ||
+        !ownedDirectory.TryAppend(component, source, validationError))
+        return FALSE;
+
+    // Shell parsing has separate, legacy path restrictions. This slice
+    // supports only a short ordinary path; no extended-length prefix.
+    if (source.Value().size() >= MAX_PATH)
+        return FALSE;
+
+    DWORD enumerationError = ERROR_SUCCESS;
+    std::wstring resolvedName;
+    if (Salamander::ResolveUnicodePanelFileName(
+            directory.c_str(), alias.c_str(), resolvedName, enumerationError) !=
+            Salamander::UnicodePanelNameResult::Unique ||
+        resolvedName != originalName)
+        return FALSE;
+
+    const std::wstring prompt =
+        L"Move this Unicode file to the Windows Recycle Bin?\n\n" +
+        originalName + L"\n\nThe Windows shell may warn if recycling is "
+        L"unavailable. Cancel that warning to avoid permanent deletion.";
+    if (MessageBoxW(HWindow, prompt.c_str(), L"Recycle Unicode file",
+                    MB_OKCANCEL | MB_ICONWARNING) != IDOK)
+        return TRUE;
+
+    if (panelPath != GetPath())
+        return TRUE;
+    resolvedName.clear();
+    if (Salamander::ResolveUnicodePanelFileName(
+            directory.c_str(), alias.c_str(), resolvedName, enumerationError) !=
+            Salamander::UnicodePanelNameResult::Unique ||
+        resolvedName != originalName)
+    {
+        MessageBoxW(HWindow, L"The Unicode identity changed or became ambiguous. "
+                    L"No file operation was started.", L"Recycle Unicode file",
+                    MB_OK | MB_ICONWARNING);
+        return TRUE;
+    }
+
+    BeginSuspendMode();
+    BeginStopRefresh();
+    HRESULT error = S_OK;
+    const bool succeeded = Salamander::TryRecycleUnicodeFile(
+        source, MainWindow->HWindow, error);
+    EndStopRefresh();
+    EndSuspendMode();
+
+    if (!succeeded)
+    {
+        wchar_t message[190];
+        swprintf_s(message, _countof(message),
+                   L"Windows could not complete the Unicode Recycle Bin operation "
+                   L"(HRESULT 0x%08lX). Check whether the file still exists.",
+                   static_cast<unsigned long>(error));
+        MessageBoxW(HWindow, message, L"Recycle Unicode file",
+                    MB_OK | MB_ICONWARNING);
+        return TRUE;
+    }
+
+    MainWindow->PostChangeOnPathNotification(panelPath.c_str(), FALSE);
+    return TRUE;
 }
 
 // A deliberately narrow UTF-16 write path. The full file operation engine
@@ -335,7 +447,9 @@ void CFilesWindow::FilesAction(CActionType type, CFilesWindow* target, int count
         {
             // Handle exactly one uniquely identified, ordinary file by W APIs.
             // Every other unsafe selection keeps the original no-write guard.
-            if (countSizeMode == 0 && TryUnicodeSingleFileTransfer(type, target))
+            if (countSizeMode == 0 &&
+                (TryUnicodeSingleFileTransfer(type, target) ||
+                 (type == atDelete && TryUnicodeSingleFileRecycle())))
                 return;
             SalMessageBox(HWindow,
                           "This disk filename cannot be represented safely by the "
