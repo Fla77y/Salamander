@@ -236,7 +236,7 @@ rebuild is necessary for this test-script-only change.
 ## Genuine Unicode F2 rename — first writable GUI slice
 
 This slice adds a **real UTF-16 rename**, separate from the legacy ANSI
-engine, for a disk file or directory **only if** the sidecar cache maps
+engine, for a regular disk file **only if** the sidecar cache maps
 its legacy name uniquely to one original UTF-16 entry. It is not a
 replacement for the legacy operation engine and does not change the
 plug-in-visible `CFileData` layout.
@@ -252,7 +252,8 @@ plug-in-visible `CFileData` layout.
    The old `CCopyMoveDialog` remains unchanged for normal ANSI
    names and plug-ins.
 3. `CFilesWindow::RenameFile` selects this path only when
-   `UnicodeDiskNames.TryGetLossy` succeeds. A collision, unknown
+   `UnicodeDiskNames.TryGetLossy` succeeds and the entry is neither
+   a directory nor a reparse point. A collision, unknown
    entry or unavailable index keeps the existing fail-closed error.
    A fresh wide directory enumeration validates the original before
    **and after** the modal editor, and the legacy ANSI alias is copied
@@ -275,7 +276,8 @@ The **previous** six short-path regression groups passed on Open
 Salamander 5.1 on 13 November 2026, before adding this F2 write path;
 they must not be reported as proof of the new path.
 
-**Remaining and important:** F5/F6/F8 still fail closed on lossy names.
+**Remaining and important:** Unicode directory/reparse-point rename and
+F5/F6/F8 still fail closed on lossy names.
 The 2nd enumeration introduces TOCTOU risk if an external process
 actively swaps a filename immediately before the rename, as does any
 name-based Win32 operation; handle/file-ID-based atomic binding is
