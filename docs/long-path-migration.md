@@ -277,7 +277,8 @@ Salamander 5.1 on 13 November 2026, before adding this F2 write path;
 they must not be reported as proof of the new path.
 
 **Remaining and important:** Unicode directory/reparse-point rename and
-F5/F6/F8 still fail closed on lossy names.
+F8 still fail closed; Unicode F5/F6 work only in the constrained single-file
+case documented above, not through the full operations engine.
 The 2nd enumeration introduces TOCTOU risk if an external process
 actively swaps a filename immediately before the rename, as does any
 name-based Win32 operation; handle/file-ID-based atomic binding is
@@ -288,6 +289,40 @@ two UTF-16 names that map to the same ANSI bytes. Progress, overwrite
 prompts, recycle bin, ACL policy, cancellation, other command entry
 points, performance and long GUI paths still need implementation.
 Do not treat this slice as full Unicode/long-path support.
+
+## Unicode F5/F6 disk transfer — constrained second writable slice
+
+A separate Win32-wide path in src/fileswn8.cpp handles F5/F6 for **one**
+uniquely mapped lossy-name **regular file** between two existing disk
+directories with strict round-trip ACP directory conversion. The legacy
+engine is bypassed only for that narrow case; archive/plugin contracts,
+CFileData, fixed path buffers and ASCII behavior are unchanged.
+
+- The entry must be a regular file with zero or one explicit selection
+  and one unique wide name. Collisions, missing indices, directories,
+  reparse points and non-disk destinations fail closed.
+- The original UTF-16 identity is checked using a fresh Win32-wide
+  enumeration before and after the confirmation dialog. Panel paths
+  are rechecked and self-transfers rejected.
+- CopyFileW with fail-if-exists and MoveFileExW without replacement or
+  cross-volume-copy flags preserve existing destination files.
+- Synchronous transfers are restricted to **16 MiB or smaller**.
+  Progress, cancellation, security-policy handling and large items
+  require migration to the full asynchronous operations engine.
+
+Added independent interactive tests:
+- manage.cmd --test-gui-unicode-transfer: actual UTF-16 F5/F6 operations
+  between separate disposable disk directories; source and payload checks.
+- manage.cmd --test-gui-unicode-transfer-collision: distinct target
+  marker must survive both F5 and F6 without data loss.
+
+**Not yet verified by a real user GUI run on this head.** The long-path
+GUI acceptance and all existing ASCII and Unicode guard tests must be
+repeated after a new build. This is not a finished Unicode/long-path
+migration. F8 recycle-bin semantics, per-row identities under ANSI alias
+collisions, long GUI paths, multi-selection, folder transfers,
+copy/move options and other operation entry points remain unresolved.
+Keep this PR draft and unmerged.
 
 ## Phase 1: Baseline and bounded operations
 
