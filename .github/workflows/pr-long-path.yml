@@ -76,6 +76,13 @@ jobs:
           if errorlevel 1 exit /b 1
           "%RUNNER_TEMP%\unicode_rename_dialog.exe"
 
+      - name: Unicode shell recycle safety contract
+        shell: cmd
+        run: |
+          cl /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /Fe:"%RUNNER_TEMP%\unicode_recycle.exe" tools\tests\win32_unicode_recycle.cpp ole32.lib shell32.lib uuid.lib
+          if errorlevel 1 exit /b 1
+          "%RUNNER_TEMP%\unicode_recycle.exe"
+
       - name: Unicode extended path API regression test
         shell: cmd
         run: |
