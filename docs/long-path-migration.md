@@ -19,7 +19,8 @@ code units on NTFS).
 
 ## Test-first Unicode migration foundations (13 November 2026)
 
-This is **incremental work, not an end-to-end migration or a GUI fix**:
+This is **incremental work, not an end-to-end migration**. The sections below
+distinguish standalone foundations from the partial GUI code now present:
 
 1. **Owned disk names and paths:** `src/common/utf16_disk_path.h`
    introduces separate, dynamically allocated `Utf16FileName` and
@@ -31,8 +32,9 @@ This is **incremental work, not an end-to-end migration or a GUI fix**:
 2. **Native Unicode directory enumeration:** Existing
    `TryEnumerateLongDirectory` in `src/common/win32_long_directory.h`
    now accepts the owned disk-path type as well as existing `wchar_t*` paths.
-   Results retain their full Unicode names, but **are not yet wired into
-   the Salamander panel data model**.
+   Results retain their full Unicode names. An independent wide enumeration
+   now feeds the panel's sidecar identity cache, but the legacy `CFileData`
+   enumeration and plugin ABI remain ANSI.
 3. **Non-overwriting file operations:** The standalone
    `src/common/win32_unicode_file_ops.h` uses extended-length Win32
    paths and explicit `CopyFileW`, `MoveFileExW`, and `DeleteFileW`.
@@ -92,15 +94,16 @@ This branch now includes a **partial, read-only GUI integration**:
   are marked ambiguous; never choose one arbitrarily.
 - `UnicodePanelNameCache` is owned by `CFilesWindow`, not by
   plug-in-visible `CFileData`. The cache is invalidated on every
-  listing, and the Unicode directory is scanned only if the disk panel
-  actually contains replacement `?` characters.
+  listing. After the ANSI best-fit fix below, the Unicode directory is
+  scanned for every disk listing so aliases without `?` are checked too.
 - `src/fileswn4.cpp` uses wide GDI measurement and drawing for
   uniquely recovered names in **Brief/Detailed name columns**. Unicode
   surrogate pairs are not split by text ellipsizing.
 - `src/fileswn9.cpp::CopyFocusedNameToClipboard` returns actual
-  `CF_UNICODETEXT` when the disk filename was corrupted by ANSI
-  replacement and still matches a uniquely resolved, revalidated
-  filesystem entry.
+  `CF_UNICODETEXT` for a unique lossy ANSI alias (including best-fit
+  substitution without `?`) after revalidating the original filesystem
+  entry. The short name and full path are supported; unsafe UNC translation
+  is deliberately refused.
 
 **Not implemented:** data-model identity for ambiguous ANSI aliases;
 Unicode-safe selection, filtering, sorting and edit actions; icon/tile/
@@ -151,6 +154,55 @@ Regression gates:
   unchanged. This needs an interactive desktop and a **fresh build**.
 - Re-run `--test-gui-operations-baseline` to detect regressions to
   ordinary ASCII file operations.
+
+## Exact round-trip disk identity gate (13 November 2026)
+
+The previous `?` heuristic missed Windows CP_ACP best-fit substitutions
+(e.g. a wide character mapped to a visually similar ANSI character without
+a question mark). These are still **not** unique, lossless identities.
+
+Test-first changes:
+- `tools/tests/legacy_disk_name_safety.cpp` requires an explicit unsafe
+  identity flag to block F2/F5/F6/F8 even for plain-looking aliases.
+- `tools/tests/long_path_io.cpp` requires exact ACP-to-UTF-16 round-trip
+  equality, refuses unknown and ambiguous names, and dynamically creates
+  a genuine best-fit-without-`?` Windows file fixture where CP_ACP permits
+  one. On a UTF-8 ACP this optional fixture reports `SKIP`; the exact
+  identity contract still runs.
+- `src/common/win32_unicode_panel_name.h` now classifies each cached
+  original Unicode directory entry as *exact ANSI round-trip*, *unique
+  lossy*, or *unusable/ambiguous*. The cache remains separate from
+  `CFileData`, preserving its plugin ABI.
+- `ReadDirectory` now builds this cache on **every disk listing**,
+  including ASCII-only listings; otherwise a best-fit alias cannot be
+  recognized from the ANSI bytes alone. This adds one temporary extra
+  directory enumeration per refresh until the panel itself becomes
+  single-pass `FindFirstFileW`-based.
+- F2 and F5/F6/F8 reject selected entries if the cache is missing,
+  ambiguous, or shows any non-round-tripping name; existing `?`
+  rejection remains in place. Batch operations reject the entire
+  selection before their side effects.
+- Brief/Detailed drawing and the focused name/full-path clipboard command
+  use exact UTF-16 for a uniquely resolved lossy alias, with a fresh
+  read-only identity check immediately before export.
+
+**Interactive Windows acceptance still required after rebuilding:**
+`manage.cmd --test-gui-baseline`,
+`--test-gui-names`, `--test-gui-bestfit`,
+`--test-gui-name-collisions`,
+`--test-gui-unsafe-unicode-operations`, and
+`--test-gui-operations-baseline`. The best-fit GUI test detects a real
+CP_ACP mapping at runtime and may SKIP where none of its candidates maps
+lossily without `?`.
+
+**Remaining limitations:** this is still *fail-closed*, not Unicode
+F2/F5/F6/F8 enablement. A per-ANSI-alias cache cannot identify individual
+items when two original Unicode names collide; the correct long-term fix
+is per-entry UTF-16 identity captured in one W enumeration pass.
+The current extra wide listing costs I/O on large directories; measure
+before release. Other GUI operation routes, long panel paths, plugins,
+sort/filter and icon/tile/thumbnail displays still need migration.
+The refusal message is temporarily English and needs localization.
 
 ## Phase 1: Baseline and bounded operations
 
