@@ -63,7 +63,7 @@ public static class SalamanderGuiNative
     private static extern int WideCharToMultiByte(
         uint codePage, uint flags, string source, int sourceLength,
         byte[] destination, int destinationLength, IntPtr defaultChar, IntPtr usedDefault);
-    [DllImport("kernel32.dll", SetLastError = true)]
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern int MultiByteToWideChar(
         uint codePage, uint flags, byte[] source, int sourceLength,
         [Out] char[] destination, int destinationLength);
