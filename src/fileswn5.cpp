@@ -2355,7 +2355,7 @@ void CFilesWindow::RenameFile(int specialIndex)
     // F2 uses the same lossy ANSI disk name as F5/F6/F8. Refuse to
     // rename an item whose original UTF-16 identity is not available.
     // Plugin and archive contracts are intentionally unchanged.
-    if (Is(ptDisk) && Salamander::IsLossyAnsiDiskName(f->Name))
+    if (Is(ptDisk) && UnicodeDiskNames.IsUnsafeAnsiName(f->Name))
     {
         SalMessageBox(HWindow,
                       "This disk filename cannot be represented safely by the "
