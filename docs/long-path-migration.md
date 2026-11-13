@@ -197,3 +197,10 @@ reports Salamander's own long-path rejection instead of claiming success
 based only on Windows API tests. The GitHub-hosted CI runner is non-interactive and cannot
 replace an unlocked Windows desktop; keep the native build/package CI
 independent and require the local GUI gate before declaring support.
+
+The local screenshot showed Salamander's title with **(Administrator)**.
+Windows User Interface Privilege Isolation (UIPI) can block keyboard
+automation if the test shell is less privileged than Salamander. The
+test now reports its own elevation and Salamander's window title, and
+fails with a specific diagnostic for that mismatch. Prefer running
+both Salamander and the test shell **without** elevation.
