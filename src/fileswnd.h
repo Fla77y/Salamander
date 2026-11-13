@@ -1303,6 +1303,9 @@ public:
     BOOL SetUnescapedHotPathToEmptyPos();
     void GotoRoot();
 
+    // A conservative disk-to-disk UTF-16 transfer for one uniquely resolved
+    // regular file. Returns false to keep unsupported selections fail-closed.
+    BOOL TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* target);
     void FilesAction(CActionType type, CFilesWindow* target = NULL, int countSizeMode = 0);
     void PluginFSFilesAction(CPluginFSActionType type);
     void CreateDir(CFilesWindow* target);
