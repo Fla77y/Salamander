@@ -153,3 +153,44 @@ There is no safe architecture shortcut from the Win32 helper tests to full
 GUI support. The panel's ANSI representations, filename representation,
 plugins, file operation engines and serialized path formats still need
 an incremental, compatibility-reviewed migration.
+
+
+## Confirmed local GUI regression (13 November 2026)
+
+Running `manage.cmd --test` on Windows with VS2026 completed all 18
+filesystem assertions plus both standalone C++ tests. Those tests exercise
+Windows / the new native helpers, **not** Salamander's path navigation.
+
+A local interactive GUI run then navigated correctly to a short ASCII
+directory but failed to reach the long directory. Salamander presented
+**Error Changing Directory: Cannot finish operation because too long name.**
+
+This maps directly to the existing production code:
+
+- `src/fileswn2.cpp`, `CFilesWindow::ChangePathToDisk`, rejects paths
+  with `strlen(path) >= MAX_PATH - 2`.
+- `src/fileswnd.h`, `CFilesWindowAncestor::Path`, is a fixed-size
+  `char[MAX_PATH]` buffer.
+- `src/fileswn1.cpp`, `CFilesWindowAncestor::SetPath`, uses
+  `strcpy(Path, path)`. Removing only the early-length guard can
+  overflow the destination.
+- `src/fileswn3.cpp`, `ReadDirectory`, uses `WIN32_FIND_DATAA` and
+  fixed-size path storage. UTF-16 filenames that cannot be represented
+  in the active ANSI code page may lose information.
+
+**Therefore:** do not remove the path-length check or blindly replace
+MAX_PATH globally. The migration must change the owned path/name types,
+normalize through wide Win32 APIs, audit every copy into plugin-supplied
+buffers and preserve data when a call chain is not yet Unicode-safe.
+
+Local test commands:
+
+    .\manage.cmd --test-gui-baseline   # short ASCII GUI/driver check
+    .\manage.cmd --test-gui-names      # short UTF-16 filename fidelity
+    .\manage.cmd --test-gui            # >260 path + F2/F5/F6/F8 integration
+
+`--test-gui` now waits for the actual Change Directory modal and
+reports Salamander's native error dialog rather than masking it with a
+timeout. The GitHub-hosted CI runner is non-interactive and cannot
+replace an unlocked Windows desktop; keep the native build/package CI
+independent and require the local GUI gate before declaring support.
