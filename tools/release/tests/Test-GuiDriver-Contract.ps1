@@ -137,4 +137,19 @@ if ([SalamanderGuiNative]::TryActivateVerifiedWindow([IntPtr]::Zero, 42, $true) 
     [SalamanderGuiNative]::TryActivateVerifiedWindow([IntPtr]::Zero, 0, $false)) {
     throw 'Focus helper must refuse an invalid HWND without changing foreground.'
 }
+# On a real Windows desktop, a valid foreground HWND owned by a *different*
+# PID must also be refused before any focus operation is attempted.
+$foreground = [SalamanderGuiNative]::GetForegroundWindow()
+if ($foreground -ne [IntPtr]::Zero) {
+    [uint32]$foregroundPid = 0
+    [void][SalamanderGuiNative]::GetWindowThreadProcessId($foreground, [ref]$foregroundPid)
+    $wrongPid = if ($foregroundPid -eq [uint32]::MaxValue) {
+        [uint32]([uint32]::MaxValue - 1)
+    } else {
+        [uint32]::MaxValue
+    }
+    if ([SalamanderGuiNative]::TryActivateVerifiedWindow($foreground, $wrongPid, $true)) {
+        throw 'Focus recovery incorrectly accepted a window from another PID.'
+    }
+}
 Write-Host 'PASS: GUI activation recovery validates HWND ownership, retries and preserves input safety.'
