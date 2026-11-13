@@ -176,6 +176,66 @@ public static class SalamanderGuiNative
     public struct GuiRect { public int Left, Top, Right, Bottom; }
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out GuiRect rect);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+    [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr window);
+    [DllImport("user32.dll")] private static extern bool BringWindowToTop(IntPtr window);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool AttachThreadInput(uint threadId, uint attachToId, bool attach);
+    [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
+
+    // Only a live, visible HWND belonging to the freshly launched test PID
+    // may be activated. The final fallback briefly shares the input queue
+    // with the foreground thread, then unconditionally detaches it.
+    // Windows can still deny foreground activation; callers must verify it.
+    public static bool TryActivateVerifiedWindow(IntPtr window, uint expectedPid, bool useSharedInputFallback)
+    {
+        if (window == IntPtr.Zero || expectedPid == 0 ||
+            !IsWindow(window) || !IsWindowVisible(window))
+            return false;
+
+        uint ownerPid;
+        uint ownerThread = GetWindowThreadProcessId(window, out ownerPid);
+        if (ownerThread == 0 || ownerPid != expectedPid)
+            return false;
+
+        if (GetForegroundWindow() == window)
+            return true;
+
+        ShowWindow(window, 9); // SW_RESTORE; harmless when already visible
+        SetForegroundWindow(window);
+        if (GetForegroundWindow() == window)
+            return true;
+        if (!useSharedInputFallback)
+            return false;
+
+        IntPtr previous = GetForegroundWindow();
+        uint previousPid;
+        uint foregroundThread = GetWindowThreadProcessId(previous, out previousPid);
+        uint currentThread = GetCurrentThreadId();
+        if (foregroundThread == 0 || foregroundThread == currentThread)
+            return false;
+
+        if (!AttachThreadInput(currentThread, foregroundThread, true))
+            return false;
+        try
+        {
+            // Do not race an intervening user focus change or a destroyed
+            // test window. Never attach to an unverified Salamander HWND.
+            uint latestPid;
+            if (GetForegroundWindow() != previous ||
+                !IsWindow(window) ||
+                GetWindowThreadProcessId(window, out latestPid) == 0 ||
+                latestPid != expectedPid)
+                return false;
+
+            BringWindowToTop(window);
+            SetForegroundWindow(window);
+        }
+        finally
+        {
+            AttachThreadInput(currentThread, foregroundThread, false);
+        }
+        return GetForegroundWindow() == window;
+    }
 }
 '@
 
@@ -236,6 +296,16 @@ function Get-ActiveProcessId {
     return $id
 }
 
+function Get-ForegroundWindowSummary {
+    $h = [SalamanderGuiNative]::GetForegroundWindow()
+    if ($h -eq [IntPtr]::Zero) { return 'HWND=<none>' }
+    [uint32]$ownerPid = 0
+    [void][SalamanderGuiNative]::GetWindowThreadProcessId($h, [ref]$ownerPid)
+    $caption = [SalamanderGuiNative]::GetWindowCaption($h)
+    return ('HWND=0x{0:X} PID={1} title={2}' -f
+            $h.ToInt64(), $ownerPid, $caption)
+}
+
 function Get-TestDialog {
     if ($null -eq $process) { return $null }
     $process.Refresh()
@@ -261,14 +331,37 @@ function Focus-TestProcess {
     if ($process.HasExited) { throw 'Test Salamander process terminated unexpectedly.' }
     $h = $mainWindowHandle
     if ($h -eq [IntPtr]::Zero) { throw 'No verified main window for test Salamander.' }
-    [uint32]$windowPid = 0
-    [void][SalamanderGuiNative]::GetWindowThreadProcessId($h, [ref]$windowPid)
-    if ($windowPid -ne [uint32]$process.Id) {
-        throw "Main window no longer belongs to launched Salamander PID $($process.Id)."
-    }
-    [void][SalamanderGuiNative]::ShowWindow($h, 9)
-    [void][SalamanderGuiNative]::SetForegroundWindow($h)
-    Wait-Until { (Get-ActiveProcessId) -eq [uint32]$process.Id } 'test application to be foreground'
+
+    $attempts = 0
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    do {
+        $process.Refresh()
+        if ($process.HasExited) { throw 'Test Salamander process terminated unexpectedly.' }
+
+        [uint32]$windowPid = 0
+        [void][SalamanderGuiNative]::GetWindowThreadProcessId($h, [ref]$windowPid)
+        if ($windowPid -ne [uint32]$process.Id) {
+            throw "Main window no longer belongs to launched Salamander PID $($process.Id)."
+        }
+
+        $attempts++
+        # Two normal attempts first. Bounded input-queue recovery is used
+        # only on selected later attempts to avoid excessive UI disruption.
+        $useFallback = $attempts -eq 3 -or $attempts -eq 10
+        $activated = [SalamanderGuiNative]::TryActivateVerifiedWindow(
+            $h, [uint32]$process.Id, $useFallback)
+        if ($activated -and [SalamanderGuiNative]::GetForegroundWindow() -eq $h) {
+            return
+        }
+        Start-Sleep -Milliseconds 350
+    } while ([DateTime]::UtcNow -lt $deadline)
+
+    $foreground = Get-ForegroundWindowSummary
+    $windows = Get-ProcessWindowSummary -OwnerProcessId ([uint32]$process.Id)
+    throw ("Cannot activate verified test Salamander window HWND=0x{0:X} PID={1} " +
+           "after {2} attempts. Foreground: {3}; test process windows: {4}. " +
+           "Windows may deny SetForegroundWindow; no keys were sent." -f
+           $h.ToInt64(), $process.Id, $attempts, $foreground, $windows)
 }
 
 function Send-Keys {
