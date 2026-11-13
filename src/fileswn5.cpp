@@ -20,6 +20,7 @@
 #include "codetbl.h"
 #include "find.h"
 #include "menu.h"
+#include "common/legacy_disk_name_safety.h"
 
 //
 // ****************************************************************************
@@ -2350,6 +2351,18 @@ void CFilesWindow::RenameFile(int specialIndex)
     CFileData* f = NULL;
     BOOL isDir = i < Dirs->Count;
     f = isDir ? &Dirs->At(i) : &Files->At(i - Dirs->Count);
+
+    // F2 uses the same lossy ANSI disk name as F5/F6/F8. Refuse to
+    // rename an item whose original UTF-16 identity is not available.
+    // Plugin and archive contracts are intentionally unchanged.
+    if (Is(ptDisk) && Salamander::IsLossyAnsiDiskName(f->Name))
+    {
+        SalMessageBox(HWindow,
+                      "This disk filename cannot be represented safely by the "
+                      "legacy ANSI file-operation engine. No files were changed.",
+                      LoadStr(IDS_ERRORTITLE), MB_OK | MB_ICONEXCLAMATION);
+        return;
+    }
 
     char formatedFileName[MAX_PATH];
     AlterFileName(formatedFileName, f->Name, -1, Configuration.FileNameFormat, 0, isDir);
