@@ -63,19 +63,8 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
 
     CutToClipChanged = FALSE; // forget cut-to-clip flags by this operation
 
-    // Build the original-name snapshot once per disk listing. A failure
-    // leaves no stale mappings; the legacy listing remains unchanged.
+    // Never keep names from a previous panel directory or refresh.
     UnicodeDiskNames.Clear();
-    if (Is(ptDisk))
-    {
-        std::wstring unicodeDirectory;
-        if (Salamander::TryGetUnicodePanelDirectory(GetPath(), unicodeDirectory))
-        {
-            DWORD unicodeError = ERROR_SUCCESS;
-            if (!UnicodeDiskNames.Load(unicodeDirectory.c_str(), unicodeError))
-                TRACE_I("Unicode panel name index unavailable (error " << unicodeError << ")");
-        }
-    }
 
     FocusFirstNewItem = FALSE;
     UseSystemIcons = FALSE;
@@ -970,6 +959,25 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
 
         // sorting of Files and Dirs according to the current sorting method
         SortDirectory();
+
+        // Only enumerate UTF-16 names when the ANSI panel actually contains
+        // replacement '?' bytes. Avoid an expensive second directory scan
+        // during ordinary ASCII-only refreshes.
+        BOOL needsUnicodeNames = FALSE;
+        for (int i = 0; i < Dirs->Count && !needsUnicodeNames; ++i)
+            needsUnicodeNames = strchr(Dirs->At(i).Name, '?') != NULL;
+        for (int i = 0; i < Files->Count && !needsUnicodeNames; ++i)
+            needsUnicodeNames = strchr(Files->At(i).Name, '?') != NULL;
+        if (needsUnicodeNames)
+        {
+            std::wstring unicodeDirectory;
+            if (Salamander::TryGetUnicodePanelDirectory(GetPath(), unicodeDirectory))
+            {
+                DWORD unicodeError = ERROR_SUCCESS;
+                if (!UnicodeDiskNames.Load(unicodeDirectory.c_str(), unicodeError))
+                    TRACE_I("Unicode panel name index unavailable (error " << unicodeError << ")");
+            }
+        }
 
         if (UseSystemIcons || UseThumbnails)
         {
