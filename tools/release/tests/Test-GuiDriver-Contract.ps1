@@ -107,6 +107,14 @@ if ($driverText -notmatch '\[switch\]\$ShortUnicodeRenameOnly' -or
 }
 Write-Host 'PASS: interactive Unicode F2 rename regression contract is present.'
 
+if ($driverText -notmatch '\[switch\]\$ShortUnicodeTransferOnly' -or
+    $driverText -notmatch 'Unicode F5 copy to other disk panel' -or
+    $driverText -notmatch 'Unicode F6 move to other disk panel' -or
+    $driverText -notmatch 'Unicode F6 preserves moved content') {
+    throw 'UTF-16 F5/F6 GUI regression must check source, destination and byte integrity.'
+}
+Write-Host 'PASS: Unicode F5/F6 GUI transfer assertions are present.'
+
 # Compile the embedded C# Win32 interop in the headless Windows test process.
 # PowerShell's AST check alone would not catch invalid P/Invoke signatures.
 $interopSource = [regex]::Match(
