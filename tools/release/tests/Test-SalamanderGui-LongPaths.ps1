@@ -760,7 +760,7 @@ try {
         foreach ($operation in @('{F5}', '{F6}')) {
             # Act: a name collision must never silently overwrite.
             Send-Keys $operation
-            Start-Sleep -Milliseconds 250
+            Wait-Until { (Get-TestDialog) -match 'Unicode file to the other panel' } 'Unicode transfer confirmation'
             Send-Keys '{ENTER}'
             Wait-Until { (Get-TestDialog) -match 'Unicode operation failed' } 'Unicode transfer overwrite refusal'
             Send-Keys '{ESC}'
@@ -785,7 +785,7 @@ try {
         Assert-True ((Read-FocusedFilename) -ceq $utfName) 'Unicode F5 source identity verified'
         # Act: F5 must use the exact UTF-16 source name and copy to destination.
         Send-Keys '{F5}'
-        Start-Sleep -Milliseconds 350
+        Wait-Until { (Get-TestDialog) -match 'Copy the Unicode file' } 'Unicode F5 confirmation'
         Send-Keys '{ENTER}'
         $copied = Join-Path $destination $utfName
         Wait-Until { Test-Content $copied } 'Unicode F5 copy to other disk panel'
@@ -802,7 +802,7 @@ try {
         Assert-True ((Read-FocusedFilename) -ceq $utfName) 'Unicode F6 source identity verified'
         # Act: F6 must not leave a duplicate in the source directory.
         Send-Keys '{F6}'
-        Start-Sleep -Milliseconds 350
+        Wait-Until { (Get-TestDialog) -match 'Move the Unicode file' } 'Unicode F6 confirmation'
         Send-Keys '{ENTER}'
         $moved = Join-Path $moveDir $utfName
         Wait-Until { (Test-Content $moved) -and -not [IO.File]::Exists($copied) } 'Unicode F6 move to other disk panel'
