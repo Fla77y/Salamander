@@ -3,10 +3,20 @@
 
 // Headless MSVC compile/link and template-layout checks for the native
 // Unicode editor. Interactive keyboard behavior is tested by the GUI driver.
-#include "../../src/common/win32_unicode_rename_dialog.h"
-
 #include <windows.h>
+#include <algorithm>
+#include <cstdint>
+#include <cstring>
 #include <cstdio>
+#include <string>
+#include <utility>
+#include <vector>
+
+// Mimic the legacy Salamander translation unit, whose headers remap memcpy.
+// The dialog header must not rely on the plain CRT symbol inside namespace std.
+#define memcpy _sal_safe_memcpy
+#include "../../src/common/win32_unicode_rename_dialog.h"
+#undef memcpy
 
 #pragma comment(lib, "user32.lib")
 
