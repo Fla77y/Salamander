@@ -770,7 +770,7 @@ try {
         Send-Keys '{ENTER}'
         Wait-Until { -not [IO.File]::Exists($unicodeShortFile) } 'Unicode F8 moves fixture to Recycle Bin'
         $passed = $true
-        Write-Host 'PASS: Unicode F8 recycled disposable file through native shell.'
+        Write-Host 'PASS: Unicode F8 shell recycle request removed disposable source; Recycle Bin restoration needs manual verification.'
         return
     }
 
