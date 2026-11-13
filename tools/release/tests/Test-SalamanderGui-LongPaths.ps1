@@ -17,7 +17,8 @@ param(
     [string]$SalamanderExe = 'D:\Build\OpenSal\salamander\Release_x64\salamand.exe',
     [ValidateRange(5,120)][int]$TimeoutSeconds = 25,
     [switch]$KeepFixture,
-    [switch]$BaselineOnly
+    [switch]$BaselineOnly,
+    [switch]$ShortUnicodeOnly
 )
 
 Set-StrictMode -Version Latest
@@ -254,6 +255,10 @@ function Save-FailureScreenshot {
 try {
     # ARRANGE: no real user files are touched.
     [IO.Directory]::CreateDirectory($source) | Out-Null
+    # Independent Unicode-only fixture: total path safely below MAX_PATH.
+    $unicodeShortFile = Join-Path $source $utfName
+    [IO.File]::WriteAllBytes($unicodeShortFile, $payload)
+    Assert-True ($unicodeShortFile.Length -lt 260) 'Unicode-only fixture fits below MAX_PATH'
     [IO.Directory]::CreateDirectory($destination) | Out-Null
     [IO.Directory]::CreateDirectory($moveDir) | Out-Null
     [IO.Directory]::CreateDirectory($maxDir) | Out-Null
@@ -285,6 +290,17 @@ try {
     if ($BaselineOnly) {
         $passed = $true
         Write-Host 'PASS: GUI automation driver works with short ASCII paths.'
+        return
+    }
+
+    if ($ShortUnicodeOnly) {
+        # A failure here is a Unicode/ANSI filename issue, not a path-length
+        # failure: the full path has been checked to be below MAX_PATH.
+        Send-Keys '{END}'
+        Assert-True ((Read-FocusedFilename) -ceq $utfName) 'Short Unicode name preserved in Salamander panel'
+        Assert-True (Test-Content $unicodeShortFile) 'Unicode-only file bytes preserved'
+        $passed = $true
+        Write-Host 'PASS: Salamander GUI supports a Unicode name on a short path.'
         return
     }
 
