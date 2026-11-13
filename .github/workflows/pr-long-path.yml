@@ -69,6 +69,13 @@ jobs:
           if errorlevel 1 exit /b 1
           "%RUNNER_TEMP%\legacy_disk_name_safety.exe"
 
+      - name: Native UTF-16 rename dialog compilation and structure regression
+        shell: cmd
+        run: |
+          cl /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /Fe:"%RUNNER_TEMP%\unicode_rename_dialog.exe" tools\tests\win32_unicode_rename_dialog.cpp
+          if errorlevel 1 exit /b 1
+          "%RUNNER_TEMP%\unicode_rename_dialog.exe"
+
       - name: Unicode extended path API regression test
         shell: cmd
         run: |
