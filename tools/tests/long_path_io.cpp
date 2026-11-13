@@ -407,6 +407,46 @@ int main()
     if (!copiedOk)
         return Fail("Unicode copy retained exact bytes");
 
+    // The F2 GUI rename uses the same no-overwrite W helper. A destination
+    // with different contents must be preserved, as must the source.
+    const std::wstring collisionPath = current + L"\\protected_rename_東京_😀.txt";
+    std::wstring extendedCollision;
+    Salamander::Utf16DiskPath protectedTarget;
+    if (!Convert(collisionPath, extendedCollision) ||
+        !OwnPath(collisionPath, protectedTarget))
+        return Fail("prepare non-overwriting Unicode F2 rename target");
+    HANDLE protectedFile = CreateFileW(
+        extendedCollision.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+        FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (protectedFile == INVALID_HANDLE_VALUE)
+        return Fail("create protected Unicode F2 destination");
+    const char marker[] = "MUST-NOT-BE-OVERWRITTEN";
+    DWORD markerWritten = 0;
+    const bool markerOk = WriteFile(protectedFile, marker,
+        static_cast<DWORD>(sizeof(marker)), &markerWritten, nullptr) &&
+        markerWritten == sizeof(marker);
+    CloseHandle(protectedFile);
+    if (!markerOk)
+        return Fail("write Unicode rename collision marker");
+    if (Salamander::TryMoveUnicodeFileNoOverwrite(
+            unicodeSource, protectedTarget, operationError) ||
+        GetFileAttributesW(result.c_str()) == INVALID_FILE_ATTRIBUTES)
+        return Fail("Unicode F2 rename must refuse an existing destination");
+    HANDLE preserved = CreateFileW(extendedCollision.c_str(),
+        GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+        FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (preserved == INVALID_HANDLE_VALUE)
+        return Fail("reopen protected Unicode rename target");
+    char checkMarker[sizeof(marker)] = {};
+    DWORD markerRead = 0;
+    const bool contentsSafe =
+        ReadFile(preserved, checkMarker, sizeof(checkMarker), &markerRead, nullptr) &&
+        markerRead == sizeof(marker) &&
+        std::memcmp(checkMarker, marker, sizeof(marker)) == 0;
+    CloseHandle(preserved);
+    if (!contentsSafe || !DeleteFileW(extendedCollision.c_str()))
+        return Fail("Unicode F2 collision preserves destination contents");
+
     // Act / Assert: move then delete only the disposable copy, not source.
     if (!Salamander::TryMoveUnicodeFileNoOverwrite(unicodeCopy, unicodeMoved, operationError) ||
         operationError != ERROR_SUCCESS ||
