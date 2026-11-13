@@ -54,6 +54,8 @@ public static class SalamanderGuiNative
     public static extern IntPtr GetLastActivePopup(IntPtr window);
     [DllImport("user32.dll")]
     public static extern bool IsWindowVisible(IntPtr window);
+    [DllImport("user32.dll")]
+    public static extern bool IsHungAppWindow(IntPtr window);
     public delegate bool WindowCallback(IntPtr window, IntPtr parameter);
     [DllImport("user32.dll")]
     private static extern bool EnumChildWindows(IntPtr window, WindowCallback callback, IntPtr parameter);
@@ -254,13 +256,20 @@ function Invoke-SalamanderCommand {
     }
 
     [IntPtr]$commandResult = [IntPtr]::Zero
+    $timer = [Diagnostics.Stopwatch]::StartNew()
     $sent = [SalamanderGuiNative]::SendMessageTimeout(
         $main, [uint32]0x0111, [UIntPtr]::new([uint32]$CommandId),
         [IntPtr]::Zero, [uint32]0x0002, [uint32]5000, [ref]$commandResult)
+    # Do not call Get-TestDialog (or any other P/Invoke) before capturing
+    # this error; otherwise the diagnostic loses the failed Win32 status.
+    $lastError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+    $timer.Stop()
     if ($sent -eq [IntPtr]::Zero) {
+        $hung = [SalamanderGuiNative]::IsHungAppWindow($main)
         $dialog = Get-TestDialog
-        $lastError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
-        throw "Salamander command $CommandId did not complete (Win32 error $lastError). Modal dialog: $dialog"
+        throw ("Salamander command {0} did not complete after {1} ms; " +
+            "SendMessageTimeout Win32 error {2}; IsHungAppWindow={3}; modal dialog='{4}'" -f
+            $CommandId, $timer.ElapsedMilliseconds, $lastError, $hung, $dialog)
     }
 }
 
@@ -345,7 +354,10 @@ function Go-ToPath {
             $diagnostics.ForegroundPid, $diagnostics.PanelPath,
             $diagnostics.PanelReadError, $dialogText)
     }
-    Assert-True ((Read-PanelPath) -ceq $Path) "Salamander panel path agrees with requested ($($Path.Length) UTF-16 units)"
+    # Wait-Until already read the panel path and established equality.
+    # Repeating the synchronous clipboard command can fail even after a
+    # successful navigation, creating a false negative and extra races.
+    Assert-True ($diagnostics.PanelPath -ceq $Path) "Salamander panel path agrees with requested ($($Path.Length) UTF-16 units)"
 }
 
 function Read-FocusedFilename {
