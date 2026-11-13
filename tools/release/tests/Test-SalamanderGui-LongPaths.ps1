@@ -18,7 +18,8 @@ param(
     [ValidateRange(5,120)][int]$TimeoutSeconds = 25,
     [switch]$KeepFixture,
     [switch]$BaselineOnly,
-    [switch]$ShortUnicodeOnly
+    [switch]$ShortUnicodeOnly,
+    [switch]$ShortOperationsOnly
 )
 
 Set-StrictMode -Version Latest
@@ -393,13 +394,22 @@ try {
     # a baseline-only pass must never be confused with a long-path pass.
     [IO.Directory]::CreateDirectory($source) | Out-Null
     Assert-True ($source.Length -lt 257) 'Short-path GUI baseline fixture is below MAX_PATH'
-    if (-not $BaselineOnly) {
+    if ($ShortOperationsOnly) {
+        # Arrange an independent, short ASCII operation baseline before
+        # migrating disk file operations. Never touch non-fixture files.
+        [IO.Directory]::CreateDirectory($destination) | Out-Null
+        [IO.Directory]::CreateDirectory($moveDir) | Out-Null
+        $asciiName = 'baseline.txt'
+        $asciiRenamedName = 'renamed-baseline.txt'
+        [IO.File]::WriteAllBytes((Join-Path $source $asciiName), $payload)
+    }
+    if (-not $BaselineOnly -and -not $ShortOperationsOnly) {
         # Independent Unicode-only fixture with a short total path.
         $unicodeShortFile = Join-Path $source $utfName
         [IO.File]::WriteAllBytes($unicodeShortFile, $payload)
         Assert-True ($unicodeShortFile.Length -lt 260) 'Unicode filename fixture fits below MAX_PATH'
     }
-    if (-not $BaselineOnly -and -not $ShortUnicodeOnly) {
+    if (-not $BaselineOnly -and -not $ShortUnicodeOnly -and -not $ShortOperationsOnly) {
         [IO.Directory]::CreateDirectory($destination) | Out-Null
         [IO.Directory]::CreateDirectory($moveDir) | Out-Null
         [IO.Directory]::CreateDirectory($maxDir) | Out-Null
@@ -461,6 +471,64 @@ try {
     if ($BaselineOnly) {
         $passed = $true
         Write-Host 'PASS: GUI automation driver works with short ASCII paths.'
+        return
+    }
+
+    if ($ShortOperationsOnly) {
+        # ACT + ASSERT: establish F5, F2, F6 and F8 behavior on a short ASCII
+        # path before changing the production file-operation engine.
+        Send-Keys '{END}'
+        Assert-True ((Read-FocusedFilename) -ceq $asciiName) 'ASCII source file selected for F5'
+        Send-Keys '{TAB}'
+        Go-ToPath $destination
+        Send-Keys '{TAB}'
+        Assert-True ((Read-PanelPath) -ceq $source) 'ASCII source panel active for F5'
+        Send-Keys '{END}'
+        Assert-True ((Read-FocusedFilename) -ceq $asciiName) 'Exact ASCII file selected before F5'
+        Send-Keys '{F5}'
+        Start-Sleep -Milliseconds 400
+        Send-Keys '{ENTER}'
+        $copied = Join-Path $destination $asciiName
+        Wait-Until { Test-Content $copied } 'ASCII F5 copy'
+        Assert-True (Test-Content (Join-Path $source $asciiName)) 'F5 preserved original ASCII source'
+
+        Send-Keys '{TAB}'
+        Assert-True ((Read-PanelPath) -ceq $destination) 'ASCII copy destination active for F2'
+        Send-Keys '{END}'
+        Assert-True ((Read-FocusedFilename) -ceq $asciiName) 'Exact ASCII file selected before F2'
+        Set-ClipboardText $asciiRenamedName
+        Send-Keys '{F2}'
+        Start-Sleep -Milliseconds 350
+        Send-Keys '^a'
+        Send-Keys '^v'
+        Send-Keys '{ENTER}'
+        $renamed = Join-Path $destination $asciiRenamedName
+        Wait-Until { (Test-Content $renamed) -and -not [IO.File]::Exists($copied) } 'ASCII F2 rename'
+
+        Send-Keys '{TAB}'
+        Go-ToPath $moveDir
+        Send-Keys '{TAB}'
+        Assert-True ((Read-PanelPath) -ceq $destination) 'ASCII source panel active for F6'
+        Send-Keys '{END}'
+        Assert-True ((Read-FocusedFilename) -ceq $asciiRenamedName) 'Exact ASCII file selected before F6'
+        Send-Keys '{F6}'
+        Start-Sleep -Milliseconds 400
+        Send-Keys '{ENTER}'
+        $moved = Join-Path $moveDir $asciiRenamedName
+        Wait-Until { (Test-Content $moved) -and -not [IO.File]::Exists($renamed) } 'ASCII F6 move'
+
+        Send-Keys '{TAB}'
+        Assert-True ((Read-PanelPath) -ceq $moveDir) 'Disposable ASCII panel active for F8'
+        Send-Keys '{END}'
+        Assert-True ((Read-FocusedFilename) -ceq $asciiRenamedName) 'Exact disposable ASCII file selected before F8'
+        Send-Keys '{F8}'
+        Start-Sleep -Milliseconds 350
+        Send-Keys '{ENTER}'
+        Wait-Until { -not [IO.File]::Exists($moved) } 'ASCII F8 deletion'
+        Assert-True (Test-Content (Join-Path $source $asciiName)) 'Original ASCII source unaffected by F8'
+
+        $passed = $true
+        Write-Host 'PASS: real short ASCII F5/F2/F6/F8 GUI operation baseline.'
         return
     }
 
