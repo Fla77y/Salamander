@@ -2359,6 +2359,18 @@ void CFilesWindow::RenameFile(int specialIndex)
     // missing identities must still be refused before prompting.
     if (Is(ptDisk) && UnicodeDiskNames.IsUnsafeAnsiName(f->Name))
     {
+        // Directory rename must also coordinate child panels, open handles
+        // and redirected/reparse-point paths with the full operation engine.
+        // Restrict this first W write path to ordinary files.
+        if (isDir || (f->Attr & FILE_ATTRIBUTE_REPARSE_POINT))
+        {
+            SalMessageBox(HWindow,
+                          "Unicode directory and reparse-point rename is not yet "
+                          "supported safely. No files were changed.",
+                          LoadStr(IDS_ERRORRENAMINGFILE), MB_OK | MB_ICONEXCLAMATION);
+            return;
+        }
+
         const std::string legacyAlias(f->Name);
         std::wstring originalName;
         if (!UnicodeDiskNames.TryGetLossy(legacyAlias.c_str(), originalName))
