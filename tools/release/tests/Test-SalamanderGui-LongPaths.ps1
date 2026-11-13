@@ -596,7 +596,7 @@ try {
     }
     if (-not $BaselineOnly -and -not $ShortUnicodeOnly -and
         -not $ShortUnicodeCollisionOnly -and
-        -not $ShortUnicodeBestFitOnly -and
+        -not $ShortUnicodeBestFitOnly -and -not $ShortUnicodeRenameOnly -and
         -not $ShortUnicodeUnsafeOperationsOnly -and -not $ShortOperationsOnly) {
         [IO.Directory]::CreateDirectory($destination) | Out-Null
         [IO.Directory]::CreateDirectory($moveDir) | Out-Null
