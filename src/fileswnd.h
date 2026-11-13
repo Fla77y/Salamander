@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "common/win32_unicode_panel_name.h"
+
 #define NUM_OF_CHECKTHREADS 30                   // maximum number of threads for "non-blocking" path accessibility tests
 #define ICONOVR_REFRESH_PERIOD 2000              // minimum interval between icon-overlay refreshes in the panel (see IconOverlaysChangedOnPath)
 #define MIN_DELAY_BETWEENINACTIVEREFRESHES 2000  // minimum refresh interval when the main window is inactive
@@ -706,6 +708,9 @@ enum CViewModeEnum;
 class CFilesWindow : public CFilesWindowAncestor
 {
 public:
+    // Read-only mapping from legacy disk-panel names to original UTF-16 names.
+    // Never put this state into the plug-in-visible CFileData structure.
+    Salamander::UnicodePanelNameCache UnicodeDiskNames;
     CViewTemplate* ViewTemplate;            // pointer to the template defining mode, name and visibility
                                             // of the standard Salamander columns VIEW_SHOW_xxxx
     BOOL NarrowedNameColumn;                // TRUE = Name column smart mode is enabled and it had to be narrowed
