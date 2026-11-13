@@ -19,6 +19,7 @@ param(
     [switch]$KeepFixture,
     [switch]$BaselineOnly,
     [switch]$ShortUnicodeOnly,
+    [switch]$ShortUnicodeRenameOnly,
     [switch]$ShortUnicodeBestFitOnly,
     [switch]$ShortUnicodeCollisionOnly,
     [switch]$ShortUnicodeUnsafeOperationsOnly,
@@ -736,6 +737,24 @@ try {
         Assert-True (Test-Content $bestFitFile) 'Best-fit Unicode file content remains intact'
         $passed = $true
         Write-Host 'PASS: Unicode GUI filename round-trip survives non-question-mark ANSI best-fit mapping.'
+        return
+    }
+
+    if ($ShortUnicodeRenameOnly) {
+        Send-Keys '{END}'
+        Assert-True ((Read-FocusedFilename) -ceq $utfName) 'Unicode source filename selected for F2'
+        Set-ClipboardText $renamedName
+        Send-Keys '{F2}'
+        Start-Sleep -Milliseconds 350
+        Send-Keys '^a'
+        Send-Keys '^v'
+        Send-Keys '{ENTER}'
+        $renamedPath = Join-Path $source $renamedName
+        Wait-Until { [IO.File]::Exists($renamedPath) -and
+            -not [IO.File]::Exists($unicodeShortFile) } 'UTF-16 F2 rename without ANSI narrowing'
+        Assert-True (Test-Content $renamedPath) 'Unicode F2 renamed file preserves original bytes'
+        $passed = $true
+        Write-Host 'PASS: genuine Unicode F2 rename works without ANSI conversion or overwrite.'
         return
     }
 
