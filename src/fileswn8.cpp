@@ -13,6 +13,7 @@
 #include "worker.h"
 #include "pack.h"
 #include "mapi.h"
+#include "common/legacy_disk_name_safety.h"
 
 //
 // ****************************************************************************
@@ -139,6 +140,37 @@ void CFilesWindow::FilesAction(CActionType type, CFilesWindow* target, int count
     CALL_STACK_MESSAGE3("CFilesWindow::FilesAction(%d, , %d)", type, countSizeMode);
     if (Dirs->Count + Files->Count == 0)
         return;
+
+    // The legacy disk operation engine addresses files through ANSI names.
+    // Such a name cannot safely identify a Unicode file after substitution
+    // with '?'. Reject the entire operation before selection changes, path
+    // updates, dialogs, refresh suspension or filesystem side effects.
+    if (Is(ptDisk) &&
+        (type == atCopy || type == atMove || type == atDelete ||
+         type == atChangeCase))
+    {
+        const int dirCount = Dirs->Count;
+        const int itemCount = dirCount + Files->Count;
+        const bool unsafe = Salamander::SelectionContainsLossyDiskName(
+            static_cast<std::size_t>(itemCount),
+            static_cast<std::size_t>(GetSelCount()),
+            static_cast<std::size_t>(GetCaretIndex()),
+            [this, dirCount](std::size_t index) -> Salamander::LegacyDiskEntryView {
+                const CFileData& entry =
+                    index < static_cast<std::size_t>(dirCount)
+                        ? Dirs->At(static_cast<int>(index))
+                        : Files->At(static_cast<int>(index) - dirCount);
+                return {entry.Name, entry.Selected != 0};
+            });
+        if (unsafe)
+        {
+            SalMessageBox(HWindow,
+                          "This disk filename cannot be represented safely by the "
+                          "legacy ANSI file-operation engine. No files were changed.",
+                          LoadStr(IDS_ERRORTITLE), MB_OK | MB_ICONEXCLAMATION);
+            return;
+        }
+    }
 
     // restore DefaultDir
     MainWindow->UpdateDefaultDir(MainWindow->GetActivePanel() == this);
