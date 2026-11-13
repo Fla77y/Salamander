@@ -120,6 +120,13 @@ if ($driverText -notmatch '\[switch\]\$ShortUnicodeTransferCollisionOnly' -or
 }
 Write-Host 'PASS: Unicode F5/F6 GUI transfer and collision assertions are present.'
 
+if ($driverText -notmatch '\[switch\]\$ShortUnicodeRecycleOnly' -or
+    $driverText -notmatch 'Unicode F8 refusal preserves file bytes' -or
+    $driverText -notmatch 'Unicode F8 moves fixture to Recycle Bin') {
+    throw 'Unicode F8 recycle GUI regression must require data preservation on refusal.'
+}
+Write-Host 'PASS: Unicode F8 GUI recycle and refusal assertions are present.'
+
 # Compile the embedded C# Win32 interop in the headless Windows test process.
 # PowerShell's AST check alone would not catch invalid P/Invoke signatures.
 $interopSource = [regex]::Match(
