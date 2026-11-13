@@ -593,6 +593,28 @@ void CFilesWindow::DrawBriefDetailedItem(HDC hTgtDC, int itemIndex, RECT* itemRe
         else
             nameLen = f->NameLen;
 
+        // The legacy CFileData name can contain ANSI replacement '?' bytes.
+        // A unique UTF-16 name is rendered in this read-only column, without
+        // passing a reconstructed filename into legacy file operations.
+        std::wstring unicodeName;
+        const bool drawUnicodeName =
+            Is(ptDisk) && strchr(f->Name, '?') != NULL &&
+            UnicodeDiskNames.TryGet(f->Name, unicodeName);
+        if (drawUnicodeName)
+        {
+            if ((!isDir || Configuration.SortDirsByExt) &&
+                IsExtensionInSeparateColumn() && f->Ext[0] != 0 &&
+                f->Ext > f->Name + 1)
+            {
+                const std::size_t dot = unicodeName.find_last_of(L'.');
+                nameLen = (dot != std::wstring::npos && dot > 0)
+                              ? static_cast<int>(dot)
+                              : static_cast<int>(unicodeName.size());
+            }
+            else
+                nameLen = static_cast<int>(unicodeName.size());
+        }
+
         // set the the applied font, background color and text color
         SetFontAndColors(hDC, highlightMasksItem, f, isItemFocusedOrEditMode, itemIndex);
 
@@ -692,8 +714,12 @@ void CFilesWindow::DrawBriefDetailedItem(HDC hTgtDC, int itemIndex, RECT* itemRe
                 if (GetViewMode() == vmDetailed && (column->FixedWidth == 1 || NarrowedNameColumn))
                 {
                     textWidth = nameWidth - 1 - IconSizes[ICONSIZE_16] - 1 - 2 - SPACE_WIDTH;
-                    GetTextExtentExPoint(hDC, TransferBuffer, nameLen, textWidth,
-                                         &fitChars, DrawItemAlpDx, &fnSZ);
+                    if (drawUnicodeName)
+                        GetTextExtentExPointW(hDC, unicodeName.c_str(), nameLen,
+                                              textWidth, &fitChars, DrawItemAlpDx, &fnSZ);
+                    else
+                        GetTextExtentExPoint(hDC, TransferBuffer, nameLen, textWidth,
+                                             &fitChars, DrawItemAlpDx, &fnSZ);
                     int newWidth = 1 + IconSizes[ICONSIZE_16] + 1 + 2 + fnSZ.cx + 3;
                     if (newWidth > nameWidth)
                         newWidth = nameWidth;
@@ -701,7 +727,10 @@ void CFilesWindow::DrawBriefDetailedItem(HDC hTgtDC, int itemIndex, RECT* itemRe
                 }
                 else
                 {
-                    GetTextExtentPoint32(hDC, TransferBuffer, nameLen, &fnSZ);
+                    if (drawUnicodeName)
+                        GetTextExtentPoint32W(hDC, unicodeName.c_str(), nameLen, &fnSZ);
+                    else
+                        GetTextExtentPoint32(hDC, TransferBuffer, nameLen, &fnSZ);
                     adjR.right = r.right = rect.left + 1 + IconSizes[ICONSIZE_16] + 1 + 2 + fnSZ.cx + 3;
                 }
 
@@ -716,8 +745,12 @@ void CFilesWindow::DrawBriefDetailedItem(HDC hTgtDC, int itemIndex, RECT* itemRe
                     // no width measured yet - let's measure it now
                     // the string may be longer than the available space and must end with "..."
                     textWidth = nameWidth - 1 - IconSizes[ICONSIZE_16] - 1 - 2 - SPACE_WIDTH;
-                    GetTextExtentExPoint(hDC, TransferBuffer, nameLen, textWidth,
-                                         &fitChars, DrawItemAlpDx, &fnSZ);
+                    if (drawUnicodeName)
+                        GetTextExtentExPointW(hDC, unicodeName.c_str(), nameLen,
+                                              textWidth, &fitChars, DrawItemAlpDx, &fnSZ);
+                    else
+                        GetTextExtentExPoint(hDC, TransferBuffer, nameLen, textWidth,
+                                             &fitChars, DrawItemAlpDx, &fnSZ);
                 }
                 if (fitChars < nameLen)
                 {
@@ -740,13 +773,38 @@ void CFilesWindow::DrawBriefDetailedItem(HDC hTgtDC, int itemIndex, RECT* itemRe
                         totalCount = 2;
                     }
 
-                    // DRAWFLAG_MASK: hack, under XP some stuff is added in font of the text in the mask while drawing short texts; not an issue if text is not drawn
-                    ExtTextOut(hDC, r.left + 2, y, ETO_OPAQUE, &adjR, DrawItemBuff, (drawFlags & DRAWFLAG_MASK) ? 0 : totalCount, NULL);
+                    // Keep surrogate pairs intact if the column ends
+                    // between UTF-16 units of a supplementary character.
+                    if (drawUnicodeName)
+                    {
+                        int wideCount = fitChars;
+                        if (wideCount > 0 && wideCount < nameLen &&
+                            unicodeName[wideCount - 1] >= 0xD800 &&
+                            unicodeName[wideCount - 1] <= 0xDBFF &&
+                            unicodeName[wideCount] >= 0xDC00 &&
+                            unicodeName[wideCount] <= 0xDFFF)
+                            --wideCount;
+                        std::wstring abbreviated(unicodeName, 0, wideCount);
+                        abbreviated.append(L"...");
+                        ExtTextOutW(hDC, r.left + 2, y, ETO_OPAQUE, &adjR,
+                                    abbreviated.c_str(),
+                                    (drawFlags & DRAWFLAG_MASK) ? 0 : static_cast<UINT>(abbreviated.size()),
+                                    NULL);
+                    }
+                    else
+                        ExtTextOut(hDC, r.left + 2, y, ETO_OPAQUE, &adjR, DrawItemBuff,
+                                   (drawFlags & DRAWFLAG_MASK) ? 0 : totalCount, NULL);
                     goto SKIP1;
                 }
             }
-            // DRAWFLAG_MASK: hack, under XP some stuff is added in font of the text in the mask while drawing short texts; not an issue if text is not drawn
-            ExtTextOut(hDC, r.left + 2, y, ETO_OPAQUE, &adjR, TransferBuffer, (drawFlags & DRAWFLAG_MASK) ? 0 : nameLen, NULL);
+            // Draw exact UTF-16 glyphs for a uniquely resolved disk name.
+            // Other columns continue to use their existing ANSI contract.
+            if (drawUnicodeName)
+                ExtTextOutW(hDC, r.left + 2, y, ETO_OPAQUE, &adjR,
+                            unicodeName.c_str(), (drawFlags & DRAWFLAG_MASK) ? 0 : nameLen, NULL);
+            else
+                ExtTextOut(hDC, r.left + 2, y, ETO_OPAQUE, &adjR, TransferBuffer,
+                           (drawFlags & DRAWFLAG_MASK) ? 0 : nameLen, NULL);
         SKIP1:
             if (!Configuration.FullRowSelect || GetViewMode() == vmBrief)
             {
