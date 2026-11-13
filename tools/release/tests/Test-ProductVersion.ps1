@@ -2,6 +2,9 @@
 # SPDX-FileCopyrightText: 2026 Open Salamander Authors
 # SPDX-License-Identifier: GPL-2.0-or-later
 # Checks the product release label without changing the independent plugin SDK ABI.
+[CmdletBinding()]
+param([string]$BinaryPath)
+
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
@@ -42,3 +45,20 @@ if ($versionHeader -notmatch '(?m)^#define\s+LAST_VERSION_OF_SALAMANDER\s+103\s*
     throw 'Do not raise the minimum compatible plug-in SDK version for a product-label-only change.'
 }
 Write-Host 'PASS: Open Salamander 5.1 product, installer, shell extension and preserved plugin SDK compatibility.'
+
+if (-not [string]::IsNullOrWhiteSpace($BinaryPath)) {
+    # Arrange: inspect the *built* Win32 VERSIONINFO, not only preprocessor source.
+    if (-not (Test-Path -LiteralPath $BinaryPath -PathType Leaf)) {
+        throw "Missing product executable for version assertion: $BinaryPath"
+    }
+    # Act
+    $binaryVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo(
+        [IO.Path]::GetFullPath($BinaryPath))
+    # Assert
+    if ($binaryVersion.ProductMajorPart -ne $expectedMajor -or
+        $binaryVersion.ProductMinorPart -ne $expectedMinor -or
+        -not $binaryVersion.ProductVersion.StartsWith('5.1', [StringComparison]::Ordinal)) {
+        throw "Built binary has inconsistent product version: $BinaryPath : $($binaryVersion.ProductVersion)"
+    }
+    Write-Host "PASS: built executable has 5.1 VERSIONINFO: $BinaryPath"
+}
