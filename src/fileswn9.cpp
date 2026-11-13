@@ -23,6 +23,7 @@ extern "C"
 #include "shexreg.h"
 }
 #include "salshlib.h"
+#include "common/win32_unicode_panel_name.h"
 
 // !!! do not use StdColumnsPrivate directly, use GetStdColumn()
 CColumDataItem StdColumnsPrivate[STANDARD_COLUMNS_COUNT] =
@@ -1867,6 +1868,32 @@ BOOL CFilesWindow::CopyFocusedNameToClipboard(CCopyFocusedNameModeEnum mode)
         return FALSE; // ignore the up-directory entry
     if (FocusedIndex < 0 || FocusedIndex >= Files->Count + Dirs->Count)
         return FALSE; // ignore an invalid index
+
+    CFileData* focusedItem = (FocusedIndex < Dirs->Count)
+                                ? &Dirs->At(FocusedIndex)
+                                : &Files->At(FocusedIndex - Dirs->Count);
+
+    // A question mark is not a legal Win32 filename character. When it
+    // appears in a disk panel entry it came from a lossy ANSI conversion.
+    // Resolve the real Unicode name read-only, and never guess if two
+    // different names have the same legacy alias.
+    if (mode == cfnmShort && Is(ptDisk) && strchr(focusedItem->Name, '?') != NULL)
+    {
+        std::wstring unicodeDirectory;
+        if (!Salamander::TryGetUnicodePanelDirectory(GetPath(), unicodeDirectory))
+            return FALSE;
+
+        std::wstring exactName;
+        DWORD error = ERROR_SUCCESS;
+        const auto resolution = Salamander::ResolveUnicodePanelFileName(
+            unicodeDirectory.c_str(), focusedItem->Name, exactName, error);
+        if (resolution != Salamander::UnicodePanelNameResult::Unique)
+        {
+            TRACE_E("Cannot resolve Unicode disk name uniquely (error " << error << ")");
+            return FALSE; // Never publish a guessed filename.
+        }
+        return Salamander::TryCopyUnicodeNameToClipboard(MainWindow->HWindow, exactName) ? TRUE : FALSE;
+    }
 
     char buff[2 * MAX_PATH];
     buff[0] = 0;
