@@ -17,6 +17,67 @@ a fixed capacity. A path can exceed 260 characters while its individual
 filename components remain limited by the filesystem (typically 255 UTF-16
 code units on NTFS).
 
+## Test-first Unicode migration foundations (13 November 2026)
+
+This is **incremental work, not an end-to-end migration or a GUI fix**:
+
+1. **Owned disk names and paths:** `src/common/utf16_disk_path.h`
+   introduces separate, dynamically allocated `Utf16FileName` and
+   `Utf16DiskPath` C++17 types. The model preserves UTF-16 surrogate pairs,
+   distinguishes names that collapse to the same ANSI replacement characters,
+   validates component length and reserved Win32 syntax, and rejects relative,
+   ambiguous and invalid UNC paths. It deliberately does **not** change
+   `CFileData`, its `char* Name` field, or the plugin ABI.
+2. **Native Unicode directory enumeration:** Existing
+   `TryEnumerateLongDirectory` in `src/common/win32_long_directory.h`
+   now accepts the owned disk-path type as well as existing `wchar_t*` paths.
+   Results retain their full Unicode names, but **are not yet wired into
+   the Salamander panel data model**.
+3. **Non-overwriting file operations:** The standalone
+   `src/common/win32_unicode_file_ops.h` uses extended-length Win32
+   paths and explicit `CopyFileW`, `MoveFileExW`, and `DeleteFileW`.
+   Rename is the same-volume move primitive. It neither overwrites existing
+   destinations nor silently attempts cross-volume copy-and-delete.
+   These primitives are **not** a completed replacement for Salamander's
+   F2/F5/F6/F8 engine, recursive handling, plugins, cancellation or UI.
+4. **Long paths:** The owned model handles absolute UTF-16 paths above
+   `MAX_PATH` without a fixed `char[]`. The production disk-panel
+   `Path[MAX_PATH]`, `ChangePathToDisk` guard, shell integration and
+   operation engines have not been migrated. A long-path GUI pass remains
+   blocked; do not merge this PR as a finished fix.
+
+### Regression and acceptance gates
+
+- Test definitions were committed before each new foundation implementation.
+- `tools/tests/utf16_disk_path.cpp` tests Unicode identity, supplementary
+  characters, invalid surrogates, 255/256-code-unit components, path
+  validation and UNC. It is compiled by `manage.cmd --test` and Windows CI.
+- `tools/tests/long_path_io.cpp` tests Unicode file I/O, enumeration,
+  non-overwriting copy, same-volume move and deletion on >260-unit paths.
+- GitHub Actions **Long path regression foundations** run
+  [43437548771](https://github.com/Fla77y/Salamander/actions/runs/43437548771)
+  passed the foundation tests at commit `6539d1c`. The typed directory
+  overload was added after this run and must be reverified at its new SHA.
+- `manage.cmd --test-gui-baseline` previously passed on the actual desktop.
+  `--test-gui-names` **failed** reproducibly on
+  `Größe_東京_😀.txt`: Salamander copied `Größe_??_??.txt`.
+- New `manage.cmd --test-gui-operations-baseline` checks real F2/F5/F6/F8
+  on disposable short ASCII files **before** their production implementation
+  is changed. It is not yet executed on an interactive Windows desktop.
+- `manage.cmd --test-gui` remains the mandatory long-path/Unicode GUI gate.
+  No foundation-level green result substitutes for this gate.
+
+### Next production migration
+
+Characterize existing panel selection, filtering, refresh, rename, copy,
+move and delete behavior under the new ASCII GUI gate before touching their
+implementation. Then migrate on-disk panel metadata and path ownership to
+wide UTF-16 without changing the binary layout of `CFileData` or the plugin
+interfaces. Preserve plugin-FS/archive behavior using an explicit legacy
+compatibility boundary; never send the truncated ANSI alias of a file into
+destructive operations. Re-run short ASCII, short Unicode, long-path,
+negative and plugin regressions after each converted call chain.
+
 ## Phase 1: Baseline and bounded operations
 
 - `tools/tests/Test-LongPaths.ps1` generates disposable cases for total
