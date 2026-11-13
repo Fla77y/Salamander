@@ -155,6 +155,25 @@ int main()
     if (!nameOk)
         return Fail("Unicode filename preserved during enumeration");
 
+    // Two distinct filesystem names may collapse to the same CP_ACP alias.
+    // A future panel representation must not conflate their identities.
+    const std::wstring distinctName = current + L"\\Größe_大阪_😀.txt";
+    std::wstring extendedDistinct;
+    if (!Convert(distinctName, extendedDistinct))
+        return Fail("prepare collision-resistant Unicode name");
+    HANDLE distinctFile = CreateFileW(extendedDistinct.c_str(), GENERIC_WRITE, 0,
+                                      nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (distinctFile == INVALID_HANDLE_VALUE)
+        return Fail("create second distinct Unicode name");
+    const char distinctPayload[] = "other-identity";
+    DWORD distinctWritten = 0;
+    const bool distinctWriteOk = WriteFile(distinctFile, distinctPayload,
+                                           sizeof(distinctPayload), &distinctWritten, nullptr) &&
+                                 distinctWritten == sizeof(distinctPayload);
+    CloseHandle(distinctFile);
+    if (!distinctWriteOk)
+        return Fail("write second distinct Unicode name");
+
     // Maximum-length single filename (255 UTF-16 code units) beneath a
     // long path. This must remain distinct from the total path limit.
     const std::wstring maxName = L"東京" + std::wstring(249, L'a') + L".txt";
@@ -175,19 +194,21 @@ int main()
     std::vector<Salamander::LongDirectoryEntry> entries;
     DWORD enumError = ERROR_SUCCESS;
     if (!Salamander::TryEnumerateLongDirectory(current.c_str(), entries, enumError) ||
-        enumError != ERROR_SUCCESS || entries.size() != 2)
+        enumError != ERROR_SUCCESS || entries.size() != 3)
         return Fail("Unicode long directory enumeration");
     bool foundUnicode = false;
+    bool foundDistinctUnicode = false;
     bool foundMaxName = false;
     for (const auto& entry : entries)
     {
         if ((entry.attributes & FILE_ATTRIBUTE_DIRECTORY) != 0)
             return Fail("unexpected directory in fixture");
         foundUnicode |= entry.name == L"Größe_東京_😀.txt";
+        foundDistinctUnicode |= entry.name == L"Größe_大阪_😀.txt";
         foundMaxName |= entry.name == maxName;
     }
-    if (!foundUnicode || !foundMaxName)
-        return Fail("directory enumeration must preserve UTF-16 filenames");
+    if (!foundUnicode || !foundDistinctUnicode || !foundMaxName)
+        return Fail("directory enumeration must preserve distinct UTF-16 identities");
 
     // Arrange: typed path is the new non-ANSI integration boundary.
     Salamander::Utf16DiskPath unicodeDirectory;
@@ -203,6 +224,11 @@ int main()
         typedUnicodeName |= entry.name == L"Größe_東京_😀.txt";
     if (!typedUnicodeName)
         return Fail("typed enumeration retains exact supplementary UTF-16 name");
+    bool typedDistinctName = false;
+    for (const auto& entry : typedEntries)
+        typedDistinctName |= entry.name == L"Größe_大阪_😀.txt";
+    if (!typedDistinctName)
+        return Fail("typed enumeration retains both distinct Unicode names");
 
     // Arrange / Act / Assert: default invalid path cannot reach Win32 API.
     Salamander::Utf16DiskPath missingDirectory;
@@ -322,6 +348,25 @@ int main()
         return Fail("retry must not recreate a deleted file");
     }
 
+    // Deleting the explicitly selected Unicode source must never delete
+    // the second name whose ANSI replacement could look identical.
+    HANDLE unaffectedFile = CreateFileW(extendedDistinct.c_str(), GENERIC_READ,
+        FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (unaffectedFile == INVALID_HANDLE_VALUE)
+        return Fail("distinct Unicode source survived copy/move/delete");
+    char unaffectedData[sizeof(distinctPayload)] = {};
+    DWORD unaffectedBytes = 0;
+    const bool unaffectedOk = ReadFile(unaffectedFile, unaffectedData,
+                                       sizeof(unaffectedData), &unaffectedBytes, nullptr) &&
+                               unaffectedBytes == sizeof(distinctPayload) &&
+                               std::string(unaffectedData, unaffectedBytes) ==
+                                   std::string(distinctPayload, sizeof(distinctPayload));
+    CloseHandle(unaffectedFile);
+    if (!unaffectedOk)
+        return Fail("distinct Unicode source retained bytes");
+
+    if (!DeleteFileW(extendedDistinct.c_str()))
+        return Fail("DeleteFileW distinct Unicode filename");
     if (!DeleteFileW(extendedMaxFile.c_str()))
         return Fail("DeleteFileW maximum filename");
     if (!DeleteFileW(result.c_str()))
