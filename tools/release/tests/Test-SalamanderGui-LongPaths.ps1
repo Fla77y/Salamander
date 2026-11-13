@@ -16,7 +16,8 @@
 param(
     [string]$SalamanderExe = 'D:\Build\OpenSal\salamander\Release_x64\salamand.exe',
     [ValidateRange(5,120)][int]$TimeoutSeconds = 25,
-    [switch]$KeepFixture
+    [switch]$KeepFixture,
+    [switch]$BaselineOnly
 )
 
 Set-StrictMode -Version Latest
@@ -214,6 +215,11 @@ try {
     # that the application lacks long-path support.
     Go-ToPath $source
     Assert-True ((Read-PanelPath) -ceq $source) 'GUI driver can navigate a normal short directory'
+    if ($BaselineOnly) {
+        $passed = $true
+        Write-Host 'PASS: GUI automation driver works with short ASCII paths.'
+        return
+    }
 
     # ACT + ASSERT: actual GUI long directory change and filename retrieval.
     Go-ToPath $deep
