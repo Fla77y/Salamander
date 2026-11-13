@@ -19,6 +19,7 @@ param(
     [switch]$KeepFixture,
     [switch]$BaselineOnly,
     [switch]$ShortUnicodeOnly,
+    [switch]$ShortUnicodeCollisionOnly,
     [switch]$ShortOperationsOnly
 )
 
@@ -56,6 +57,20 @@ public static class SalamanderGuiNative
     public static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")]
     public static extern bool IsHungAppWindow(IntPtr window);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern int WideCharToMultiByte(
+        uint codePage, uint flags, string source, int sourceLength,
+        byte[] destination, int destinationLength, IntPtr defaultChar, IntPtr usedDefault);
+    public static string GetLegacyFilenameAliasHex(string name)
+    {
+        if (String.IsNullOrEmpty(name)) throw new ArgumentException("Missing filename", "name");
+        int bytes = WideCharToMultiByte(0, 0, name, -1, null, 0, IntPtr.Zero, IntPtr.Zero);
+        if (bytes <= 1) throw new InvalidOperationException("Cannot encode ANSI filename alias");
+        byte[] encoded = new byte[bytes];
+        if (WideCharToMultiByte(0, 0, name, -1, encoded, bytes, IntPtr.Zero, IntPtr.Zero) != bytes)
+            throw new InvalidOperationException("Cannot encode ANSI filename alias");
+        return BitConverter.ToString(encoded, 0, bytes - 1);
+    }
     public delegate bool WindowCallback(IntPtr window, IntPtr parameter);
     [DllImport("user32.dll")]
     private static extern bool EnumChildWindows(IntPtr window, WindowCallback callback, IntPtr parameter);
@@ -155,6 +170,7 @@ $process = $null
 $mainWindowHandle = [IntPtr]::Zero
 $passed = $false
 $utfName = 'Größe_東京_😀.txt'
+$utfCollisionName = 'Größe_大阪_😀.txt'
 $payload = [Text.Encoding]::UTF8.GetBytes(('Regression-äöü-東京-😀' * 1024))
 
 function Assert-True {
@@ -421,7 +437,16 @@ try {
         [IO.File]::WriteAllBytes($unicodeShortFile, $payload)
         Assert-True ($unicodeShortFile.Length -lt 260) 'Unicode filename fixture fits below MAX_PATH'
     }
-    if (-not $BaselineOnly -and -not $ShortUnicodeOnly -and -not $ShortOperationsOnly) {
+    if ($ShortUnicodeCollisionOnly) {
+        # These distinct UTF-16 names may have the same CP_ACP alias.
+        # A distinct marker protects against cross-file identity errors.
+        $collisionFile = Join-Path $source $utfCollisionName
+        $collisionPayload = [Text.Encoding]::UTF8.GetBytes('DISTINCT-OSAKA-FILE')
+        [IO.File]::WriteAllBytes($collisionFile, $collisionPayload)
+        Assert-True ($collisionFile.Length -lt 260) 'Unicode collision fixture uses a short path'
+    }
+    if (-not $BaselineOnly -and -not $ShortUnicodeOnly -and
+        -not $ShortUnicodeCollisionOnly -and -not $ShortOperationsOnly) {
         [IO.Directory]::CreateDirectory($destination) | Out-Null
         [IO.Directory]::CreateDirectory($moveDir) | Out-Null
         [IO.Directory]::CreateDirectory($maxDir) | Out-Null
@@ -543,6 +568,33 @@ try {
 
         $passed = $true
         Write-Host 'PASS: real short ASCII F5/F2/F6/F8 GUI operation baseline.'
+        return
+    }
+
+    if ($ShortUnicodeCollisionOnly) {
+        # Require an actual CP_ACP alias collision before checking that
+        # Salamander refuses to export a guessed filename. When the system
+        # ACP represents both names distinctly (e.g. UTF-8), skip cleanly.
+        $aliasA = [SalamanderGuiNative]::GetLegacyFilenameAliasHex($utfName)
+        $aliasB = [SalamanderGuiNative]::GetLegacyFilenameAliasHex($utfCollisionName)
+        if ($aliasA -cne $aliasB) {
+            $passed = $true
+            Write-Host 'SKIP: current Windows ANSI code page does not conflate the two Unicode names.'
+            return
+        }
+
+        # Both files are real and remain inside the disposable test fixture.
+        # Neither F2/F5/F6/F8 nor any other destructive GUI command is sent.
+        Send-Keys '{END}'
+        Set-ClipboardText 'SENTINEL_COLLISION'
+        Invoke-SalamanderCommand -CommandId 710
+        Assert-True ((Get-ClipboardText) -ceq 'SENTINEL_COLLISION') 'Unicode filename collision refuses clipboard export'
+        Assert-True ((Test-Content $unicodeShortFile) -and
+            [Linq.Enumerable]::SequenceEqual[byte](
+                [IO.File]::ReadAllBytes($collisionFile), $collisionPayload
+            )) 'Collision retained both original file contents'
+        $passed = $true
+        Write-Host 'PASS: Unicode filename collision fails closed without modifying either file.'
         return
     }
 
