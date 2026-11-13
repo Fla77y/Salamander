@@ -6,7 +6,7 @@
     Tests Salamander's GUI with Unicode names and paths >260 UTF-16 units.
 .DESCRIPTION
     Requires unlocked interactive Windows desktop and PowerShell 7 in STA.
-    Uses documented Shift+F7, Ctrl+Alt+Insert, Alt+Shift+Insert, F2/F5/F6/F8
+    Uses documented Ctrl+V, Ctrl+Alt+Insert, Alt+Shift+Insert, F2/F5/F6/F8
     shortcuts. Only creates/operates on disposable temporary files.
     An explicit failure means no long-path GUI compatibility was proven.
 .EXAMPLE
@@ -180,17 +180,16 @@ function Read-PanelPath {
 function Go-ToPath {
     param([string]$Path)
     Focus-TestProcess
+    # Salamander's documented Edit > Paste (Ctrl+V) directly changes the
+    # active panel to a directory stored as plain clipboard text. Avoid
+    # Shift+F7 here: its modal dialog was not reliably detected and blocked
+    # even the short-path automation baseline on a real desktop.
+    #
+    # The clipboard contains only CF_UNICODETEXT, never CF_HDROP, so this
+    # does not instruct Salamander to copy/move user files.
     Set-ClipboardText $Path
-    Send-Keys '+{F7}'
-    # Wait for the actual Change Directory dialog, not an arbitrary delay.
-    # This avoids intermittently typing into the main panel on slow machines.
-    Wait-Until {
-        $text = Get-TestDialog
-        return $null -ne $text -and $text -match 'Change Directory'
-    } 'Change Directory dialog after Shift+F7'
-    Send-Keys '^a'
+    Assert-True ((Get-ClipboardText) -ceq $Path) 'Clipboard contains only the requested text path'
     Send-Keys '^v'
-    Send-Keys '{ENTER}'
     Wait-Until {
         $dialogText = Get-TestDialog
         if ($dialogText -match 'Error Changing Directory|too long name|Cannot finish operation') {
