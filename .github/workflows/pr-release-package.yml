@@ -5,6 +5,9 @@ on:
     branches: ["**"]
     paths:
       - "tools/release/**"
+      - "src/safefile.cpp"
+      - "src/fileswn0.cpp"
+      - "src/common/win32_long_path.h"
       - ".github/workflows/pr-release-package.yml"
   workflow_dispatch:
 
@@ -56,6 +59,16 @@ jobs:
         run: ./tools/release/Update-Build-Test-Package.ps1 -SkipUpdate -BuildRoot (Join-Path $env:RUNNER_TEMP 'OpenSal')
 
       # Never expose Debug CRT DLLs via public workflow artifacts.
+      - name: Automated GUI regression for Unicode and >260 paths
+        shell: pwsh
+        run: |
+          $app = Join-Path $env:RUNNER_TEMP 'OpenSal\salamander\Release_x64\salamand.exe'
+          & pwsh -Sta -NoProfile -File ./tools/release/tests/Test-SalamanderGui-LongPaths.ps1 -SalamanderExe $app
+          if ($LASTEXITCODE -ne 0) {
+            throw "Real Salamander GUI long-path regression FAILED. See fixture and screenshot in job log."
+          }
+
+
       - name: Upload redistributable Release outputs only
         if: success()
         uses: actions/upload-artifact@v4
