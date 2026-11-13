@@ -1,19 +1,18 @@
 @echo off
+pushd "%~dp0" || exit /b 1
 
-set MSB=C:\Program Files\Microsoft Visual Studio\2022\Community\Msbuild\Current\Bin\MSBuild.exe
+call "%~dp0find-vs2026.cmd"
+if errorlevel 1 (
+  popd
+  exit /b 1
+)
 
 if "%OPENSAL_BUILD_DIR%"=="" (
   echo Please set OPENSAL_BUILD_DIR environment variable.
   echo.
   pause
-  exit /b
-)
-
-if not exist "%MSB%" (
-  echo MSBuild.exe not found: %MSB%
-  echo.
-  pause
-  exit /b
+  popd
+  exit /b 1
 )
 
 echo Rebuild Menu:
@@ -36,7 +35,8 @@ goto :choice_is_ok
 echo Invalid selection, exiting...
 echo.
 pause
-exit /b
+popd
+exit /b 1
   
 :choice_is_ok
 set __skip_debug=no
@@ -72,6 +72,7 @@ goto :end_choice
 :end_choice
 echo.
 
+set "__build_failed=0"
 call :remove_files "rebuild_*.log*"
 
 set TIMESLOG=rebuild_times.log
@@ -81,19 +82,25 @@ echo START TIME:%STARTTIME% >%TIMESLOG%
 
 if "%__skip_debug%"=="no" (
   call :rebuild Debug             Win32 rebuild_debug_x86.log
+  if errorlevel 1 set "__build_failed=1"
   call :rebuild Debug             x64   rebuild_debug_x64.log
+  if errorlevel 1 set "__build_failed=1"
 )
 
 if "%__skip_release%"=="no" (
   call :rebuild Release           Win32 rebuild_release_x86.log
+  if errorlevel 1 set "__build_failed=1"
   if "%__skip_release_x64%"=="no" (
     call :rebuild Release         x64   rebuild_release_x64.log
+    if errorlevel 1 set "__build_failed=1"
   )
 )
 
 if "%__skip_utils%"=="no" (
   call :rebuild "Utils (Release)" Win32 rebuild_utils_x86.log
+  if errorlevel 1 set "__build_failed=1"
   call :rebuild "Utils (Release)" x64   rebuild_utils_x64.log
+  if errorlevel 1 set "__build_failed=1"
 )
 
 set ENDTIME=%time%
@@ -119,15 +126,19 @@ if exist *.log.wrn (
 
 echo.
 pause
-exit /b
+set "FINAL_EXIT_CODE=%__build_failed%"
+popd
+exit /b %FINAL_EXIT_CODE%
 
 :rebuild <target> <platform> <logfile>
 echo Building %~1/%2
 "%MSB%" salamand.sln /t:rebuild "/p:Configuration=%~1" /p:Platform=%2 /l:FileLogger,Microsoft.Build.Engine;logfile=%3;append=false;verbosity=normal;encoding=windows-1250 /flp1:logfile=%3.err;errorsonly /flp2:logfile=%3.wrn;warningsonly /m:%NUMBER_OF_PROCESSORS%
+set "BUILD_ERRORLEVEL=%errorlevel%"
 call ..\..\tools\duration.cmd "%BUILDSTART%" "%time%" "%~1/%2: Build Duration: " >>%TIMESLOG%
 call :remove_file_if_empty %3.wrn
 call :remove_file_if_empty %3.err
 set BUILDSTART=%time%
+if not "%BUILD_ERRORLEVEL%"=="0" exit /b %BUILD_ERRORLEVEL%
 exit /b
 
 :remove_files <wildcard>
@@ -140,5 +151,5 @@ if exist %1 (
 exit /b
 
 :remove_file_if_empty <filename>
-if %~z1==0 del %1
+if exist "%~1" if %~z1==0 del "%~1"
 exit /b

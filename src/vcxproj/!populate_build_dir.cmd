@@ -1,18 +1,52 @@
 @echo off
+set "SAL_POPULATE_ROOT=%~dp0"
+pushd "%SAL_POPULATE_ROOT%" || exit /b 1
 
-set SAL_POPULATE_ROOT=%~dp0%
+call "%SAL_POPULATE_ROOT%find-vs2026.cmd"
+if errorlevel 1 (
+  popd
+  exit /b 1
+)
 
-rem set MSVC_REDIST_PATH=C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Redist\MSVC\14.38.33130
-set MSVC_REDIST_PATH=C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Redist\MSVC\14.44.35112
+rem Allow explicit overrides; otherwise discover VS 2026 and Windows SDK paths.
+if not defined MSVC_REDIST_PATH (
+  for /f "delims=" %%D in ('dir /b /ad /o-n "%VS2026_INSTALL_DIR%\VC\Redist\MSVC" 2^>nul') do (
+    if not defined MSVC_REDIST_PATH if exist "%VS2026_INSTALL_DIR%\VC\Redist\MSVC\%%D\x64\Microsoft.VC143.CRT\vcruntime140.dll" set "MSVC_REDIST_PATH=%VS2026_INSTALL_DIR%\VC\Redist\MSVC\%%D"
+  )
+)
 
-set UCRT_REDIST_PATH=C:\Program Files (x86)\Windows Kits\10\Redist\10.0.22621.0
-set UCRTD_REDIST_PATH=C:\Program Files (x86)\Microsoft SDKs\Windows Kits\10\ExtensionSDKs\Microsoft.UniversalCRT.Debug\10.0.22621.0
+for %%F in ("x86\Microsoft.VC143.CRT\vcruntime140.dll" "x64\Microsoft.VC143.CRT\vcruntime140.dll" "debug_nonredist\x86\Microsoft.VC143.DebugCRT\vcruntime140d.dll" "debug_nonredist\x64\Microsoft.VC143.DebugCRT\vcruntime140d.dll") do (
+  if defined MSVC_REDIST_PATH if not exist "%MSVC_REDIST_PATH%\%%~F" (
+    >&2 echo ERROR: Missing MSVC v143 runtime: "%MSVC_REDIST_PATH%\%%~F"
+    popd
+    exit /b 1
+  )
+)
+
+if not defined UCRT_REDIST_PATH set "UCRT_REDIST_PATH=%ProgramFiles(x86)%\Windows Kits\10\Redist\10.0.26100.0"
+if not defined UCRTD_REDIST_PATH set "UCRTD_REDIST_PATH=%ProgramFiles(x86)%\Microsoft SDKs\Windows Kits\10\ExtensionSDKs\Microsoft.UniversalCRT.Debug\10.0.26100.0"
+
+if not defined MSVC_REDIST_PATH (
+  >&2 echo ERROR: MSVC v143 redistributable DLLs not found in Visual Studio 2026.
+  >&2 echo Set MSVC_REDIST_PATH to the directory containing x86 and x64 CRT subdirectories.
+  popd
+  exit /b 1
+)
+if not exist "%UCRT_REDIST_PATH%\ucrt\DLLs\x64" (
+  >&2 echo ERROR: UCRT release files not found: "%UCRT_REDIST_PATH%"
+  popd
+  exit /b 1
+)
+if not exist "%UCRTD_REDIST_PATH%\Redist\Debug\x64" (
+  >&2 echo ERROR: UCRT debug files not found: "%UCRTD_REDIST_PATH%"
+  popd
+  exit /b 1
+)
 
 echo Populate Open Salamander Build directory with redistributable DLLs and optionally
 echo with SFX packages and helps.
 echo.
-echo Please UPDATE paths to redistributable DLLs MANUALLY for VC2022 and last SDK:
-echo MSCV:
+echo Visual Studio 2026 runtime location:
 echo %MSVC_REDIST_PATH%
 echo Universal CRT RELEASE:
 echo %UCRT_REDIST_PATH%
@@ -21,19 +55,20 @@ echo %UCRTD_REDIST_PATH%
 echo.
 pause
 echo.
-
 if "%OPENSAL_BUILD_DIR%"=="" (
   echo Please set OPENSAL_BUILD_DIR environment variable.
   echo.
   pause
-  exit /b
+  popd
+  exit /b 1
 )
 
 if not exist "%OPENSAL_BUILD_DIR%salamander" (
   echo Target directory does not exist: %OPENSAL_BUILD_DIR%salamander
   echo.
   pause
-  exit /b
+  popd
+  exit /b 1
 )
 
 powershell.exe -Command "$s=(New-Object -ComObject WScript.Shell).CreateShortcut($env:OPENSAL_BUILD_DIR+'salamander\salamander.lnk'); $s.TargetPath=$env:SAL_POPULATE_ROOT+'salamand.sln'; $s.Save()"
@@ -65,7 +100,8 @@ echo -Build WinSCP plugin.
 echo -Build all language versions of Salamander and plugins.
 echo.
 pause
-exit /b
+popd
+exit /b 0
 
 
 :sfx_make_all
@@ -142,7 +178,7 @@ exit /b
 
 echo Copying %~2\%~1...
 
-if not exist %3 mkdir %3
+if not exist "%~3" mkdir "%~3"
 
 copy "%~2\%~1" "%~3\%~1"
 if errorlevel 1 (
@@ -189,7 +225,7 @@ exit /b
 :mycopy_dir
 
 robocopy %1 %2 >nul
-if not errorlevel 1 (
+if errorlevel 8 (
   echo.
   echo !!!!!!!!!!!!!!!!!!!   ERROR   !!!!!!!!!!!!!!!!!!!
   echo !!!!!!!!!!!!!!!!!!!   ERROR   !!!!!!!!!!!!!!!!!!!
