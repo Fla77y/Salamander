@@ -277,8 +277,8 @@ Salamander 5.1 on 13 November 2026, before adding this F2 write path;
 they must not be reported as proof of the new path.
 
 **Remaining and important:** Unicode directory/reparse-point rename and
-F8 still fail closed; Unicode F5/F6 work only in the constrained single-file
-case documented above, not through the full operations engine.
+unrecyclable F8 still fail closed; Unicode F5/F6 and recycle-mode F8 work
+only in their constrained single-file paths, not through the full engine.
 The 2nd enumeration introduces TOCTOU risk if an external process
 actively swaps a filename immediately before the rename, as does any
 name-based Win32 operation; handle/file-ID-based atomic binding is
@@ -323,6 +323,47 @@ migration. F8 recycle-bin semantics, per-row identities under ANSI alias
 collisions, long GUI paths, multi-selection, folder transfers,
 copy/move options and other operation entry points remain unresolved.
 Keep this PR draft and unmerged.
+
+## UTF-16 single-file F8 — Windows Shell Recycle Bin integration
+
+The native Win32 helper in src/common/win32_unicode_recycle.h uses
+IFileOperation::DeleteItem / PerformOperations with FOF_ALLOWUNDO,
+FOFX_RECYCLEONDELETE and FOF_WANTNUKEWARNING. It is restricted to regular
+(non-reparse-point) files on a local fixed drive, below MAX_PATH, and
+never calls DeleteFileW or implements an automatic permanent-delete
+fallback. A shell fallback warning must remain visible to the user;
+the shell may offer a permanent-delete choice where recycling is not
+available. GetAnyOperationsAborted and the source path are checked after
+PerformOperations, because an HRESULT success does not necessarily mean
+the operation took place.
+
+The GUI F8 integration runs only when the user's effective
+UseRecycleBin/Shift mode explicitly selects recycling. A unique UTF-16
+identity must be found, verified again after a wide confirmation, and
+not refer to a directory, reparse point, ambiguous alias or multiple
+selected files. Other F8 cases remain behind the legacy fail-closed
+guard. This is intentionally separate from the existing ANSI/plug-in
+DeleteThroughRecycleBin code.
+
+New tests:
+- tools/tests/win32_unicode_recycle.cpp tests invalid/unavailable sources
+  without carrying out any deletion in CI.
+- manage.cmd --test-gui-unicode-recycle exercises the real F8 short-path
+  shell action on a disposable file and verifies removal. When the user
+  has no supported Recycle Bin mode, it verifies the original remains
+  intact and reports SKIP, not a false success.
+
+**Acceptance status:** F8 requires the updated application's x64/Win32
+build and a real interactive Windows desktop test. The isolated GUI
+assertion that the source path disappears does not independently prove
+the file was successfully stored in the Recycle Bin. Manual Recycle Bin
+inspection and restoration are required for that stronger claim.
+
+Still unresolved: truly per-row Unicode identity when two distinct
+wide names collapse to one ANSI alias, long GUI navigation and dynamic
+panel paths, multi-selection, folders, other delete entry points,
+security/undo policy parity and full progress/cancellation support.
+The draft PR must not be merged as complete Unicode/long-path support.
 
 ## Phase 1: Baseline and bounded operations
 
