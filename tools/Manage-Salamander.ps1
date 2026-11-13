@@ -166,6 +166,7 @@ function Run-Tests {
     $cppTests = @(
         'tools\tests\quicksearch_bounds.cpp',
         'tools\tests\utf16_disk_path.cpp',
+        'tools\tests\legacy_disk_name_safety.cpp',
         'tools\tests\long_path_io.cpp'
     )
     $available = @($cppTests | Where-Object {
