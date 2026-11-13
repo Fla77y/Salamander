@@ -42,6 +42,13 @@ jobs:
           if errorlevel 1 exit /b 1
           "%RUNNER_TEMP%\quicksearch_bounds.exe"
 
+      - name: Owned UTF-16 filename and path contract regression test
+        shell: cmd
+        run: |
+          cl /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /Fe:"%RUNNER_TEMP%\\utf16_disk_path.exe" tools\\tests\\utf16_disk_path.cpp
+          if errorlevel 1 exit /b 1
+          "%RUNNER_TEMP%\\utf16_disk_path.exe"
+
       - name: Unicode extended path API regression test
         shell: cmd
         run: |
