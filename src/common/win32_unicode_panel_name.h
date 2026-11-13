@@ -8,6 +8,8 @@
 #include <windows.h>
 #include <string>
 #include <vector>
+#include <unordered_map>
+#include <utility>
 
 namespace Salamander
 {
@@ -74,6 +76,69 @@ inline UnicodePanelNameResult ResolveUnicodePanelFileName(
                ? UnicodePanelNameResult::NotFound
                : UnicodePanelNameResult::Unique;
 }
+
+// Snapshot of original names for one disk directory. It must be cleared
+// whenever the panel changes directories or refreshes its listing. Keys
+// are legacy ACP aliases; an empty value denotes an identity collision.
+class UnicodePanelNameCache
+{
+public:
+    void Clear() { names_.clear(); }
+
+    bool Load(const wchar_t* absoluteDirectory, DWORD& error)
+    {
+        Clear();
+        std::vector<LongDirectoryEntry> entries;
+        if (!TryEnumerateLongDirectory(absoluteDirectory, entries, error))
+            return false;
+
+        for (const LongDirectoryEntry& entry : entries)
+        {
+            const int byteCount = WideCharToMultiByte(CP_ACP, 0,
+                entry.name.c_str(), -1, nullptr, 0, nullptr, nullptr);
+            if (byteCount == 0)
+            {
+                error = GetLastError();
+                Clear();
+                return false;
+            }
+
+            std::string alias(static_cast<std::size_t>(byteCount), '\0');
+            if (WideCharToMultiByte(CP_ACP, 0, entry.name.c_str(),
+                                    -1, &alias[0], byteCount,
+                                    nullptr, nullptr) != byteCount)
+            {
+                error = GetLastError();
+                Clear();
+                return false;
+            }
+            alias.pop_back();
+            auto found = names_.emplace(std::move(alias), entry.name);
+            if (!found.second)
+                found.first->second.clear(); // Collision: no safe item identity.
+        }
+
+        error = ERROR_SUCCESS;
+        return true;
+    }
+
+    bool TryGet(const char* legacyName, std::wstring& result) const
+    {
+        result.clear();
+        if (legacyName == nullptr)
+            return false;
+
+        const auto found = names_.find(legacyName);
+        if (found == names_.end() || found->second.empty())
+            return false;
+
+        result = found->second;
+        return true;
+    }
+
+private:
+    std::unordered_map<std::string, std::wstring> names_;
+};
 
 // Strict conversion for legacy ANSI panel directories; it cannot recover
 // Unicode characters already lost from a directory path.
