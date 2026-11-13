@@ -19,6 +19,7 @@ param(
     [switch]$KeepFixture,
     [switch]$BaselineOnly,
     [switch]$ShortUnicodeOnly,
+    [switch]$ShortUnicodeBestFitOnly,
     [switch]$ShortUnicodeCollisionOnly,
     [switch]$ShortUnicodeUnsafeOperationsOnly,
     [switch]$ShortOperationsOnly
@@ -62,6 +63,29 @@ public static class SalamanderGuiNative
     private static extern int WideCharToMultiByte(
         uint codePage, uint flags, string source, int sourceLength,
         byte[] destination, int destinationLength, IntPtr defaultChar, IntPtr usedDefault);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern int MultiByteToWideChar(
+        uint codePage, uint flags, byte[] source, int sourceLength,
+        [Out] char[] destination, int destinationLength);
+
+    // Use Windows CP_ACP itself, not .NET's UTF-8 Encoding.Default, to
+    // detect silent best-fit substitution without any '?' byte.
+    public static bool HasLossyAliasWithoutQuestionMark(string name)
+    {
+        int bytes = WideCharToMultiByte(0, 0, name, -1, null, 0, IntPtr.Zero, IntPtr.Zero);
+        if (bytes <= 1) return false;
+        byte[] encoded = new byte[bytes];
+        if (WideCharToMultiByte(0, 0, name, -1, encoded, bytes, IntPtr.Zero, IntPtr.Zero) != bytes)
+            return false;
+        for (int i = 0; i < bytes - 1; ++i)
+            if (encoded[i] == (byte)'?') return false;
+        int units = MultiByteToWideChar(0, 0, encoded, bytes, null, 0);
+        if (units <= 1) return false;
+        char[] roundTrip = new char[units];
+        if (MultiByteToWideChar(0, 0, encoded, bytes, roundTrip, units) != units)
+            return false;
+        return !String.Equals(name, new String(roundTrip, 0, units - 1), StringComparison.Ordinal);
+    }
     public static string GetLegacyFilenameAliasHex(string name)
     {
         if (String.IsNullOrEmpty(name)) throw new ArgumentException("Missing filename", "name");
@@ -172,6 +196,8 @@ $mainWindowHandle = [IntPtr]::Zero
 $passed = $false
 $utfName = 'Größe_東京_😀.txt'
 $utfCollisionName = 'Größe_大阪_😀.txt'
+$bestFitName = $null
+$bestFitFile = $null
 $payload = [Text.Encoding]::UTF8.GetBytes(('Regression-äöü-東京-😀' * 1024))
 
 function Assert-True {
@@ -432,11 +458,29 @@ try {
         $asciiRenamedName = 'renamed-baseline.txt'
         [IO.File]::WriteAllBytes((Join-Path $source $asciiName), $payload)
     }
-    if (-not $BaselineOnly -and -not $ShortOperationsOnly) {
+    if (-not $BaselineOnly -and -not $ShortOperationsOnly -and
+        -not $ShortUnicodeBestFitOnly) {
         # Independent Unicode-only fixture with a short total path.
         $unicodeShortFile = Join-Path $source $utfName
         [IO.File]::WriteAllBytes($unicodeShortFile, $payload)
         Assert-True ($unicodeShortFile.Length -lt 260) 'Unicode filename fixture fits below MAX_PATH'
+    }
+    if ($ShortUnicodeBestFitOnly) {
+        foreach ($unicodeChar in @(
+            [char]0xFF21, [char]0xFF41, [char]0x2010,
+            [char]0x2011, [char]0x2013, [char]0x2014,
+            [char]0x2212, [char]0x2018, [char]0x2019,
+            [char]0x2460, [char]0x2160
+        )) {
+            $candidate = 'bestfit_' + $unicodeChar + '.txt'
+            if ([SalamanderGuiNative]::HasLossyAliasWithoutQuestionMark($candidate)) {
+                $bestFitName = $candidate
+                $bestFitFile = Join-Path $source $bestFitName
+                [IO.File]::WriteAllBytes($bestFitFile, $payload)
+                Assert-True ($bestFitFile.Length -lt 260) 'Best-fit Unicode filename fits below MAX_PATH'
+                break
+            }
+        }
     }
     if ($ShortUnicodeCollisionOnly -or $ShortUnicodeUnsafeOperationsOnly) {
         # These distinct UTF-16 names may have the same CP_ACP alias.
@@ -451,6 +495,7 @@ try {
     }
     if (-not $BaselineOnly -and -not $ShortUnicodeOnly -and
         -not $ShortUnicodeCollisionOnly -and
+        -not $ShortUnicodeBestFitOnly -and
         -not $ShortUnicodeUnsafeOperationsOnly -and -not $ShortOperationsOnly) {
         [IO.Directory]::CreateDirectory($destination) | Out-Null
         [IO.Directory]::CreateDirectory($moveDir) | Out-Null
@@ -573,6 +618,23 @@ try {
 
         $passed = $true
         Write-Host 'PASS: real short ASCII F5/F2/F6/F8 GUI operation baseline.'
+        return
+    }
+
+    if ($ShortUnicodeBestFitOnly) {
+        if ($null -eq $bestFitName) {
+            $passed = $true
+            Write-Host 'SKIP: Windows ACP has no best-fit mapping without a question mark among the test candidates.'
+            return
+        }
+
+        Send-Keys '{END}'
+        $actualName = Read-FocusedFilename
+        Write-Host "GUI best-fit filename comparison: expected='$bestFitName'; actual='$actualName'"
+        Assert-True ($actualName -ceq $bestFitName) 'Unicode best-fit filename recovered without question mark'
+        Assert-True (Test-Content $bestFitFile) 'Best-fit Unicode file content remains intact'
+        $passed = $true
+        Write-Host 'PASS: Unicode GUI filename round-trip survives non-question-mark ANSI best-fit mapping.'
         return
     }
 
