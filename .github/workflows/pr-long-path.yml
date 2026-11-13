@@ -1,0 +1,48 @@
+name: Long path regression foundations
+
+on:
+  pull_request:
+    branches: ["**"]
+    paths:
+      - "src/common/buffer_bounds.h"
+      - "src/common/win32_long_path.h"
+      - "src/common/win32_long_directory.h"
+      - "src/safefile.cpp"
+      - "src/fileswn0.cpp"
+      - "tools/tests/**"
+      - "tools/release/tests/Test-SalamanderGui-LongPaths.ps1"
+      - "tools/Manage-Salamander.ps1"
+      - ".github/workflows/pr-long-path.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  long-path:
+    runs-on: windows-2025-vs2026
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Windows filesystem long-path and Unicode fixtures
+        shell: pwsh
+        run: ./tools/tests/Test-LongPaths.ps1
+
+      - name: Set up MSVC developer environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: C++ buffer boundary regression test
+        shell: cmd
+        run: |
+          cl /nologo /W4 /WX /std:c++17 /EHsc /Fe:"%RUNNER_TEMP%\quicksearch_bounds.exe" tools\tests\quicksearch_bounds.cpp
+          if errorlevel 1 exit /b 1
+          "%RUNNER_TEMP%\quicksearch_bounds.exe"
+
+      - name: Unicode extended path API regression test
+        shell: cmd
+        run: |
+          cl /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /Fe:"%RUNNER_TEMP%\long_path_io.exe" tools\tests\long_path_io.cpp
+          if errorlevel 1 exit /b 1
+          "%RUNNER_TEMP%\long_path_io.exe"
