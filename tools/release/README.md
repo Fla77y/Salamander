@@ -8,6 +8,7 @@ Start from the repository root in a Windows terminal:
 | `.\manage.cmd --update` | Update **current** branch, fast-forward only |
 | `.\manage.cmd --build` | Rebuild x64 Debug and Release and compile all CHM help |
 | `.\manage.cmd --test` | Run PowerShell/package validation and Windows path/name tests, plus standalone C++ tests when present |
+| `.\manage.cmd --test-gui` | Create persistent test paths and launch Salamander for manual F5/F6, rename, delete, search and plugin checks |
 | `.\manage.cmd --setup` | Rebuild as needed, then create two 7z files and two setups |
 | `.\manage.cmd --run` | Start Release, `--run --debug` starts Debug |
 | `.\manage.cmd --all` | Update, build, test, setup, run |
@@ -28,7 +29,10 @@ file-system capabilities, boundary lengths and byte integrity. It is **not**
 a GUI automation suite and does **not** prove Salamander panel/file-operation
 or plugin compatibility. The long-path Win32 C++ tests run when their
 development-branch sources are available. The complete GUI migration must be
-verified separately before calling long-path support complete.
+verified separately before calling long-path support complete. Run
+`.\manage.cmd --test-gui` after building; it deliberately leaves the
+unique test fixture on disk and prints a manual acceptance checklist.
+A launched application does not count as a passed GUI test.
 
 **Prerequisites:** PowerShell 7.4+, VS2026 Desktop C++ + v143/ATL, Windows
 SDK; HTML Help Workshop for build; 7-Zip and Inno Setup for packaging.
