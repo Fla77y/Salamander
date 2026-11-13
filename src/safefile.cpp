@@ -14,6 +14,34 @@
 #include "spl_file.h"
 #include "common/win32_long_path.h"
 
+// Use the existing handle tracker for the real Win32 API calls. HANDLES_Q
+// accepts tracked Win32 method names, not namespaced helper functions.
+static HANDLE OpenTrackedSafeFile(const char* fileName, DWORD desiredAccess,
+                                  DWORD shareMode, DWORD creationDisposition,
+                                  DWORD flagsAndAttributes)
+{
+    if (fileName == NULL)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return INVALID_HANDLE_VALUE;
+    }
+    if (strlen(fileName) < MAX_PATH)
+    {
+        return HANDLES_Q(CreateFileA(fileName, desiredAccess, shareMode, NULL,
+                                     creationDisposition, flagsAndAttributes, NULL));
+    }
+
+    std::wstring extendedName;
+    DWORD pathError = ERROR_SUCCESS;
+    if (!Salamander::TryMakeExtendedLengthPathFromAnsi(fileName, extendedName, pathError))
+    {
+        SetLastError(pathError);
+        return INVALID_HANDLE_VALUE;
+    }
+    return HANDLES_Q(CreateFileW(extendedName.c_str(), desiredAccess, shareMode, NULL,
+                                 creationDisposition, flagsAndAttributes, NULL));
+}
+
 CSalamanderSafeFile SalSafeFile;
 
 //*****************************************************************************
@@ -43,9 +71,9 @@ BOOL CSalamanderSafeFile::SafeFileOpen(SAFE_FILE* file,
     HANDLE hFile;
     do
     {
-        hFile = HANDLES_Q(Salamander::OpenFileWithLegacyPath(
+        hFile = OpenTrackedSafeFile(
             fileName, dwDesiredAccess, dwShareMode, dwCreationDisposition,
-            dwFlagsAndAttributes));
+            dwFlagsAndAttributes);
         if (hFile == INVALID_HANDLE_VALUE)
         {
             DWORD dlgRet;
@@ -949,9 +977,9 @@ BOOL CSalamanderSafeFile::SafeFileRead(SAFE_FILE* file, LPVOID lpBuffer,
                     HANDLES(CloseHandle(file->HFile)); // close the invalid handle because we could not read from it anyway
                 }
 
-                file->HFile = HANDLES_Q(Salamander::ReopenExistingFileWithLegacyPath(
+                file->HFile = OpenTrackedSafeFile(
                     file->FileName, file->dwDesiredAccess, file->dwShareMode,
-                    file->dwFlagsAndAttributes));
+                    OPEN_EXISTING, file->dwFlagsAndAttributes);
                 if (file->HFile != INVALID_HANDLE_VALUE) // opened; now set the offset
                 {
                 SEEK:
@@ -1034,9 +1062,9 @@ BOOL CSalamanderSafeFile::SafeFileWrite(SAFE_FILE* file, LPVOID lpBuffer,
                     HANDLES(CloseHandle(file->HFile)); // close the invalid handle because we could not read from it anyway
                 }
 
-                file->HFile = HANDLES_Q(Salamander::ReopenExistingFileWithLegacyPath(
+                file->HFile = OpenTrackedSafeFile(
                     file->FileName, file->dwDesiredAccess, file->dwShareMode,
-                    file->dwFlagsAndAttributes));
+                    OPEN_EXISTING, file->dwFlagsAndAttributes);
                 if (file->HFile != INVALID_HANDLE_VALUE) // opened; now set the offset
                 {
                     //SEEK:
