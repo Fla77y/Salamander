@@ -479,7 +479,9 @@ try {
     # fails, treat it as an automation/infrastructure problem, NOT as proof
     # that the application lacks long-path support.
     Go-ToPath $source
-    Assert-True ((Read-PanelPath) -ceq $source) 'GUI driver can navigate a normal short directory'
+    # Go-ToPath already verified the observed panel path. A duplicate
+    # WM_COMMAND 711 adds no coverage and can race with GUI processing.
+    Write-Host 'PASS: GUI driver can navigate a normal short directory'
     if ($BaselineOnly) {
         $passed = $true
         Write-Host 'PASS: GUI automation driver works with short ASCII paths.'
