@@ -6,7 +6,7 @@
     Tests Salamander's GUI with Unicode names and paths >260 UTF-16 units.
 .DESCRIPTION
     Requires unlocked interactive Windows desktop and PowerShell 7 in STA.
-    Uses documented Ctrl+V, Ctrl+Alt+Insert, Alt+Shift+Insert, F2/F5/F6/F8
+    Uses documented Salamander commands and F2/F5/F6/F8 with synchronized clipboard access
     shortcuts. Only creates/operates on disposable temporary files.
     An explicit failure means no long-path GUI compatibility was proven.
 .EXAMPLE
@@ -42,6 +42,11 @@ public static class SalamanderGuiNative
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll", EntryPoint = "SendMessageTimeoutW", SetLastError = true)]
+    public static extern IntPtr SendMessageTimeout(
+        IntPtr hWnd, uint msg, UIntPtr wParam, IntPtr lParam,
+        uint flags, uint timeoutMilliseconds, out IntPtr result);
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetWindowTextW(IntPtr window, StringBuilder buffer, int capacity);
     [DllImport("user32.dll")]
@@ -153,6 +158,35 @@ function Send-Keys {
     Start-Sleep -Milliseconds 200
 }
 
+# Salamander resource.rh2: CM_CLIPPASTE=775, CM_CLIPCOPYFULLPATH=711,
+# CM_CLIPCOPYNAME=710. Dispatch synchronously to avoid racing with clipboard
+# contents: SendKeys posts input, after which the test used to overwrite the
+# clipboard before Salamander had consumed the original path.
+function Invoke-SalamanderCommand {
+    param(
+        [ValidateSet(710,711,775)][int]$CommandId
+    )
+    $process.Refresh()
+    if ($process.HasExited) { throw 'Salamander exited while dispatching a GUI command.' }
+    $main = $process.MainWindowHandle
+    if ($main -eq [IntPtr]::Zero) { throw 'Salamander main window handle missing.' }
+    [uint32]$ownerPid = 0
+    [void][SalamanderGuiNative]::GetWindowThreadProcessId($main, [ref]$ownerPid)
+    if ($ownerPid -ne [uint32]$process.Id) {
+        throw "Refusing GUI command: window owner PID $ownerPid does not match test process $($process.Id)."
+    }
+
+    [IntPtr]$commandResult = [IntPtr]::Zero
+    $sent = [SalamanderGuiNative]::SendMessageTimeout(
+        $main, [uint32]0x0111, [UIntPtr]::new([uint32]$CommandId),
+        [IntPtr]::Zero, [uint32]0x0002, [uint32]5000, [ref]$commandResult)
+    if ($sent -eq [IntPtr]::Zero) {
+        $dialog = Get-TestDialog
+        $lastError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "Salamander command $CommandId did not complete (Win32 error $lastError). Modal dialog: $dialog"
+    }
+}
+
 function Set-ClipboardText {
     param([string]$Text)
     for ($i=0; $i -lt 10; $i++) {
@@ -172,7 +206,7 @@ function Get-ClipboardText {
 
 function Read-PanelPath {
     Set-ClipboardText 'SENTINEL_NOT_PATH'
-    Send-Keys '^%{INSERT}'
+    Invoke-SalamanderCommand -CommandId 711
     Wait-Until { (Get-ClipboardText) -ne 'SENTINEL_NOT_PATH' } 'panel path clipboard shortcut'
     return (Get-ClipboardText).TrimEnd([char]13, [char]10)
 }
@@ -180,16 +214,18 @@ function Read-PanelPath {
 function Go-ToPath {
     param([string]$Path)
     Focus-TestProcess
-    # Salamander's documented Edit > Paste (Ctrl+V) directly changes the
+    # Salamander's documented Edit > Paste command directly changes the
     # active panel to a directory stored as plain clipboard text. Avoid
     # Shift+F7 here: its modal dialog was not reliably detected and blocked
     # even the short-path automation baseline on a real desktop.
     #
-    # The clipboard contains plain text (not a CF_HDROP file list), so
-    # Salamander interprets it as a directory to navigate to, not files to copy.
+    # The clipboard contains plain text (not CF_HDROP file data), so
+    # Salamander interprets it as a directory to navigate to. Synchronous
+    # WM_COMMAND dispatch ensures the path is consumed before we reset the
+    # clipboard to query the panel path.
     Set-ClipboardText $Path
     Assert-True ((Get-ClipboardText) -ceq $Path) 'Clipboard contains only the requested text path'
-    Send-Keys '^v'
+    Invoke-SalamanderCommand -CommandId 775
     Wait-Until {
         $dialogText = Get-TestDialog
         if ($dialogText -match 'Error Changing Directory|too long name|Cannot finish operation') {
@@ -212,7 +248,7 @@ function Go-ToPath {
 
 function Read-FocusedFilename {
     Set-ClipboardText 'SENTINEL_NOT_FILENAME'
-    Send-Keys '%+{INSERT}'
+    Invoke-SalamanderCommand -CommandId 710
     Wait-Until { (Get-ClipboardText) -ne 'SENTINEL_NOT_FILENAME' } 'focused file name clipboard shortcut'
     return (Get-ClipboardText).TrimEnd([char]13, [char]10)
 }
