@@ -20,6 +20,7 @@ param(
     [switch]$BaselineOnly,
     [switch]$ShortUnicodeOnly,
     [switch]$ShortUnicodeRenameOnly,
+    [switch]$ShortUnicodeTransferOnly,
     [switch]$ShortUnicodeBestFitOnly,
     [switch]$ShortUnicodeCollisionOnly,
     [switch]$ShortUnicodeUnsafeOperationsOnly,
@@ -583,6 +584,10 @@ try {
             }
         }
     }
+    if ($ShortUnicodeTransferOnly) {
+        [IO.Directory]::CreateDirectory($destination) | Out-Null
+        [IO.Directory]::CreateDirectory($moveDir) | Out-Null
+    }
     if ($ShortUnicodeCollisionOnly -or $ShortUnicodeUnsafeOperationsOnly) {
         # These distinct UTF-16 names may have the same CP_ACP alias.
         # A distinct marker protects against cross-file identity errors.
@@ -597,6 +602,7 @@ try {
     if (-not $BaselineOnly -and -not $ShortUnicodeOnly -and
         -not $ShortUnicodeCollisionOnly -and
         -not $ShortUnicodeBestFitOnly -and -not $ShortUnicodeRenameOnly -and
+        -not $ShortUnicodeTransferOnly -and
         -not $ShortUnicodeUnsafeOperationsOnly -and -not $ShortOperationsOnly) {
         [IO.Directory]::CreateDirectory($destination) | Out-Null
         [IO.Directory]::CreateDirectory($moveDir) | Out-Null
@@ -737,6 +743,45 @@ try {
         Assert-True (Test-Content $bestFitFile) 'Best-fit Unicode file content remains intact'
         $passed = $true
         Write-Host 'PASS: Unicode GUI filename round-trip survives non-question-mark ANSI best-fit mapping.'
+        return
+    }
+
+    if ($ShortUnicodeTransferOnly) {
+        # Arrange: separate source and target panels, both below MAX_PATH.
+        Send-Keys '{TAB}'
+        Go-ToPath $destination
+        Send-Keys '{TAB}'
+        Assert-True ((Read-PanelPath) -ceq $source) 'Unicode F5 source panel verified'
+        Send-Keys '{END}'
+        Assert-True ((Read-FocusedFilename) -ceq $utfName) 'Unicode F5 source identity verified'
+        # Act: F5 must use the exact UTF-16 source name and copy to destination.
+        Send-Keys '{F5}'
+        Start-Sleep -Milliseconds 350
+        Send-Keys '{ENTER}'
+        $copied = Join-Path $destination $utfName
+        Wait-Until { Test-Content $copied } 'Unicode F5 copy to other disk panel'
+        # Assert: original remains, payload matches.
+        Assert-True (Test-Content $unicodeShortFile) 'Unicode F5 preserves source bytes'
+
+        # Arrange: move the copy to a distinct disposable directory.
+        Send-Keys '{TAB}'
+        Assert-True ((Read-PanelPath) -ceq $destination) 'Unicode F6 source panel verified'
+        Send-Keys '{TAB}'
+        Go-ToPath $moveDir
+        Send-Keys '{TAB}'
+        Send-Keys '{END}'
+        Assert-True ((Read-FocusedFilename) -ceq $utfName) 'Unicode F6 source identity verified'
+        # Act: F6 must not leave a duplicate in the source directory.
+        Send-Keys '{F6}'
+        Start-Sleep -Milliseconds 350
+        Send-Keys '{ENTER}'
+        $moved = Join-Path $moveDir $utfName
+        Wait-Until { (Test-Content $moved) -and -not [IO.File]::Exists($copied) } 'Unicode F6 move to other disk panel'
+        # Assert: both source-of-truth and moved content are intact.
+        Assert-True (Test-Content $unicodeShortFile) 'Unicode F6 leaves original fixture intact'
+        Assert-True (Test-Content $moved) 'Unicode F6 preserves moved content'
+        $passed = $true
+        Write-Host 'PASS: real Unicode F5 and F6 file transfer without ANSI narrowing.'
         return
     }
 
