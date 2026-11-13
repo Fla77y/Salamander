@@ -32,6 +32,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: GUI driver message-dispatch contract regression
+        shell: pwsh
+        run: ./tools/release/tests/Test-GuiDriver-Contract.ps1
+
       - name: Windows filesystem long-path and Unicode fixtures
         shell: pwsh
         run: ./tools/tests/Test-LongPaths.ps1
