@@ -78,6 +78,43 @@ compatibility boundary; never send the truncated ANSI alias of a file into
 destructive operations. Re-run short ASCII, short Unicode, long-path,
 negative and plugin regressions after each converted call chain.
 
+## Read-only Unicode disk-panel GUI slice (13 November 2026)
+
+The Windows desktop short-ASCII operation baseline (F2/F5/F6/F8) passed
+before any GUI core change. The existing short Unicode GUI regression
+reproduced `Größe_東京_😀.txt` being exported as `Größe_??_??.txt`.
+
+This branch now includes a **partial, read-only GUI integration**:
+
+- `src/common/win32_unicode_panel_name.h` resolves a legacy CP_ACP
+  filename to an actual UTF-16 directory entry using the Win32 wide
+  enumeration path. Two distinct filenames with an identical ANSI alias
+  are marked ambiguous; never choose one arbitrarily.
+- `UnicodePanelNameCache` is owned by `CFilesWindow`, not by
+  plug-in-visible `CFileData`. The cache is invalidated on every
+  listing, and the Unicode directory is scanned only if the disk panel
+  actually contains replacement `?` characters.
+- `src/fileswn4.cpp` uses wide GDI measurement and drawing for
+  uniquely recovered names in **Brief/Detailed name columns**. Unicode
+  surrogate pairs are not split by text ellipsizing.
+- `src/fileswn9.cpp::CopyFocusedNameToClipboard` returns actual
+  `CF_UNICODETEXT` when the disk filename was corrupted by ANSI
+  replacement and still matches a uniquely resolved, revalidated
+  filesystem entry.
+
+**Not implemented:** data-model identity for ambiguous ANSI aliases;
+Unicode-safe selection, filtering, sorting and edit actions; icon/tile/
+thumbnail name rendering; long disk-panel directories; F2/F5/F6/F8
+migration; plug-in Unicode name handling. A read-only display fix is
+not evidence that destructive operations are safe. Do not merge or
+advertise Unicode-GUI compatibility until these paths and the
+interactive regression suite are completed.
+
+The native MSVC regression covers unique and colliding names, a
+per-listing index and invalidation. The real GUI gate remains
+`manage.cmd --test-gui-names`, plus visual inspection in Brief/Detailed
+mode and the already-passing ASCII operations baseline.
+
 ## Phase 1: Baseline and bounded operations
 
 - `tools/tests/Test-LongPaths.ps1` generates disposable cases for total
