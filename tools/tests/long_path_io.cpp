@@ -262,6 +262,27 @@ int main()
     }
     else if (!cacheFound || cachedName != L"Größe_東京_😀.txt")
         return Fail("indexed Unicode alias must resolve exact name");
+    // The operation gate must refuse an ambiguous identity and ANY lossy
+    // conversion, including best-fit mappings that contain no '?'.
+    // Unicode round-trip equality is the required invariant.
+    if (!Salamander::IsExactAnsiName("plain.txt", L"plain.txt") ||
+        Salamander::IsExactAnsiName("plain.txt", L"other.txt") ||
+        Salamander::IsExactAnsiName("Größe_??_??.txt", L"Größe_東京_😀.txt"))
+        return Fail("exact ANSI round-trip detection independent of '?'");
+    const bool unambiguous = tokyoAlias != osakaAlias;
+    const bool tokyoIsLossless = Salamander::IsExactAnsiName(
+        tokyoAlias.c_str(), L"Größe_東京_😀.txt");
+    if (panelNames.IsUnsafeAnsiName(tokyoAlias.c_str()) !=
+        (!unambiguous || !tokyoIsLossless) ||
+        !panelNames.IsUnsafeAnsiName("not-in-the-directory.xyz"))
+        return Fail("unknown, ambiguous and lossy identities must be unsafe");
+    std::wstring restored = L"stale";
+    if (panelNames.TryGetLossy(tokyoAlias.c_str(), restored) !=
+            (unambiguous && !tokyoIsLossless) ||
+        (unambiguous && !tokyoIsLossless &&
+         restored != L"Größe_東京_😀.txt"))
+        return Fail("only unique lossy names can be displayed in wide text");
+
     panelNames.Clear();
     cachedName = L"stale";
     if (panelNames.TryGet(tokyoAlias.c_str(), cachedName) || !cachedName.empty())
