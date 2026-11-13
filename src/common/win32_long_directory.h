@@ -4,6 +4,7 @@
 #pragma once
 
 #include "win32_long_path.h"
+#include "utf16_disk_path.h"
 
 #include <cstdint>
 #include <cwchar>
@@ -92,5 +93,25 @@ inline bool TryEnumerateLongDirectory(const wchar_t* absoluteDirectory,
             return false;
         }
     }
+}
+
+// Validated owned paths avoid accidental narrowing at the call boundary.
+// Existing wchar_t callers remain supported without any ABI change.
+inline bool TryEnumerateLongDirectory(const Utf16DiskPath& absoluteDirectory,
+                                      std::vector<LongDirectoryEntry>& entries,
+                                      DWORD& error)
+{
+    entries.clear();
+    static_assert(sizeof(wchar_t) == sizeof(char16_t),
+                  "Directory enumeration requires Win32 UTF-16 wchar_t");
+    if (absoluteDirectory.Value().empty())
+    {
+        error = ERROR_INVALID_PARAMETER;
+        return false;
+    }
+
+    const std::wstring wideDirectory(
+        absoluteDirectory.Value().begin(), absoluteDirectory.Value().end());
+    return TryEnumerateLongDirectory(wideDirectory.c_str(), entries, error);
 }
 } // namespace Salamander
