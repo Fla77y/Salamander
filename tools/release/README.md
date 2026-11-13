@@ -1,3 +1,41 @@
+# One-command management (Visual Studio 2026)
+
+Start from the repository root in a Windows terminal:
+
+| Command | Effect |
+| --- | --- |
+| `.\manage.cmd` | List options (also `--help`) |
+| `.\manage.cmd --update` | Update **current** branch, fast-forward only |
+| `.\manage.cmd --build` | Rebuild x64 Debug and Release and compile all CHM help |
+| `.\manage.cmd --test` | Run PowerShell/package validation and Windows path/name tests, plus standalone C++ tests when present |
+| `.\manage.cmd --setup` | Rebuild as needed, then create two 7z files and two setups |
+| `.\manage.cmd --run` | Start Release, `--run --debug` starts Debug |
+| `.\manage.cmd --all` | Update, build, test, setup, run |
+
+Actions can be combined: `.\manage.cmd --update --build --test --setup`.
+If `--build` and `--setup` are combined, the packaging step reuses
+the successful build instead of compiling again.
+
+**Complete output and diagnostics:** Each invocation writes a PowerShell
+transcript under `D:\Build\OpenSal\logs\manage-*.log`. At the end the
+**whole transcript, including errors and command output**, is copied to the
+Windows clipboard, ready to paste into an issue or a conversation. If
+clipboard access is unavailable (e.g. on some CI runners), the log remains on
+disk. A failed command returns a nonzero exit code and blocks later actions.
+
+**Test scope:** The `Test-FilenamesAndPaths.ps1` suite validates Windows
+file-system capabilities, boundary lengths and byte integrity. It is **not**
+a GUI automation suite and does **not** prove Salamander panel/file-operation
+or plugin compatibility. The long-path Win32 C++ tests run when their
+development-branch sources are available. The complete GUI migration must be
+verified separately before calling long-path support complete.
+
+**Prerequisites:** PowerShell 7.4+, VS2026 Desktop C++ + v143/ATL, Windows
+SDK; HTML Help Workshop for build; 7-Zip and Inno Setup for packaging.
+Debug packages are solely for internal developer-owned test machines.
+
+---
+
 # Windows x64 Debug and Release distributions
 
 The scripts build Open Salamander with Visual Studio 2026 and the existing
