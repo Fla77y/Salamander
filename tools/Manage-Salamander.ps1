@@ -139,6 +139,10 @@ function Build-Variants {
         if (-not (Test-Path -LiteralPath $app -PathType Leaf)) {
             throw "MSBuild meldet Erfolg, aber salamand.exe fehlt: $app"
         }
+        # Verify the compiled PE VERSIONINFO, not only the source macros.
+        $productVersionTest = Join-Path $repository 'tools\release\tests\Test-ProductVersion.ps1'
+        Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $productVersionTest,
+                                  '-BinaryPath', $app)
     }
 
     $pf86 = [Environment]::GetFolderPath('ProgramFilesX86')
@@ -153,6 +157,9 @@ function Build-Variants {
 
 function Run-Tests {
     Write-Host '=== TESTS ==='
+
+    $productVersionTest = Join-Path $repository 'tools\release\tests\Test-ProductVersion.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $productVersionTest)
 
     $guiDriverContract = Join-Path $repository 'tools\release\tests\Test-GuiDriver-Contract.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $guiDriverContract)
