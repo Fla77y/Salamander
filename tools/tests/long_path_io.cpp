@@ -5,6 +5,7 @@
 #include "../../src/common/win32_long_path.h"
 #include "../../src/common/win32_long_directory.h"
 #include "../../src/common/win32_unicode_file_ops.h"
+#include "../../src/common/win32_unicode_panel_name.h"
 
 #include <windows.h>
 
@@ -209,6 +210,50 @@ int main()
     }
     if (!foundUnicode || !foundDistinctUnicode || !foundMaxName)
         return Fail("directory enumeration must preserve distinct UTF-16 identities");
+
+    // Arrange: the legacy panel stores CP_ACP bytes, which may conflate
+    // multiple distinct Unicode names. Derive the actual Windows alias.
+    const auto ansiAlias = [](const wchar_t* input) -> std::string {
+        const int count = WideCharToMultiByte(CP_ACP, 0, input, -1,
+                                               nullptr, 0, nullptr, nullptr);
+        if (count == 0)
+            return {};
+        std::string bytes(static_cast<std::size_t>(count), '\0');
+        if (WideCharToMultiByte(CP_ACP, 0, input, -1, &bytes[0], count,
+                                nullptr, nullptr) != count)
+            return {};
+        bytes.pop_back();
+        return bytes;
+    };
+    const std::string tokyoAlias = ansiAlias(L"Größe_東京_😀.txt");
+    const std::string osakaAlias = ansiAlias(L"Größe_大阪_😀.txt");
+    if (tokyoAlias.empty() || osakaAlias.empty())
+        return Fail("derive legacy aliases for Unicode panel names");
+
+    // Act: resolve a currently focused legacy name through original
+    // FindFirstFileW entries rather than returning the lossy ANSI bytes.
+    std::wstring resolvedName;
+    DWORD resolveError = ERROR_SUCCESS;
+    const auto resolved = Salamander::ResolveUnicodePanelFileName(
+        current.c_str(), tokyoAlias.c_str(), resolvedName, resolveError);
+    // Assert: only a unique name is safe. On CP_ACP alias collisions
+    // ambiguous input must fail closed rather than choosing a wrong file.
+    if (tokyoAlias == osakaAlias)
+    {
+        if (resolved != Salamander::UnicodePanelNameResult::Ambiguous ||
+            !resolvedName.empty())
+            return Fail("reject Unicode filename identity collision");
+    }
+    else if (resolved != Salamander::UnicodePanelNameResult::Unique ||
+             resolvedName != L"Größe_東京_😀.txt")
+        return Fail("recover exact Unicode filename from unique ACP alias");
+
+    resolvedName = L"stale";
+    if (Salamander::ResolveUnicodePanelFileName(
+            current.c_str(), "not-in-the-directory.xyz",
+            resolvedName, resolveError) != Salamander::UnicodePanelNameResult::NotFound ||
+        !resolvedName.empty())
+        return Fail("missing name must not return stale Unicode identity");
 
     // Arrange: typed path is the new non-ANSI integration boundary.
     Salamander::Utf16DiskPath unicodeDirectory;
