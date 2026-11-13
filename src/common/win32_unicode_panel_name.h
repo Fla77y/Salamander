@@ -4,15 +4,38 @@
 #pragma once
 
 #include "win32_long_directory.h"
+#include "legacy_disk_name_safety.h"
 
 #include <windows.h>
 #include <string>
+#include <cwchar>
 #include <vector>
 #include <unordered_map>
 #include <utility>
 
 namespace Salamander
 {
+// Equality after ANSI -> UTF-16 conversion is stricter than merely
+// checking for '?' substitution: Windows ACP best-fit can silently map
+// different Unicode characters to existing ASCII/ANSI bytes.
+inline bool IsExactAnsiName(const char* ansiName, const wchar_t* originalName)
+{
+    if (ansiName == nullptr || originalName == nullptr || *ansiName == '\0')
+        return false;
+
+    const int units = MultiByteToWideChar(CP_ACP, 0, ansiName, -1,
+                                          nullptr, 0);
+    if (units <= 0)
+        return false;
+
+    std::wstring roundTrip(static_cast<std::size_t>(units), L'\0');
+    if (MultiByteToWideChar(CP_ACP, 0, ansiName, -1,
+                            &roundTrip[0], units) != units)
+        return false;
+
+    return wcscmp(roundTrip.c_str(), originalName) == 0;
+}
+
 // A legacy ANSI panel name is not necessarily a unique filesystem identity.
 // Resolve only when precisely one real UTF-16 directory entry maps to it.
 enum class UnicodePanelNameResult
@@ -83,7 +106,11 @@ inline UnicodePanelNameResult ResolveUnicodePanelFileName(
 class UnicodePanelNameCache
 {
 public:
-    void Clear() { names_.clear(); }
+    void Clear()
+    {
+        names_.clear();
+        complete_ = false;
+    }
 
     bool Load(const wchar_t* absoluteDirectory, DWORD& error)
     {
@@ -113,31 +140,81 @@ public:
                 return false;
             }
             alias.pop_back();
-            auto found = names_.emplace(std::move(alias), entry.name);
-            if (!found.second)
-                found.first->second.clear(); // Collision: no safe item identity.
+
+            // Preserve the real name separately from the plugin-visible
+            // CFileData. Distinct Unicode names may share an ANSI alias.
+            // A non-round-tripping alias is never safe for ANSI I/O, even
+            // if its bytes contain no replacement question mark.
+            const bool exact = IsExactAnsiName(alias.c_str(), entry.name.c_str());
+            const auto inserted = names_.emplace(
+                std::move(alias), CachedName{entry.name, exact});
+            if (!inserted.second)
+            {
+                inserted.first->second.original.clear();
+                inserted.first->second.exactAnsiIdentity = false;
+            }
         }
 
+        complete_ = true;
         error = ERROR_SUCCESS;
         return true;
     }
 
+    // Read-only display/export may recover uniquely identified originals.
     bool TryGet(const char* legacyName, std::wstring& result) const
     {
         result.clear();
-        if (legacyName == nullptr)
+        if (!complete_ || legacyName == nullptr)
             return false;
 
         const auto found = names_.find(legacyName);
-        if (found == names_.end() || found->second.empty())
+        if (found == names_.end() || found->second.original.empty())
             return false;
 
-        result = found->second;
+        result = found->second.original;
         return true;
     }
 
+    // Draw/export UTF-16 only when ANSI representation loses information.
+    bool TryGetLossy(const char* legacyName, std::wstring& result) const
+    {
+        result.clear();
+        if (!complete_ || legacyName == nullptr)
+            return false;
+
+        const auto found = names_.find(legacyName);
+        if (found == names_.end() ||
+            found->second.original.empty() ||
+            found->second.exactAnsiIdentity)
+            return false;
+
+        result = found->second.original;
+        return true;
+    }
+
+    // Unavailable snapshots, missing entries, collisions, '?' replacements
+    // and best-fit mappings ALL fail closed at legacy disk-operation entry.
+    bool IsUnsafeAnsiName(const char* legacyName) const
+    {
+        if (!complete_ || legacyName == nullptr ||
+            Salamander::IsLossyAnsiDiskName(legacyName))
+            return true;
+
+        const auto found = names_.find(legacyName);
+        return found == names_.end() ||
+               found->second.original.empty() ||
+               !found->second.exactAnsiIdentity;
+    }
+
 private:
-    std::unordered_map<std::string, std::wstring> names_;
+    struct CachedName
+    {
+        std::wstring original;
+        bool exactAnsiIdentity;
+    };
+
+    std::unordered_map<std::string, CachedName> names_;
+    bool complete_ = false;
 };
 
 // Strict conversion for legacy ANSI panel directories; it cannot recover
