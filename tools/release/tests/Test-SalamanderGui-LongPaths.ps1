@@ -20,6 +20,7 @@ param(
     [switch]$BaselineOnly,
     [switch]$ShortUnicodeOnly,
     [switch]$ShortUnicodeRenameOnly,
+    [switch]$ShortUnicodeRecycleOnly,
     [switch]$ShortUnicodeTransferOnly,
     [switch]$ShortUnicodeTransferCollisionOnly,
     [switch]$ShortUnicodeBestFitOnly,
@@ -604,6 +605,7 @@ try {
         -not $ShortUnicodeCollisionOnly -and
         -not $ShortUnicodeBestFitOnly -and -not $ShortUnicodeRenameOnly -and
         -not $ShortUnicodeTransferOnly -and -not $ShortUnicodeTransferCollisionOnly -and
+        -not $ShortUnicodeRecycleOnly -and
         -not $ShortUnicodeUnsafeOperationsOnly -and -not $ShortOperationsOnly) {
         [IO.Directory]::CreateDirectory($destination) | Out-Null
         [IO.Directory]::CreateDirectory($moveDir) | Out-Null
@@ -744,6 +746,31 @@ try {
         Assert-True (Test-Content $bestFitFile) 'Best-fit Unicode file content remains intact'
         $passed = $true
         Write-Host 'PASS: Unicode GUI filename round-trip survives non-question-mark ANSI best-fit mapping.'
+        return
+    }
+
+    if ($ShortUnicodeRecycleOnly) {
+        # Arrange: a single disposable source file, not a selected directory.
+        Send-Keys '{END}'
+        Assert-True ((Read-FocusedFilename) -ceq $utfName) 'Unicode F8 source identity verified'
+        # Act: the shell Recycle Bin path must never silently delete a file.
+        Send-Keys '{F8}'
+        $observed = @{ Dialog = $null }
+        Wait-Until {
+            $observed.Dialog = Get-TestDialog
+            return $observed.Dialog -match 'Recycle Unicode file|legacy ANSI file-operation engine'
+        } 'Unicode F8 recycle or safe refusal'
+        if ($observed.Dialog -match 'legacy ANSI file-operation engine') {
+            Send-Keys '{ESC}'
+            Assert-True (Test-Content $unicodeShortFile) 'Unicode F8 refusal preserves file bytes'
+            $passed = $true
+            Write-Host 'SKIP: Recycle Bin is not enabled or file is not eligible for wide-shell recycling.'
+            return
+        }
+        Send-Keys '{ENTER}'
+        Wait-Until { -not [IO.File]::Exists($unicodeShortFile) } 'Unicode F8 moves fixture to Recycle Bin'
+        $passed = $true
+        Write-Host 'PASS: Unicode F8 recycled disposable file through native shell.'
         return
     }
 
