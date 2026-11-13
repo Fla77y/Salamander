@@ -1873,21 +1873,20 @@ BOOL CFilesWindow::CopyFocusedNameToClipboard(CCopyFocusedNameModeEnum mode)
                                 ? &Dirs->At(FocusedIndex)
                                 : &Files->At(FocusedIndex - Dirs->Count);
 
-    // A question mark is not a legal Win32 filename character. When it
-    // appears in a disk panel entry it came from a lossy ANSI conversion.
-    // Resolve the real Unicode name read-only, and never guess if two
-    // different names have the same legacy alias.
-    if (mode == cfnmShort && Is(ptDisk) && strchr(focusedItem->Name, '?') != NULL)
+    // A Windows ACP best-fit mapping may silently change a disk name
+    // without producing '?'. Consult the complete per-listing UTF-16
+    // identity index, not a character heuristic.
+    if (Is(ptDisk) && UnicodeDiskNames.IsUnsafeAnsiName(focusedItem->Name))
     {
         std::wstring indexedName;
-        if (!UnicodeDiskNames.TryGet(focusedItem->Name, indexedName))
+        if (!UnicodeDiskNames.TryGetLossy(focusedItem->Name, indexedName))
         {
-            TRACE_E("Cannot resolve non-ANSI disk name uniquely");
-            return FALSE; // Never publish a guessed filename.
+            TRACE_E("Cannot resolve Unicode disk name uniquely");
+            return FALSE; // Ambiguous, missing or unavailable: never guess.
         }
 
-        // A filesystem entry may have changed since the panel was listed.
-        // Revalidate the original identity before exporting it.
+        // Revalidate the unique source identity before exporting it. The
+        // disk contents might have changed since this panel was refreshed.
         std::wstring unicodeDirectory;
         if (!Salamander::TryGetUnicodePanelDirectory(GetPath(), unicodeDirectory))
             return FALSE;
@@ -1903,7 +1902,24 @@ BOOL CFilesWindow::CopyFocusedNameToClipboard(CCopyFocusedNameModeEnum mode)
             return FALSE;
         }
 
-        return Salamander::TryCopyUnicodeNameToClipboard(MainWindow->HWindow, currentName) ? TRUE : FALSE;
+        if (mode == cfnmShort)
+            return Salamander::TryCopyUnicodeNameToClipboard(
+                MainWindow->HWindow, currentName) ? TRUE : FALSE;
+
+        if (mode == cfnmFull)
+        {
+            // Only the original Unicode filename, not the directory, was
+            // lost by the legacy panel conversion. Preserve the current
+            // directory and append the exact component dynamically.
+            if (!unicodeDirectory.empty() && unicodeDirectory.back() != L'\\')
+                unicodeDirectory.push_back(L'\\');
+            unicodeDirectory.append(currentName);
+            return Salamander::TryCopyUnicodeNameToClipboard(
+                MainWindow->HWindow, unicodeDirectory) ? TRUE : FALSE;
+        }
+
+        // The existing ANSI UNC translation cannot preserve this name.
+        return FALSE;
     }
 
     char buff[2 * MAX_PATH];
