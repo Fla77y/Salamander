@@ -56,6 +56,62 @@ public static class SalamanderGuiNative
     public delegate bool WindowCallback(IntPtr window, IntPtr parameter);
     [DllImport("user32.dll")]
     private static extern bool EnumChildWindows(IntPtr window, WindowCallback callback, IntPtr parameter);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool EnumWindows(WindowCallback callback, IntPtr parameter);
+
+    public sealed class TopLevelWindow
+    {
+        public IntPtr Handle { get; set; }
+        public uint ProcessId { get; set; }
+        public string Title { get; set; }
+        public bool Visible { get; set; }
+    }
+
+    // Enumerate real top-level HWNDs, not Process.MainWindowHandle's heuristic.
+    public static List<TopLevelWindow> GetProcessWindows(uint processId)
+    {
+        List<TopLevelWindow> windows = new List<TopLevelWindow>();
+        WindowCallback callback = (window, parameter) =>
+        {
+            uint ownerPid;
+            GetWindowThreadProcessId(window, out ownerPid);
+            if (ownerPid == processId)
+            {
+                StringBuilder title = new StringBuilder(512);
+                GetWindowTextW(window, title, title.Capacity);
+                windows.Add(new TopLevelWindow
+                {
+                    Handle = window,
+                    ProcessId = ownerPid,
+                    Title = title.ToString(),
+                    Visible = IsWindowVisible(window)
+                });
+            }
+            return true;
+        };
+        if (!EnumWindows(callback, IntPtr.Zero))
+            throw new InvalidOperationException("EnumWindows failed: " + Marshal.GetLastWin32Error());
+        return windows;
+    }
+
+    // Select only a visible Salamander top-level window owned by our launched PID.
+    public static IntPtr FindMainWindow(uint processId)
+    {
+        foreach (TopLevelWindow window in GetProcessWindows(processId))
+        {
+            if (window.Visible &&
+                window.Title.IndexOf("Open Salamander", StringComparison.OrdinalIgnoreCase) >= 0)
+                return window.Handle;
+        }
+        return IntPtr.Zero;
+    }
+
+    public static string GetWindowCaption(IntPtr window)
+    {
+        StringBuilder caption = new StringBuilder(512);
+        GetWindowTextW(window, caption, caption.Capacity);
+        return caption.ToString();
+    }
 
     // A dialog's message is in child controls; the caption alone is ambiguous.
     public static string DescribeWindow(IntPtr window) {
@@ -93,6 +149,7 @@ $maxName = ('n' * 251) + '.txt'
 $renamedName = 'Umbenannt_日本_😀.txt'
 $deep = $source
 $process = $null
+$mainWindowHandle = [IntPtr]::Zero
 $passed = $false
 $utfName = 'Größe_東京_😀.txt'
 $payload = [Text.Encoding]::UTF8.GetBytes(('Regression-äöü-東京-😀' * 1024))
@@ -113,6 +170,19 @@ function Wait-Until {
     throw "Timeout waiting for $Description"
 }
 
+function Get-ProcessWindowSummary {
+    param([uint32]$OwnerProcessId)
+
+    $windows = [SalamanderGuiNative]::GetProcessWindows($OwnerProcessId)
+    if ($windows.Count -eq 0) { return '<no top-level windows for launched process>' }
+    $descriptions = foreach ($window in $windows) {
+        $title = $window.Title.Replace([char]13, ' ').Replace([char]10, ' ')
+        'HWND=0x{0:X} visible={1} title={2}' -f
+            $window.Handle.ToInt64(), $window.Visible, $title
+    }
+    return ($descriptions -join '; ')
+}
+
 function Get-ActiveProcessId {
     [uint32]$id = 0
     $h = [SalamanderGuiNative]::GetForegroundWindow()
@@ -124,7 +194,8 @@ function Get-TestDialog {
     if ($null -eq $process) { return $null }
     $process.Refresh()
     if ($process.HasExited) { return $null }
-    $main = $process.MainWindowHandle
+    $main = $mainWindowHandle
+    if ($main -eq [IntPtr]::Zero) { return $null }
     $popup = [SalamanderGuiNative]::GetLastActivePopup($main)
     $foreground = [SalamanderGuiNative]::GetForegroundWindow()
     [uint32]$ownerPid = 0
@@ -142,8 +213,13 @@ function Get-TestDialog {
 function Focus-TestProcess {
     $process.Refresh()
     if ($process.HasExited) { throw 'Test Salamander process terminated unexpectedly.' }
-    $h = $process.MainWindowHandle
-    if ($h -eq [IntPtr]::Zero) { throw 'No main window for test Salamander.' }
+    $h = $mainWindowHandle
+    if ($h -eq [IntPtr]::Zero) { throw 'No verified main window for test Salamander.' }
+    [uint32]$windowPid = 0
+    [void][SalamanderGuiNative]::GetWindowThreadProcessId($h, [ref]$windowPid)
+    if ($windowPid -ne [uint32]$process.Id) {
+        throw "Main window no longer belongs to launched Salamander PID $($process.Id)."
+    }
     [void][SalamanderGuiNative]::ShowWindow($h, 9)
     [void][SalamanderGuiNative]::SetForegroundWindow($h)
     Wait-Until { (Get-ActiveProcessId) -eq [uint32]$process.Id } 'test application to be foreground'
@@ -168,8 +244,8 @@ function Invoke-SalamanderCommand {
     )
     $process.Refresh()
     if ($process.HasExited) { throw 'Salamander exited while dispatching a GUI command.' }
-    $main = $process.MainWindowHandle
-    if ($main -eq [IntPtr]::Zero) { throw 'Salamander main window handle missing.' }
+    $main = $mainWindowHandle
+    if ($main -eq [IntPtr]::Zero) { throw 'Verified Salamander main window handle missing.' }
     [uint32]$ownerPid = 0
     [void][SalamanderGuiNative]::GetWindowThreadProcessId($main, [ref]$ownerPid)
     if ($ownerPid -ne [uint32]$process.Id) {
@@ -263,8 +339,9 @@ function Go-ToPath {
         $dialogText = Get-TestDialog
         throw ("GUI navigation failed: {0}; Salamander PID={1}; HWND=0x{2:X}; title='{3}'; " +
             "foreground PID={4}; last panel path='{5}'; panel read error='{6}'; dialog='{7}'" -f
-            $_.Exception.Message, $process.Id, $process.MainWindowHandle.ToInt64(),
-            $process.MainWindowTitle, $diagnostics.ForegroundPid, $diagnostics.PanelPath,
+            $_.Exception.Message, $process.Id, $mainWindowHandle.ToInt64(),
+            [SalamanderGuiNative]::GetWindowCaption($mainWindowHandle),
+            $diagnostics.ForegroundPid, $diagnostics.PanelPath,
             $diagnostics.PanelReadError, $dialogText)
     }
     Assert-True ((Read-PanelPath) -ceq $Path) "Salamander panel path agrees with requested ($($Path.Length) UTF-16 units)"
@@ -287,7 +364,7 @@ function Save-FailureScreenshot {
     try {
         # Save only the app window; other desktop windows may contain private data.
         if ($null -eq $process -or $process.HasExited) { return }
-        $shotWindow = $process.MainWindowHandle
+        $shotWindow = $mainWindowHandle
         $foreground = [SalamanderGuiNative]::GetForegroundWindow()
         [uint32]$ownerPid = 0
         [void][SalamanderGuiNative]::GetWindowThreadProcessId($foreground, [ref]$ownerPid)
@@ -341,30 +418,37 @@ try {
         throw 'Please close existing Salamander instances before running automated GUI tests.'
     }
     $process = Start-Process -FilePath $SalamanderExe -WorkingDirectory (Split-Path -Parent $SalamanderExe) -PassThru
-    # A nonzero MainWindowHandle alone does not prove that Salamander's
-    # main window is initialized. A startup window can appear first.
-    Wait-Until {
+    # Process.MainWindowHandle/MainWindowTitle may select an auxiliary
+    # window. The GUI driver must use the HWND found by Win32 enumeration.
+    try {
+        Wait-Until {
+            $process.Refresh()
+            if ($process.HasExited) {
+                throw 'Test Salamander exited before its main window became ready.'
+            }
+            $script:mainWindowHandle = [SalamanderGuiNative]::FindMainWindow([uint32]$process.Id)
+            return $script:mainWindowHandle -ne [IntPtr]::Zero
+        } 'visible Open Salamander top-level window owned by launched process'
+    }
+    catch {
         $process.Refresh()
-        if ($process.HasExited) { throw 'Test Salamander exited before its main window became ready.' }
-        $main = $process.MainWindowHandle
-        if ($main -eq [IntPtr]::Zero -or -not [SalamanderGuiNative]::IsWindowVisible($main)) {
-            return $false
-        }
-        [uint32]$windowPid = 0
-        [void][SalamanderGuiNative]::GetWindowThreadProcessId($main, [ref]$windowPid)
-        ($windowPid -eq [uint32]$process.Id) -and
-            ($process.MainWindowTitle -match 'Open Salamander')
-    } 'visible, initialized Open Salamander main window'
+        $windowSummary = Get-ProcessWindowSummary -OwnerProcessId ([uint32]$process.Id)
+        throw ("GUI startup failed: {0}; launched PID={1}; .NET MainWindowHandle=0x{2:X}; " +
+            ".NET title='{3}'; process windows: {4}" -f
+            $_.Exception.Message, $process.Id, $process.MainWindowHandle.ToInt64(),
+            $process.MainWindowTitle, $windowSummary)
+    }
     $process.Refresh()
     $testIsAdmin = [Security.Principal.WindowsPrincipal]::new(
         [Security.Principal.WindowsIdentity]::GetCurrent()
     ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-    Write-Host ("GUI driver: Salamander PID = {0}; HWND = 0x{1:X}; title = '{2}'; test session elevated = {3}" -f
-        $process.Id, $process.MainWindowHandle.ToInt64(), $process.MainWindowTitle, $testIsAdmin)
+    $windowTitle = [SalamanderGuiNative]::GetWindowCaption($mainWindowHandle)
+    Write-Host ("GUI driver: Salamander PID = {0}; verified HWND = 0x{1:X}; title = '{2}'; test session elevated = {3}" -f
+        $process.Id, $mainWindowHandle.ToInt64(), $windowTitle, $testIsAdmin)
     # Salamander marks its window title with '(Administrator)' when elevated.
     # UIPI can silently block SendKeys from a non-elevated PowerShell process.
     # Refuse to misclassify that as a path/name failure.
-    if (-not $testIsAdmin -and $process.MainWindowTitle -match '\(Administrator\)') {
+    if (-not $testIsAdmin -and $windowTitle -match '\(Administrator\)') {
         throw 'Salamander is elevated but the GUI-test PowerShell is not. Keyboard input can be blocked by Windows UIPI. Run both at the same integrity level, preferably both unelevated.'
     }
     Focus-TestProcess
