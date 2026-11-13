@@ -13,7 +13,7 @@ $repository = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Provide
 $buildRoot = 'D:\Build\OpenSal'
 $configuration = 'Release'
 $validOptions = @('--update', '--build', '--test', '--setup', '--run',
-                  '--debug', '--release', '--all', '--help', '-h', '/?')
+                  '--debug', '--release', '--all', '--test-gui', '--help', '-h', '/?')
 $requestedSet = [System.Collections.Generic.HashSet[string]]::new(
     [StringComparer]::OrdinalIgnoreCase)
 
@@ -34,6 +34,7 @@ Open Salamander – Verwaltung für Visual Studio 2026
   manage.cmd --build        Debug und Release, jeweils x64, neu erstellen; CHM-Hilfe bauen
   manage.cmd --test         Windows-Dateisystem-/Namens-Tests und Projekt-Regressionstests
   manage.cmd --setup        Debug- und Release-7z plus Inno-Setup-Pakete erzeugen
+  manage.cmd --test-gui     Testdaten behalten und Salamander zum manuellen GUI-Test starten
   manage.cmd --run          Release-Version starten
   manage.cmd --run --debug  Debug-Version starten
   manage.cmd --all          Update, Build, Test, Setup und Release-Start
@@ -255,6 +256,17 @@ try {
         if ($requestedSet.Contains('--update')) { Update-Branch }
         if ($requestedSet.Contains('--build')) { Build-Variants }
         if ($requestedSet.Contains('--test')) { Run-Tests }
+        if ($requestedSet.Contains('--test-gui')) {
+            Write-Host '=== MANUELLER SALAMANDER-GUI-LANGPFADTEST ==='
+            $testScript = Join-Path $repository 'tools\release\tests\Test-FilenamesAndPaths.ps1'
+            Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $testScript, '-KeepFixture')
+            Run-Salamander
+            Write-Host 'Prüfe in Salamander: lange Pfade öffnen, 255-Zeichen-Dateinamen,'
+            Write-Host 'Unicode-Namen, F5 Kopieren, F6 Verschieben, Umbenennen, Löschen'
+            Write-Host 'nur in der Teststruktur, Suchen, Viewer und Plugins.'
+            Write-Host 'Die Testdateien werden bewusst NICHT automatisch entfernt.'
+            Write-Warning 'Die GUI-Prüfung ist manuell; diese Ausgabe bescheinigt KEIN Bestehen.'
+        }
         if ($requestedSet.Contains('--setup')) {
             Build-Setups -AlreadyBuilt:$requestedSet.Contains('--build')
         }
