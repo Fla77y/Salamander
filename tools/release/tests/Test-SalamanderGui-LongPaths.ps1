@@ -252,23 +252,29 @@ function Save-FailureScreenshot {
 }
 
 try {
-    # ARRANGE: no real user files are touched.
+    # ARRANGE: fixtures are scoped to the chosen test mode. In particular
+    # a baseline-only pass must never be confused with a long-path pass.
     [IO.Directory]::CreateDirectory($source) | Out-Null
-    # Independent Unicode-only fixture: total path safely below MAX_PATH.
-    $unicodeShortFile = Join-Path $source $utfName
-    [IO.File]::WriteAllBytes($unicodeShortFile, $payload)
-    Assert-True ($unicodeShortFile.Length -lt 260) 'Unicode-only fixture fits below MAX_PATH'
-    [IO.Directory]::CreateDirectory($destination) | Out-Null
-    [IO.Directory]::CreateDirectory($moveDir) | Out-Null
-    [IO.Directory]::CreateDirectory($maxDir) | Out-Null
-    [IO.File]::WriteAllBytes((Join-Path $maxDir $maxName), $payload)
-    foreach ($n in 1..5) {
-        $deep = Join-Path $deep ('depth-' + $n + '-' + ('x' * 56))
-        [IO.Directory]::CreateDirectory($deep) | Out-Null
+    Assert-True ($source.Length -lt 257) 'Short-path GUI baseline fixture is below MAX_PATH'
+    if (-not $BaselineOnly) {
+        # Independent Unicode-only fixture with a short total path.
+        $unicodeShortFile = Join-Path $source $utfName
+        [IO.File]::WriteAllBytes($unicodeShortFile, $payload)
+        Assert-True ($unicodeShortFile.Length -lt 260) 'Unicode filename fixture fits below MAX_PATH'
     }
-    $sourceFile = Join-Path $deep $utfName
-    [IO.File]::WriteAllBytes($sourceFile, $payload)
-    Assert-True ($sourceFile.Length -gt 260) 'Test file absolute path exceeds 260 UTF-16 units'
+    if (-not $BaselineOnly -and -not $ShortUnicodeOnly) {
+        [IO.Directory]::CreateDirectory($destination) | Out-Null
+        [IO.Directory]::CreateDirectory($moveDir) | Out-Null
+        [IO.Directory]::CreateDirectory($maxDir) | Out-Null
+        [IO.File]::WriteAllBytes((Join-Path $maxDir $maxName), $payload)
+        foreach ($n in 1..5) {
+            $deep = Join-Path $deep ('depth-' + $n + '-' + ('x' * 56))
+            [IO.Directory]::CreateDirectory($deep) | Out-Null
+        }
+        $sourceFile = Join-Path $deep $utfName
+        [IO.File]::WriteAllBytes($sourceFile, $payload)
+        Assert-True ($sourceFile.Length -gt 260) 'Long-path fixture exceeds 260 UTF-16 units'
+    }
 
     # Never attach keystrokes to an existing user instance.
     if (@(Get-Process salamand -ErrorAction SilentlyContinue).Count -gt 0) {
