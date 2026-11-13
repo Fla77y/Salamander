@@ -233,6 +233,60 @@ A fresh interactive `manage.cmd --test-gui-baseline` run is required
 to validate this driver's resilience on the affected desktop. No
 rebuild is necessary for this test-script-only change.
 
+## Genuine Unicode F2 rename — first writable GUI slice
+
+This slice adds a **real UTF-16 rename**, separate from the legacy ANSI
+engine, for a disk file or directory **only if** the sidecar cache maps
+its legacy name uniquely to one original UTF-16 entry. It is not a
+replacement for the legacy operation engine and does not change the
+plug-in-visible `CFileData` layout.
+
+1. `tools/release/tests/Test-SalamanderGui-LongPaths.ps1` has a new
+   `-ShortUnicodeRenameOnly` mode, exposed through
+   `manage.cmd --test-gui-unicode-rename`. It opens F2 on a single
+   disposable short-path Unicode file, pastes a second Unicode name
+   into the native wide dialog and checks that the old path disappears,
+   the new path exists and the bytes are preserved.
+2. `src/common/win32_unicode_rename_dialog.h` constructs a runtime
+   `DialogBoxIndirectParamW` dialog with a UTF-16 edit control.
+   The old `CCopyMoveDialog` remains unchanged for normal ANSI
+   names and plug-ins.
+3. `CFilesWindow::RenameFile` selects this path only when
+   `UnicodeDiskNames.TryGetLossy` succeeds. A collision, unknown
+   entry or unavailable index keeps the existing fail-closed error.
+   A fresh wide directory enumeration validates the original before
+   **and after** the modal editor, and the legacy ANSI alias is copied
+   before showing the dialog so it cannot become a dangling pointer.
+4. Both the original and requested names are validated as independent
+   UTF-16 filename components. The existing
+   `TryMoveUnicodeFileNoOverwrite` uses `MoveFileExW` with no
+   overwrite or cross-volume-copy flag. Any error is displayed, with
+   the original name preserved. A successful rename sends the usual
+   panel refresh notification.
+5. The native `tools/tests/long_path_io.cpp` now verifies a real
+   existing UTF-16 destination **is not overwritten**, and that
+   both source and destination are preserved. MSVC also compiles the
+   native Unicode dialog template with `/W4 /WX` via
+   `tools/tests/win32_unicode_rename_dialog.cpp`.
+
+**Acceptance status:** CI compilation and the user's real interactive
+`--test-gui-unicode-rename` result must be checked for this new slice.
+The **previous** six short-path regression groups passed on Open
+Salamander 5.1 on 13 November 2026, before adding this F2 write path;
+they must not be reported as proof of the new path.
+
+**Remaining and important:** F5/F6/F8 still fail closed on lossy names.
+The 2nd enumeration introduces TOCTOU risk if an external process
+actively swaps a filename immediately before the rename, as does any
+name-based Win32 operation; handle/file-ID-based atomic binding is
+needed for stronger adversarial guarantees. Real per-row UTF-16
+identities require migrating the **primary** panel enumeration away
+from `FindFirstFileA`; the current alias cache cannot distinguish
+two UTF-16 names that map to the same ANSI bytes. Progress, overwrite
+prompts, recycle bin, ACL policy, cancellation, other command entry
+points, performance and long GUI paths still need implementation.
+Do not treat this slice as full Unicode/long-path support.
+
 ## Phase 1: Baseline and bounded operations
 
 - `tools/tests/Test-LongPaths.ps1` generates disposable cases for total
