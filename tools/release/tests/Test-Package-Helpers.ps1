@@ -23,6 +23,28 @@ foreach ($file in $scriptFiles) {
     }
 }
 
+# The GUI driver dispatches the exact synchronous WM_COMMAND messages handled
+# by Salamander. Prevent accidental drift of command IDs in resource.rh2.
+$resourceCommands = Get-Content -LiteralPath (
+    Join-Path $toolsDir '..\..\src\resource.rh2') -Raw
+$guiDriver = Get-Content -LiteralPath (
+    Join-Path $toolsDir 'tests\Test-SalamanderGui-LongPaths.ps1') -Raw
+foreach ($command in @(
+    @{ Name = 'CM_CLIPPASTE'; Id = 775 }
+    @{ Name = 'CM_CLIPCOPYFULLPATH'; Id = 711 }
+    @{ Name = 'CM_CLIPCOPYNAME'; Id = 710 }
+)) {
+    $pattern = '(?m)^\s*#define\s+' + $command.Name +
+               '\s+' + $command.Id + '(?:\s|$)'
+    if ($resourceCommands -notmatch $pattern) {
+        throw "GUI test command ID no longer matches src/resource.rh2: $($command.Name)"
+    }
+}
+if ($guiDriver -notmatch 'SendMessageTimeout' -or
+    $guiDriver -notmatch 'Invoke-SalamanderCommand') {
+    throw 'GUI test must synchronize clipboard commands with the main window.'
+}
+
 # MSBuild writes intermediate outputs beside .vcxproj files. Those generated
 # directories must not block the pipeline's safe Git fast-forward update.
 $repository = (Resolve-Path -LiteralPath (Join-Path $toolsDir '..\\..')).ProviderPath
