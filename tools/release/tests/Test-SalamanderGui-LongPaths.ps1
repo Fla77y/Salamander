@@ -193,7 +193,13 @@ try {
     } 'Salamander main window'
     Focus-TestProcess
 
-    # ACT + ASSERT: actual GUI directory change and filename retrieval.
+    # First validate the GUI driver against a normal short path. If this
+    # fails, treat it as an automation/infrastructure problem, NOT as proof
+    # that the application lacks long-path support.
+    Go-ToPath $source
+    Assert-True ((Read-PanelPath) -ceq $source) 'GUI driver can navigate a normal short directory'
+
+    # ACT + ASSERT: actual GUI long directory change and filename retrieval.
     Go-ToPath $deep
     Send-Keys '{END}'
     Assert-True ((Read-FocusedFilename) -ceq $utfName) 'Salamander panel preserves Unicode filename'
