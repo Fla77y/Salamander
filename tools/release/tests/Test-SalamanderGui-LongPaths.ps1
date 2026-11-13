@@ -6,7 +6,7 @@
     Tests Salamander's GUI with Unicode names and paths >260 UTF-16 units.
 .DESCRIPTION
     Requires unlocked interactive Windows desktop and PowerShell 7 in STA.
-    Uses the documented Shift+F7, Ctrl+Alt+Insert, Alt+Shift+Insert, F5
+    Uses documented Shift+F7, Ctrl+Alt+Insert, Alt+Shift+Insert, F2/F5/F6/F8
     shortcuts. Only creates/operates on disposable temporary files.
     An explicit failure means no long-path GUI compatibility was proven.
 .EXAMPLE
@@ -49,6 +49,10 @@ catch { Write-Warning 'Original clipboard could not be saved.' }
 $root = Join-Path ([IO.Path]::GetTempPath()) ('OpenSal-GuiLong-' + [guid]::NewGuid().ToString('N'))
 $source = Join-Path $root 'source'
 $destination = Join-Path $root 'destination'
+$moveDir = Join-Path $root 'move-target'
+$maxDir = Join-Path $root 'maximum-names'
+$maxName = ('n' * 251) + '.txt'
+$renamedName = 'Umbenannt_日本_😀.txt'
 $deep = $source
 $process = $null
 $passed = $false
@@ -174,6 +178,9 @@ try {
     # ARRANGE: no real user files are touched.
     [IO.Directory]::CreateDirectory($source) | Out-Null
     [IO.Directory]::CreateDirectory($destination) | Out-Null
+    [IO.Directory]::CreateDirectory($moveDir) | Out-Null
+    [IO.Directory]::CreateDirectory($maxDir) | Out-Null
+    [IO.File]::WriteAllBytes((Join-Path $maxDir $maxName), $payload)
     foreach ($n in 1..5) {
         $deep = Join-Path $deep ('depth-' + $n + '-' + ('x' * 56))
         [IO.Directory]::CreateDirectory($deep) | Out-Null
@@ -218,9 +225,56 @@ try {
     Wait-Until { Test-Content $targetFile } 'F5 copy and byte verification'
     Assert-True (Test-Content $targetFile) 'F5 copy retains all UTF-8 file bytes'
 
+    # ACT + ASSERT: F2 renames the selected Unicode file in our test directory.
+    Send-Keys '{TAB}'
+    Assert-True ((Read-PanelPath) -ceq $destination) 'Destination panel active before rename'
+    Send-Keys '{END}'
+    Assert-True ((Read-FocusedFilename) -ceq $utfName) 'Copied file selected before F2'
+    Set-ClipboardText $renamedName
+    Send-Keys '{F2}'
+    Start-Sleep -Milliseconds 350
+    Send-Keys '^a'
+    Send-Keys '^v'
+    Send-Keys '{ENTER}'
+    $renamedFile = Join-Path $destination $renamedName
+    Wait-Until { (Test-Content $renamedFile) -and -not [IO.File]::Exists($targetFile) } 'F2 Unicode rename with byte integrity'
+    Assert-True (Test-Content $renamedFile) 'F2 Unicode rename preserved bytes'
+
+    # ACT + ASSERT: F6 moves from the verified destination to another
+    # disposable panel directory. Do not send F6 without verifying both.
+    Send-Keys '{TAB}'
+    Go-ToPath $moveDir
+    Send-Keys '{TAB}'
+    Assert-True ((Read-PanelPath) -ceq $destination) 'Source panel verified before F6'
+    Send-Keys '{END}'
+    Assert-True ((Read-FocusedFilename) -ceq $renamedName) 'Correct source file selected before F6'
+    Send-Keys '{F6}'
+    Start-Sleep -Milliseconds 400
+    Send-Keys '{ENTER}'
+    $movedFile = Join-Path $moveDir $renamedName
+    Wait-Until { (Test-Content $movedFile) -and -not [IO.File]::Exists($renamedFile) } 'F6 Unicode move with byte integrity'
+    Assert-True (Test-Content $movedFile) 'F6 move preserved all bytes'
+
+    # ACT + ASSERT: F8 deletes ONLY the fixture item after verifying the panel.
+    Send-Keys '{TAB}'
+    Assert-True ((Read-PanelPath) -ceq $moveDir) 'Deletion panel verified as disposable fixture'
+    Send-Keys '{END}'
+    Assert-True ((Read-FocusedFilename) -ceq $renamedName) 'Correct item selected before F8'
+    Send-Keys '{F8}'
+    Start-Sleep -Milliseconds 350
+    Send-Keys '{ENTER}'
+    Wait-Until { -not [IO.File]::Exists($movedFile) } 'F8 deletion of disposable Unicode file'
+    Assert-True (-not [IO.File]::Exists($movedFile)) 'F8 removed only the selected test file'
+
+    # ACT + ASSERT: a maximum-size single path component is not a long
+    # absolute path. The filename must be preserved exactly, not truncated.
+    Go-ToPath $maxDir
+    Send-Keys '{END}'
+    Assert-True ((Read-FocusedFilename) -ceq $maxName) '255-unit ASCII filename visible in Salamander panel'
+    Assert-True (Test-Content (Join-Path $maxDir $maxName)) '255-unit filename data intact'
+
     $passed = $true
-    Write-Host 'PASS: REAL Salamander GUI long path, Unicode filename, F5 copy.'
-    Write-Warning 'F2/F6/F8, plugins, 255-unit names and UNC need separate GUI coverage.'
+    Write-Host 'PASS: REAL Salamander GUI long paths, Unicode, F2/F5/F6/F8, 255-unit names.'
 }
 catch {
     Write-Warning "GUI integration FAILED: $($_.Exception.Message)"
