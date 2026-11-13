@@ -191,9 +191,11 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
 
     // In particular, never allow same-path F6 to be misclassified as a
     // successful move; don't rely on Win32 path normalization for this.
+    const std::wstring wideSourceName(source.Value().begin(), source.Value().end());
+    const std::wstring wideDestinationName(
+        destination.Value().begin(), destination.Value().end());
     if (CompareStringOrdinal(
-            reinterpret_cast<const wchar_t*>(source.Value().c_str()), -1,
-            reinterpret_cast<const wchar_t*>(destination.Value().c_str()), -1,
+            wideSourceName.c_str(), -1, wideDestinationName.c_str(), -1,
             TRUE) == CSTR_EQUAL)
         return FALSE;
 
