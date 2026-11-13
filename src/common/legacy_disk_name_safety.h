@@ -21,6 +21,9 @@ struct LegacyDiskEntryView
 {
     const char* name;
     bool selected;
+    // True when the panel's UTF-16 identity index cannot prove that
+    // the legacy byte name addresses the same file exactly.
+    bool unsafeIdentity = false;
 };
 
 // Match Salamander's file-action contract: process all selected entries, or
@@ -36,13 +39,15 @@ bool SelectionContainsLossyDiskName(std::size_t entryCount,
     if (selectedCount == 0)
     {
         return focusedIndex < entryCount &&
-               IsLossyAnsiDiskName(getEntry(focusedIndex).name);
+               (getEntry(focusedIndex).unsafeIdentity ||
+                IsLossyAnsiDiskName(getEntry(focusedIndex).name));
     }
 
     for (std::size_t i = 0; i < entryCount; ++i)
     {
         const LegacyDiskEntryView entry = getEntry(i);
-        if (entry.selected && IsLossyAnsiDiskName(entry.name))
+        if (entry.selected &&
+            (entry.unsafeIdentity || IsLossyAnsiDiskName(entry.name)))
             return true;
     }
     return false;
