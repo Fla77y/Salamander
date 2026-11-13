@@ -34,11 +34,39 @@ Add-Type -AssemblyName System.Drawing
 Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
+using System.Collections.Generic;
+using System.Text;
 public static class SalamanderGuiNative
 {
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowTextW(IntPtr window, StringBuilder buffer, int capacity);
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetLastActivePopup(IntPtr window);
+    [DllImport("user32.dll")]
+    public static extern bool IsWindowVisible(IntPtr window);
+    public delegate bool WindowCallback(IntPtr window, IntPtr parameter);
+    [DllImport("user32.dll")]
+    private static extern bool EnumChildWindows(IntPtr window, WindowCallback callback, IntPtr parameter);
+
+    // A dialog's message is in child controls; the caption alone is ambiguous.
+    public static string DescribeWindow(IntPtr window) {
+        List<string> messages = new List<string>();
+        StringBuilder caption = new StringBuilder(512);
+        GetWindowTextW(window, caption, caption.Capacity);
+        if (caption.Length > 0) messages.Add(caption.ToString());
+        WindowCallback callback = (child, parameter) => {
+            StringBuilder label = new StringBuilder(512);
+            GetWindowTextW(child, label, label.Capacity);
+            if (label.Length > 0 && messages.Count < 12)
+                messages.Add(label.ToString());
+            return true;
+        };
+        EnumChildWindows(window, callback, IntPtr.Zero);
+        return string.Join(" | ", messages);
+    }
     [StructLayout(LayoutKind.Sequential)]
     public struct GuiRect { public int Left, Top, Right, Bottom; }
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out GuiRect rect);
@@ -84,6 +112,25 @@ function Get-ActiveProcessId {
     $h = [SalamanderGuiNative]::GetForegroundWindow()
     [void][SalamanderGuiNative]::GetWindowThreadProcessId($h, [ref]$id)
     return $id
+}
+
+function Get-TestDialog {
+    if ($null -eq $process) { return $null }
+    $process.Refresh()
+    if ($process.HasExited) { return $null }
+    $main = $process.MainWindowHandle
+    $popup = [SalamanderGuiNative]::GetLastActivePopup($main)
+    $foreground = [SalamanderGuiNative]::GetForegroundWindow()
+    [uint32]$ownerPid = 0
+    [void][SalamanderGuiNative]::GetWindowThreadProcessId($foreground, [ref]$ownerPid)
+    if ($ownerPid -eq [uint32]$process.Id -and $foreground -ne $main) {
+        return [SalamanderGuiNative]::DescribeWindow($foreground)
+    }
+    if ($popup -ne [IntPtr]::Zero -and $popup -ne $main -and
+        [SalamanderGuiNative]::IsWindowVisible($popup)) {
+        return [SalamanderGuiNative]::DescribeWindow($popup)
+    }
+    return $null
 }
 
 function Focus-TestProcess {
@@ -139,11 +186,21 @@ function Go-ToPath {
     Send-Keys '^v'
     Send-Keys '{ENTER}'
     Wait-Until {
-        try {
-            Focus-TestProcess
-            return (Read-PanelPath) -ceq $Path
+        $dialogText = Get-TestDialog
+        if ($dialogText -match 'Error Changing Directory|too long name|Cannot finish operation') {
+            throw "Salamander rejected path '$Path': $dialogText"
         }
-        catch { return $false }
+        if ((Get-ActiveProcessId) -ne [uint32]$process.Id) { return $false }
+        # Do not force main window to the foreground here. Doing so hides
+        # native error dialogs and turns a genuine application error into a timeout.
+        try { return (Read-PanelPath) -ceq $Path }
+        catch {
+            $dialogText = Get-TestDialog
+            if ($dialogText -match 'Error Changing Directory|too long name') {
+                throw "Salamander rejected path '$Path': $dialogText"
+            }
+            return $false
+        }
     } "Salamander navigation to $Path"
     Assert-True ((Read-PanelPath) -ceq $Path) 'Salamander panel preserves entire long UTF-16 directory path'
 }
@@ -165,8 +222,13 @@ function Save-FailureScreenshot {
     try {
         # Save only the app window; other desktop windows may contain private data.
         if ($null -eq $process -or $process.HasExited) { return }
+        $shotWindow = $process.MainWindowHandle
+        $foreground = [SalamanderGuiNative]::GetForegroundWindow()
+        [uint32]$ownerPid = 0
+        [void][SalamanderGuiNative]::GetWindowThreadProcessId($foreground, [ref]$ownerPid)
+        if ($ownerPid -eq [uint32]$process.Id) { $shotWindow = $foreground }
         $b = [SalamanderGuiNative+GuiRect]::new()
-        if (-not [SalamanderGuiNative]::GetWindowRect($process.MainWindowHandle, [ref]$b)) { return }
+        if (-not [SalamanderGuiNative]::GetWindowRect($shotWindow, [ref]$b)) { return }
         $width = $b.Right - $b.Left
         $height = $b.Bottom - $b.Top
         if ($width -le 0 -or $height -le 0) { return }
