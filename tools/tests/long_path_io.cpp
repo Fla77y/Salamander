@@ -189,6 +189,27 @@ int main()
     if (!foundUnicode || !foundMaxName)
         return Fail("directory enumeration must preserve UTF-16 filenames");
 
+    // Arrange: typed path is the new non-ANSI integration boundary.
+    Salamander::Utf16DiskPath unicodeDirectory;
+    if (!OwnPath(current, unicodeDirectory))
+        return Fail("arrange owned UTF-16 directory path");
+    std::vector<Salamander::LongDirectoryEntry> typedEntries;
+    // Act / Assert: enumerate the same names without converting via char*.
+    if (!Salamander::TryEnumerateLongDirectory(unicodeDirectory, typedEntries, enumError) ||
+        enumError != ERROR_SUCCESS || typedEntries.size() != entries.size())
+        return Fail("typed directory enumeration");
+    bool typedUnicodeName = false;
+    for (const auto& entry : typedEntries)
+        typedUnicodeName |= entry.name == L"Größe_東京_😀.txt";
+    if (!typedUnicodeName)
+        return Fail("typed enumeration retains exact supplementary UTF-16 name");
+
+    // Arrange / Act / Assert: default invalid path cannot reach Win32 API.
+    Salamander::Utf16DiskPath missingDirectory;
+    if (Salamander::TryEnumerateLongDirectory(missingDirectory, typedEntries, enumError) ||
+        enumError != ERROR_INVALID_PARAMETER || !typedEntries.empty())
+        return Fail("typed enumeration rejects uninitialized path");
+
     // Arrange: preserve the original Unicode filename and payload in the
     // source and keep all destinations inside the temporary fixture.
     Salamander::Utf16DiskPath unicodeSource;
