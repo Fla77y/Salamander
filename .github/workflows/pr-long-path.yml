@@ -18,6 +18,7 @@ on:
       - "src/fileswn0.cpp"
       - "tools/tests/**"
       - "tools/release/tests/Test-SalamanderGui-LongPaths.ps1"
+      - "tools/release/tests/Test-GuiDriver-Contract.ps1"
       - "tools/Manage-Salamander.ps1"
       - ".github/workflows/pr-long-path.yml"
   workflow_dispatch:
