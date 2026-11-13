@@ -181,7 +181,12 @@ function Go-ToPath {
     Focus-TestProcess
     Set-ClipboardText $Path
     Send-Keys '+{F7}'
-    Start-Sleep -Milliseconds 400
+    # Wait for the actual Change Directory dialog, not an arbitrary delay.
+    # This avoids intermittently typing into the main panel on slow machines.
+    Wait-Until {
+        $text = Get-TestDialog
+        return $null -ne $text -and $text -match 'Change Directory'
+    } 'Change Directory dialog after Shift+F7'
     Send-Keys '^a'
     Send-Keys '^v'
     Send-Keys '{ENTER}'
@@ -202,7 +207,7 @@ function Go-ToPath {
             return $false
         }
     } "Salamander navigation to $Path"
-    Assert-True ((Read-PanelPath) -ceq $Path) 'Salamander panel preserves entire long UTF-16 directory path'
+    Assert-True ((Read-PanelPath) -ceq $Path) "Salamander panel path agrees with requested ($($Path.Length) UTF-16 units)"
 }
 
 function Read-FocusedFilename {
