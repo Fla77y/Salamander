@@ -1879,13 +1879,31 @@ BOOL CFilesWindow::CopyFocusedNameToClipboard(CCopyFocusedNameModeEnum mode)
     // different names have the same legacy alias.
     if (mode == cfnmShort && Is(ptDisk) && strchr(focusedItem->Name, '?') != NULL)
     {
-        std::wstring exactName;
-        if (!UnicodeDiskNames.TryGet(focusedItem->Name, exactName))
+        std::wstring indexedName;
+        if (!UnicodeDiskNames.TryGet(focusedItem->Name, indexedName))
         {
             TRACE_E("Cannot resolve non-ANSI disk name uniquely");
             return FALSE; // Never publish a guessed filename.
         }
-        return Salamander::TryCopyUnicodeNameToClipboard(MainWindow->HWindow, exactName) ? TRUE : FALSE;
+
+        // A filesystem entry may have changed since the panel was listed.
+        // Revalidate the original identity before exporting it.
+        std::wstring unicodeDirectory;
+        if (!Salamander::TryGetUnicodePanelDirectory(GetPath(), unicodeDirectory))
+            return FALSE;
+
+        std::wstring currentName;
+        DWORD error = ERROR_SUCCESS;
+        const auto resolution = Salamander::ResolveUnicodePanelFileName(
+            unicodeDirectory.c_str(), focusedItem->Name, currentName, error);
+        if (resolution != Salamander::UnicodePanelNameResult::Unique ||
+            currentName != indexedName)
+        {
+            TRACE_E("Unicode disk name changed or became ambiguous (error " << error << ")");
+            return FALSE;
+        }
+
+        return Salamander::TryCopyUnicodeNameToClipboard(MainWindow->HWindow, currentName) ? TRUE : FALSE;
     }
 
     char buff[2 * MAX_PATH];
