@@ -248,6 +248,25 @@ int main()
              resolvedName != L"Größe_東京_😀.txt")
         return Fail("recover exact Unicode filename from unique ACP alias");
 
+    // Arrange / Act / Assert: the panel must build its Unicode index once
+    // per directory listing, not enumerate the directory for every paint.
+    Salamander::UnicodePanelNameCache panelNames;
+    if (!panelNames.Load(current.c_str(), resolveError))
+        return Fail("build Unicode panel filename index");
+    std::wstring cachedName = L"stale";
+    const bool cacheFound = panelNames.TryGet(tokyoAlias.c_str(), cachedName);
+    if (tokyoAlias == osakaAlias)
+    {
+        if (cacheFound || !cachedName.empty())
+            return Fail("indexed Unicode aliases must remain ambiguous");
+    }
+    else if (!cacheFound || cachedName != L"Größe_東京_😀.txt")
+        return Fail("indexed Unicode alias must resolve exact name");
+    panelNames.Clear();
+    cachedName = L"stale";
+    if (panelNames.TryGet(tokyoAlias.c_str(), cachedName) || !cachedName.empty())
+        return Fail("panel name index must invalidate on refresh");
+
     resolvedName = L"stale";
     if (Salamander::ResolveUnicodePanelFileName(
             current.c_str(), "not-in-the-directory.xyz",
