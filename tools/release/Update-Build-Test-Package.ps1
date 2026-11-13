@@ -16,7 +16,8 @@
 param(
     [string]$BuildRoot = 'D:\Build\OpenSal',
     [switch]$SkipUpdate,
-    [switch]$SkipInstaller
+    [switch]$SkipInstaller,
+    [switch]$SkipBuild
 )
 
 Set-StrictMode -Version Latest
@@ -106,9 +107,11 @@ Write-Host "Visual Studio: $vsDir"
 Write-Host "Build root: $env:OPENSAL_BUILD_DIR"
 Write-Host 'Rebuilding x64 Debug and Release...'
 
+if ($SkipBuild) { Write-Host 'Rebuild übersprungen: vorhandene Builds werden auf Vollständigkeit geprüft.' }
 foreach ($configuration in @('Debug', 'Release')) {
     Write-Host "=== $configuration x64 ==="
-    Invoke-Checked $msbuild @(
+    if (-not $SkipBuild) {
+        Invoke-Checked $msbuild @(
         $solution,
         '/t:Rebuild',
         "/p:Configuration=$configuration",
@@ -117,7 +120,8 @@ foreach ($configuration in @('Debug', 'Release')) {
         '/m',
         '/nr:false',
         '/v:minimal'
-    )
+        )
+    }
     $expectedBinary = Join-Path $variantPaths[$configuration] 'salamand.exe'
     if (-not (Test-Path -LiteralPath $expectedBinary -PathType Leaf)) {
         throw "MSBuild reported success but the expected executable is missing: $expectedBinary"
