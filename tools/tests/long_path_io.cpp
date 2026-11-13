@@ -4,6 +4,7 @@
 // Standalone MSVC/Win32 regression test: does NOT require the Salamander UI.
 #include "../../src/common/win32_long_path.h"
 #include "../../src/common/win32_long_directory.h"
+#include "../../src/common/win32_unicode_file_ops.h"
 
 #include <windows.h>
 
@@ -23,6 +24,17 @@ bool Convert(const std::wstring& input, std::wstring& output)
 {
     DWORD error = ERROR_SUCCESS;
     return Salamander::TryMakeExtendedLengthPath(input.c_str(), output, error) && error == ERROR_SUCCESS;
+}
+
+bool OwnPath(const std::wstring& input, Salamander::Utf16DiskPath& output)
+{
+    // Win32 wchar_t is 16 bits; this preserves even supplementary characters
+    // as their original surrogate pair, not via the system ANSI code page.
+    static_assert(sizeof(wchar_t) == sizeof(char16_t), "Win32 UTF-16 required");
+    const std::u16string utf16(input.begin(), input.end());
+    Salamander::Utf16PathError error = Salamander::Utf16PathError::InvalidInput;
+    return Salamander::Utf16DiskPath::TryCreateAbsolute(utf16, output, error) &&
+           error == Salamander::Utf16PathError::None;
 }
 
 bool Reject(const std::wstring& input, DWORD expectedError)
@@ -176,6 +188,56 @@ int main()
     }
     if (!foundUnicode || !foundMaxName)
         return Fail("directory enumeration must preserve UTF-16 filenames");
+
+    // Arrange: preserve the original Unicode filename and payload in the
+    // source and keep all destinations inside the temporary fixture.
+    Salamander::Utf16DiskPath unicodeSource;
+    Salamander::Utf16DiskPath unicodeCopy;
+    Salamander::Utf16DiskPath unicodeMoved;
+    const std::wstring copyPath = current + L"\\copy_東京_😀.txt";
+    const std::wstring movedPath = current + L"\\moved_東京_😀.txt";
+    if (!OwnPath(filename, unicodeSource) ||
+        !OwnPath(copyPath, unicodeCopy) ||
+        !OwnPath(movedPath, unicodeMoved))
+        return Fail("arrange lossless Unicode source and targets");
+
+    // Act / Assert: copy must not change source bytes or overwrite a target.
+    DWORD operationError = ERROR_SUCCESS;
+    if (!Salamander::TryCopyUnicodeFileNoOverwrite(unicodeSource, unicodeCopy, operationError) ||
+        operationError != ERROR_SUCCESS)
+        return Fail("copy Unicode long filename");
+    if (Salamander::TryCopyUnicodeFileNoOverwrite(unicodeSource, unicodeCopy, operationError) ||
+        operationError != ERROR_FILE_EXISTS)
+        return Fail("refuse to overwrite existing Unicode destination");
+    std::wstring extendedCopy;
+    std::wstring extendedMoved;
+    if (!Convert(copyPath, extendedCopy) || !Convert(movedPath, extendedMoved))
+        return Fail("prepare Unicode copy and move verification");
+    HANDLE copiedFile = CreateFileW(extendedCopy.c_str(), GENERIC_READ, FILE_SHARE_READ,
+                                    nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (copiedFile == INVALID_HANDLE_VALUE)
+        return Fail("reopen Unicode copy");
+    char copiedPayload[sizeof(payload)] = {};
+    DWORD copiedBytes = 0;
+    const bool copiedOk = ReadFile(copiedFile, copiedPayload, sizeof(copiedPayload),
+                                   &copiedBytes, nullptr) &&
+        copiedBytes == sizeof(payload) &&
+        std::string(copiedPayload, copiedBytes) == std::string(payload, sizeof(payload));
+    CloseHandle(copiedFile);
+    if (!copiedOk)
+        return Fail("Unicode copy retained exact bytes");
+
+    // Act / Assert: move then delete only the disposable copy, not source.
+    if (!Salamander::TryMoveUnicodeFileNoOverwrite(unicodeCopy, unicodeMoved, operationError) ||
+        operationError != ERROR_SUCCESS ||
+        GetFileAttributesW(extendedCopy.c_str()) != INVALID_FILE_ATTRIBUTES ||
+        GetFileAttributesW(extendedMoved.c_str()) == INVALID_FILE_ATTRIBUTES)
+        return Fail("move Unicode long filename without source duplication");
+    if (!Salamander::TryDeleteUnicodeFile(unicodeMoved, operationError) ||
+        operationError != ERROR_SUCCESS ||
+        GetFileAttributesW(extendedMoved.c_str()) != INVALID_FILE_ATTRIBUTES ||
+        GetFileAttributesW(result.c_str()) == INVALID_FILE_ATTRIBUTES)
+        return Fail("delete only chosen Unicode file and retain original");
 
     std::vector<Salamander::LongDirectoryEntry> invalidEntries;
     if (Salamander::TryEnumerateLongDirectory(L"relative\\directory", invalidEntries, enumError) ||
