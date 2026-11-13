@@ -11,7 +11,8 @@ $scriptFiles = @(
     (Join-Path $toolsDir 'Package-Helpers.ps1'),
     (Join-Path $toolsDir 'Update-Build-Test-Package.ps1'),
     (Join-Path $toolsDir '..\Manage-Salamander.ps1'),
-    (Join-Path $toolsDir 'tests\Test-FilenamesAndPaths.ps1')
+    (Join-Path $toolsDir 'tests\Test-FilenamesAndPaths.ps1'),
+    (Join-Path $toolsDir 'tests\Test-SalamanderGui-LongPaths.ps1')
 )
 foreach ($file in $scriptFiles) {
     $tokens = $null
