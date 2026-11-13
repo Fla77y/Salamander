@@ -175,17 +175,18 @@ function Run-Tests {
         New-Item -ItemType Directory -Path $testDir -Force | Out-Null
         foreach ($relative in $available) {
             $source = Join-Path $repository $relative
-            $exe = Join-Path $testDir (([IO.Path]::GetFileNameWithoutExtension($relative)) + '.exe')
-            $cmdPath = Join-Path $testDir ('compile-' +
-                [IO.Path]::GetFileNameWithoutExtension($relative) + '.cmd')
+            $testName = [IO.Path]::GetFileNameWithoutExtension($relative)
+            $exe = Join-Path $testDir ($testName + '.exe')
+            $object = Join-Path $testDir ($testName + '.obj')
+            $cmdPath = Join-Path $testDir ('compile-' + $testName + '.cmd')
             # cmd.exe reads this file, keeping paths with spaces quoted. Test
             # outputs stay outside Git and all failures propagate to PowerShell.
             @(
                 '@echo off'
                 'call "' + $vcvars + '" >nul'
                 'if errorlevel 1 exit /b 1'
-                'cl /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /Fe:"' +
-                    $exe + '" "' + $source + '"'
+                'cl /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /Fo:"' +
+                    $object + '" /Fe:"' + $exe + '" "' + $source + '"'
                 'if errorlevel 1 exit /b 1'
                 '"' + $exe + '"'
                 'exit /b %errorlevel%'
