@@ -4,8 +4,8 @@
 #pragma once
 
 #include <windows.h>
+#include <algorithm>
 #include <cstdint>
-#include <cstring>
 #include <string>
 #include <utility>
 #include <vector>
@@ -32,8 +32,11 @@ public:
             valid_ = false;
             return;
         }
-        std::memcpy(reinterpret_cast<unsigned char*>(storage_.data()) + used_,
-                    &value, sizeof(value));
+        // Salamander's legacy headers redefine memcpy as a checked global
+        // function. std::memcpy would expand to a nonexistent std:: member.
+        const auto* source = reinterpret_cast<const unsigned char*>(&value);
+        auto* destination = reinterpret_cast<unsigned char*>(storage_.data()) + used_;
+        std::copy(source, source + sizeof(value), destination);
         used_ = next;
     }
 
