@@ -1,0 +1,94 @@
+#requires -Version 7.4
+# Small deterministic regression suite for package validation.
+[CmdletBinding()]
+param()
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $false
+
+$toolsDir = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).ProviderPath
+$scriptFiles = @(
+    (Join-Path $toolsDir 'Package-Helpers.ps1'),
+    (Join-Path $toolsDir 'Update-Build-Test-Package.ps1'),
+    (Join-Path $toolsDir '..\Manage-Salamander.ps1'),
+    (Join-Path $toolsDir 'tests\Test-FilenamesAndPaths.ps1')
+)
+foreach ($file in $scriptFiles) {
+    $tokens = $null
+    $errors = $null
+    [System.Management.Automation.Language.Parser]::ParseFile($file, [ref]$tokens, [ref]$errors) | Out-Null
+    if ($errors.Count -gt 0) {
+        throw "PowerShell parser errors in $file : $($errors -join '; ')"
+    }
+}
+
+# MSBuild writes intermediate outputs beside .vcxproj files. Those generated
+# directories must not block the pipeline's safe Git fast-forward update.
+$repository = (Resolve-Path -LiteralPath (Join-Path $toolsDir '..\\..')).ProviderPath
+foreach ($generated in @(
+    'src/vcxproj/salamander/Debug_x64/test.obj',
+    'src/vcxproj/salmon/salamander/Release_x64/test.obj',
+    'src/plugins/zip/vcxproj/salamander/Debug_x64/test.obj',
+    'src/plugins/7zip/vcxproj/7ZA/salamander/Debug_x64/test.obj',
+    'src/plugins/pictview/vcxproj/exif/salamander/Release_x64/test.obj'
+)) {
+    & git -C $repository check-ignore --quiet -- $generated
+    if ($LASTEXITCODE -ne 0) {
+        throw "Generated MSBuild output is not ignored: $generated"
+    }
+}
+& git -C $repository check-ignore --quiet -- 'src/plugins/zip/salamander/source.cpp'
+if ($LASTEXITCODE -ne 1) {
+    throw "Git ignore rules unexpectedly exclude non-build source paths, or git failed (exit $LASTEXITCODE)."
+}
+
+. (Join-Path $toolsDir 'Package-Helpers.ps1')
+
+# Prevent CHM builds that display their default page but fail F1 context lookup.
+Assert-CoreHelpMappings -Repository $repository
+
+function Assert-Throws {
+    param([scriptblock]$Action, [string]$Description)
+    $threw = $false
+    try { & $Action } catch { $threw = $true }
+    if (-not $threw) { throw "Expected failure did not occur: $Description" }
+}
+
+$root = Join-Path $env:TEMP ('OpenSal-Package-Tests-' + [guid]::NewGuid().ToString('N'))
+$stage = Join-Path $root 'stage'
+New-Item -ItemType Directory -Path (Join-Path $stage 'help\english') -Force | Out-Null
+try {
+    $fakeDumpbin = Join-Path $root 'fake-dumpbin.cmd'
+    @'
+@echo off
+echo Image has the following dependencies:
+echo     KERNEL32.dll
+echo     vcruntime140.dll
+exit /b 0
+'@ | Set-Content -LiteralPath $fakeDumpbin -Encoding ascii
+
+    foreach ($filename in @('salamand.exe', 'LICENSE', 'vcruntime140.dll', 'msvcp140.dll')) {
+        Set-Content -LiteralPath (Join-Path $stage $filename) -Value 'test fixture' -Encoding ascii
+    }
+    Assert-Throws { Test-DistributionStage -Stage $stage -Configuration Release -DumpbinExe $fakeDumpbin } 'Missing CHM must fail'
+
+    Set-Content -LiteralPath (Join-Path $stage 'help\english\salamand.chm') -Value 'test fixture' -Encoding ascii
+    Test-DistributionStage -Stage $stage -Configuration Release -DumpbinExe $fakeDumpbin
+    if (-not (Test-Path -LiteralPath (Join-Path $stage 'SHA256SUMS.txt'))) {
+        throw 'SHA256 manifest is missing.'
+    }
+
+    Set-Content -LiteralPath (Join-Path $stage 'vcruntime140d.dll') -Value 'test fixture' -Encoding ascii
+    Assert-Throws { Test-DistributionStage -Stage $stage -Configuration Release -DumpbinExe $fakeDumpbin } 'Debug runtime must be rejected from Release'
+
+    Remove-Item -LiteralPath (Join-Path $stage 'vcruntime140d.dll')
+    Assert-Throws { Test-DistributionStage -Stage $stage -Configuration Debug -DumpbinExe $fakeDumpbin } 'Missing Debug runtime must fail'
+    foreach ($filename in @('vcruntime140d.dll', 'msvcp140d.dll', 'ucrtbased.dll', 'INTERNAL-TEST-ONLY.txt')) {
+        Set-Content -LiteralPath (Join-Path $stage $filename) -Value 'test fixture' -Encoding ascii
+    }
+    Test-DistributionStage -Stage $stage -Configuration Debug -DumpbinExe $fakeDumpbin
+    Write-Host 'PASS: source parses; required help/runtime checks, release safety and SHA256 manifest work.'
+}
+finally {
+    if (Test-Path -LiteralPath $root) { Remove-Item -LiteralPath $root -Recurse -Force }
+}
