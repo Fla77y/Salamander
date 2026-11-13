@@ -189,8 +189,11 @@ Local test commands:
     .\manage.cmd --test-gui-names      # short UTF-16 filename fidelity
     .\manage.cmd --test-gui            # >260 path + F2/F5/F6/F8 integration
 
-`--test-gui` now waits for the actual Change Directory modal and
-reports Salamander's native error dialog rather than masking it with a
-timeout. The GitHub-hosted CI runner is non-interactive and cannot
+`--test-gui` now uses Salamander's documented Edit/Paste (`Ctrl+V`)
+with an absolute directory path stored as clipboard text. This avoids the
+unreliable Shift+F7 dialog detection that was reproduced on a real desktop
+(three consecutive GUI driver failures on 13 November 2026). It still
+reports Salamander's own long-path rejection instead of claiming success
+based only on Windows API tests. The GitHub-hosted CI runner is non-interactive and cannot
 replace an unlocked Windows desktop; keep the native build/package CI
 independent and require the local GUI gate before declaring support.
