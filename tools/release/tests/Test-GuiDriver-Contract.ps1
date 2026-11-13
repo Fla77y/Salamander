@@ -83,3 +83,11 @@ if ($collisionBranch -notmatch '\[switch\]\$ShortUnicodeCollisionOnly' -or
     throw 'GUI Unicode collision regression must be present and check fail-closed export and data integrity.'
 }
 Write-Host 'PASS: Unicode collision regression is present and non-destructive.'
+
+if ($driverText -notmatch '\[switch\]\$ShortUnicodeUnsafeOperationsOnly' -or
+    $driverText -notmatch 'safe refusal dialog for' -or
+    $driverText -notmatch 'Original Unicode files intact after' -or
+    $driverText -notmatch 'No Unicode destination created by') {
+    throw 'Real GUI Unicode operation guard regression must verify refusal and source/destination integrity.'
+}
+Write-Host 'PASS: F2/F5/F6/F8 Unicode safety GUI regression is present.'
