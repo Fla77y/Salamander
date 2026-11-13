@@ -283,6 +283,54 @@ int main()
          restored != L"Größe_東京_😀.txt"))
         return Fail("only unique lossy names can be displayed in wide text");
 
+    // Exercise an actual best-fit ACP alias with no '?' if the machine's
+    // Windows codepage provides one. UTF-8 ACP configurations legitimately
+    // have no such mapping and skip only this optional fixture.
+    const wchar_t bestFitCandidates[] = {
+        0xFF21, 0xFF41, 0x2010, 0x2011, 0x2013, 0x2014,
+        0x2212, 0x2018, 0x2019, 0x2460, 0x2160
+    };
+    std::wstring bestFitName;
+    std::string bestFitAlias;
+    for (const wchar_t candidate : bestFitCandidates)
+    {
+        std::wstring candidateName = std::wstring(L"bestfit_") +
+                                     candidate + L".txt";
+        const std::string converted = ansiAlias(candidateName.c_str());
+        if (!converted.empty() && converted.find('?') == std::string::npos &&
+            !Salamander::IsExactAnsiName(converted.c_str(), candidateName.c_str()))
+        {
+            bestFitName = std::move(candidateName);
+            bestFitAlias = converted;
+            break;
+        }
+    }
+    if (!bestFitName.empty())
+    {
+        const std::wstring bestFitFile = current + L"\\" + bestFitName;
+        std::wstring bestFitExtended;
+        if (!Convert(bestFitFile, bestFitExtended))
+            return Fail("prepare best-fit filename fixture");
+        HANDLE bestFitHandle = CreateFileW(bestFitExtended.c_str(), GENERIC_WRITE,
+                                           0, nullptr, CREATE_NEW,
+                                           FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (bestFitHandle == INVALID_HANDLE_VALUE)
+            return Fail("create best-fit non-question-mark Unicode filename");
+        CloseHandle(bestFitHandle);
+
+        if (!panelNames.Load(current.c_str(), resolveError) ||
+            !panelNames.IsUnsafeAnsiName(bestFitAlias.c_str()))
+            return Fail("best-fit Unicode name must not reach the ANSI action engine");
+        std::wstring restoredBestFit;
+        if (!panelNames.TryGetLossy(bestFitAlias.c_str(), restoredBestFit) ||
+            restoredBestFit != bestFitName)
+            return Fail("best-fit Unicode filename must be recoverable for GUI display");
+        if (!DeleteFileW(bestFitExtended.c_str()))
+            return Fail("remove best-fit filename fixture");
+    }
+    else
+        std::puts("SKIP: ACP has no candidate non-question-mark best-fit mapping");
+
     panelNames.Clear();
     cachedName = L"stale";
     if (panelNames.TryGet(tokyoAlias.c_str(), cachedName) || !cachedName.empty())
