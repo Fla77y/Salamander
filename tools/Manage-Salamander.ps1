@@ -94,9 +94,10 @@ function Update-Branch {
     Write-Host "Revision: $after"
 
     if ($before -ne $after) {
-        $changed = @(& git -C $repository diff --name-only $before $after --
-            'manage.cmd' 'tools/Manage-Salamander.ps1' 'tools/release/Package-Helpers.ps1'
-            'tools/release/Update-Build-Test-Package.ps1')
+        $managedFiles = @('manage.cmd', 'tools/Manage-Salamander.ps1',
+                          'tools/release/Package-Helpers.ps1',
+                          'tools/release/Update-Build-Test-Package.ps1')
+        $changed = @(& git -C $repository diff --name-only $before $after -- @managedFiles)
         if ($LASTEXITCODE -ne 0) { throw 'Git-Diff der Verwaltungsskripte fehlgeschlagen.' }
         if ($changed.Count -gt 0) {
             throw ('Verwaltungsskripte haben sich durch das Update geändert. ' +
