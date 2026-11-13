@@ -226,23 +226,47 @@ function Go-ToPath {
     Set-ClipboardText $Path
     Assert-True ((Get-ClipboardText) -ceq $Path) 'Clipboard contains only the requested text path'
     Invoke-SalamanderCommand -CommandId 775
-    Wait-Until {
-        $dialogText = Get-TestDialog
-        if ($dialogText -match 'Error Changing Directory|too long name|Cannot finish operation') {
-            throw "Salamander rejected path '$Path': $dialogText"
-        }
-        if ((Get-ActiveProcessId) -ne [uint32]$process.Id) { return $false }
-        # Do not force main window to the foreground here. Doing so hides
-        # native error dialogs and turns a genuine application error into a timeout.
-        try { return (Read-PanelPath) -ceq $Path }
-        catch {
+    # Hashtable fields survive Wait-Until's child scriptblock scope and allow
+    # the failure report to distinguish input failure from path rejection.
+    $diagnostics = @{
+        ForegroundPid = 0
+        PanelPath = '<not read>'
+        PanelReadError = '<none>'
+    }
+    try {
+        Wait-Until {
             $dialogText = Get-TestDialog
-            if ($dialogText -match 'Error Changing Directory|too long name') {
+            if ($dialogText -match 'Error Changing Directory|too long name|Cannot finish operation') {
                 throw "Salamander rejected path '$Path': $dialogText"
             }
-            return $false
-        }
-    } "Salamander navigation to $Path"
+            $diagnostics.ForegroundPid = Get-ActiveProcessId
+            if ($diagnostics.ForegroundPid -ne [uint32]$process.Id) { return $false }
+            # Do not force main window to the foreground here. Doing so hides
+            # native error dialogs and turns a genuine application error into a timeout.
+            try {
+                $diagnostics.PanelPath = Read-PanelPath
+                $diagnostics.PanelReadError = '<none>'
+                return $diagnostics.PanelPath -ceq $Path
+            }
+            catch {
+                $diagnostics.PanelReadError = $_.Exception.Message
+                $dialogText = Get-TestDialog
+                if ($dialogText -match 'Error Changing Directory|too long name') {
+                    throw "Salamander rejected path '$Path': $dialogText"
+                }
+                return $false
+            }
+        } "Salamander navigation to $Path"
+    }
+    catch {
+        $process.Refresh()
+        $dialogText = Get-TestDialog
+        throw ("GUI navigation failed: {0}; Salamander PID={1}; HWND=0x{2:X}; title='{3}'; " +
+            "foreground PID={4}; last panel path='{5}'; panel read error='{6}'; dialog='{7}'" -f
+            $_.Exception.Message, $process.Id, $process.MainWindowHandle.ToInt64(),
+            $process.MainWindowTitle, $diagnostics.ForegroundPid, $diagnostics.PanelPath,
+            $diagnostics.PanelReadError, $dialogText)
+    }
     Assert-True ((Read-PanelPath) -ceq $Path) "Salamander panel path agrees with requested ($($Path.Length) UTF-16 units)"
 }
 
@@ -317,14 +341,26 @@ try {
         throw 'Please close existing Salamander instances before running automated GUI tests.'
     }
     $process = Start-Process -FilePath $SalamanderExe -WorkingDirectory (Split-Path -Parent $SalamanderExe) -PassThru
+    # A nonzero MainWindowHandle alone does not prove that Salamander's
+    # main window is initialized. A startup window can appear first.
     Wait-Until {
         $process.Refresh()
-        (-not $process.HasExited) -and ($process.MainWindowHandle -ne [IntPtr]::Zero)
-    } 'Salamander main window'
+        if ($process.HasExited) { throw 'Test Salamander exited before its main window became ready.' }
+        $main = $process.MainWindowHandle
+        if ($main -eq [IntPtr]::Zero -or -not [SalamanderGuiNative]::IsWindowVisible($main)) {
+            return $false
+        }
+        [uint32]$windowPid = 0
+        [void][SalamanderGuiNative]::GetWindowThreadProcessId($main, [ref]$windowPid)
+        ($windowPid -eq [uint32]$process.Id) -and
+            ($process.MainWindowTitle -match 'Open Salamander')
+    } 'visible, initialized Open Salamander main window'
+    $process.Refresh()
     $testIsAdmin = [Security.Principal.WindowsPrincipal]::new(
         [Security.Principal.WindowsIdentity]::GetCurrent()
     ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
-    Write-Host "GUI driver: Salamander title = '$($process.MainWindowTitle)'; test session elevated = $testIsAdmin"
+    Write-Host ("GUI driver: Salamander PID = {0}; HWND = 0x{1:X}; title = '{2}'; test session elevated = {3}" -f
+        $process.Id, $process.MainWindowHandle.ToInt64(), $process.MainWindowTitle, $testIsAdmin)
     # Salamander marks its window title with '(Administrator)' when elevated.
     # UIPI can silently block SendKeys from a non-elevated PowerShell process.
     # Refuse to misclassify that as a path/name failure.
