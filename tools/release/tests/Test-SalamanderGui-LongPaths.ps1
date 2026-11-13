@@ -468,7 +468,14 @@ try {
         # A failure here is a Unicode/ANSI filename issue, not a path-length
         # failure: the full path has been checked to be below MAX_PATH.
         Send-Keys '{END}'
-        Assert-True ((Read-FocusedFilename) -ceq $utfName) 'Short Unicode name preserved in Salamander panel'
+        $actualName = Read-FocusedFilename
+        # Retain the strict Unicode assertion; make a mismatch diagnosable.
+        # A fallback to the ANSI-transliterated name would conceal a defect.
+        Write-Host "GUI filename comparison: expected='$utfName'; actual='$actualName'"
+        $expectedUnits = [string]::Join(' ', [char[]]$utfName | ForEach-Object { '{0:X4}' -f [int]$_ })
+        $actualUnits = [string]::Join(' ', [char[]]$actualName | ForEach-Object { '{0:X4}' -f [int]$_ })
+        Write-Host "GUI filename UTF-16 units: expected=[$expectedUnits]; actual=[$actualUnits]"
+        Assert-True ($actualName -ceq $utfName) 'Short Unicode name preserved in Salamander panel'
         Assert-True (Test-Content $unicodeShortFile) 'Unicode-only file bytes preserved'
         $passed = $true
         Write-Host 'PASS: Salamander GUI supports a Unicode name on a short path.'
