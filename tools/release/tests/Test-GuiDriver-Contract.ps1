@@ -99,3 +99,20 @@ if ($driverText -notmatch '\[switch\]\$ShortUnicodeBestFitOnly' -or
     throw 'GUI best-fit regression must verify non-question-mark ANSI conversion and original file bytes.'
 }
 Write-Host 'PASS: Non-question-mark best-fit Unicode GUI regression is present.'
+
+# Compile the embedded C# Win32 interop in the headless Windows test process.
+# PowerShell's AST check alone would not catch invalid P/Invoke signatures.
+$interopSource = [regex]::Match(
+    $driverText, '(?s)Add-Type -TypeDefinition @''\r?\n(.*?)\r?\n''@')
+if (-not $interopSource.Success) {
+    throw 'GUI driver C# Win32 interop here-string not found.'
+}
+Add-Type -TypeDefinition $interopSource.Groups[1].Value -ErrorAction Stop
+if ([SalamanderGuiNative]::GetLegacyFilenameAliasHex('plain.txt') -cne
+    '70-6C-61-69-6E-2E-74-78-74') {
+    throw 'Win32 ACP alias encoder did not preserve a simple ASCII filename.'
+}
+if ([SalamanderGuiNative]::HasLossyAliasWithoutQuestionMark('plain.txt')) {
+    throw 'Win32 best-fit detection misclassified an ASCII filename.'
+}
+Write-Host 'PASS: embedded GUI Win32 interop compiles and preserves ASCII ACP identity.'
