@@ -185,8 +185,8 @@ function Go-ToPath {
     # Shift+F7 here: its modal dialog was not reliably detected and blocked
     # even the short-path automation baseline on a real desktop.
     #
-    # The clipboard contains only CF_UNICODETEXT, never CF_HDROP, so this
-    # does not instruct Salamander to copy/move user files.
+    # The clipboard contains plain text (not a CF_HDROP file list), so
+    # Salamander interprets it as a directory to navigate to, not files to copy.
     Set-ClipboardText $Path
     Assert-True ((Get-ClipboardText) -ceq $Path) 'Clipboard contains only the requested text path'
     Send-Keys '^v'
@@ -279,6 +279,16 @@ try {
         $process.Refresh()
         (-not $process.HasExited) -and ($process.MainWindowHandle -ne [IntPtr]::Zero)
     } 'Salamander main window'
+    $testIsAdmin = [Security.Principal.WindowsPrincipal]::new(
+        [Security.Principal.WindowsIdentity]::GetCurrent()
+    ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    Write-Host "GUI driver: Salamander title = '$($process.MainWindowTitle)'; test session elevated = $testIsAdmin"
+    # Salamander marks its window title with '(Administrator)' when elevated.
+    # UIPI can silently block SendKeys from a non-elevated PowerShell process.
+    # Refuse to misclassify that as a path/name failure.
+    if (-not $testIsAdmin -and $process.MainWindowTitle -match '\(Administrator\)') {
+        throw 'Salamander is elevated but the GUI-test PowerShell is not. Keyboard input can be blocked by Windows UIPI. Run both at the same integrity level, preferably both unelevated.'
+    }
     Focus-TestProcess
 
     # First validate the GUI driver against a normal short path. If this
