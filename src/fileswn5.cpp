@@ -2439,7 +2439,7 @@ void CFilesWindow::RenameFile(int specialIndex)
                 continue;
             }
 
-            if (requestedName == inputName && inputName == originalName)
+            if (inputName == originalName)
                 return; // no rename needed
 
             // A second wide enumeration limits stale-listing mistakes if
