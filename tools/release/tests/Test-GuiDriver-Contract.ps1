@@ -91,3 +91,11 @@ if ($driverText -notmatch '\[switch\]\$ShortUnicodeUnsafeOperationsOnly' -or
     throw 'Real GUI Unicode operation guard regression must verify refusal and source/destination integrity.'
 }
 Write-Host 'PASS: F2/F5/F6/F8 Unicode safety GUI regression is present.'
+
+if ($driverText -notmatch '\[switch\]\$ShortUnicodeBestFitOnly' -or
+    $driverText -notmatch 'HasLossyAliasWithoutQuestionMark' -or
+    $driverText -notmatch 'Unicode best-fit filename recovered without question mark' -or
+    $driverText -notmatch 'Best-fit Unicode file content remains intact') {
+    throw 'GUI best-fit regression must verify non-question-mark ANSI conversion and original file bytes.'
+}
+Write-Host 'PASS: Non-question-mark best-fit Unicode GUI regression is present.'
