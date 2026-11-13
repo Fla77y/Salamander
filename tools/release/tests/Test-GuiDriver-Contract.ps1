@@ -116,3 +116,25 @@ if ([SalamanderGuiNative]::HasLossyAliasWithoutQuestionMark('plain.txt')) {
     throw 'Win32 best-fit detection misclassified an ASCII filename.'
 }
 Write-Host 'PASS: embedded GUI Win32 interop compiles and preserves ASCII ACP identity.'
+
+# Focus recovery must never send keystrokes before checking ownership and
+# must re-verify the actual target HWND, not merely any window of the PID.
+$focus = Get-FunctionSource 'Focus-TestProcess'
+$focusText = $focus.Extent.Text
+if ($focusText -notmatch 'TryActivateVerifiedWindow' -or
+    $focusText -notmatch 'GetForegroundWindow' -or
+    $focusText -notmatch 'Get-ForegroundWindowSummary' -or
+    $focusText -notmatch 'window no longer belongs to launched Salamander' -or
+    $focusText -notmatch 'attempts') {
+    throw 'Focus recovery must retry only a verified Salamander HWND and report foreground ownership.'
+}
+$sendKeys = (Get-FunctionSource 'Send-Keys').Extent.Text
+if ($sendKeys -notmatch 'Get-ActiveProcessId' -or
+    $sendKeys -notmatch 'Refusing to send input') {
+    throw 'Keystroke dispatch must refuse input when the test process is not foreground.'
+}
+if ([SalamanderGuiNative]::TryActivateVerifiedWindow([IntPtr]::Zero, 42, $true) -or
+    [SalamanderGuiNative]::TryActivateVerifiedWindow([IntPtr]::Zero, 0, $false)) {
+    throw 'Focus helper must refuse an invalid HWND without changing foreground.'
+}
+Write-Host 'PASS: GUI activation recovery validates HWND ownership, retries and preserves input safety.'
