@@ -1,0 +1,253 @@
+// SPDX-FileCopyrightText: 2026 Open Salamander Authors
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+// Standalone MSVC/Win32 regression test: does NOT require the Salamander UI.
+#include "../../src/common/win32_long_path.h"
+#include "../../src/common/win32_long_directory.h"
+
+#include <windows.h>
+
+#include <cstdio>
+#include <string>
+#include <vector>
+
+namespace
+{
+int Fail(const char* message)
+{
+    std::fprintf(stderr, "FAIL: %s (GetLastError=%lu)\n", message, GetLastError());
+    return 1;
+}
+
+bool Convert(const std::wstring& input, std::wstring& output)
+{
+    DWORD error = ERROR_SUCCESS;
+    return Salamander::TryMakeExtendedLengthPath(input.c_str(), output, error) && error == ERROR_SUCCESS;
+}
+
+bool Reject(const std::wstring& input, DWORD expectedError)
+{
+    std::wstring result = L"must be cleared";
+    DWORD error = ERROR_SUCCESS;
+    return !Salamander::TryMakeExtendedLengthPath(input.c_str(), result, error) &&
+           error == expectedError && result.empty();
+}
+} // namespace
+
+int main()
+{
+    // Arrange / Act / Assert: syntactic transformation and invalid paths.
+    std::wstring result;
+    if (!Convert(L"C:\\folder\\name.txt", result) || result != L"\\\\?\\C:\\folder\\name.txt")
+        return Fail("drive path prefix");
+    if (!Convert(L"\\\\server\\share\\folder\\name.txt", result) ||
+        result != L"\\\\?\\UNC\\server\\share\\folder\\name.txt")
+        return Fail("UNC path prefix");
+    if (!Convert(L"C:\\Unicode\\Größe_東京_😀.txt", result) ||
+        result != L"\\\\?\\C:\\Unicode\\Größe_東京_😀.txt")
+        return Fail("Unicode path fidelity");
+    if (!Reject(L"relative\\file.txt", ERROR_INVALID_NAME) ||
+        !Reject(L"C:relative.txt", ERROR_INVALID_NAME) ||
+        !Reject(L"\\\\server", ERROR_INVALID_NAME) ||
+        !Reject(L"\\\\?\\C:\\raw", ERROR_INVALID_NAME) ||
+        !Reject(L"\\\\.\\PhysicalDrive0", ERROR_INVALID_NAME) ||
+        !Reject(L"C:\\folder\\..\\file.txt", ERROR_INVALID_NAME) ||
+        !Reject(L"C:\\folder\\.\\file.txt", ERROR_INVALID_NAME) ||
+        !Reject(L"C:\\folder/file.txt", ERROR_INVALID_NAME))
+        return Fail("invalid paths must be rejected");
+
+    // The legacy ANSI facade must preserve long ASCII paths without
+    // truncating, and must reject relative paths and null pointers.
+    std::string longAnsiPath = "C:\\";
+    longAnsiPath.append(300, 'a');
+    DWORD ansiError = ERROR_SUCCESS;
+    if (!Salamander::TryMakeExtendedLengthPathFromAnsi(longAnsiPath.c_str(), result, ansiError) ||
+        ansiError != ERROR_SUCCESS ||
+        result != L"\\\\?\\C:\\" + std::wstring(300, L'a'))
+        return Fail("legacy ANSI-to-wide long path conversion");
+    if (Salamander::TryMakeExtendedLengthPathFromAnsi("relative\\name.txt", result, ansiError) ||
+        ansiError != ERROR_INVALID_NAME || !result.empty())
+        return Fail("legacy ANSI adapter must reject relative path");
+    if (Salamander::TryMakeExtendedLengthPathFromAnsi(nullptr, result, ansiError) ||
+        ansiError != ERROR_INVALID_PARAMETER || !result.empty())
+        return Fail("legacy ANSI adapter must reject null path");
+
+    DWORD error = ERROR_SUCCESS;
+    result = L"must be cleared";
+    if (Salamander::TryMakeExtendedLengthPath(nullptr, result, error) ||
+        error != ERROR_INVALID_PARAMETER || !result.empty())
+        return Fail("null path must be rejected");
+
+    std::wstring tooLong = L"C:\\";
+    tooLong.append(32767, L'x');
+    if (!Reject(tooLong, ERROR_FILENAME_EXCED_RANGE))
+        return Fail("excessively long absolute paths must be rejected");
+
+    // Arrange: short temporary root, Unicode and long path components.
+    WCHAR tempDir[MAX_PATH];
+    DWORD tempLen = GetTempPathW(MAX_PATH, tempDir);
+    if (tempLen == 0 || tempLen >= MAX_PATH)
+        return Fail("GetTempPathW");
+    std::wstring root = std::wstring(tempDir) + L"OpenSal-LongIo-" +
+                        std::to_wstring(GetCurrentProcessId()) + L"-" +
+                        std::to_wstring(GetTickCount64());
+    if (!CreateDirectoryW(root.c_str(), nullptr))
+        return Fail("create test root");
+
+    std::vector<std::wstring> directories;
+    directories.push_back(root);
+    std::wstring current = root;
+    for (int i = 0; i != 5; ++i)
+    {
+        current += L"\\directory-" + std::to_wstring(i) + L"-" + std::wstring(60, L'x');
+        if (!Convert(current, result) || !CreateDirectoryW(result.c_str(), nullptr))
+            return Fail("create long Unicode-ready directory");
+        directories.push_back(current);
+    }
+
+    // Act: create, write, read, enumerate, delete using explicit W APIs and
+    // an extended-length path without changing Windows registry policy.
+    std::wstring filename = current + L"\\Größe_東京_😀.txt";
+    if (filename.size() <= MAX_PATH)
+        return Fail("long path fixture was not long enough");
+    if (!Convert(filename, result))
+        return Fail("prepare long Unicode file path");
+    HANDLE file = CreateFileW(result.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE)
+        return Fail("CreateFileW");
+    const char payload[] = "long-path-test";
+    DWORD written = 0;
+    bool wrote = WriteFile(file, payload, sizeof(payload), &written, nullptr) &&
+                 written == sizeof(payload);
+    CloseHandle(file);
+    if (!wrote)
+        return Fail("WriteFile");
+
+    file = CreateFileW(result.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE)
+        return Fail("reopen long file with CreateFileW");
+    char actual[sizeof(payload)] = {};
+    DWORD read = 0;
+    bool readOk = ReadFile(file, actual, sizeof(actual), &read, nullptr) &&
+                  read == sizeof(payload) && std::string(actual, read) == std::string(payload, sizeof(payload));
+    CloseHandle(file);
+    if (!readOk)
+        return Fail("ReadFile payload");
+
+    WIN32_FIND_DATAW findData;
+    HANDLE found = FindFirstFileW(result.c_str(), &findData);
+    if (found == INVALID_HANDLE_VALUE)
+        return Fail("FindFirstFileW");
+    bool nameOk = std::wstring(findData.cFileName) == L"Größe_東京_😀.txt";
+    FindClose(found);
+    if (!nameOk)
+        return Fail("Unicode filename preserved during enumeration");
+
+    // Maximum-length single filename (255 UTF-16 code units) beneath a
+    // long path. This must remain distinct from the total path limit.
+    const std::wstring maxName = L"東京" + std::wstring(249, L'a') + L".txt";
+    if (maxName.size() != 255)
+        return Fail("test filename length");
+    const std::wstring maxFilename = current + L"\\" + maxName;
+    std::wstring extendedMaxFile;
+    if (!Convert(maxFilename, extendedMaxFile))
+        return Fail("prepare max-length Unicode filename");
+    HANDLE maxFile = CreateFileW(extendedMaxFile.c_str(), GENERIC_WRITE, 0, nullptr,
+                                 CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (maxFile == INVALID_HANDLE_VALUE)
+        return Fail("create 255-unit Unicode filename on long path");
+    CloseHandle(maxFile);
+
+    // Directory enumeration must preserve the exact UTF-16 filename. This
+    // is needed before replacing Salamander's ANSI CFileData.Name flow.
+    std::vector<Salamander::LongDirectoryEntry> entries;
+    DWORD enumError = ERROR_SUCCESS;
+    if (!Salamander::TryEnumerateLongDirectory(current.c_str(), entries, enumError) ||
+        enumError != ERROR_SUCCESS || entries.size() != 2)
+        return Fail("Unicode long directory enumeration");
+    bool foundUnicode = false;
+    bool foundMaxName = false;
+    for (const auto& entry : entries)
+    {
+        if ((entry.attributes & FILE_ATTRIBUTE_DIRECTORY) != 0)
+            return Fail("unexpected directory in fixture");
+        foundUnicode |= entry.name == L"Größe_東京_😀.txt";
+        foundMaxName |= entry.name == maxName;
+    }
+    if (!foundUnicode || !foundMaxName)
+        return Fail("directory enumeration must preserve UTF-16 filenames");
+
+    std::vector<Salamander::LongDirectoryEntry> invalidEntries;
+    if (Salamander::TryEnumerateLongDirectory(L"relative\\directory", invalidEntries, enumError) ||
+        enumError != ERROR_INVALID_NAME || !invalidEntries.empty())
+        return Fail("relative directory enumeration must be rejected");
+
+    // Exercise the exact file-open helper used by SAFE_FILE, including the
+    // second open that read/write error retries must perform.
+    std::wstring legacyFilename = current + L"\\legacy-long-file.txt";
+    std::wstring extendedLegacyFile;
+    if (!Convert(legacyFilename, extendedLegacyFile))
+        return Fail("prepare legacy-open filename");
+    const int ansiLength = WideCharToMultiByte(CP_ACP, 0, legacyFilename.c_str(),
+                                              -1, nullptr, 0, nullptr, nullptr);
+    if (ansiLength < 2)
+        return Fail("encode test path for legacy ANSI adapter");
+    std::string legacyAnsi(static_cast<std::size_t>(ansiLength), '\0');
+    if (WideCharToMultiByte(CP_ACP, 0, legacyFilename.c_str(), -1,
+                            &legacyAnsi[0], ansiLength, nullptr, nullptr) != ansiLength)
+        return Fail("encode legacy ANSI test path");
+    legacyAnsi.pop_back();
+    if (legacyAnsi.size() < MAX_PATH)
+        return Fail("legacy opening fixture is not a long path");
+
+    HANDLE legacyHandle = Salamander::OpenFileWithLegacyPath(
+        legacyAnsi.c_str(), GENERIC_WRITE, FILE_SHARE_READ, CREATE_ALWAYS,
+        FILE_ATTRIBUTE_NORMAL);
+    if (legacyHandle == INVALID_HANDLE_VALUE)
+        return Fail("legacy SAFE_FILE long path initial CreateFileW");
+    DWORD legacyWritten = 0;
+    const char legacyPayload[] = "retry-path";
+    const bool legacyWriteOk = WriteFile(
+        legacyHandle, legacyPayload, sizeof(legacyPayload), &legacyWritten, nullptr) &&
+        legacyWritten == sizeof(legacyPayload);
+    CloseHandle(legacyHandle);
+    if (!legacyWriteOk)
+        return Fail("write via long legacy path");
+
+    // The retry path must not repeat CREATE_ALWAYS, or earlier bytes vanish.
+    legacyHandle = Salamander::ReopenExistingFileWithLegacyPath(
+        legacyAnsi.c_str(), GENERIC_READ, FILE_SHARE_READ, FILE_ATTRIBUTE_NORMAL);
+    if (legacyHandle == INVALID_HANDLE_VALUE)
+        return Fail("legacy SAFE_FILE long path reopen");
+    char legacyRead[sizeof(legacyPayload)] = {};
+    DWORD legacyBytesRead = 0;
+    const bool legacyReadOk = ReadFile(
+        legacyHandle, legacyRead, sizeof(legacyRead), &legacyBytesRead, nullptr) &&
+        legacyBytesRead == sizeof(legacyPayload) &&
+        std::string(legacyRead, legacyBytesRead) ==
+            std::string(legacyPayload, sizeof(legacyPayload));
+    CloseHandle(legacyHandle);
+    if (!legacyReadOk)
+        return Fail("read back through long legacy path");
+    if (!DeleteFileW(extendedLegacyFile.c_str()))
+        return Fail("delete legacy long-path fixture");
+    legacyHandle = Salamander::ReopenExistingFileWithLegacyPath(
+        legacyAnsi.c_str(), GENERIC_READ, FILE_SHARE_READ, FILE_ATTRIBUTE_NORMAL);
+    if (legacyHandle != INVALID_HANDLE_VALUE)
+    {
+        CloseHandle(legacyHandle);
+        return Fail("retry must not recreate a deleted file");
+    }
+
+    if (!DeleteFileW(extendedMaxFile.c_str()))
+        return Fail("DeleteFileW maximum filename");
+    if (!DeleteFileW(result.c_str()))
+        return Fail("DeleteFileW");
+    for (auto i = directories.rbegin(); i != directories.rend(); ++i)
+    {
+        if (!Convert(*i, result) || !RemoveDirectoryW(result.c_str()))
+            return Fail("RemoveDirectoryW recursive cleanup");
+    }
+    std::puts("PASS: long Unicode paths and UNC prefix mapping, Win32 I/O and boundaries");
+    return 0;
+}
