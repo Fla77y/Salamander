@@ -221,11 +221,26 @@ int main()
     // Assert: the adapter must use a W extended-length search internally.
     if (panelFind == INVALID_HANDLE_VALUE)
         return Fail("W-backed panel enumeration of a long directory");
-    const bool panelNamePreserved =
-        std::wstring(panelWideData.cFileName) == L"Größe_東京_😀.txt";
+    bool panelNamePreserved = false;
+    bool secondNamePreserved = false;
+    bool maximumNamePreserved = false;
+    int actualEntries = 0;
+    do
+    {
+        const std::wstring name(panelWideData.cFileName);
+        if (name == L"." || name == L"..")
+            continue;
+        ++actualEntries;
+        panelNamePreserved |= name == L"Größe_東京_😀.txt";
+        secondNamePreserved |= name == L"Größe_大阪_😀.txt";
+        maximumNamePreserved |= name == maxName;
+    } while (Salamander::FindNextUnicodePanelFile(
+        panelFind, panelAnsiData, panelWideData));
+    const DWORD enumerationError = GetLastError();
     FindClose(panelFind);
-    if (!panelNamePreserved)
-        return Fail("W-backed panel long directory preserves Unicode row identity");
+    if (enumerationError != ERROR_NO_MORE_FILES || actualEntries != 3 ||
+        !panelNamePreserved || !secondNamePreserved || !maximumNamePreserved)
+        return Fail("W-backed long panel enumeration preserves every Unicode row");
 
     // Directory enumeration must preserve the exact UTF-16 filename. This
     // is needed before replacing Salamander's ANSI CFileData.Name flow.
