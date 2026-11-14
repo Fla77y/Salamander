@@ -699,7 +699,9 @@ void CFilesWindow::ClipboardPastePath()
                     const std::wstring value(text + begin, length - begin);
                     if (!value.empty())
                     {
-                        const int required = WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS,
+                        // CP_ACP can be UTF-8, which rejects WC_NO_BEST_FIT_CHARS. The
+                        // exact round-trip check below detects lossy conversions.
+                        const int required = WideCharToMultiByte(CP_ACP, 0,
                                                                  value.c_str(), -1, NULL, 0, NULL, NULL);
                         if (required > 0 && (SIZE_T)required <= maxAnsiBytes)
                         {
