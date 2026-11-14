@@ -1702,6 +1702,13 @@ void CFilesWindow::DirectoryLineSetText()
     if (path == NULL)
         return;
 
+    if (FilterEnabled && HasLongDiskPath())
+    {
+        // The old filter caption combines two bounded ANSI strings.
+        DirectoryLine->SetText(path);
+        return;
+    }
+
     if (FilterEnabled)
     {
         char buf[3 * MAX_PATH]; // zip path (2x) + filter (1x) = 3x MAX_PATH
