@@ -1878,45 +1878,64 @@ BOOL CFilesWindow::CopyFocusedNameToClipboard(CCopyFocusedNameModeEnum mode)
     // identity index, not a character heuristic.
     if (Is(ptDisk) && UnicodeDiskNames.IsUnsafeAnsiName(focusedItem->Name))
     {
+        // The W primary enumeration binds the original UTF-16 name to the
+        // row's heap-backed Name pointer. This remains unambiguous when
+        // two distinct Unicode entries share the same ANSI alias.
         std::wstring indexedName;
-        if (!UnicodeDiskNames.TryGetLossy(focusedItem->Name, indexedName))
+        const bool hasRowIdentity =
+            UnicodeDiskNames.TryGetRow(focusedItem->Name, indexedName);
+        if (!hasRowIdentity &&
+            !UnicodeDiskNames.TryGetLossy(focusedItem->Name, indexedName))
         {
-            TRACE_E("Cannot resolve Unicode disk name uniquely");
-            return FALSE; // Ambiguous, missing or unavailable: never guess.
+            TRACE_E("Cannot resolve Unicode disk name for focused row");
+            return FALSE;
         }
 
-        // Revalidate the unique source identity before exporting it. The
-        // disk contents might have changed since this panel was refreshed.
         std::wstring unicodeDirectory;
         if (!Salamander::TryGetUnicodePanelDirectory(GetPath(), unicodeDirectory))
             return FALSE;
 
-        std::wstring currentName;
         DWORD error = ERROR_SUCCESS;
-        const auto resolution = Salamander::ResolveUnicodePanelFileName(
-            unicodeDirectory.c_str(), focusedItem->Name, currentName, error);
-        if (resolution != Salamander::UnicodePanelNameResult::Unique ||
-            currentName != indexedName)
+        if (!hasRowIdentity)
         {
-            TRACE_E("Unicode disk name changed or became ambiguous (error " << error << ")");
-            return FALSE;
+            // Compatibility fallback: only an alias with one unique W entry
+            // is exportable when the row identity is unavailable.
+            std::wstring resolvedName;
+            if (Salamander::ResolveUnicodePanelFileName(
+                    unicodeDirectory.c_str(), focusedItem->Name,
+                    resolvedName, error) !=
+                    Salamander::UnicodePanelNameResult::Unique ||
+                resolvedName != indexedName)
+            {
+                TRACE_E("Unicode disk name changed or became ambiguous (error " << error << ")");
+                return FALSE;
+            }
         }
+
+        std::wstring unicodeFullPath = unicodeDirectory;
+        if (!unicodeFullPath.empty() && unicodeFullPath.back() != L'\\')
+            unicodeFullPath.push_back(L'\\');
+        unicodeFullPath.append(indexedName);
+
+        // Require the exact W path to still exist before exporting it.
+        // This check never substitutes a colliding ANSI alias.
+        std::wstring extendedPath;
+        if (!Salamander::TryMakeExtendedLengthPath(
+                unicodeFullPath.c_str(), extendedPath, error))
+            return FALSE;
+        const DWORD attributes = GetFileAttributesW(extendedPath.c_str());
+        if (attributes == INVALID_FILE_ATTRIBUTES ||
+            ((attributes & FILE_ATTRIBUTE_DIRECTORY) != 0) !=
+                ((focusedItem->Attr & FILE_ATTRIBUTE_DIRECTORY) != 0))
+            return FALSE;
 
         if (mode == cfnmShort)
             return Salamander::TryCopyUnicodeNameToClipboard(
-                MainWindow->HWindow, currentName) ? TRUE : FALSE;
+                MainWindow->HWindow, indexedName) ? TRUE : FALSE;
 
         if (mode == cfnmFull)
-        {
-            // Only the original Unicode filename, not the directory, was
-            // lost by the legacy panel conversion. Preserve the current
-            // directory and append the exact component dynamically.
-            if (!unicodeDirectory.empty() && unicodeDirectory.back() != L'\\')
-                unicodeDirectory.push_back(L'\\');
-            unicodeDirectory.append(currentName);
             return Salamander::TryCopyUnicodeNameToClipboard(
-                MainWindow->HWindow, unicodeDirectory) ? TRUE : FALSE;
-        }
+                MainWindow->HWindow, unicodeFullPath) ? TRUE : FALSE;
 
         // The existing ANSI UNC translation cannot preserve this name.
         return FALSE;
