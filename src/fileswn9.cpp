@@ -629,10 +629,12 @@ void CFilesWindow::ClipboardPastePath()
     char buff[2 * MAX_PATH];
     buff[0] = 0;
     BOOL changePath = FALSE;
+    BOOL unicodeTextPresent = FALSE;
 
     if (OpenClipboard(HWindow))
     {
         HANDLE handle = GetClipboardData(CF_UNICODETEXT);
+        unicodeTextPresent = handle != NULL;
         if (handle != NULL)
         {
             WCHAR* pathW = (WCHAR*)HANDLES(GlobalLock(handle));
@@ -642,15 +644,12 @@ void CFilesWindow::ClipboardPastePath()
                     pathW++; // trim spaces+CR+LF before the path
                 if (ConvertU2A(pathW, -1, buff, _countof(buff)))
                     changePath = TRUE;
-                else
-                {
-                    if (buff[0] != 0 && GetLastError() == ERROR_INSUFFICIENT_BUFFER)
-                        changePath = TRUE; // if the buffer is small, ignore it (same as ANSI version)
-                }
+                // Never interpret a truncated CP_ACP conversion as a path.
+                // A prefix can name a different, existing directory.
                 HANDLES(GlobalUnlock(handle));
             }
         }
-        if (!changePath) // probably not Unicode, try ANSI (when Unicode is present ANSI is usually broken - without diacritics)
+        if (!changePath && !unicodeTextPresent) // fallback only when no Unicode text was published
         {
             handle = GetClipboardData(CF_TEXT);
             char* path = (char*)HANDLES(GlobalLock(handle));
@@ -658,9 +657,13 @@ void CFilesWindow::ClipboardPastePath()
             {
                 while (*path != 0 && *path <= ' ')
                     path++; // trim spaces+CR+LF before the path
-                lstrcpyn(buff, path, _countof(buff));
-
-                changePath = TRUE;
+                // The legacy disk panel cannot store a longer ANSI path.
+                // Refuse the entire input rather than navigating to its prefix.
+                if (strlen(path) < sizeof(buff))
+                {
+                    lstrcpyn(buff, path, _countof(buff));
+                    changePath = TRUE;
+                }
                 HANDLES(GlobalUnlock(handle));
             }
         }
