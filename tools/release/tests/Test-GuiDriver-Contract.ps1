@@ -137,6 +137,13 @@ if ($driverText -notmatch '\[switch\]\$ShortUnicodeRowIdentityOnly' -or
 }
 Write-Host 'PASS: W-backed per-row Unicode identity and clipboard regression assertions are present.'
 
+if ($driverText -notmatch '\[switch\]\$ShortUnicodeMultiSelectOnly' -or
+    $driverText -notmatch 'Unicode F5 copies both selected files' -or
+    $driverText -notmatch 'Unicode F6 moves both selected files') {
+    throw 'Unicode multi-selection regression must verify all selected files, not just the caret.'
+}
+Write-Host 'PASS: Unicode F5/F6 multi-selection contract is present.'
+
 # Compile the embedded C# Win32 interop in the headless Windows test process.
 # PowerShell's AST check alone would not catch invalid P/Invoke signatures.
 $interopSource = [regex]::Match(
