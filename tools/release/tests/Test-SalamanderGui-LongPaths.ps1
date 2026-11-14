@@ -736,6 +736,14 @@ try {
                 throw 'Test Salamander exited before its main window became ready.'
             }
             $script:mainWindowHandle = [SalamanderGuiNative]::FindMainWindow([uint32]$process.Id)
+            if ($script:mainWindowHandle -eq [IntPtr]::Zero) {
+                foreach ($window in [SalamanderGuiNative]::GetProcessWindows([uint32]$process.Id)) {
+                    if ($window.Visible -and $window.Title -ceq 'Error Loading Configuration') {
+                        throw ('Salamander startup configuration dialog: ' +
+                            [SalamanderGuiNative]::DescribeWindow($window.Handle))
+                    }
+                }
+            }
             return $script:mainWindowHandle -ne [IntPtr]::Zero
         } 'visible Open Salamander top-level window owned by launched process'
     }
