@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <string>
+
 #define HOT_PATHS_COUNT 30
 
 #define TASKBAR_ICON_ID 0x0000
@@ -532,7 +534,7 @@ public:
     void SaveConfig(HWND parent = NULL); // parent: NULL = MainWindow->HWindow
     BOOL LoadConfig(BOOL importingOldConfig, const CCommandLineParams* cmdLineParams);
     void SavePanelConfig(CFilesWindow* panel, HKEY hSalamander, const char* reg);
-    void LoadPanelConfig(char* panelPath, CFilesWindow* panel, HKEY hSalamander, const char* reg);
+    void LoadPanelConfig(std::string& panelPath, CFilesWindow* panel, HKEY hSalamander, const char* reg);
     void DeleteOldConfigurations(BOOL* deleteConfigurations, BOOL autoImportConfig,
                                  const char* autoImportConfigFromKey, BOOL doNotDeleteImportedCfg);
 
