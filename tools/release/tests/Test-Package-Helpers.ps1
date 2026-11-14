@@ -123,6 +123,20 @@ if ([string]::IsNullOrEmpty($startupBlock) -or
     throw 'Unattended GUI tests require startup idle verification and guarded foreground recovery.'
 }
 
+
+# The baseline must prove keyboard focus, not merely a synchronous clipboard
+# WM_COMMAND. Without this assertion a user click could conceal a focus bug.
+$baselineCheck = [regex]::Match(
+    $guiDriver,
+    '(?s)Write-Host ''PASS: GUI driver can navigate a normal short directory''(.*?)\n    if \(\$ShortOperationsOnly\) \{'
+).Groups[1].Value
+if ([string]::IsNullOrEmpty($baselineCheck) -or
+    $baselineCheck -notmatch "Send-Keys '\{END\}'" -or
+    $baselineCheck -notmatch 'Read-FocusedFilename' -or
+    $guiDriver -notmatch "\\$focusProbeName\\s*=\\s*'focus-probe.txt'") {
+    throw 'GUI baseline must verify real focused-file keyboard navigation.'
+}
+
 # The primary UTF-16 directory enumeration returns a native find handle.
 # It is not a C__Handles member; explicitly register successful opens,
 # because the legacy panel closes them through HANDLES(FindClose).
