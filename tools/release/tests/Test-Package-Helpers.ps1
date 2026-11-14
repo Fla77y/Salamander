@@ -349,4 +349,4 @@ if ([string]::IsNullOrEmpty($defaultDirectoriesRead) -or
     $defaultDirectoriesWrite -notmatch 'PreserveUnsupportedDefaultDir') {
     throw 'Default directory loading must use bounded per-drive registry reads and preserve unsupported entries.'
 }
-Write-Host 'PASS: oversized legacy registry default directories cannot block GUI startup or be silently erased.'
+Write-Host 'PASS: default-directory startup reads use bounded per-drive access and preserve unsupported values.'
