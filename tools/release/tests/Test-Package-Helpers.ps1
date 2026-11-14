@@ -325,3 +325,30 @@ exit /b 0
 finally {
     if (Test-Path -LiteralPath $root) { Remove-Item -LiteralPath $root -Recurse -Force }
 }
+
+
+# A legacy or imported Default Directories registry entry may exceed the
+# fixed MAX_PATH storage used by DefaultDir. Its presence must not stop GUI
+# startup with a modal ERROR_MORE_DATA dialog or erase the original setting
+# on a subsequent configuration save.
+$startupSource = Get-Content -LiteralPath (
+    Join-Path $toolsDir '..\..\src\mainwnd2.cpp') -Raw
+$defaultDirectoriesRead = [regex]::Match(
+    $startupSource,
+    '(?s)//---  default directories\s+if \(OpenKey\(salamander, SALAMANDER_DEFDIRS_REG, actKey\)\)(.*?)//---  password manager'
+).Groups[1].Value
+$defaultDirectoriesWrite = [regex]::Match(
+    $startupSource,
+    '(?s)//---  default directories\s+if \(CreateKey\(salamander, SALAMANDER_DEFDIRS_REG, actKey\)\)(.*?)//---  password manager'
+).Groups[1].Value
+if ([string]::IsNullOrEmpty($defaultDirectoriesRead) -or
+    [string]::IsNullOrEmpty($defaultDirectoriesWrite) -or
+    $defaultDirectoriesRead -notmatch 'RegEnumValue\(actKey, i, name, &nameLen, 0, &type, NULL, &dataLen\)' -or
+    $defaultDirectoriesRead -notmatch 'dataLen > MAX_PATH' -or
+    $defaultDirectoriesRead -notmatch 'PreserveOversizedDefaultDir' -or
+    $defaultDirectoriesRead -notmatch 'res == ERROR_MORE_DATA' -or
+    $defaultDirectoriesRead -notmatch 'path\[dataLen - 1\] != 0' -or
+    $defaultDirectoriesWrite -notmatch 'PreserveOversizedDefaultDir') {
+    throw 'Oversized Default Directories registry values must be skipped without a modal startup error and preserved on save.'
+}
+Write-Host 'PASS: oversized legacy registry default directories cannot block GUI startup or be silently erased.'
