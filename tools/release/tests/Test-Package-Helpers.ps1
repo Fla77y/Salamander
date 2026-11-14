@@ -166,6 +166,16 @@ if ($panelSource -notmatch 'search\s*=\s*Salamander::FindFirstUnicodePanelFile\s
     throw 'Unicode panel search handles must be tracked before monitored FindClose.'
 }
 
+# The disk listing scratch buffer is now dynamic. Preserve its previous
+# minimum size for extension processing and require explicit raw-pointer access.
+# Native Windows compilation remains the authoritative check for C++ types.
+if ($panelSource -notmatch 'std::vector<char>\s+fileName\s*\(\s*\(pathLen\s*>\s*MAX_PATH\s*\?\s*pathLen\s*:\s*MAX_PATH\)\s*\+\s*4\s*\)' -or
+    $panelSource -match 'strlen\s*\(\s*fileName\s*\)' -or
+    $panelSource -match 'char\s*\*\s*st\s*=\s*fileName\s*;' -or
+    $panelSource -match '(?m)^\s*st\s*=\s*fileName\s*;') {
+    throw 'Dynamic panel scratch buffer must retain its minimum capacity and expose .data() to legacy pointer APIs.'
+}
+
 # MSBuild writes intermediate outputs beside .vcxproj files. Those generated
 # directories must not block the pipeline's safe Git fast-forward update.
 $repository = (Resolve-Path -LiteralPath (Join-Path $toolsDir '..\\..')).ProviderPath
