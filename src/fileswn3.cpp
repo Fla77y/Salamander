@@ -95,7 +95,10 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
     GetPluginIconIndex = InternalGetPluginIconIndex; // setting standard callback (just returns zero)
 
     // Leave room for the wildcard on a dynamically sized disk path.
-    std::vector<char> fileName(strlen(GetPath()) + 4);
+    const size_t pathLen = strlen(GetPath());
+    // Preserve the former MAX_PATH+4 scratch capacity for extension and icon
+    // processing, while allowing long directory search patterns.
+    std::vector<char> fileName((pathLen > MAX_PATH ? pathLen : MAX_PATH) + 4);
 
     if (Is(ptDisk))
     {
@@ -149,7 +152,7 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
         GetAsyncKeyState(VK_ESCAPE); // init GetAsyncKeyState - see help
 
         GetRootPath(fileName.data(), GetPath());
-        BOOL isRootPath = (strlen(GetPath()) <= strlen(fileName));
+        BOOL isRootPath = (strlen(GetPath()) <= strlen(fileName.data()));
 
         //--- getting drive type (we will not bother network drives with getting shares)
         UINT drvType = MyGetDriveType(GetPath());
@@ -1172,11 +1175,11 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
             {
 */
                         char* s = f->Ext - 1;
-                        char* st = fileName;
+                        char* st = fileName.data();
                         while (*++s != 0)
                             *st++ = LowerCase[*s];
                         *(DWORD*)st = 0; // zeroes to the end
-                        st = fileName;   // lowercase extension
+                        st = fileName.data(); // lowercase extension
 
                         f->Association = Associations.IsAssociatedStatic(st, iconLocation, iconSize);
                         f->Archive = FALSE;
@@ -1433,11 +1436,11 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
               {
 */
                             char* s = f->Ext - 1;
-                            char* st = fileName;
+                            char* st = fileName.data();
                             while (*++s != 0)
                                 *st++ = LowerCase[*s];
                             *(DWORD*)st = 0; // zeroes to the end
-                            st = fileName;   // lowercase extension
+                            st = fileName.data(); // lowercase extension
 
                             f->Association = Associations.IsAssociatedStatic(st, iconLocation, iconSize);
                             f->Archive = FALSE;
