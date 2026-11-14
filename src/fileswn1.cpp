@@ -247,7 +247,20 @@ void CFilesWindowAncestor::SetPath(const char* path)
     DriveType = DRIVE_UNKNOWN;
     if (!Is(ptPluginFS)) // pluginFS handles changes differently...
     {
-        DriveType = MyGetDriveType(Path.c_str());
+        if (Path.size() >= MAX_PATH - 2)
+        {
+            // Disk notifications and the legacy drive helper retain fixed
+            // buffers. Long-path panels use explicit refresh for now.
+            if (Path.size() >= 3 && Path[1] == ':' && Path[2] == '\\')
+            {
+                char root[] = {Path[0], ':', '\\', 0};
+                DriveType = GetDriveTypeA(root);
+            }
+            else
+                DriveType = DRIVE_REMOTE;
+        }
+        else
+            DriveType = MyGetDriveType(Path.c_str());
         switch (DriveType)
         {
         case DRIVE_REMOVABLE:
@@ -283,8 +296,9 @@ void CFilesWindowAncestor::SetPath(const char* path)
         }
         }
 
-        // we handle suppression of auto refresh
-        if (SuppressAutoRefresh)
+        // Long paths must not reach the bounded legacy change monitor.
+        // Refresh remains available explicitly through the panel.
+        if (SuppressAutoRefresh || Path.size() >= MAX_PATH - 2)
             MonitorChanges = FALSE;
 
         if (MonitorChanges)
