@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include "win32_long_path.h"
+
 #include <windows.h>
 #include <cstddef>
 #include <cwchar>
@@ -118,7 +120,23 @@ inline HANDLE FindFirstUnicodePanelFile(
             &search[0], chars) != chars)
         return INVALID_HANDLE_VALUE;
 
-    HANDLE handle = FindFirstFileW(search.c_str(), &wide);
+    // FindFirstFileW is not guaranteed to accept paths beyond MAX_PATH
+    // without an extended-length prefix. Keep the existing short-path
+    // behavior (including legacy callers with relative search patterns).
+    std::wstring extendedSearch;
+    const wchar_t* searchPattern = search.c_str();
+    if (search.size() - 1 >= MAX_PATH)
+    {
+        DWORD error = ERROR_SUCCESS;
+        if (!TryMakeExtendedLengthPath(search.c_str(), extendedSearch, error))
+        {
+            SetLastError(error);
+            return INVALID_HANDLE_VALUE;
+        }
+        searchPattern = extendedSearch.c_str();
+    }
+
+    HANDLE handle = FindFirstFileW(searchPattern, &wide);
     if (handle == INVALID_HANDLE_VALUE)
         return handle;
 
