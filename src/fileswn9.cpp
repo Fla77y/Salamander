@@ -642,9 +642,10 @@ void CFilesWindow::ClipboardPastePath()
             {
                 while (*pathW != 0 && *pathW <= L' ')
                     pathW++; // trim spaces+CR+LF before the path
-                if (ConvertU2A(pathW, -1, buff, _countof(buff)))
+                if (ConvertU2A(pathW, -1, buff, _countof(buff)) &&
+                    Salamander::IsExactAnsiName(buff, pathW))
                     changePath = TRUE;
-                // Never interpret a truncated CP_ACP conversion as a path.
+                // Never interpret a truncated or lossy CP_ACP conversion as a path.
                 // A prefix can name a different, existing directory.
                 HANDLES(GlobalUnlock(handle));
             }
