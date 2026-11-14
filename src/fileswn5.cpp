@@ -2359,17 +2359,30 @@ void CFilesWindow::RenameFile(int specialIndex)
     // missing identities must still be refused before prompting.
     if (Is(ptDisk) && UnicodeDiskNames.IsUnsafeAnsiName(f->Name))
     {
-        // Directory rename must also coordinate child panels, open handles
-        // and redirected/reparse-point paths with the full operation engine.
-        // Restrict this first W write path to ordinary files.
-        if (isDir || (f->Attr & FILE_ATTRIBUTE_REPARSE_POINT))
+        // Reparse points must never be moved as if they were normal files.
+        // A Unicode directory may be renamed only if no other disk panel
+        // currently points into its subtree (otherwise that panel's path
+        // and handles would require a coordinated transaction).
+        if (f->Attr & FILE_ATTRIBUTE_REPARSE_POINT)
         {
             SalMessageBox(HWindow,
-                          "Unicode directory and reparse-point rename is not yet "
-                          "supported safely. No files were changed.",
+                          "Unicode reparse-point rename is not supported safely. "
+                          "No files were changed.",
                           LoadStr(IDS_ERRORRENAMINGFILE), MB_OK | MB_ICONEXCLAMATION);
             return;
         }
+#ifndef _WIN64
+        // The legacy Win32-on-Win64 redirected-directory handling is not
+        // yet integrated with the new wide rename path.
+        if (isDir && Windows64Bit)
+        {
+            SalMessageBox(HWindow,
+                          "Unicode directory rename in a redirected Win32 "
+                          "environment is unavailable. No files were changed.",
+                          LoadStr(IDS_ERRORRENAMINGFILE), MB_OK | MB_ICONEXCLAMATION);
+            return;
+        }
+#endif
 
         const std::string legacyAlias(f->Name);
         std::wstring originalName;
@@ -2427,6 +2440,38 @@ void CFilesWindow::RenameFile(int specialIndex)
             SalMessageBox(HWindow, GetErrorText(ERROR_INVALID_NAME),
                           LoadStr(IDS_ERRORRENAMINGFILE), MB_OK | MB_ICONEXCLAMATION);
             return;
+        }
+
+        if (isDir)
+        {
+            CFilesWindow* otherPanel = MainWindow->GetNonActivePanel();
+            if (otherPanel != NULL && otherPanel->Is(ptDisk))
+            {
+                std::wstring otherDirectory;
+                if (!Salamander::TryGetUnicodePanelDirectory(
+                        otherPanel->GetPath(), otherDirectory))
+                    return;
+
+                const std::wstring currentFolder(
+                    sourcePath.Value().begin(), sourcePath.Value().end());
+                const std::size_t prefixLength = currentFolder.size();
+                if (otherDirectory.size() >= prefixLength &&
+                    CompareStringOrdinal(
+                        otherDirectory.c_str(), static_cast<int>(prefixLength),
+                        currentFolder.c_str(), static_cast<int>(prefixLength),
+                        TRUE) == CSTR_EQUAL &&
+                    (otherDirectory.size() == prefixLength ||
+                     otherDirectory[prefixLength] == L'\\'))
+                {
+                    SalMessageBox(HWindow,
+                                  "The other panel is inside this Unicode folder. "
+                                  "Navigate it elsewhere before renaming. "
+                                  "No files were changed.",
+                                  LoadStr(IDS_ERRORRENAMINGFILE),
+                                  MB_OK | MB_ICONEXCLAMATION);
+                    return;
+                }
+            }
         }
 
         std::wstring requestedName = originalName;
