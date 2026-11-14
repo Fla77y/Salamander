@@ -127,6 +127,13 @@ if ($driverText -notmatch '\[switch\]\$ShortUnicodeRecycleOnly' -or
 }
 Write-Host 'PASS: Unicode F8 GUI recycle and refusal assertions are present.'
 
+if ($driverText -notmatch '\[switch\]\$ShortUnicodeRowIdentityOnly' -or
+    $driverText -notmatch 'Distinct per-row Unicode names survive ANSI alias collision' -or
+    $driverText -notmatch 'Distinct full Unicode clipboard paths follow selected panel row') {
+    throw 'W-based panel regression must preserve exact name and full path per row.'
+}
+Write-Host 'PASS: W-backed per-row Unicode identity and clipboard regression assertions are present.'
+
 # Compile the embedded C# Win32 interop in the headless Windows test process.
 # PowerShell's AST check alone would not catch invalid P/Invoke signatures.
 $interopSource = [regex]::Match(
