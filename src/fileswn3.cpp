@@ -298,8 +298,10 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
         HANDLE search;
         // Primary disk listing is W-based. Each emitted CFileData Name
         // allocation is bound to this exact source record, not its ACP alias.
-        search = HANDLES_Q(Salamander::FindFirstUnicodePanelFile(
-            fileName, fileData, wideFileData));
+        search = Salamander::FindFirstUnicodePanelFile(
+            fileName, fileData, wideFileData);
+        if (search != INVALID_HANDLE_VALUE)
+            HANDLES_ADD(__htFindFile, __hoFindFirstFile, search);
         if (search == INVALID_HANDLE_VALUE)
         {
             DWORD err = GetLastError();
