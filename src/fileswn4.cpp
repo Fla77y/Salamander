@@ -598,8 +598,9 @@ void CFilesWindow::DrawBriefDetailedItem(HDC hTgtDC, int itemIndex, RECT* itemRe
         // passing a reconstructed filename into legacy file operations.
         std::wstring unicodeName;
         const bool drawUnicodeName =
-            Is(ptDisk) &&
-            UnicodeDiskNames.TryGetLossy(f->Name, unicodeName);
+            Is(ptDisk) && UnicodeDiskNames.IsUnsafeAnsiName(f->Name) &&
+            (UnicodeDiskNames.TryGetRow(f->Name, unicodeName) ||
+             UnicodeDiskNames.TryGetLossy(f->Name, unicodeName));
         if (drawUnicodeName)
         {
             if ((!isDir || Configuration.SortDirsByExt) &&
