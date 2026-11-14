@@ -179,6 +179,20 @@ if ($panelSource -notmatch 'search\s*=\s*Salamander::FindFirstUnicodePanelFile\s
     throw 'Unicode panel search handles must be tracked before monitored FindClose.'
 }
 
+# The old transfer engine uses fixed ANSI destination buffers too. A short
+# source with a LONG target is as unsafe as a long source. F5/F6 must route
+# both cases exclusively through the W-backed preflight or refuse.
+$filesActionSource = Get-Content -LiteralPath (Join-Path $toolsDir '..\..\src\fileswn8.cpp') -Raw
+$filesActionBlock = [regex]::Match($filesActionSource,
+    '(?s)void CFilesWindow::FilesAction\(CActionType type, CFilesWindow\* target, int countSizeMode\)(.*?)// restore DefaultDir').Groups[1].Value
+if ([string]::IsNullOrEmpty($filesActionBlock) -or
+    $filesActionBlock -notmatch 'target->HasLongDiskPath\(\)' -or
+    $filesActionBlock -notmatch 'TryUnicodeSingleFileTransfer' -or
+    $filesActionBlock -notmatch 'TryUnicodeSingleDirectoryMove' -or
+    $filesActionBlock -notmatch 'return;') {
+    throw 'F5/F6 must not reach the ANSI engine with a long target panel.'
+}
+
 # CM_CLIPPASTE first checks for files, then falls back to clipboard text path
 # navigation. Reject actual file payloads on long targets, but NEVER display
 # a blocking dialog for plain CF_UNICODETEXT navigation. The second GUI
