@@ -94,7 +94,7 @@ $unsafeOperationBlock = [regex]::Match(
     '(?s)if \(\$ShortUnicodeUnsafeOperationsOnly\) \{\s*# Destructive shortcuts(.*?)\n    if \(\$ShortUnicodeCollisionOnly\) \{'
 ).Groups[1].Value
 if ([string]::IsNullOrEmpty($unsafeOperationBlock) -or
-    $unsafeOperationBlock -notmatch "(?s)Send-Keys '\{ESC\}'\s*Wait-Until \{ -not \(Get-TestDialog\) \}[^\r\n]*\r?\n(?:\s*\#[^\r\n]*\r?\n)*\s*Focus-TestProcess" -or
+    $unsafeOperationBlock -notmatch "(?s)Send-Keys '\{ESC\}'\s*Wait-Until \{ -not \(Get-TestDialog\) \}[^\r\n]*\r?\n(?:\s*#[^\r\n]*\r?\n)*\s*Focus-TestProcess" -or
     $unsafeOperationBlock -notmatch 'Assert-True \(\(Read-PanelPath\) -ceq \$source\)' -or
     $guiDriver -notmatch 'Refusing to send input to a window owned by another process') {
     throw 'Unicode unsafe-operation GUI test must restore verified app focus after modal refusal and validate source panel.'
