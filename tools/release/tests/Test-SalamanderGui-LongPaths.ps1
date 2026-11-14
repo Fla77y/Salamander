@@ -623,6 +623,12 @@ try {
     # a baseline-only pass must never be confused with a long-path pass.
     [IO.Directory]::CreateDirectory($source) | Out-Null
     Assert-True ($source.Length -lt 257) 'Short-path GUI baseline fixture is below MAX_PATH'
+    if ($BaselineOnly) {
+        # The baseline must also demonstrate that the automated keystroke
+        # reaches the focused file panel without manual window activation.
+        $focusProbeName = 'focus-probe.txt'
+        [IO.File]::WriteAllBytes((Join-Path $source $focusProbeName), $payload)
+    }
     if ($ShortOperationsOnly) {
         # Arrange an independent, short ASCII operation baseline before
         # migrating disk file operations. Never touch non-fixture files.
@@ -760,8 +766,10 @@ try {
     # WM_COMMAND 711 adds no coverage and can race with GUI processing.
     Write-Host 'PASS: GUI driver can navigate a normal short directory'
     if ($BaselineOnly) {
+        Send-Keys '{END}'
+        Assert-True ((Read-FocusedFilename) -ceq $focusProbeName) 'Unattended keyboard focus reaches the test file panel'
         $passed = $true
-        Write-Host 'PASS: GUI automation driver works with short ASCII paths.'
+        Write-Host 'PASS: GUI automation driver works with short ASCII paths and verified keyboard focus.'
         return
     }
 
