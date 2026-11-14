@@ -365,7 +365,7 @@ if ([string]::IsNullOrEmpty($panelLoad) -or
     $startupSource -notmatch 'std::string rightPanelPath\(systemDirectory\)' -or
     $startupSource -notmatch 'RestoreSavedPanelPath\(LeftPanel, leftPanelPath\)' -or
     $startupSource -notmatch 'RestoreSavedPanelPath\(RightPanel, rightPanelPath\)' -or
-    $startupSource -notmatch 'if \(savedPath\.size\(\) >= MAX_PATH - 2\)' -or
+    $startupSource -notmatch 'if \(savedPath\.size\(\) >= static_cast<std::size_t>\(MAX_PATH - 2\)\)' -or
     $startupSource -notmatch 'ChangePathToDisk\(panel->HWindow, savedPath\.c_str\(\)\)') {
     throw 'Saved panel paths must load dynamically and use the long-path navigation branch.'
 }
