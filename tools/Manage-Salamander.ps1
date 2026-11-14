@@ -184,6 +184,7 @@ function Run-Tests {
         'tools\tests\utf16_disk_path.cpp',
         'tools\tests\legacy_disk_name_safety.cpp',
         'tools\tests\legacy_default_directory_registry.cpp',
+        'tools\tests\saved_panel_path_registry.cpp',
         'tools\tests\win32_unicode_primary_panel.cpp',
         'tools\tests\win32_unicode_rename_dialog.cpp',
         'tools\tests\win32_unicode_recycle.cpp',
@@ -210,6 +211,7 @@ function Run-Tests {
             # Keep other standalone tests independent of these dependencies.
             $platformLibraries = switch ($testName) {
                 'legacy_default_directory_registry' { ' advapi32.lib' }
+                'saved_panel_path_registry' { ' advapi32.lib' }
                 'win32_unicode_rename_dialog' { ' user32.lib' }
                 'win32_unicode_recycle' { ' ole32.lib shell32.lib uuid.lib' }
                 default { '' }
