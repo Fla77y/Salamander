@@ -1387,7 +1387,8 @@ void CFilesWindow::CloseCurrentPath(HWND parent, BOOL cancel, BOOL detachFS, BOO
             {
                 const char* path = GetPath();
                 // HICON hIcon = GetFileOrPathIconAux(path, FALSE, TRUE); // we retrieve the icon
-                MainWindow->DirHistoryAddPathUnique(0, path, NULL, NULL /*hIcon*/, NULL, NULL);
+                if (!HasLongDiskPath())
+                    MainWindow->DirHistoryAddPathUnique(0, path, NULL, NULL /*hIcon*/, NULL, NULL);
                 if (!newPathIsTheSame)
                     UserWorkedOnThisPath = FALSE;
             }
@@ -1565,7 +1566,8 @@ void CFilesWindow::RefreshPathHistoryData()
         {
             if (Is(ptDisk))
             {
-                PathHistory->ChangeActualPathData(0, GetPath(), NULL, NULL, NULL, topIndex, file->Name);
+                if (!HasLongDiskPath())
+                    PathHistory->ChangeActualPathData(0, GetPath(), NULL, NULL, NULL, topIndex, file->Name);
             }
             else
             {
@@ -1636,6 +1638,97 @@ void CFilesWindow::InvalidateChangesInPanelWeHaveNewListing()
     }
 }
 
+// Navigation to a long ordinary disk directory must not enter the legacy
+// MAX_PATH path-normalization and disk-listing stack. Validate the complete
+// identity with Win32 W APIs before changing the panel's current directory.
+BOOL CFilesWindow::ChangeLongPathToDisk(HWND parent, const char* path, int suggestedTopIndex,
+                                       const char* suggestedFocusName, BOOL* noChange,
+                                       BOOL refreshListBox, BOOL canForce, BOOL isRefresh,
+                                       int* failReason, int tryCloseReason)
+{
+    if (failReason != NULL)
+        *failReason = CHPPFR_INVALIDPATH;
+    if (noChange != NULL)
+        *noChange = TRUE;
+    if (path == NULL)
+        return FALSE;
+
+    std::wstring extended;
+    DWORD error = ERROR_SUCCESS;
+    if (!Salamander::TryMakeExtendedLengthPathFromAnsi(path, extended, error))
+    {
+        SalMessageBox(parent, GetErrorText(error), LoadStr(IDS_ERRORCHANGINGDIR),
+                      MB_OK | MB_ICONEXCLAMATION);
+        return FALSE;
+    }
+
+    const DWORD attributes = GetFileAttributesW(extended.c_str());
+    if (attributes == INVALID_FILE_ATTRIBUTES ||
+        (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0)
+    {
+        error = attributes == INVALID_FILE_ATTRIBUTES ? GetLastError() : ERROR_DIRECTORY;
+        SalMessageBox(parent, GetErrorText(error), LoadStr(IDS_ERRORCHANGINGDIR),
+                      MB_OK | MB_ICONEXCLAMATION);
+        return FALSE;
+    }
+
+    // Verify enumeration before discarding the previous panel listing.
+    // ERROR_FILE_NOT_FOUND denotes an existing but empty directory.
+    std::wstring search = extended;
+    if (search.back() != L'\\')
+        search.push_back(L'\\');
+    search.push_back(L'*');
+    WIN32_FIND_DATAW first = {};
+    HANDLE handle = FindFirstFileW(search.c_str(), &first);
+    if (handle == INVALID_HANDLE_VALUE)
+    {
+        error = GetLastError();
+        if (error != ERROR_FILE_NOT_FOUND && error != ERROR_NO_MORE_FILES)
+        {
+            SalMessageBox(parent, GetErrorText(error), LoadStr(IDS_ERRORCHANGINGDIR),
+                          MB_OK | MB_ICONEXCLAMATION);
+            return FALSE;
+        }
+    }
+    else
+        FindClose(handle);
+
+    BOOL detachFS = FALSE;
+    if (!PrepareCloseCurrentPath(parent, canForce, TRUE, detachFS, tryCloseReason))
+    {
+        if (failReason != NULL)
+            *failReason = CHPPFR_CANNOTCLOSEPATH;
+        return FALSE;
+    }
+
+    const BOOL samePath = Is(ptDisk) && lstrcmpiA(GetPath(), path) == 0;
+    if (!HasLongDiskPath())
+        RefreshPathHistoryData();
+    if (!isRefresh)
+        MainWindow->CancelPanelsUI();
+    CloseCurrentPath(parent, FALSE, detachFS, samePath, isRefresh, !samePath);
+    SetPanelType(ptDisk);
+    SetPath(path);
+    if (noChange != NULL)
+        *noChange = FALSE;
+
+    const BOOL listed = CommonRefresh(parent, suggestedTopIndex,
+                                     suggestedFocusName, refreshListBox, TRUE, isRefresh);
+    if (listed)
+    {
+        if (failReason != NULL)
+            *failReason = CHPPFR_SUCCESS;
+        return TRUE;
+    }
+
+    // On an unexpected listing failure, keep the pane in an ordinary,
+    // known short root rather than treating an empty pane as a success.
+    char root[4] = {path[0], ':', '\\', 0};
+    if (path[1] == ':')
+        ChangePathToDisk(parent, root, -1, NULL, NULL, TRUE, FALSE, FALSE);
+    return FALSE;
+}
+
 BOOL CFilesWindow::ChangePathToDisk(HWND parent, const char* path, int suggestedTopIndex,
                                     const char* suggestedFocusName, BOOL* noChange,
                                     BOOL refreshListBox, BOOL canForce, BOOL isRefresh, int* failReason,
@@ -1647,14 +1740,10 @@ BOOL CFilesWindow::ChangePathToDisk(HWND parent, const char* path, int suggested
 
     //TRACE_I("change-to-disk: begin");
 
-    if (strlen(path) >= MAX_PATH - 2)
-    {
-        SalMessageBox(parent, LoadStr(IDS_TOOLONGNAME), LoadStr(IDS_ERRORCHANGINGDIR),
-                      MB_OK | MB_ICONEXCLAMATION);
-        if (failReason != NULL)
-            *failReason = CHPPFR_INVALIDPATH;
-        return FALSE;
-    }
+    if (strlen(path) >= MAX_PATH - 2 || HasLongDiskPath())
+        return ChangeLongPathToDisk(parent, path, suggestedTopIndex,
+                                   suggestedFocusName, noChange, refreshListBox,
+                                   canForce, isRefresh, failReason, tryCloseReason);
 
     // we make backup copies
     char backup[MAX_PATH];
