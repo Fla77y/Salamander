@@ -520,7 +520,7 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
 
     const std::string legacyAlias(entry.Name);
     std::wstring originalName;
-    if (HasLongDiskPath())
+    if (HasLongDiskPath() || target->HasLongDiskPath())
     {
         if (!UnicodeDiskNames.TryGetRow(entry.Name, originalName))
             return FALSE; // never infer a long-path file from its ACP alias
@@ -824,7 +824,9 @@ void CFilesWindow::FilesAction(CActionType type, CFilesWindow* target, int count
 
     // Long folders must never enter the fixed-buffer ANSI operation engine.
     // Use the existing W-only transfer path for ordinary selected files.
-    if (HasLongDiskPath())
+    if (HasLongDiskPath() ||
+        ((type == atCopy || type == atMove) &&
+         target != NULL && target->HasLongDiskPath()))
     {
         if (countSizeMode == 0 &&
             (TryUnicodeMultiFileTransfer(type, target) ||
