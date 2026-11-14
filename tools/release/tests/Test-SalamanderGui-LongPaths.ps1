@@ -274,8 +274,13 @@ function Assert-True {
 }
 
 function Wait-Until {
-    param([scriptblock]$Condition, [string]$Description)
-    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    param(
+        [scriptblock]$Condition,
+        [string]$Description,
+        [ValidateRange(0,120)][int]$TimeoutSecondsOverride = 0
+    )
+    $seconds = if ($TimeoutSecondsOverride -gt 0) { $TimeoutSecondsOverride } else { $TimeoutSeconds }
+    $deadline = [DateTime]::UtcNow.AddSeconds($seconds)
     do {
         if (& $Condition) { return }
         Start-Sleep -Milliseconds 200
@@ -365,9 +370,9 @@ function Focus-TestProcess {
 
     $foreground = Get-ForegroundWindowSummary
     $windows = Get-ProcessWindowSummary -OwnerProcessId ([uint32]$process.Id)
-    throw ("Cannot activate verified test Salamander window HWND=0x{0:X} PID={1} " +
+    throw (("Cannot activate verified test Salamander window HWND=0x{0:X} PID={1} " +
            "after {2} attempts. Foreground: {3}; test process windows: {4}. " +
-           "Windows may deny SetForegroundWindow; no keys were sent." -f
+           "Windows may deny SetForegroundWindow; no keys were sent.") -f
            $h.ToInt64(), $process.Id, $attempts, $foreground, $windows)
 }
 
@@ -410,8 +415,8 @@ function Invoke-SalamanderCommand {
     if ($sent -eq [IntPtr]::Zero) {
         $hung = [SalamanderGuiNative]::IsHungAppWindow($main)
         $dialog = Get-TestDialog
-        throw ("Salamander command {0} did not complete after {1} ms; " +
-            "SendMessageTimeout Win32 error {2}; IsHungAppWindow={3}; modal dialog='{4}'" -f
+        throw (("Salamander command {0} did not complete after {1} ms; " +
+            "SendMessageTimeout Win32 error {2}; IsHungAppWindow={3}; modal dialog='{4}'") -f
             $CommandId, $timer.ElapsedMilliseconds, $lastError, $hung, $dialog)
     }
 }
@@ -434,73 +439,96 @@ function Get-ClipboardText {
 }
 
 function Read-PanelPath {
-    Set-ClipboardText 'SENTINEL_NOT_PATH'
+    # WM_COMMAND 711 is synchronous, but the clipboard can be briefly
+    # unavailable or a command can fail to publish text during startup.
+    # A failed read must not consume the entire navigation timeout.
+    $sentinel = 'SENTINEL_NOT_PATH'
+    Set-ClipboardText $sentinel
     Invoke-SalamanderCommand -CommandId 711
-    Wait-Until { (Get-ClipboardText) -ne 'SENTINEL_NOT_PATH' } 'panel path clipboard shortcut'
-    return (Get-ClipboardText).TrimEnd([char]13, [char]10)
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        for ($poll = 0; $poll -lt 4; $poll++) {
+            $observed = Get-ClipboardText
+            if (-not [string]::IsNullOrWhiteSpace($observed) -and $observed -cne $sentinel) {
+                return $observed.TrimEnd([char]13, [char]10)
+            }
+            Start-Sleep -Milliseconds 150
+        }
+        if ($attempt -lt 3) {
+            Set-ClipboardText $sentinel
+            Invoke-SalamanderCommand -CommandId 711
+        }
+    }
+    throw 'Panel path clipboard shortcut did not publish a path after 3 verified command dispatches.'
 }
 
 function Go-ToPath {
     param([string]$Path)
-    Focus-TestProcess
-    # Salamander's documented Edit > Paste command directly changes the
-    # active panel to a directory stored as plain clipboard text. Avoid
-    # Shift+F7 here: its modal dialog was not reliably detected and blocked
-    # even the short-path automation baseline on a real desktop.
-    #
-    # The clipboard contains plain text (not CF_HDROP file data), so
-    # Salamander interprets it as a directory to navigate to. Synchronous
-    # WM_COMMAND dispatch ensures the path is consumed before we reset the
-    # clipboard to query the panel path.
-    Set-ClipboardText $Path
-    Assert-True ((Get-ClipboardText) -ceq $Path) 'Clipboard contains only the requested text path'
-    Invoke-SalamanderCommand -CommandId 775
-    # Hashtable fields survive Wait-Until's child scriptblock scope and allow
-    # the failure report to distinguish input failure from path rejection.
+
+    # The only clipboard payload is CF_UNICODETEXT, not a file drop. The
+    # synchronous WM_COMMAND 775 requests navigation to that directory.
+    # A second request is permitted only after a verified timeout with no
+    # modal dialog and the original test process still in the foreground.
+    $maxNavigationAttempts = 2
     $diagnostics = @{
         ForegroundPid = 0
         PanelPath = '<not read>'
         PanelReadError = '<none>'
     }
-    try {
-        Wait-Until {
-            $dialogText = Get-TestDialog
-            if ($dialogText -match 'Error Changing Directory|too long name|Cannot finish operation') {
-                throw "Salamander rejected path '$Path': $dialogText"
-            }
-            $diagnostics.ForegroundPid = Get-ActiveProcessId
-            if ($diagnostics.ForegroundPid -ne [uint32]$process.Id) { return $false }
-            # Do not force main window to the foreground here. Doing so hides
-            # native error dialogs and turns a genuine application error into a timeout.
-            try {
-                $diagnostics.PanelPath = Read-PanelPath
-                $diagnostics.PanelReadError = '<none>'
-                return $diagnostics.PanelPath -ceq $Path
-            }
-            catch {
-                $diagnostics.PanelReadError = $_.Exception.Message
+
+    for ($attempt = 1; $attempt -le $maxNavigationAttempts; $attempt++) {
+        Focus-TestProcess
+        Set-ClipboardText $Path
+        Assert-True ((Get-ClipboardText) -ceq $Path) 'Clipboard contains only the requested text path'
+        Invoke-SalamanderCommand -CommandId 775
+
+        try {
+            # Short first attempt permits a bounded recovery from transient
+            # startup clipboard races. The final attempt uses the full timeout.
+            $probeSeconds = if ($attempt -eq 1) { 6 } else { $TimeoutSeconds }
+            Wait-Until {
                 $dialogText = Get-TestDialog
-                if ($dialogText -match 'Error Changing Directory|too long name') {
-                    throw "Salamander rejected path '$Path': $dialogText"
+                if (-not [string]::IsNullOrEmpty($dialogText)) {
+                    throw "Salamander raised a dialog during navigation to '$Path': $dialogText"
                 }
-                return $false
+                $diagnostics.ForegroundPid = Get-ActiveProcessId
+                if ($diagnostics.ForegroundPid -ne [uint32]$process.Id) { return $false }
+                # Do not steal focus from an error dialog to make a timeout look
+                # like an application path failure.
+                try {
+                    $diagnostics.PanelPath = Read-PanelPath
+                    $diagnostics.PanelReadError = '<none>'
+                    return $diagnostics.PanelPath -ceq $Path
+                }
+                catch {
+                    $diagnostics.PanelReadError = $_.Exception.Message
+                    return $false
+                }
+            } "Salamander navigation to $Path" -TimeoutSecondsOverride $probeSeconds
+
+            Assert-True ($diagnostics.PanelPath -ceq $Path) "Salamander panel path agrees with requested ($($Path.Length) UTF-16 units)"
+            return
+        }
+        catch {
+            $failure = $_.Exception.Message
+            $dialogText = Get-TestDialog
+            if ($attempt -lt $maxNavigationAttempts -and
+                $failure -like 'Timeout waiting for Salamander navigation*' -and
+                $diagnostics.ForegroundPid -eq [uint32]$process.Id -and
+                [string]::IsNullOrEmpty($dialogText)) {
+                Write-Warning ("GUI navigation not confirmed on attempt {0}; last path='{1}'; clipboard read='{2}'. Retrying once." -f
+                    $attempt, $diagnostics.PanelPath, $diagnostics.PanelReadError)
+                continue
             }
-        } "Salamander navigation to $Path"
+
+            $process.Refresh()
+            throw (("GUI navigation failed: {0}; Salamander PID={1}; HWND=0x{2:X}; title='{3}'; " +
+                "foreground PID={4}; last panel path='{5}'; panel read error='{6}'; dialog='{7}'; attempts={8}" ) -f
+                $failure, $process.Id, $mainWindowHandle.ToInt64(),
+                [SalamanderGuiNative]::GetWindowCaption($mainWindowHandle),
+                $diagnostics.ForegroundPid, $diagnostics.PanelPath,
+                $diagnostics.PanelReadError, $dialogText, $attempt)
+        }
     }
-    catch {
-        $process.Refresh()
-        $dialogText = Get-TestDialog
-        throw ("GUI navigation failed: {0}; Salamander PID={1}; HWND=0x{2:X}; title='{3}'; " +
-            "foreground PID={4}; last panel path='{5}'; panel read error='{6}'; dialog='{7}'" -f
-            $_.Exception.Message, $process.Id, $mainWindowHandle.ToInt64(),
-            [SalamanderGuiNative]::GetWindowCaption($mainWindowHandle),
-            $diagnostics.ForegroundPid, $diagnostics.PanelPath,
-            $diagnostics.PanelReadError, $dialogText)
-    }
-    # Wait-Until already read the panel path and established equality.
-    # Repeating the synchronous clipboard command can fail even after a
-    # successful navigation, creating a false negative and extra races.
-    Assert-True ($diagnostics.PanelPath -ceq $Path) "Salamander panel path agrees with requested ($($Path.Length) UTF-16 units)"
 }
 
 function Read-FocusedFilename {
@@ -683,8 +711,8 @@ try {
     catch {
         $process.Refresh()
         $windowSummary = Get-ProcessWindowSummary -OwnerProcessId ([uint32]$process.Id)
-        throw ("GUI startup failed: {0}; launched PID={1}; .NET MainWindowHandle=0x{2:X}; " +
-            ".NET title='{3}'; process windows: {4}" -f
+        throw (("GUI startup failed: {0}; launched PID={1}; .NET MainWindowHandle=0x{2:X}; " +
+            ".NET title='{3}'; process windows: {4}") -f
             $_.Exception.Message, $process.Id, $process.MainWindowHandle.ToInt64(),
             $process.MainWindowTitle, $windowSummary)
     }
