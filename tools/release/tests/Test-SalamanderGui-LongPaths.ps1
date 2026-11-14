@@ -510,6 +510,30 @@ function Read-FocusedFilename {
     return (Get-ClipboardText).TrimEnd([char]13, [char]10)
 }
 
+
+# Mark exactly two verified regular-file rows. In Salamander, one Shift+Up
+# selects the previous caret row only, so it cannot prove a two-file selection.
+# Insert toggles the focused row and advances to the next row when possible.
+function Select-TwoRegularFiles {
+    param([string[]]$ExpectedNames)
+    if ($ExpectedNames.Count -ne 2) {
+        throw 'Exactly two expected filenames are required.'
+    }
+
+    Send-Keys '{END}'
+    $lastName = Read-FocusedFilename
+    Send-Keys '{UP}'
+    $previousName = Read-FocusedFilename
+
+    $observedNames = @($previousName, $lastName) | Sort-Object
+    $expectedSorted = $ExpectedNames | Sort-Object
+    Assert-True (($observedNames -join [char]0) -ceq ($expectedSorted -join [char]0)) 'Both adjacent file rows match the expected source filenames'
+
+    Send-Keys '{INSERT}'
+    Assert-True ((Read-FocusedFilename) -ceq $lastName) 'Insert selected the previous row and advanced to the last row'
+    Send-Keys '{INSERT}'
+}
+
 function Read-FocusedFullname {
     Set-ClipboardText 'SENTINEL_NOT_FULLNAME'
     Invoke-SalamanderCommand -CommandId 709
@@ -820,10 +844,16 @@ try {
         Go-ToPath $destination
         Send-Keys '{TAB}'
         Assert-True ((Read-PanelPath) -ceq $source) 'Multi-file source panel verified'
-        Send-Keys '{END}'
-        Send-Keys '+{UP}'  # select two adjacent regular files
+        Select-TwoRegularFiles -ExpectedNames @($utfName, $secondName)
         Send-Keys '{F5}'
-        Wait-Until { (Get-TestDialog) -match 'Copy 2 selected Unicode' } 'Unicode F5 multi-selection confirmation'
+        $observed = @{ Dialog = $null }
+        Wait-Until {
+            $observed.Dialog = Get-TestDialog
+            return -not [string]::IsNullOrEmpty($observed.Dialog)
+        } 'Unicode F5 multi-selection confirmation dialog'
+        if ($observed.Dialog -notmatch 'Copy 2 selected Unicode/ASCII disk files') {
+            throw "Expected two-file Unicode F5 batch confirmation; observed: $($observed.Dialog)"
+        }
         Send-Keys '{ENTER}'
         $unicodeCopy = Join-Path $destination $utfName
         $asciiCopy = Join-Path $destination $secondName
@@ -840,10 +870,16 @@ try {
         Go-ToPath $moveDir
         Send-Keys '{TAB}'
         Assert-True ((Read-PanelPath) -ceq $destination) 'Unicode F6 multi-file source panel verified'
-        Send-Keys '{END}'
-        Send-Keys '+{UP}'
+        Select-TwoRegularFiles -ExpectedNames @($utfName, $secondName)
         Send-Keys '{F6}'
-        Wait-Until { (Get-TestDialog) -match 'Move 2 selected Unicode' } 'Unicode F6 multi-selection confirmation'
+        $observed = @{ Dialog = $null }
+        Wait-Until {
+            $observed.Dialog = Get-TestDialog
+            return -not [string]::IsNullOrEmpty($observed.Dialog)
+        } 'Unicode F6 multi-selection confirmation dialog'
+        if ($observed.Dialog -notmatch 'Move 2 selected Unicode/ASCII disk files') {
+            throw "Expected two-file Unicode F6 batch confirmation; observed: $($observed.Dialog)"
+        }
         Send-Keys '{ENTER}'
         $unicodeMoved = Join-Path $moveDir $utfName
         $asciiMoved = Join-Path $moveDir $secondName
