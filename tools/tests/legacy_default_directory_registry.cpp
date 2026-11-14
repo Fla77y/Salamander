@@ -111,10 +111,22 @@ int main()
             registry.Get(), 'E', fallback) != Salamander::LegacyDefaultDirectoryStatus::Preserve)
         return Fail("wrong type refused");
 
-    if (!Put(registry.Get(), "F", "F:\\missing-terminator", REG_SZ, false) ||
-        Salamander::ReadLegacyDefaultDirectory(
-            registry.Get(), 'F', fallback) != Salamander::LegacyDefaultDirectoryStatus::Preserve)
-        return Fail("unterminated value refused");
+    // RegQueryValueExA may present a synthesized terminator depending on
+    // Windows' ANSI/Unicode registry conversion. Either reject the raw
+    // value or accept the exact, fully terminated path; never truncate it.
+    char malformedTarget[MAX_PATH] = "F:\\";
+    if (!Put(registry.Get(), "F", "F:\\missing-terminator", REG_SZ, false))
+        return Fail("create unterminated fixture");
+    const auto malformedStatus = Salamander::ReadLegacyDefaultDirectory(
+        registry.Get(), 'F', malformedTarget);
+    if (malformedStatus == Salamander::LegacyDefaultDirectoryStatus::Loaded)
+    {
+        if (std::strcmp(malformedTarget, "F:\\missing-terminator") != 0)
+            return Fail("normalized registry value must be exact and terminated");
+    }
+    else if (malformedStatus != Salamander::LegacyDefaultDirectoryStatus::Preserve ||
+             std::strcmp(malformedTarget, "F:\\") != 0)
+        return Fail("unusable registry value must not alter fallback");
 
     if (!Put(registry.Get(), "G", "H:\\wrong-drive") ||
         Salamander::ReadLegacyDefaultDirectory(
