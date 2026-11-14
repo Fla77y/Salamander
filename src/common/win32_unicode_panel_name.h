@@ -5,6 +5,7 @@
 
 #include "win32_long_directory.h"
 #include "legacy_disk_name_safety.h"
+#include "win32_unicode_primary_panel.h"
 
 #include <windows.h>
 #include <string>
@@ -109,12 +110,29 @@ public:
     void Clear()
     {
         names_.clear();
+        rowNames_.Clear();
         complete_ = false;
+    }
+
+    // Called only for rows created by the same W enumeration record.
+    // The key is the independent heap allocation of CFileData::Name;
+    // it is stable when panel rows are reordered during sorting.
+    void RecordRow(const char* allocatedName, const wchar_t* originalName)
+    {
+        rowNames_.Record(allocatedName, originalName);
+    }
+
+    bool TryGetRow(const char* allocatedName, std::wstring& originalName) const
+    {
+        return rowNames_.TryGet(allocatedName, originalName);
     }
 
     bool Load(const wchar_t* absoluteDirectory, DWORD& error)
     {
-        Clear();
+        // Preserve per-row W identities already recorded while populating
+        // the current panel. Only the compatibility alias index is rebuilt.
+        names_.clear();
+        complete_ = false;
         std::vector<LongDirectoryEntry> entries;
         if (!TryEnumerateLongDirectory(absoluteDirectory, entries, error))
             return false;
@@ -214,6 +232,7 @@ private:
     };
 
     std::unordered_map<std::string, CachedName> names_;
+    UnicodePanelRowIdentities rowNames_;
     bool complete_ = false;
 };
 
