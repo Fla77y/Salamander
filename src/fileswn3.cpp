@@ -294,8 +294,12 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
 
         BOOL isUpDir = FALSE;
         WIN32_FIND_DATA fileData;
+        WIN32_FIND_DATAW wideFileData = {};
         HANDLE search;
-        search = HANDLES_Q(FindFirstFile(fileName, &fileData));
+        // Primary disk listing is W-based. Each emitted CFileData Name
+        // allocation is bound to this exact source record, not its ACP alias.
+        search = HANDLES_Q(Salamander::FindFirstUnicodePanelFile(
+            fileName, fileData, wideFileData));
         if (search == INVALID_HANDLE_VALUE)
         {
             DWORD err = GetLastError();
@@ -703,6 +707,12 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
                     }
                 }
 
+                // The allocated Name pointer remains stable through CFileData
+                // array sorting. Never infer row identity from its ANSI alias:
+                // two different Unicode filenames may have identical aliases.
+                if (search != NULL && !isUpDir)
+                    UnicodeDiskNames.RecordRow(file.Name, wideFileData.cFileName);
+
                 // at the file, we will check if it's necessary to load its thumbnail
                 if (readThumbnails &&                              // load thumbnails
                     (file.Attr & FILE_ATTRIBUTE_DIRECTORY) == 0 && // (it is ptDisk, so using FILE_ATTRIBUTE_DIRECTORY is o.k.)
@@ -846,7 +856,8 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
 #endif                     // _WIN64
                     break; // second pass (adding ".." or the Win64-redirected directory)
                 }
-            } while (FindNextFile(search, &fileData));
+            } while (Salamander::FindNextUnicodePanelFile(
+                search, fileData, wideFileData));
             DWORD err = GetLastError();
 
             if (search != NULL) // the first pass
