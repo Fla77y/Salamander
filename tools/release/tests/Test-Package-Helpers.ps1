@@ -347,7 +347,7 @@ if ([string]::IsNullOrEmpty($defaultDirectoriesRead) -or
     $defaultDirectoriesRead -notmatch 'dataLen > MAX_PATH' -or
     $defaultDirectoriesRead -notmatch 'PreserveOversizedDefaultDir' -or
     $defaultDirectoriesRead -notmatch 'res == ERROR_MORE_DATA' -or
-    $defaultDirectoriesRead -notmatch 'path\[dataLen - 1\] != 0' -or
+    $defaultDirectoriesRead -notmatch 'path\[dataLen - 1\] == 0' -or
     $defaultDirectoriesWrite -notmatch 'PreserveOversizedDefaultDir') {
     throw 'Oversized Default Directories registry values must be skipped without a modal startup error and preserved on save.'
 }
