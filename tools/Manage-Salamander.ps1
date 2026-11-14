@@ -180,6 +180,7 @@ function Run-Tests {
         'tools\tests\quicksearch_bounds.cpp',
         'tools\tests\utf16_disk_path.cpp',
         'tools\tests\legacy_disk_name_safety.cpp',
+        'tools\tests\win32_unicode_primary_panel.cpp',
         'tools\tests\win32_unicode_rename_dialog.cpp',
         'tools\tests\win32_unicode_recycle.cpp',
         'tools\tests\long_path_io.cpp'
