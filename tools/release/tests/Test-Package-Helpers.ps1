@@ -350,3 +350,23 @@ if ([string]::IsNullOrEmpty($defaultDirectoriesRead) -or
     throw 'Default directory loading must use bounded per-drive registry reads and preserve unsupported entries.'
 }
 Write-Host 'PASS: default-directory startup reads use bounded per-drive access and preserve unsupported values.'
+
+
+# Persisted panel paths may exceed MAX_PATH: both the read and the restore
+# operation must use owned dynamic storage, bypassing fixed-size recovery.
+$panelLoad = [regex]::Match(
+    $startupSource,
+    '(?s)void CMainWindow::LoadPanelConfig\((.*?)void LoadIconOvrlsInfo'
+).Value
+if ([string]::IsNullOrEmpty($panelLoad) -or
+    $panelLoad -notmatch 'ReadSavedPanelPath\(actKey, panelPath\)' -or
+    $panelLoad -match 'GetValue\(actKey, PANEL_PATH_REG, REG_SZ, panelPath, MAX_PATH\)' -or
+    $startupSource -notmatch 'std::string leftPanelPath\(systemDirectory\)' -or
+    $startupSource -notmatch 'std::string rightPanelPath\(systemDirectory\)' -or
+    $startupSource -notmatch 'RestoreSavedPanelPath\(LeftPanel, leftPanelPath\)' -or
+    $startupSource -notmatch 'RestoreSavedPanelPath\(RightPanel, rightPanelPath\)' -or
+    $startupSource -notmatch 'if \(savedPath\.size\(\) >= MAX_PATH - 2\)' -or
+    $startupSource -notmatch 'ChangePathToDisk\(panel->HWindow, savedPath\.c_str\(\)\)') {
+    throw 'Saved panel paths must load dynamically and use the long-path navigation branch.'
+}
+Write-Host 'PASS: saved panel paths use dynamic configuration storage and long-path startup navigation.'
