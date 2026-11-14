@@ -182,7 +182,7 @@ if ($panelSource -notmatch 'std::vector<char>\s+fileName\s*\(\s*\(pathLen\s*>\s*
 $mainWindowSource = Get-Content -LiteralPath (Join-Path $toolsDir '..\..\src\mainwnd1.cpp') -Raw
 $defaultDirBlock = [regex]::Match(
     $mainWindowSource,
-    '(?s)void CMainWindow::UpdateDefaultDir\(BOOL activePrefered\)(.*?)void CMainWindow::ToggleTopToolBar'
+    '(?s)void CMainWindow::UpdateDefaultDir\(BOOL activePrefered\)(.*?)BOOL CMainWindow::ToggleTopToolBar'
 ).Groups[1].Value
 if ([string]::IsNullOrEmpty($defaultDirBlock) -or
     $defaultDirBlock -notmatch 'active->HasLongDiskPath\(\)' -or
