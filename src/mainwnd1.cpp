@@ -1861,7 +1861,7 @@ void CMainWindow::SetWindowTitle(const char* text)
     CFilesWindow* titlePanel = GetActivePanel();
     if (text == NULL && titlePanel != NULL && titlePanel->HasLongDiskPath())
     {
-        ::SetWindowText(HWindow, MAINWINDOW_NAME " " VERSINFO_VERSION);
+        ::SetWindowText(HWindow, MAINWINDOW_NAME);
         return;
     }
     char buff[1000];
