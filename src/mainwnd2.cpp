@@ -2532,7 +2532,7 @@ void LoadIconOvrlsInfo(const char* root)
 // validates the complete path and never truncates it to MAX_PATH.
 static BOOL RestoreSavedPanelPath(CFilesWindow* panel, const std::string& savedPath)
 {
-    if (savedPath.size() >= MAX_PATH - 2)
+    if (savedPath.size() >= static_cast<std::size_t>(MAX_PATH - 2))
         return panel->ChangePathToDisk(panel->HWindow, savedPath.c_str());
 
     char legacyPath[MAX_PATH];
