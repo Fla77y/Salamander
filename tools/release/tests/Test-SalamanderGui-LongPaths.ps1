@@ -1315,11 +1315,12 @@ try {
     # refusal may be dismissed unnoticed and reported only as a timeout.
     Wait-Until {
         $dialog = Get-TestDialog
+        $expectedPrompt = 'Move this directory and its entire contents within the same volume'
         if (-not [string]::IsNullOrEmpty($dialog) -and
-            $dialog -notmatch 'Unicode directory move') {
+            $dialog -notmatch [regex]::Escape($expectedPrompt)) {
             throw "F6 directory move refused before confirmation: $dialog"
         }
-        return $dialog -match 'Unicode directory move'
+        return $dialog -match [regex]::Escape($expectedPrompt)
     } 'F6 directory move confirmation'
     Write-Host 'PASS: F6 opened native Unicode directory move confirmation'
     Send-Keys '{ENTER}'
