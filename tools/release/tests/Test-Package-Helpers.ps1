@@ -46,6 +46,20 @@ if ($guiDriver -notmatch 'SendMessageTimeout' -or
 }
 
 
+
+# A single Shift+Up marks only the previously focused row in Salamander.
+# Both F5 and F6 fixtures must explicitly mark two verified regular files.
+$multiSelectBlock = [regex]::Match(
+    $guiDriver,
+    '(?s)if \(\$ShortUnicodeMultiSelectOnly\) \{\s*# Arrange: existing, distinct source and destination directories\.(.*?)if \(\$ShortUnicodeRowIdentityOnly\) \{'
+).Groups[1].Value
+if ([string]::IsNullOrEmpty($multiSelectBlock) -or
+    $multiSelectBlock -match "Send-Keys '\+\{UP\}'" -or
+    ([regex]::Matches($multiSelectBlock, 'Select-TwoRegularFiles')).Count -ne 2 -or
+    $guiDriver -notmatch '(?s)function Select-TwoRegularFiles\s*\{.*?Send-Keys ''\{INSERT\}''.*?Send-Keys ''\{INSERT\}''') {
+    throw 'GUI F5/F6 multiselect must mark two verified file rows using Insert, not a single Shift+Up.'
+}
+
 # The primary UTF-16 directory enumeration returns a native find handle.
 # It is not a C__Handles member; explicitly register successful opens,
 # because the legacy panel closes them through HANDLES(FindClose).
