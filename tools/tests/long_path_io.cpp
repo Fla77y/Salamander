@@ -589,6 +589,68 @@ int main()
         !RemoveDirectoryW(blockedTreeExtended.c_str()))
         return Fail("cleanup Unicode directory move fixture");
 
+    // GUI F6 regression: move a nested tree from a >MAX_PATH source into
+    // a different, short parent directory on the SAME volume. Moving between
+    // different parents is distinct from renaming within one directory.
+    const std::wstring crossParentSource = current + L"\\tree-move-cross-parent";
+    const std::wstring crossParentChild = crossParentSource + L"\\nested";
+    const std::wstring crossParentLeaf = crossParentChild + L"\\payload.bin";
+    const std::wstring crossParentTarget = root + L"\\tree-move-cross-parent";
+    const std::wstring crossParentTargetChild = crossParentTarget + L"\\nested";
+    const std::wstring crossParentTargetLeaf = crossParentTargetChild + L"\\payload.bin";
+    std::wstring crossSourceExtended, crossChildExtended, crossLeafExtended;
+    std::wstring crossTargetExtended, crossTargetChildExtended, crossTargetLeafExtended;
+    Salamander::Utf16DiskPath crossSourceOwned, crossTargetOwned;
+    if (!Convert(crossParentSource, crossSourceExtended) ||
+        !Convert(crossParentChild, crossChildExtended) ||
+        !Convert(crossParentLeaf, crossLeafExtended) ||
+        !Convert(crossParentTarget, crossTargetExtended) ||
+        !Convert(crossParentTargetChild, crossTargetChildExtended) ||
+        !Convert(crossParentTargetLeaf, crossTargetLeafExtended) ||
+        !OwnPath(crossParentSource, crossSourceOwned) ||
+        !OwnPath(crossParentTarget, crossTargetOwned) ||
+        !CreateDirectoryW(crossSourceExtended.c_str(), nullptr) ||
+        !CreateDirectoryW(crossChildExtended.c_str(), nullptr))
+        return Fail("prepare long source to short parent tree move");
+
+    HANDLE crossLeaf = CreateFileW(crossLeafExtended.c_str(), GENERIC_WRITE,
+                                   0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (crossLeaf == INVALID_HANDLE_VALUE)
+        return Fail("create nested payload for cross-parent directory move");
+    DWORD crossWritten = 0;
+    const char crossBytes[] = "cross-parent-tree";
+    const bool crossWrote = WriteFile(crossLeaf, crossBytes, sizeof(crossBytes),
+                                      &crossWritten, nullptr) &&
+                            crossWritten == sizeof(crossBytes);
+    CloseHandle(crossLeaf);
+    if (!crossWrote)
+        return Fail("write cross-parent directory payload");
+
+    if (!Salamander::TryMoveUnicodeDirectoryNoOverwrite(
+            crossSourceOwned, crossTargetOwned, operationError) ||
+        operationError != ERROR_SUCCESS ||
+        GetFileAttributesW(crossSourceExtended.c_str()) != INVALID_FILE_ATTRIBUTES ||
+        GetFileAttributesW(crossTargetLeafExtended.c_str()) == INVALID_FILE_ATTRIBUTES)
+        return Fail("atomic directory move from long source to short parent");
+
+    HANDLE movedCrossLeaf = CreateFileW(crossTargetLeafExtended.c_str(),
+                                       GENERIC_READ, FILE_SHARE_READ, nullptr,
+                                       OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (movedCrossLeaf == INVALID_HANDLE_VALUE)
+        return Fail("read cross-parent moved directory payload");
+    char crossRead[sizeof(crossBytes)] = {};
+    DWORD crossBytesRead = 0;
+    const bool crossPreserved = ReadFile(movedCrossLeaf, crossRead,
+                                        sizeof(crossRead), &crossBytesRead, nullptr) &&
+                                crossBytesRead == sizeof(crossBytes) &&
+                                memcmp(crossRead, crossBytes, sizeof(crossBytes)) == 0;
+    CloseHandle(movedCrossLeaf);
+    if (!crossPreserved ||
+        !DeleteFileW(crossTargetLeafExtended.c_str()) ||
+        !RemoveDirectoryW(crossTargetChildExtended.c_str()) ||
+        !RemoveDirectoryW(crossTargetExtended.c_str()))
+        return Fail("cross-parent directory move bytes and cleanup");
+
     std::vector<Salamander::LongDirectoryEntry> invalidEntries;
     if (Salamander::TryEnumerateLongDirectory(L"relative\\directory", invalidEntries, enumError) ||
         enumError != ERROR_INVALID_NAME || !invalidEntries.empty())
