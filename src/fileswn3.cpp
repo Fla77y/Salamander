@@ -191,6 +191,16 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
         }
         }
 
+        if (HasLongDiskPath())
+        {
+            // Legacy icon/thumbnail loaders build MAX_PATH-sized ANSI paths.
+            // Use the built-in icon types until those asynchronous loaders
+            // have a wide long-path contract.
+            UseSystemIcons = FALSE;
+            UseThumbnails = FALSE;
+            readThumbnails = FALSE;
+        }
+
         const char* s = GetPath();
         char* st = fileName.data();
         while (*s != 0)
