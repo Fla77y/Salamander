@@ -345,8 +345,8 @@ if ([string]::IsNullOrEmpty($defaultDirectoriesRead) -or
     [string]::IsNullOrEmpty($defaultDirectoriesWrite) -or
     $defaultDirectoriesRead -notmatch 'ReadLegacyDefaultDirectory' -or
     $defaultDirectoriesRead -match 'RegEnumValue|RegQueryInfoKey' -or
-    $defaultDirectoriesRead -notmatch 'PreserveOversizedDefaultDir' -or
-    $defaultDirectoriesWrite -notmatch 'PreserveOversizedDefaultDir') {
+    $defaultDirectoriesRead -notmatch 'PreserveUnsupportedDefaultDir' -or
+    $defaultDirectoriesWrite -notmatch 'PreserveUnsupportedDefaultDir') {
     throw 'Default directory loading must use bounded per-drive registry reads and preserve unsupported entries.'
 }
 Write-Host 'PASS: oversized legacy registry default directories cannot block GUI startup or be silently erased.'
