@@ -711,6 +711,9 @@ try {
         [IO.File]::WriteAllBytes($sourceFile, $payload)
         $nestedLongDirectory = Join-Path $deep 'nested-child'
         [IO.Directory]::CreateDirectory($nestedLongDirectory) | Out-Null
+        $beyondClipboardLimit = Join-Path $deep ('z-' + ('x' * 150))
+        [IO.Directory]::CreateDirectory($beyondClipboardLimit) | Out-Null
+        Assert-True ($beyondClipboardLimit.Length -gt (2 * 260)) 'GUI clipboard path exceeds former 2*MAX_PATH buffer'
         Assert-True ($sourceFile.Length -gt 260) 'Long-path fixture exceeds 260 UTF-16 units'
     }
 
@@ -1196,6 +1199,14 @@ try {
     Go-ToPath $deep
     Send-Keys '{END}'
     Assert-True ((Read-FocusedFilename) -ceq $utfName) 'Unicode file identity preserved after parent traversal'
+
+    # The old ClipboardPastePath had a fixed 2*MAX_PATH temporary. Exercise
+    # a genuine longer absolute path and then restore the Unicode source.
+    Go-ToPath $beyondClipboardLimit
+    Assert-True ((Read-PanelPath) -ceq $beyondClipboardLimit) 'GUI clipboard navigation accepts path beyond 2*MAX_PATH'
+    Go-ToPath $deep
+    Send-Keys '{END}'
+    Assert-True ((Read-FocusedFilename) -ceq $utfName) 'Unicode identity survives >2*MAX_PATH clipboard traversal'
 
     # ACT + ASSERT: switching away from a long source panel must preserve
     # the process and both panel paths. This regressed when UpdateDefaultDir
