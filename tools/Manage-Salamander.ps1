@@ -13,7 +13,7 @@ $repository = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Provide
 $buildRoot = 'D:\Build\OpenSal'
 $configuration = 'Release'
 $validOptions = @('--update', '--build', '--test', '--setup', '--run',
-                  '--debug', '--release', '--all', '--test-gui', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-manual', '--help', '-h', '/?')
+                  '--debug', '--release', '--all', '--test-gui', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-gui-row-identities', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-manual', '--help', '-h', '/?')
 $requestedSet = [System.Collections.Generic.HashSet[string]]::new(
     [StringComparer]::OrdinalIgnoreCase)
 
@@ -43,7 +43,8 @@ Open Salamander – Verwaltung für Visual Studio 2026
   manage.cmd --test-gui-unicode-transfer  UTF-16-F5/F6 mit einem Dateieintrag prüfen
   manage.cmd --test-gui-unicode-transfer-collision  UTF-16-F5/F6-Zielkollision ohne Überschreiben prüfen
   manage.cmd --test-gui-bestfit  Best-Fit-ANSI-Namensverfälschung ohne Fragezeichen prüfen
-  manage.cmd --test-gui-name-collisions  Verwechselbare Unicode-Dateinamen sicher zurückweisen
+  manage.cmd --test-gui-name-collisions  Gleiche ANSI-Aliase mit getrennten UTF-16-Identitäten prüfen
+  manage.cmd --test-gui-row-identities  UTF-16-Identität jedes Panel-Eintrags prüfen
   manage.cmd --test-gui-unsafe-unicode-operations  F2/F5/F6/F8 mit nicht darstellbaren Unicode-Namen sicher abweisen
   manage.cmd --test-gui-manual  Testdaten behalten und Salamander zum manuellen Test starten
   manage.cmd --run          Release-Version starten
@@ -345,6 +346,13 @@ try {
             $testedExe = Join-Path (Get-VariantDirectory $configuration) 'salamand.exe'
             Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
                                       '-SalamanderExe', $testedExe, '-ShortUnicodeBestFitOnly')
+        }
+        if ($requestedSet.Contains('--test-gui-row-identities')) {
+            Write-Host '=== SALAMANDER-GUI-WIDE ROW IDENTITIES ==='
+            $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+            $testedExe = Join-Path (Get-VariantDirectory $configuration) 'salamand.exe'
+            Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                      '-SalamanderExe', $testedExe, '-ShortUnicodeRowIdentityOnly')
         }
         if ($requestedSet.Contains('--test-gui-name-collisions')) {
             Write-Host '=== SALAMANDER-GUI-UNICODE-NAMENSKOLLISIONEN ==='
