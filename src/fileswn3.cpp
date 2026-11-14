@@ -1935,6 +1935,15 @@ BOOL CFilesWindow::ChangeDir(const char* newDir, int suggestedTopIndex, const ch
     CALL_STACK_MESSAGE7("CFilesWindow::ChangeDir(%s, %d, %s, %d, , %d, %d)", newDir, suggestedTopIndex,
                         suggestedFocusName, mode, convertFSPathToInternal, showNewDirPathInErrBoxes);
 
+    // Absolute long paths bypass the legacy ANSI normalization buffers.
+    // When leaving a long folder, use the same wide preflight rather than
+    // passing its current path into bounded legacy path helpers.
+    if (newDir != NULL &&
+        (strlen(newDir) >= MAX_PATH - 2 || HasLongDiskPath()))
+        return ChangeLongPathToDisk(HWindow, newDir, suggestedTopIndex,
+                                    suggestedFocusName, NULL, TRUE, FALSE, FALSE,
+                                    failReason, FSTRYCLOSE_CHANGEPATH);
+
     // backup the string (it could change during execution - e.g. Name from CFileData from panel)
     char backup[MAX_PATH];
     if (suggestedFocusName != NULL)
