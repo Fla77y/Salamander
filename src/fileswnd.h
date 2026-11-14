@@ -1313,6 +1313,9 @@ public:
     // A conservative disk-to-disk UTF-16 transfer for one uniquely resolved
     // regular file. Returns false to keep unsupported selections fail-closed.
     BOOL TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* target);
+    // Same-volume F6 of one ordinary directory; Win32 renames the entire
+    // subtree atomically, without the legacy ANSI recursive engine.
+    BOOL TryUnicodeSingleDirectoryMove(CActionType type, CFilesWindow* target);
     // Bounded multi-selection of ordinary Unicode disk files; any unsupported
     // selection remains behind the legacy ANSI fail-closed operation gate.
     BOOL TryUnicodeMultiFileTransfer(CActionType type, CFilesWindow* target);
