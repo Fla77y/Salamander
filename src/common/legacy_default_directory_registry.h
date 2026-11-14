@@ -23,6 +23,7 @@ inline LegacyDefaultDirectoryStatus ReadLegacyDefaultDirectory(
     if (key == nullptr || drive < 'A' || drive > 'Z')
         return LegacyDefaultDirectoryStatus::Preserve;
 
+    constexpr DWORD LegacyCapacity = MAX_PATH;
     const char valueName[] = {drive, '\0'};
     DWORD type = REG_NONE;
     DWORD length = 0;
@@ -30,19 +31,19 @@ inline LegacyDefaultDirectoryStatus ReadLegacyDefaultDirectory(
     if (result == ERROR_FILE_NOT_FOUND)
         return LegacyDefaultDirectoryStatus::Missing;
     if (result != ERROR_SUCCESS || type != REG_SZ ||
-        length < 4 || length > MAX_PATH)
+        length < 4 || length > LegacyCapacity)
         return LegacyDefaultDirectoryStatus::Preserve;
 
     // Read into a separate buffer. Never modify the destination on errors,
     // concurrent growth, missing termination or invalid drive identity.
     char candidate[MAX_PATH] = {};
-    DWORD capacity = sizeof(candidate);
+    DWORD capacity = LegacyCapacity;
     result = RegQueryValueExA(key, valueName, nullptr, &type,
                               reinterpret_cast<LPBYTE>(candidate), &capacity);
     if (result == ERROR_FILE_NOT_FOUND)
         return LegacyDefaultDirectoryStatus::Missing;
     if (result != ERROR_SUCCESS || type != REG_SZ ||
-        capacity < 4 || capacity > MAX_PATH)
+        capacity < 4 || capacity > LegacyCapacity)
         return LegacyDefaultDirectoryStatus::Preserve;
 
     const char first = candidate[0] >= 'A' && candidate[0] <= 'Z'
