@@ -1213,6 +1213,163 @@ try {
     Send-Keys '{END}'
     Assert-True ((Read-FocusedFilename) -ceq $utfName) 'Unicode identity survives >2*MAX_PATH clipboard traversal'
 
+    # Exercise a genuine SMB UNC view of the same disposable source
+    # using an existing administrative localhost share when available.
+    # Never create/modify a system share as part of GUI regression tests.
+    if ($deep -match '^[A-Za-z]:\\') {
+        $drive = $deep.Substring(0, 1)
+        $uncDeep = ('\\\\localhost\\' + $drive + '
+
+    # ACT + ASSERT: switching away from a long source panel must preserve
+    # the process and both panel paths. This regressed when UpdateDefaultDir
+    # copied the inactive 411-unit path into a fixed MAX_PATH buffer.
+    Send-Keys '{TAB}'
+    Assert-True ((Read-PanelPath) -cne $deep) 'TAB switches away from long path without terminating Salamander'
+    Go-ToPath $destination
+    Send-Keys '{TAB}'
+    Assert-True ((Read-PanelPath) -ceq $deep) 'Source panel still shows long path'
+    Send-Keys '{END}'
+    Assert-True ((Read-FocusedFilename) -ceq $utfName) 'Correct source selected before copy'
+    Send-Keys '{F5}'
+    Start-Sleep -Milliseconds 400
+    Send-Keys '{ENTER}'
+    $targetFile = Join-Path $destination $utfName
+    Wait-Until { Test-Content $targetFile } 'F5 copy and byte verification'
+    Assert-True (Test-Content $targetFile) 'F5 copy retains all UTF-8 file bytes'
+
+    # ACT + ASSERT: F2 renames the selected Unicode file in our test directory.
+    Send-Keys '{TAB}'
+    Assert-True ((Read-PanelPath) -ceq $destination) 'Destination panel active before rename'
+    Send-Keys '{END}'
+    Assert-True ((Read-FocusedFilename) -ceq $utfName) 'Copied file selected before F2'
+    Set-ClipboardText $renamedName
+    Send-Keys '{F2}'
+    Start-Sleep -Milliseconds 350
+    Send-Keys '^a'
+    Send-Keys '^v'
+    Send-Keys '{ENTER}'
+    $renamedFile = Join-Path $destination $renamedName
+    Wait-Until { (Test-Content $renamedFile) -and -not [IO.File]::Exists($targetFile) } 'F2 Unicode rename with byte integrity'
+    Assert-True (Test-Content $renamedFile) 'F2 Unicode rename preserved bytes'
+
+    # ACT + ASSERT: F6 moves from the verified destination to another
+    # disposable panel directory. Do not send F6 without verifying both.
+    Send-Keys '{TAB}'
+    Go-ToPath $moveDir
+    Send-Keys '{TAB}'
+    Assert-True ((Read-PanelPath) -ceq $destination) 'Source panel verified before F6'
+    Send-Keys '{END}'
+    Assert-True ((Read-FocusedFilename) -ceq $renamedName) 'Correct source file selected before F6'
+    Send-Keys '{F6}'
+    Start-Sleep -Milliseconds 400
+    Send-Keys '{ENTER}'
+    $movedFile = Join-Path $moveDir $renamedName
+    Wait-Until { (Test-Content $movedFile) -and -not [IO.File]::Exists($renamedFile) } 'F6 Unicode move with byte integrity'
+    Assert-True (Test-Content $movedFile) 'F6 move preserved all bytes'
+
+    # ACT + ASSERT: F8 deletes ONLY the fixture item after verifying the panel.
+    Send-Keys '{TAB}'
+    Assert-True ((Read-PanelPath) -ceq $moveDir) 'Deletion panel verified as disposable fixture'
+    Send-Keys '{END}'
+    Assert-True ((Read-FocusedFilename) -ceq $renamedName) 'Correct item selected before F8'
+    Send-Keys '{F8}'
+    Start-Sleep -Milliseconds 350
+    Send-Keys '{ENTER}'
+    Wait-Until { -not [IO.File]::Exists($movedFile) } 'F8 deletion of disposable Unicode file'
+    Assert-True (-not [IO.File]::Exists($movedFile)) 'F8 removed only the selected test file'
+
+    # ACT + ASSERT: an F6 directory move from a long source path uses
+    # one W-backed same-volume move, not the legacy recursive ANSI engine.
+    # Both panel destinations are explicitly verified before touching data.
+    Go-ToPath $destination
+    Send-Keys '{TAB}'
+    Go-ToPath $deep
+    Assert-True ((Read-PanelPath) -ceq $deep) 'Long directory panel active before tree move'
+    Send-Keys '{HOME}'
+    Send-Keys '{DOWN}'
+    Send-Keys '{DOWN}'
+    Assert-True ((Read-FocusedFilename) -ceq $treeMoveName) 'Disposable source tree selected for F6'
+    Send-Keys '{F6}'
+    Start-Sleep -Milliseconds 400
+    Send-Keys '{ENTER}'
+    $treeMoveTarget = Join-Path $destination $treeMoveName
+    $treeTargetLeaf = Join-Path (Join-Path $treeMoveTarget 'nested') 'payload.bin'
+    Wait-Until { (Test-Content $treeTargetLeaf) -and -not [IO.Directory]::Exists($treeMoveSource) } 'F6 atomic nested tree move'
+    Assert-True ((Test-Content $treeTargetLeaf) -and -not [IO.Directory]::Exists($treeMoveSource)) 'F6 directory move retains nested file bytes'
+
+    # ACT + ASSERT: copying a normal short-path file INTO a long directory
+    # must also avoid the ANSI engine. Only the disposable fixture is used.
+    $shortSourceName = 'short-to-long.txt'
+    $shortSourceFile = Join-Path $destination $shortSourceName
+    [IO.File]::WriteAllBytes($shortSourceFile, $payload)
+    Send-Keys '{TAB}'
+    Go-ToPath $destination
+    Assert-True ((Read-PanelPath) -ceq $destination) 'Short source active before F5 to long target'
+    Send-Keys '{END}'
+    Assert-True ((Read-FocusedFilename) -ceq $shortSourceName) 'Short source file selected for long target'
+    Send-Keys '{F5}'
+    Start-Sleep -Milliseconds 400
+    Send-Keys '{ENTER}'
+    $longTargetFile = Join-Path $deep $shortSourceName
+    Wait-Until { Test-Content $longTargetFile } 'F5 short source into long target'
+    Assert-True ((Test-Content $longTargetFile) -and (Test-Content $shortSourceFile)) 'F5 short-to-long bytes intact at both paths'
+
+    # ACT + ASSERT: a maximum-size single path component is not a long
+    # absolute path. The filename must be preserved exactly, not truncated.
+    Go-ToPath $maxDir
+    Send-Keys '{END}'
+    Assert-True ((Read-FocusedFilename) -ceq $maxName) '255-unit ASCII filename visible in Salamander panel'
+    Assert-True (Test-Content (Join-Path $maxDir $maxName)) '255-unit filename data intact'
+
+    $passed = $true
+    Write-Host 'PASS: REAL Salamander GUI long paths, Unicode, F2/F5/F6/F8, 255-unit names.'
+}
+catch {
+    Write-Warning "GUI integration FAILED: $($_.Exception.Message)"
+    Save-FailureScreenshot
+    throw
+}
+finally {
+    if ($null -ne $process) {
+        try {
+            if (-not $process.HasExited) {
+                [void]$process.CloseMainWindow()
+                if (-not $process.WaitForExit(4000)) {
+                    $process.Kill()
+                    [void]$process.WaitForExit(4000)
+                }
+            }
+        }
+        catch { Write-Warning "Could not stop test app: $($_.Exception.Message)" }
+        $process.Dispose()
+    }
+    if ($oldClipboard) {
+        try { [Windows.Forms.Clipboard]::SetDataObject($oldClipboard, $true) }
+        catch { Write-Warning 'Original clipboard could not be restored.' }
+    }
+    if ($passed -and -not $KeepFixture) {
+        try { [IO.Directory]::Delete($root, $true) }
+        catch { Write-Warning "Test fixture cleanup failed: $root - $($_.Exception.Message)" }
+    }
+    else {
+        Write-Host "Diagnostic fixture retained: $root"
+    }
+}
+ + $deep.Substring(2))
+        $uncAvailable = $false
+        try { $uncAvailable = [IO.Directory]::Exists($uncDeep) } catch { }
+        if ($uncAvailable) {
+            Go-ToPath $uncDeep
+            Send-Keys '{END}'
+            Assert-True ((Read-FocusedFilename) -ceq $utfName) 'SMB UNC long path preserves Unicode row'
+            Go-ToPath $deep
+            Assert-True ((Read-PanelPath) -ceq $deep) 'UNC to drive long-path navigation restores source'
+        }
+        else {
+            Write-Host 'SKIP: localhost administrative SMB share not accessible; real UNC integration remains unverified.'
+        }
+    }
+
     # ACT + ASSERT: switching away from a long source panel must preserve
     # the process and both panel paths. This regressed when UpdateDefaultDir
     # copied the inactive 411-unit path into a fixed MAX_PATH buffer.
