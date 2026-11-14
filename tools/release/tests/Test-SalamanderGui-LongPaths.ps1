@@ -25,6 +25,7 @@ param(
     [switch]$ShortUnicodeTransferCollisionOnly,
     [switch]$ShortUnicodeBestFitOnly,
     [switch]$ShortUnicodeCollisionOnly,
+    [switch]$ShortUnicodeRowIdentityOnly,
     [switch]$ShortUnicodeUnsafeOperationsOnly,
     [switch]$ShortOperationsOnly
 )
@@ -590,7 +591,7 @@ try {
         [IO.Directory]::CreateDirectory($destination) | Out-Null
         [IO.Directory]::CreateDirectory($moveDir) | Out-Null
     }
-    if ($ShortUnicodeCollisionOnly -or $ShortUnicodeUnsafeOperationsOnly) {
+    if ($ShortUnicodeCollisionOnly -or $ShortUnicodeRowIdentityOnly -or $ShortUnicodeUnsafeOperationsOnly) {
         # These distinct UTF-16 names may have the same CP_ACP alias.
         # A distinct marker protects against cross-file identity errors.
         if ($ShortUnicodeUnsafeOperationsOnly) {
@@ -602,7 +603,7 @@ try {
         Assert-True ($collisionFile.Length -lt 260) 'Unicode collision fixture uses a short path'
     }
     if (-not $BaselineOnly -and -not $ShortUnicodeOnly -and
-        -not $ShortUnicodeCollisionOnly -and
+        -not $ShortUnicodeCollisionOnly -and -not $ShortUnicodeRowIdentityOnly -and
         -not $ShortUnicodeBestFitOnly -and -not $ShortUnicodeRenameOnly -and
         -not $ShortUnicodeTransferOnly -and -not $ShortUnicodeTransferCollisionOnly -and
         -not $ShortUnicodeRecycleOnly -and
@@ -771,6 +772,27 @@ try {
         Wait-Until { -not [IO.File]::Exists($unicodeShortFile) } 'Unicode F8 moves fixture to Recycle Bin'
         $passed = $true
         Write-Host 'PASS: Unicode F8 shell recycle request removed disposable source; Recycle Bin restoration needs manual verification.'
+        return
+    }
+
+    if ($ShortUnicodeRowIdentityOnly) {
+        # Arrange: two distinct Unicode source entries with an identical
+        # ANSI alias on non-UTF-8 code pages, present simultaneously.
+        Send-Keys '{END}'
+        $lastName = Read-FocusedFilename
+        $lastFull = Read-FocusedFullname
+        Send-Keys '{UP}'
+        $previousName = Read-FocusedFilename
+        $previousFull = Read-FocusedFullname
+        $actualNames = @($lastName, $previousName) | Sort-Object
+        $expectedNames = @($utfName, $utfCollisionName) | Sort-Object
+        Assert-True (($actualNames -join [char]0) -ceq ($expectedNames -join [char]0)) 'Distinct per-row Unicode names survive ANSI alias collision'
+        Assert-True (($lastFull -ceq (Join-Path $source $lastName)) -and
+            ($previousFull -ceq (Join-Path $source $previousName))) 'Distinct full Unicode clipboard paths follow selected panel row'
+        Assert-True ((Test-Content $unicodeShortFile) -and
+            ([Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes($collisionFile)) -ceq 'DISTINCT-OSAKA-FILE')) 'Both Unicode collision fixture contents preserved'
+        $passed = $true
+        Write-Host 'PASS: both colliding ANSI alias rows retain their independent UTF-16 names and full paths.'
         return
     }
 
