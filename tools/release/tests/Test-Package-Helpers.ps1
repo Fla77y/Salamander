@@ -100,6 +100,29 @@ if ([string]::IsNullOrEmpty($unsafeOperationBlock) -or
     throw 'Unicode unsafe-operation GUI test must restore verified app focus after modal refusal and validate source panel.'
 }
 
+
+# GUI tests are unattended: start only after the GUI message loop is idle,
+# and never send keyboard input to another process. A lost focus may be
+# restored only to the previously verified test HWND and only if no Salamander
+# modal dialog is awaiting input.
+$startupBlock = [regex]::Match(
+    $guiDriver,
+    '(?s)\$process = Start-Process(.*?)\n    Go-ToPath \$source'
+).Groups[1].Value
+$sendKeysBlock = [regex]::Match(
+    $guiDriver,
+    '(?s)function Send-Keys\s*\{(.*?)\n\}'
+).Groups[1].Value
+if ([string]::IsNullOrEmpty($startupBlock) -or
+    $startupBlock -notmatch '\.WaitForInputIdle\(' -or
+    [string]::IsNullOrEmpty($sendKeysBlock) -or
+    $sendKeysBlock -notmatch 'Get-TestDialog' -or
+    $sendKeysBlock -notmatch 'Focus-TestProcess' -or
+    $sendKeysBlock -notmatch 'Refusing to send input' -or
+    $sendKeysBlock -notmatch '\[Windows\.Forms\.SendKeys\]::SendWait') {
+    throw 'Unattended GUI tests require startup idle verification and guarded foreground recovery.'
+}
+
 # The primary UTF-16 directory enumeration returns a native find handle.
 # It is not a C__Handles member; explicitly register successful opens,
 # because the legacy panel closes them through HANDLES(FindClose).
