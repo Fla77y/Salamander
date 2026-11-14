@@ -1176,8 +1176,11 @@ try {
     Send-Keys '{END}'
     Assert-True ((Read-FocusedFilename) -ceq $utfName) 'Salamander panel preserves Unicode filename'
 
-    # ACT + ASSERT: real F5 copy, destination verified by independent byte read.
+    # ACT + ASSERT: switching away from a long source panel must preserve
+    # the process and both panel paths. This regressed when UpdateDefaultDir
+    # copied the inactive 411-unit path into a fixed MAX_PATH buffer.
     Send-Keys '{TAB}'
+    Assert-True ((Read-PanelPath) -cne $deep) 'TAB switches away from long path without terminating Salamander'
     Go-ToPath $destination
     Send-Keys '{TAB}'
     Assert-True ((Read-PanelPath) -ceq $deep) 'Source panel still shows long path'
