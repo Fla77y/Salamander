@@ -85,6 +85,21 @@ CFilesWindowAncestor::CheckPath(BOOL echo, const char* path, DWORD err, BOOL pos
     if (path == NULL)
         path = GetPath();
 
+    if (Is(ptDisk) && strlen(path) >= MAX_PATH - 2)
+    {
+        // The legacy SalCheckPath path recovery uses fixed ANSI buffers.
+        // Long paths are checked through their exact, extended W identity.
+        std::wstring extended;
+        DWORD pathError = ERROR_SUCCESS;
+        if (!Salamander::TryMakeExtendedLengthPathFromAnsi(path, extended, pathError))
+            return pathError;
+        const DWORD attributes = GetFileAttributesW(extended.c_str());
+        if (attributes != INVALID_FILE_ATTRIBUTES &&
+            (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0)
+            return ERROR_SUCCESS;
+        return attributes == INVALID_FILE_ATTRIBUTES ? GetLastError() : ERROR_DIRECTORY;
+    }
+
     return SalCheckPath(echo, path, err, postRefresh, parent);
 }
 
