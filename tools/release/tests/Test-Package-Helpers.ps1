@@ -148,6 +148,7 @@ $pasteBlock = [regex]::Match(
 if ([string]::IsNullOrEmpty($pasteBlock) -or
     $pasteBlock -match 'buff\[0\] != 0 && GetLastError\(\) == ERROR_INSUFFICIENT_BUFFER' -or
     $pasteBlock -notmatch 'unicodeTextPresent' -or
+    $pasteBlock -notmatch 'Salamander::IsExactAnsiName\(buff, pathW\)' -or
     $pasteBlock -notmatch 'strlen\(path\) < sizeof\(buff\)' -or
     $pasteBlock -notmatch 'if \(!changePath && !unicodeTextPresent\)') {
     throw 'Clipboard navigation must reject incomplete Unicode and ANSI clipboard paths.'
