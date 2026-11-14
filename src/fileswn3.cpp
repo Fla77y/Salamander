@@ -18,6 +18,8 @@
 #include "zip.h"
 #include "shiconov.h"
 
+#include <vector>
+
 //
 // ****************************************************************************
 // CFilesWindow
@@ -92,7 +94,8 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
     DeleteColumnsWithoutData();                      // removing columns for which we don't have data (empty values would be shown in them)
     GetPluginIconIndex = InternalGetPluginIconIndex; // setting standard callback (just returns zero)
 
-    char fileName[MAX_PATH + 4];
+    // Leave room for the wildcard on a dynamically sized disk path.
+    std::vector<char> fileName(strlen(GetPath()) + 4);
 
     if (Is(ptDisk))
     {
@@ -123,13 +126,15 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
         }
         UseThumbnails = readThumbnails;
 
-        SetCurrentDirectory(GetPath()); // so that it works better
+        if (!HasLongDiskPath())
+            SetCurrentDirectory(GetPath()); // preserve legacy optimization for short paths
 
 #ifndef _WIN64
         BOOL isWindows64BitDir = Windows64Bit && WindowsDirectory[0] != 0 && IsTheSamePath(GetPath(), WindowsDirectory);
 #endif // _WIN64
 
-        RefreshDiskFreeSpace(FALSE);
+        if (!HasLongDiskPath())
+            RefreshDiskFreeSpace(FALSE);
 
         Files->SetDeleteData(TRUE);
         Dirs->SetDeleteData(TRUE);
@@ -143,12 +148,12 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
 
         GetAsyncKeyState(VK_ESCAPE); // init GetAsyncKeyState - see help
 
-        GetRootPath(fileName, GetPath());
+        GetRootPath(fileName.data(), GetPath());
         BOOL isRootPath = (strlen(GetPath()) <= strlen(fileName));
 
         //--- getting drive type (we will not bother network drives with getting shares)
         UINT drvType = MyGetDriveType(GetPath());
-        BOOL testShares = drvType != DRIVE_REMOTE;
+        BOOL testShares = !HasLongDiskPath() && drvType != DRIVE_REMOTE;
         if (testShares)
             Shares.PrepareSearch(GetPath());
         switch (drvType)
@@ -187,7 +192,7 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
         }
 
         const char* s = GetPath();
-        char* st = fileName;
+        char* st = fileName.data();
         while (*s != 0)
             *st++ = *s++;
         if (s == GetPath())
@@ -280,7 +285,7 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
 
         // after 2000 ms we will show a window with a cancel prompt
         char buf[2 * MAX_PATH + 100];
-        sprintf(buf, LoadStr(IDS_READINGPATHESC), GetPath());
+        _snprintf_s(buf, _countof(buf), _TRUNCATE, LoadStr(IDS_READINGPATHESC), GetPath());
         CreateSafeWaitWindow(buf, NULL, 2000, TRUE, MainWindow->HWindow);
 
         DWORD lastEscCheckTime;
@@ -299,7 +304,7 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
         // Primary disk listing is W-based. Each emitted CFileData Name
         // allocation is bound to this exact source record, not its ACP alias.
         search = Salamander::FindFirstUnicodePanelFile(
-            fileName, fileData, wideFileData);
+            fileName.data(), fileData, wideFileData);
         if (search != INVALID_HANDLE_VALUE)
             HANDLES_ADD(__htFindFile, __hoFindFirstFile, search);
         if (search == INVALID_HANDLE_VALUE)
@@ -873,7 +878,8 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
                 SetCurrentDirectoryToSystem();
                 RefreshListBox(0, -1, -1, FALSE, FALSE);
 
-                sprintf(buf, LoadStr(IDS_CANNOTREADDIR), GetPath(), GetErrorText(err));
+                _snprintf_s(buf, _countof(buf), _TRUNCATE,
+                            LoadStr(IDS_CANNOTREADDIR), GetPath(), GetErrorText(err));
                 SalMessageBox(parent, buf, LoadStr(IDS_ERRORTITLE), MB_OK | MB_ICONEXCLAMATION);
             }
         }
@@ -883,7 +889,8 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
             upDir = FALSE;
             *(fileNameEnd - 1) = 0; // it's not logical, but times ".." are from current directory
             if (!UNCRootUpDir)
-                search = HANDLES_Q(FindFirstFile(fileName, &fileData));
+                search = HasLongDiskPath() ? INVALID_HANDLE_VALUE :
+            HANDLES_Q(FindFirstFile(fileName.data(), &fileData));
             else
                 search = INVALID_HANDLE_VALUE;
             if (search == INVALID_HANDLE_VALUE)
