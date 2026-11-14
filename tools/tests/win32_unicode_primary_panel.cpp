@@ -37,7 +37,7 @@ int main()
     // different row identity. It can reject an unrepresentable output.
     const WIN32_FIND_DATAW wide = [] {
         WIN32_FIND_DATAW d = {};
-        std::wcscpy(d.cFileName, L"Größe_東京_😀.txt");
+        wcscpy_s(d.cFileName, _countof(d.cFileName), L"Größe_東京_😀.txt");
         d.dwFileAttributes = FILE_ATTRIBUTE_ARCHIVE;
         d.nFileSizeLow = 123;
         return d;
