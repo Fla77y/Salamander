@@ -227,6 +227,7 @@ void CFilesWindowAncestor::SetPath(const char* path)
     //--- detection of file-based compression/encryption and FAT32
     DWORD dummy1, flags;
     if ((Is(ptDisk) || Is(ptZIPArchive)) &&
+        Path.size() < MAX_PATH - 2 &&
         MyGetVolumeInformation(path, NULL, NULL, NULL, NULL, 0, NULL, &dummy1, &flags, NULL, 0))
     {
         ((CFilesWindow*)this)->FileBasedCompression = (flags & FS_FILE_COMPRESSION) != 0 && Is(ptDisk);
