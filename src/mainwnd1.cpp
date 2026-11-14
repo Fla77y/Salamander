@@ -486,12 +486,16 @@ void CMainWindow::UpdateDefaultDir(BOOL activePrefered)
         nonactive = GetNonActivePanel();
     }
     const char* pathActive = active->GetPath();
-    if (!active->Is(ptPluginFS) && pathActive[0] != '\\')
+    // DefaultDir stores legacy MAX_PATH-sized ANSI paths. TAB can leave a
+    // long disk directory in either panel; never copy it into this buffer.
+    if (!active->Is(ptPluginFS) && !active->HasLongDiskPath() &&
+        pathActive[0] != '\\' && strlen(pathActive) < MAX_PATH)
     {
         strcpy(DefaultDir[LowerCase[pathActive[0]] - 'a'], pathActive);
     }
     const char* pathPasive = nonactive->GetPath();
-    if (!nonactive->Is(ptPluginFS) && pathPasive[0] != '\\')
+    if (!nonactive->Is(ptPluginFS) && !nonactive->HasLongDiskPath() &&
+        pathPasive[0] != '\\' && strlen(pathPasive) < MAX_PATH)
     {
         strcpy(DefaultDir[LowerCase[pathPasive[0]] - 'a'], pathPasive);
     }
