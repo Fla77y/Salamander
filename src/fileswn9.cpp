@@ -108,6 +108,17 @@ BOOL SafeInvokeCommand(IContextMenu2* menu, CMINVOKECOMMANDINFO& ici)
 BOOL CFilesWindow::ClipboardPaste(BOOL onlyLinks, BOOL onlyTest, const char* pastePath)
 {
     CALL_STACK_MESSAGE4("CFilesWindow::ClipboardPaste(%d, %d, %s)", onlyLinks, onlyTest, pastePath);
+    // The IDataObject/DropPath transfer engine below still constructs bounded
+    // ANSI paths. Never let a long destination reach those operations.
+    if (HasLongDiskPath() || (pastePath != NULL && strlen(pastePath) >= MAX_PATH))
+    {
+        if (!onlyTest)
+            MessageBoxW(HWindow,
+                        L"Pasting files into a long directory is not yet supported "
+                        L"by the legacy clipboard transfer engine. No files were changed.",
+                        L"Long directory", MB_OK | MB_ICONWARNING);
+        return FALSE;
+    }
     IDataObject* dataObj;
     BOOL files = FALSE;       // check whether the clipboard data are files at all
     BOOL filesOnClip = FALSE; // check if there is our data on the clipboard for pasting files/directories
