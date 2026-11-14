@@ -335,7 +335,7 @@ $startupSource = Get-Content -LiteralPath (
     Join-Path $toolsDir '..\..\src\mainwnd2.cpp') -Raw
 $defaultDirectoriesRead = [regex]::Match(
     $startupSource,
-    '(?s)//---  default directories\s+if \(OpenKey\(salamander, SALAMANDER_DEFDIRS_REG, actKey\)\)(.*?)//---  password manager'
+    '(?s)ZeroMemory\(PreserveUnsupportedDefaultDir, sizeof\(PreserveUnsupportedDefaultDir\)\);\s+if \(OpenKey\(salamander, SALAMANDER_DEFDIRS_REG, actKey\)\)(.*?)//---  password manager'
 ).Groups[1].Value
 $defaultDirectoriesWrite = [regex]::Match(
     $startupSource,
