@@ -31,7 +31,7 @@ CFilesWindowAncestor::CFilesWindowAncestor()
     Dirs = new CFilesArray;
     SelectedCount = 0;
 
-    Path[0] = 0;
+    Path.clear();
     SuppressAutoRefresh = FALSE;
     PanelType = ptDisk;
     MonitorChanges = TRUE;
@@ -219,10 +219,10 @@ BOOL CFilesWindowAncestor::GetGeneralPath(char* buf, int bufSize, BOOL convertFS
 void CFilesWindowAncestor::SetPath(const char* path)
 {
     CALL_STACK_MESSAGE2("CFilesWindowAncestor::SetPath(%s)", path);
-    if (SuppressAutoRefresh && (!Is(ptDisk) || !IsTheSamePath(path, Path)))
+    if (SuppressAutoRefresh && (!Is(ptDisk) || !IsTheSamePath(path, Path.c_str())))
         SuppressAutoRefresh = FALSE;
     DetachDirectory((CFilesWindow*)this);
-    strcpy(Path, path);
+    Path.assign(path);
 
     //--- detection of file-based compression/encryption and FAT32
     DWORD dummy1, flags;
@@ -356,15 +356,15 @@ void CFilesWindowAncestor::SetZIPArchive(const char* archive)
 BOOL CFilesWindowAncestor::SamePath(CFilesWindowAncestor* other)
 {
     CALL_STACK_MESSAGE_NONE
-    int l1 = (int)strlen(Path);
+    int l1 = (int)Path.size();
     if (l1 > 0 && Path[l1 - 1] == '\\')
         l1--;
-    int l2 = (int)strlen(other->Path);
+    int l2 = (int)other->Path.size();
     if (l2 > 0 && other->Path[l2 - 1] == '\\')
         l2--;
     return (PanelType == ptDisk || PanelType == ptZIPArchive) &&
            (other->PanelType == ptDisk || other->PanelType == ptZIPArchive) &&
-           l1 == l2 && StrNICmp(Path, other->Path, l1) == 0;
+           l1 == l2 && StrNICmp(Path.c_str(), other->Path.c_str(), l1) == 0;
 }
 
 //
@@ -1674,7 +1674,9 @@ void CFilesWindow::DirectoryLineSetText()
     {
         if (Is(ptDisk))
         {
-            PathHistory->AddPath(0, GetPath(), NULL, NULL, NULL);
+            // Legacy history entries have MAX_PATH-sized buffers.
+            if (!HasLongDiskPath())
+                PathHistory->AddPath(0, GetPath(), NULL, NULL, NULL);
             path = GetPath();
         }
         else
