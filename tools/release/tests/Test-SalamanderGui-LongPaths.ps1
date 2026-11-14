@@ -711,6 +711,11 @@ try {
         [IO.File]::WriteAllBytes($sourceFile, $payload)
         $nestedLongDirectory = Join-Path $deep 'nested-child'
         [IO.Directory]::CreateDirectory($nestedLongDirectory) | Out-Null
+        $treeMoveName = 'tree-move'
+        $treeMoveSource = Join-Path $deep $treeMoveName
+        $treeMoveLeaf = Join-Path (Join-Path $treeMoveSource 'nested') 'payload.bin'
+        [IO.Directory]::CreateDirectory((Split-Path -Parent $treeMoveLeaf)) | Out-Null
+        [IO.File]::WriteAllBytes($treeMoveLeaf, $payload)
         $beyondClipboardLimit = Join-Path $deep ('z-' + ('x' * 150))
         [IO.Directory]::CreateDirectory($beyondClipboardLimit) | Out-Null
         Assert-True ($beyondClipboardLimit.Length -gt (2 * 260)) 'GUI clipboard path exceeds former 2*MAX_PATH buffer'
@@ -1265,6 +1270,25 @@ try {
     Send-Keys '{ENTER}'
     Wait-Until { -not [IO.File]::Exists($movedFile) } 'F8 deletion of disposable Unicode file'
     Assert-True (-not [IO.File]::Exists($movedFile)) 'F8 removed only the selected test file'
+
+    # ACT + ASSERT: an F6 directory move from a long source path uses
+    # one W-backed same-volume move, not the legacy recursive ANSI engine.
+    # Both panel destinations are explicitly verified before touching data.
+    Go-ToPath $destination
+    Send-Keys '{TAB}'
+    Go-ToPath $deep
+    Assert-True ((Read-PanelPath) -ceq $deep) 'Long directory panel active before tree move'
+    Send-Keys '{HOME}'
+    Send-Keys '{DOWN}'
+    Send-Keys '{DOWN}'
+    Assert-True ((Read-FocusedFilename) -ceq $treeMoveName) 'Disposable source tree selected for F6'
+    Send-Keys '{F6}'
+    Start-Sleep -Milliseconds 400
+    Send-Keys '{ENTER}'
+    $treeMoveTarget = Join-Path $destination $treeMoveName
+    $treeTargetLeaf = Join-Path (Join-Path $treeMoveTarget 'nested') 'payload.bin'
+    Wait-Until { (Test-Content $treeTargetLeaf) -and -not [IO.Directory]::Exists($treeMoveSource) } 'F6 atomic nested tree move'
+    Assert-True ((Test-Content $treeTargetLeaf) -and -not [IO.Directory]::Exists($treeMoveSource)) 'F6 directory move retains nested file bytes'
 
     # ACT + ASSERT: a maximum-size single path component is not a long
     # absolute path. The filename must be preserved exactly, not truncated.
