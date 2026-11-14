@@ -221,10 +221,14 @@ BOOL CFilesWindowAncestor::GetGeneralPath(char* buf, int bufSize, BOOL convertFS
 void CFilesWindowAncestor::SetPath(const char* path)
 {
     CALL_STACK_MESSAGE2("CFilesWindowAncestor::SetPath(%s)", path);
-    if (SuppressAutoRefresh && (!Is(ptDisk) || !IsTheSamePath(path, Path.c_str())))
+    // The caller may pass GetPath(), so keep an independent copy until
+    // old path notifications are detached and storage is replaced.
+    const std::string newPath(path);
+    if (SuppressAutoRefresh && (!Is(ptDisk) || !IsTheSamePath(newPath.c_str(), Path.c_str())))
         SuppressAutoRefresh = FALSE;
     DetachDirectory((CFilesWindow*)this);
-    Path.assign(path);
+    Path = newPath;
+    path = Path.c_str();
 
     //--- detection of file-based compression/encryption and FAT32
     DWORD dummy1, flags;
