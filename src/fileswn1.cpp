@@ -48,7 +48,9 @@ CFilesWindowAncestor::CFilesWindowAncestor()
 
     char buf[MAX_PATH];
     GetSystemDirectory(buf, MAX_PATH);
-    GetRootPath(Path, buf);
+    char root[MAX_PATH];
+    GetRootPath(root, buf);
+    Path.assign(root);
 
     OnlyDetachFSListing = FALSE;
     NewFSFiles = NULL;
@@ -245,7 +247,7 @@ void CFilesWindowAncestor::SetPath(const char* path)
     DriveType = DRIVE_UNKNOWN;
     if (!Is(ptPluginFS)) // pluginFS handles changes differently...
     {
-        DriveType = MyGetDriveType(Path);
+        DriveType = MyGetDriveType(Path.c_str());
         switch (DriveType)
         {
         case DRIVE_REMOVABLE:
@@ -286,7 +288,7 @@ void CFilesWindowAncestor::SetPath(const char* path)
             MonitorChanges = FALSE;
 
         if (MonitorChanges)
-            AddDirectory((CFilesWindow*)this, Path, DriveType == DRIVE_REMOVABLE || DriveType == DRIVE_FIXED);
+            AddDirectory((CFilesWindow*)this, Path.c_str(), DriveType == DRIVE_REMOVABLE || DriveType == DRIVE_FIXED);
         else // if changes are not monitored, Snooper does not call SetAutomaticRefresh -> we do it here
         {
             ((CFilesWindow*)this)->SetAutomaticRefresh(FALSE, TRUE);
