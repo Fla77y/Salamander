@@ -1290,6 +1290,23 @@ try {
     Wait-Until { (Test-Content $treeTargetLeaf) -and -not [IO.Directory]::Exists($treeMoveSource) } 'F6 atomic nested tree move'
     Assert-True ((Test-Content $treeTargetLeaf) -and -not [IO.Directory]::Exists($treeMoveSource)) 'F6 directory move retains nested file bytes'
 
+    # ACT + ASSERT: copying a normal short-path file INTO a long directory
+    # must also avoid the ANSI engine. Only the disposable fixture is used.
+    $shortSourceName = 'short-to-long.txt'
+    $shortSourceFile = Join-Path $destination $shortSourceName
+    [IO.File]::WriteAllBytes($shortSourceFile, $payload)
+    Send-Keys '{TAB}'
+    Go-ToPath $destination
+    Assert-True ((Read-PanelPath) -ceq $destination) 'Short source active before F5 to long target'
+    Send-Keys '{END}'
+    Assert-True ((Read-FocusedFilename) -ceq $shortSourceName) 'Short source file selected for long target'
+    Send-Keys '{F5}'
+    Start-Sleep -Milliseconds 400
+    Send-Keys '{ENTER}'
+    $longTargetFile = Join-Path $deep $shortSourceName
+    Wait-Until { Test-Content $longTargetFile } 'F5 short source into long target'
+    Assert-True ((Test-Content $longTargetFile) -and (Test-Content $shortSourceFile)) 'F5 short-to-long bytes intact at both paths'
+
     # ACT + ASSERT: a maximum-size single path component is not a long
     # absolute path. The filename must be preserved exactly, not truncated.
     Go-ToPath $maxDir
