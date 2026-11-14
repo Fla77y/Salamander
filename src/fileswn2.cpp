@@ -1701,6 +1701,9 @@ BOOL CFilesWindow::ChangeLongPathToDisk(HWND parent, const char* path, int sugge
         return FALSE;
     }
 
+    // An input pointer can alias GetPath(); SetPath may reallocate it.
+    const char requestedDrive = path[0];
+    const char requestedSeparator = path[1];
     const BOOL samePath = Is(ptDisk) && lstrcmpiA(GetPath(), path) == 0;
     if (!HasLongDiskPath())
         RefreshPathHistoryData();
@@ -1723,8 +1726,8 @@ BOOL CFilesWindow::ChangeLongPathToDisk(HWND parent, const char* path, int sugge
 
     // On an unexpected listing failure, keep the pane in an ordinary,
     // known short root rather than treating an empty pane as a success.
-    char root[4] = {path[0], ':', '\\', 0};
-    if (path[1] == ':')
+    char root[4] = {requestedDrive, ':', '\\', 0};
+    if (requestedSeparator == ':')
         ChangePathToDisk(parent, root, -1, NULL, NULL, TRUE, FALSE, FALSE);
     return FALSE;
 }
