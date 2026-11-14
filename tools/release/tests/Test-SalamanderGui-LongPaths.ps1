@@ -709,6 +709,8 @@ try {
         }
         $sourceFile = Join-Path $deep $utfName
         [IO.File]::WriteAllBytes($sourceFile, $payload)
+        $nestedLongDirectory = Join-Path $deep 'nested-child'
+        [IO.Directory]::CreateDirectory($nestedLongDirectory) | Out-Null
         Assert-True ($sourceFile.Length -gt 260) 'Long-path fixture exceeds 260 UTF-16 units'
     }
 
@@ -1175,6 +1177,25 @@ try {
     Go-ToPath $deep
     Send-Keys '{END}'
     Assert-True ((Read-FocusedFilename) -ceq $utfName) 'Salamander panel preserves Unicode filename'
+
+    # ACT + ASSERT: Entering a directory and navigating up from a long
+    # panel must not copy the long panel path into fixed MAX_PATH buffers.
+    Send-Keys '{HOME}'
+    Send-Keys '{DOWN}'
+    Assert-True ((Read-FocusedFilename) -ceq 'nested-child') 'Long-path child directory selected'
+    Send-Keys '{ENTER}'
+    Wait-Until { (Read-PanelPath) -ceq $nestedLongDirectory } 'Enter child directory from long panel'
+    Assert-True ((Read-PanelPath) -ceq $nestedLongDirectory) 'Long-path child directory opened'
+    Send-Keys '{BACKSPACE}'
+    Wait-Until { (Read-PanelPath) -ceq $deep } 'Backspace to long directory parent'
+    Assert-True ((Read-PanelPath) -ceq $deep) 'Backspace restores long directory'
+    Send-Keys '{BACKSPACE}'
+    $shorterParent = Split-Path -Parent $deep
+    Wait-Until { (Read-PanelPath) -ceq $shorterParent } 'Backspace to next parent of long directory'
+    Assert-True ((Read-PanelPath) -ceq $shorterParent) 'Backspace navigates up from a long directory'
+    Go-ToPath $deep
+    Send-Keys '{END}'
+    Assert-True ((Read-FocusedFilename) -ceq $utfName) 'Unicode file identity preserved after parent traversal'
 
     # ACT + ASSERT: switching away from a long source panel must preserve
     # the process and both panel paths. This regressed when UpdateDefaultDir
