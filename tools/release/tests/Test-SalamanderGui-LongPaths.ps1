@@ -26,6 +26,7 @@ param(
     [switch]$ShortUnicodeBestFitOnly,
     [switch]$ShortUnicodeCollisionOnly,
     [switch]$ShortUnicodeRowIdentityOnly,
+    [switch]$ShortUnicodeMultiSelectOnly,
     [switch]$ShortUnicodeUnsafeOperationsOnly,
     [switch]$ShortOperationsOnly
 )
@@ -587,9 +588,16 @@ try {
             }
         }
     }
-    if ($ShortUnicodeTransferOnly -or $ShortUnicodeTransferCollisionOnly) {
+    if ($ShortUnicodeTransferOnly -or $ShortUnicodeTransferCollisionOnly -or $ShortUnicodeMultiSelectOnly) {
         [IO.Directory]::CreateDirectory($destination) | Out-Null
         [IO.Directory]::CreateDirectory($moveDir) | Out-Null
+    }
+    if ($ShortUnicodeMultiSelectOnly) {
+        # The transfer source deliberately mixes one lossy Unicode name with
+        # one ordinary ASCII entry. F5/F6 must transfer BOTH selected rows.
+        $secondName = 'baseline-second.txt'
+        $secondBytes = [Text.Encoding]::UTF8.GetBytes('INDEPENDENT-ASCII-PAYLOAD')
+        [IO.File]::WriteAllBytes((Join-Path $source $secondName), $secondBytes)
     }
     if ($ShortUnicodeCollisionOnly -or $ShortUnicodeRowIdentityOnly -or $ShortUnicodeUnsafeOperationsOnly) {
         # These distinct UTF-16 names may have the same CP_ACP alias.
@@ -606,6 +614,7 @@ try {
         -not $ShortUnicodeCollisionOnly -and -not $ShortUnicodeRowIdentityOnly -and
         -not $ShortUnicodeBestFitOnly -and -not $ShortUnicodeRenameOnly -and
         -not $ShortUnicodeTransferOnly -and -not $ShortUnicodeTransferCollisionOnly -and
+        -not $ShortUnicodeMultiSelectOnly -and
         -not $ShortUnicodeRecycleOnly -and
         -not $ShortUnicodeUnsafeOperationsOnly -and -not $ShortOperationsOnly) {
         [IO.Directory]::CreateDirectory($destination) | Out-Null
@@ -772,6 +781,49 @@ try {
         Wait-Until { -not [IO.File]::Exists($unicodeShortFile) } 'Unicode F8 moves fixture to Recycle Bin'
         $passed = $true
         Write-Host 'PASS: Unicode F8 shell recycle request removed disposable source; Recycle Bin restoration needs manual verification.'
+        return
+    }
+
+    if ($ShortUnicodeMultiSelectOnly) {
+        # Arrange: existing, distinct source and destination directories.
+        Send-Keys '{TAB}'
+        Go-ToPath $destination
+        Send-Keys '{TAB}'
+        Assert-True ((Read-PanelPath) -ceq $source) 'Multi-file source panel verified'
+        Send-Keys '{END}'
+        Send-Keys '+{UP}'  # select two adjacent regular files
+        Send-Keys '{F5}'
+        Wait-Until { (Get-TestDialog) -match 'Copy 2 selected Unicode' } 'Unicode F5 multi-selection confirmation'
+        Send-Keys '{ENTER}'
+        $unicodeCopy = Join-Path $destination $utfName
+        $asciiCopy = Join-Path $destination $secondName
+        Wait-Until { (Test-Content $unicodeCopy) -and
+            [Linq.Enumerable]::SequenceEqual[byte](
+                [IO.File]::ReadAllBytes($asciiCopy), $secondBytes) } 'Unicode F5 copies both selected files'
+        Assert-True (Test-Content $unicodeShortFile) 'Unicode F5 multiselect preserved original'
+
+        # Arrange: right panel is now the source, left panel the new target.
+        Send-Keys '{TAB}'
+        Go-ToPath $destination
+        Send-Keys '{TAB}'
+        Go-ToPath $moveDir
+        Send-Keys '{TAB}'
+        Assert-True ((Read-PanelPath) -ceq $destination) 'Unicode F6 multi-file source panel verified'
+        Send-Keys '{END}'
+        Send-Keys '+{UP}'
+        Send-Keys '{F6}'
+        Wait-Until { (Get-TestDialog) -match 'Move 2 selected Unicode' } 'Unicode F6 multi-selection confirmation'
+        Send-Keys '{ENTER}'
+        $unicodeMoved = Join-Path $moveDir $utfName
+        $asciiMoved = Join-Path $moveDir $secondName
+        Wait-Until { (Test-Content $unicodeMoved) -and
+            [Linq.Enumerable]::SequenceEqual[byte](
+                [IO.File]::ReadAllBytes($asciiMoved), $secondBytes) -and
+            -not [IO.File]::Exists($unicodeCopy) -and
+            -not [IO.File]::Exists($asciiCopy) } 'Unicode F6 moves both selected files'
+        Assert-True (Test-Content $unicodeShortFile) 'Original Unicode source retained'
+        $passed = $true
+        Write-Host 'PASS: multi-selection Unicode F5/F6 transfers every selected regular file.'
         return
     }
 
