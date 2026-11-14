@@ -27,6 +27,7 @@ param(
     [switch]$ShortUnicodeCollisionOnly,
     [switch]$ShortUnicodeRowIdentityOnly,
     [switch]$ShortUnicodeMultiSelectOnly,
+    [switch]$ShortUnicodeDirectoryRenameOnly,
     [switch]$ShortUnicodeUnsafeOperationsOnly,
     [switch]$ShortOperationsOnly
 )
@@ -592,6 +593,13 @@ try {
         [IO.Directory]::CreateDirectory($destination) | Out-Null
         [IO.Directory]::CreateDirectory($moveDir) | Out-Null
     }
+    if ($ShortUnicodeDirectoryRenameOnly) {
+        $unicodeDirectoryName = 'Ordner_東京_😀'
+        $renamedUnicodeDirectoryName = 'Verschoben_大阪_😀'
+        $unicodeDirectoryPath = Join-Path $source $unicodeDirectoryName
+        [IO.Directory]::CreateDirectory($unicodeDirectoryPath) | Out-Null
+        [IO.File]::WriteAllBytes((Join-Path $unicodeDirectoryPath 'child.txt'), $payload)
+    }
     if ($ShortUnicodeMultiSelectOnly) {
         # The transfer source deliberately mixes one lossy Unicode name with
         # one ordinary ASCII entry. F5/F6 must transfer BOTH selected rows.
@@ -615,6 +623,7 @@ try {
         -not $ShortUnicodeBestFitOnly -and -not $ShortUnicodeRenameOnly -and
         -not $ShortUnicodeTransferOnly -and -not $ShortUnicodeTransferCollisionOnly -and
         -not $ShortUnicodeMultiSelectOnly -and
+        -not $ShortUnicodeDirectoryRenameOnly -and
         -not $ShortUnicodeRecycleOnly -and
         -not $ShortUnicodeUnsafeOperationsOnly -and -not $ShortOperationsOnly) {
         [IO.Directory]::CreateDirectory($destination) | Out-Null
@@ -781,6 +790,27 @@ try {
         Wait-Until { -not [IO.File]::Exists($unicodeShortFile) } 'Unicode F8 moves fixture to Recycle Bin'
         $passed = $true
         Write-Host 'PASS: Unicode F8 shell recycle request removed disposable source; Recycle Bin restoration needs manual verification.'
+        return
+    }
+
+    if ($ShortUnicodeDirectoryRenameOnly) {
+        # Directory sorting precedes files; the first non-".." entry is
+        # the disposable Unicode folder.
+        Send-Keys '{HOME}'
+        Send-Keys '{DOWN}'
+        Assert-True ((Read-FocusedFilename) -ceq $unicodeDirectoryName) 'Unicode directory row selected for F2'
+        Set-ClipboardText $renamedUnicodeDirectoryName
+        Send-Keys '{F2}'
+        Start-Sleep -Milliseconds 250
+        Send-Keys '^a'
+        Send-Keys '^v'
+        Send-Keys '{ENTER}'
+        $renamedDirectory = Join-Path $source $renamedUnicodeDirectoryName
+        Wait-Until { [IO.Directory]::Exists($renamedDirectory) -and
+            -not [IO.Directory]::Exists($unicodeDirectoryPath) } 'Unicode F2 directory rename'
+        Assert-True (Test-Content (Join-Path $renamedDirectory 'child.txt')) 'Unicode F2 directory child bytes retained'
+        $passed = $true
+        Write-Host 'PASS: Unicode F2 directory rename preserves nested contents.'
         return
     }
 
