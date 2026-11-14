@@ -133,7 +133,7 @@ $baselineCheck = [regex]::Match(
 if ([string]::IsNullOrEmpty($baselineCheck) -or
     $baselineCheck -notmatch "Send-Keys '\{END\}'" -or
     $baselineCheck -notmatch 'Read-FocusedFilename' -or
-    $guiDriver -notmatch "\\$focusProbeName\\s*=\\s*'focus-probe.txt'") {
+    $guiDriver -notmatch '\$focusProbeName\s*=\s*''focus-probe.txt''') {
     throw 'GUI baseline must verify real focused-file keyboard navigation.'
 }
 
