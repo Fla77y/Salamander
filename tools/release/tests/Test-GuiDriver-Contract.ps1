@@ -144,6 +144,13 @@ if ($driverText -notmatch '\[switch\]\$ShortUnicodeMultiSelectOnly' -or
 }
 Write-Host 'PASS: Unicode F5/F6 multi-selection contract is present.'
 
+if ($driverText -notmatch '\[switch\]\$ShortUnicodeDirectoryRenameOnly' -or
+    $driverText -notmatch 'Unicode F2 directory rename' -or
+    $driverText -notmatch 'Unicode F2 directory child bytes retained') {
+    throw 'UTF-16 F2 directory GUI contract must preserve nested child contents.'
+}
+Write-Host 'PASS: UTF-16 directory F2 rename contract is present.'
+
 # Compile the embedded C# Win32 interop in the headless Windows test process.
 # PowerShell's AST check alone would not catch invalid P/Invoke signatures.
 $interopSource = [regex]::Match(
