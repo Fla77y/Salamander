@@ -187,6 +187,22 @@ if ([string]::IsNullOrEmpty($pasteBlock) -or
     throw 'Long-target clipboard paste must distinguish file data from a text path and refuse only file transfers.'
 }
 
+# Long plain-text clipboard paths must not be truncated to the old
+# 2*MAX_PATH scratch buffer; use exact, bounded conversion before reaching
+# the dynamic disk panel. Retain the bounded legacy post-processor only for
+# inputs that actually fit its contract.
+$clipboardNav = [regex]::Match($pasteSource,
+    '(?s)void CFilesWindow::ClipboardPastePath\(\)(.*?)void CFilesWindow::ChangeFilter').Groups[1].Value
+if ([string]::IsNullOrEmpty($clipboardNav) -or
+    $clipboardNav -notmatch 'GlobalSize\(handle\)' -or
+    $clipboardNav -notmatch 'std::string clipboardPath' -or
+    $clipboardNav -notmatch 'IsExactAnsiName' -or
+    $clipboardNav -notmatch 'clipboardPath\.size\(\) < 2 \* MAX_PATH' -or
+    $clipboardNav -notmatch 'ChangeDir\(path\.c_str\(\)\)' -or
+    $clipboardNav -notmatch 'driveAbsolute \|\| uncAbsolute') {
+    throw 'Unicode clipboard navigation must retain complete, verified absolute paths beyond 2*MAX_PATH.'
+}
+
 # The disk listing scratch buffer is now dynamic. Preserve its previous
 # minimum size for extension processing and require explicit raw-pointer access.
 # Native Windows compilation remains the authoritative check for C++ types.
