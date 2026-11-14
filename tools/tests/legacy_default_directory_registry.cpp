@@ -58,7 +58,7 @@ bool Retained(HKEY key, const char* name, const std::string& original)
     DWORD type = REG_NONE;
     DWORD size = 0;
     if (RegQueryValueExA(key, name, nullptr, &type, nullptr, &size) != ERROR_SUCCESS ||
-        type != REG_SZ || size != original.size() + 1)
+        type != REG_SZ || static_cast<std::size_t>(size) != original.size() + 1)
         return false;
 
     std::vector<BYTE> stored(size);
@@ -90,7 +90,7 @@ int main()
 
     // 259 bytes of path + terminator is the largest legacy buffer entry.
     const std::string boundary = "C:\\" + std::string(250, 'x') + "\\" + std::string(5, 'y');
-    if (boundary.size() + 1 != MAX_PATH || !Put(registry.Get(), "C", boundary) ||
+    if (boundary.size() + 1 != static_cast<std::size_t>(MAX_PATH) || !Put(registry.Get(), "C", boundary) ||
         Salamander::ReadLegacyDefaultDirectory(
             registry.Get(), 'C', directory) != Salamander::LegacyDefaultDirectoryStatus::Loaded ||
         std::strcmp(directory, boundary.c_str()) != 0)
