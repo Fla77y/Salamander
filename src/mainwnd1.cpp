@@ -1172,6 +1172,16 @@ void CMainWindow::EditWindowSetDirectory()
 {
     SetWindowTitle(); // current directory into the title bar
     CFilesWindow* panel = GetActivePanel();
+    if (panel != NULL && panel->HasLongDiskPath())
+    {
+        // The legacy command-line widget has MAX_PATH-sized storage.
+        // Do not narrow the panel's verified long disk identity into it.
+        if (EditMode)
+            FocusPanel(panel, TRUE);
+        EditWindow->Enable(FALSE);
+        EditWindow->SetDirectory("");
+        return;
+    }
     if (panel != NULL &&
         (panel->Is(ptDisk) ||
          panel->Is(ptPluginFS) && panel->GetPluginFS()->NotEmpty() &&
@@ -1846,6 +1856,14 @@ void CMainWindow::GetFormatedPathForTitle(char* path)
 void CMainWindow::SetWindowTitle(const char* text)
 {
     CALL_STACK_MESSAGE2("CMainWindow::SetWindowTitle(%s)", text);
+    // Legacy title formatting writes through unbounded MAX_PATH buffers.
+    // Keep a safe fixed title while the panel path is longer than those buffers.
+    CFilesWindow* titlePanel = GetActivePanel();
+    if (text == NULL && titlePanel != NULL && titlePanel->HasLongDiskPath())
+    {
+        ::SetWindowText(HWindow, MAINWINDOW_NAME " " VERSINFO_VERSION);
+        return;
+    }
     char buff[1000];
     ::GetWindowText(HWindow, buff, 1000);
     buff[999] = 0;
