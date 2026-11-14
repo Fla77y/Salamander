@@ -391,8 +391,23 @@ BOOL CFilesWindow::TryUnicodeMultiFileTransfer(CActionType type, CFilesWindow* t
         targetPanelPath != target->GetPath())
         return TRUE;
 
+    // A destination panel path must still refer to an ordinary directory
+    // after the modal UI, rather than a newly substituted reparse point.
+    const DWORD refreshedTargetAttributes =
+        GetFileAttributesW(targetDirectoryExtended.c_str());
+    if (refreshedTargetAttributes == INVALID_FILE_ATTRIBUTES ||
+        (refreshedTargetAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0 ||
+        (refreshedTargetAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
+    {
+        MessageBoxW(HWindow, L"The destination directory changed. "
+                    L"No files were transferred.",
+                    L"Unicode batch transfer", MB_OK | MB_ICONWARNING);
+        return TRUE;
+    }
+
     // All entries are checked again after the modal confirmation. A failed
     // preflight never starts any transfer and never falls through to ANSI.
+    ULONGLONG recheckedTotalBytes = 0;
     for (const Transfer& item : transfers)
     {
         std::wstring resolvedName;
@@ -419,6 +434,18 @@ BOOL CFilesWindow::TryUnicodeMultiFileTransfer(CActionType type, CFilesWindow* t
                         L"Unicode batch transfer", MB_OK | MB_ICONWARNING);
             return TRUE;
         }
+        const ULONGLONG checkedBytes =
+            (static_cast<ULONGLONG>(attributes.nFileSizeHigh) << 32) |
+            attributes.nFileSizeLow;
+        if (checkedBytes > MaxSynchronousBytes - recheckedTotalBytes)
+        {
+            MessageBoxW(HWindow, L"The selected Unicode files grew beyond "
+                        L"the synchronous transfer limit. No files were transferred.",
+                        L"Unicode batch transfer", MB_OK | MB_ICONWARNING);
+            return TRUE;
+        }
+        recheckedTotalBytes += checkedBytes;
+
         const DWORD existing = GetFileAttributesW(item.targetExtended.c_str());
         if (existing != INVALID_FILE_ATTRIBUTES ||
             GetLastError() != ERROR_FILE_NOT_FOUND)
