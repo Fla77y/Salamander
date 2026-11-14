@@ -197,18 +197,21 @@ int main()
     std::string longPanelPattern;
     const std::wstring longWidePattern = current + L"\\*";
     const int patternBytes = WideCharToMultiByte(
-        CP_ACP, WC_NO_BEST_FIT_CHARS, longWidePattern.c_str(), -1,
+        CP_ACP, 0, longWidePattern.c_str(), -1,
         nullptr, 0, nullptr, nullptr);
     if (patternBytes <= 0)
         return Fail("encode long panel search pattern");
     longPanelPattern.resize(static_cast<std::size_t>(patternBytes), '\0');
-    BOOL usedDefault = FALSE;
-    if (WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS,
-                            longWidePattern.c_str(), -1,
+    if (WideCharToMultiByte(CP_ACP, 0, longWidePattern.c_str(), -1,
                             &longPanelPattern[0], patternBytes,
-                            nullptr, &usedDefault) != patternBytes || usedDefault)
-        return Fail("long panel search pattern must not narrow lossy Unicode");
+                            nullptr, nullptr) != patternBytes)
+        return Fail("encode long panel search pattern without truncation");
     longPanelPattern.pop_back();
+    // CP_ACP may be UTF-8: WC_NO_BEST_FIT_CHARS is not valid for that
+    // code page. Verify exact identity by round-trip instead.
+    if (!Salamander::IsExactAnsiName(longPanelPattern.c_str(),
+                                     longWidePattern.c_str()))
+        return Fail("long panel search pattern must not narrow lossy Unicode");
     if (longPanelPattern.size() <= MAX_PATH)
         return Fail("panel search pattern must exceed MAX_PATH");
     WIN32_FIND_DATAA panelAnsiData = {};
