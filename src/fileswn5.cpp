@@ -2357,7 +2357,7 @@ void CFilesWindow::RenameFile(int specialIndex)
     // A uniquely mapped lossy filename can now be renamed with a native
     // UTF-16 editor and a no-overwrite Win32 W operation. Ambiguous or
     // missing identities must still be refused before prompting.
-    if (Is(ptDisk) && UnicodeDiskNames.IsUnsafeAnsiName(f->Name))
+    if (Is(ptDisk) && (HasLongDiskPath() || UnicodeDiskNames.IsUnsafeAnsiName(f->Name)))
     {
         // Reparse points must never be moved as if they were normal files.
         // A Unicode directory may be renamed only if no other disk panel
@@ -2386,7 +2386,10 @@ void CFilesWindow::RenameFile(int specialIndex)
 
         const std::string legacyAlias(f->Name);
         std::wstring originalName;
-        if (!UnicodeDiskNames.TryGetLossy(legacyAlias.c_str(), originalName))
+        const bool hasOriginalName = HasLongDiskPath()
+            ? UnicodeDiskNames.TryGetRow(f->Name, originalName)
+            : UnicodeDiskNames.TryGetLossy(legacyAlias.c_str(), originalName);
+        if (!hasOriginalName)
         {
             SalMessageBox(HWindow,
                           "This disk filename cannot be represented safely by the "
