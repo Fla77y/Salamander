@@ -2514,6 +2514,27 @@ void CFilesWindow::RenameFile(int specialIndex)
                 return;
             }
 
+            // A modal dialog allows time for external changes. Do not
+            // rename a substituted reparse point or the wrong object type.
+            std::wstring extendedSource;
+            if (!Salamander::UnicodeFileOperationsDetail::TryGetExtendedPath(
+                    sourcePath, extendedSource, error))
+                return;
+            const DWORD currentAttributes =
+                GetFileAttributesW(extendedSource.c_str());
+            if (currentAttributes == INVALID_FILE_ATTRIBUTES ||
+                (currentAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0 ||
+                ((currentAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) !=
+                    (isDir != FALSE))
+            {
+                SalMessageBox(HWindow,
+                              "The Unicode source changed type or disappeared. "
+                              "No files were renamed.",
+                              LoadStr(IDS_ERRORRENAMINGFILE),
+                              MB_OK | MB_ICONEXCLAMATION);
+                return;
+            }
+
             BeginSuspendMode();
             const bool renamed = Salamander::TryMoveUnicodeFileNoOverwrite(
                 sourcePath, targetPath, error);
