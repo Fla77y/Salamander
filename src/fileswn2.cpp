@@ -3518,6 +3518,12 @@ BOOL CFilesWindow::ChangePathToDetachedFS(int fsIndex, int suggestedTopIndex,
 void CFilesWindow::RefreshDiskFreeSpace(BOOL check, BOOL doNotRefreshOtherPanel)
 {
     CALL_STACK_MESSAGE3("CFilesWindow::RefreshDiskFreeSpace(%d, %d)", check, doNotRefreshOtherPanel);
+    if (HasLongDiskPath())
+    {
+        // Disk-space helpers still construct bounded ANSI paths.
+        DirectoryLine->SetSize(CQuadWord(-1, -1));
+        return;
+    }
     if (Is(ptDisk))
     {
         if (!check || CheckPath(FALSE) == ERROR_SUCCESS)
