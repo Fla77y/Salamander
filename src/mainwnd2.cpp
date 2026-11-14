@@ -357,6 +357,8 @@ const char* PANEL_FILTERHISTORY_REG = "Filter History";
 const char* PANEL_FILTER = "Filter";
 
 const char* SALAMANDER_DEFDIRS_REG = "Default Directories";
+// Preserve unsupported legacy per-drive registry values instead of erasing them on save.
+static BOOL PreserveOversizedDefaultDir[26] = {};
 
 const char* SALAMANDER_CONFIG_REG = "Configuration";
 const char* CONFIG_SKILLLEVEL_REG = "Skill Level";
@@ -1500,6 +1502,8 @@ void CMainWindow::SaveConfig(HWND parent)
                 for (d = 'A'; d <= 'Z'; d++)
                 {
                     name[0] = d;
+                    if (PreserveOversizedDefaultDir[d - 'A'])
+                        continue;
                     char* path = DefaultDir[d - 'A'];
                     if (path[1] == ':' && path[2] == '\\' && path[3] != 0) // not "C:\"
                         SetValue(actKey, name, REG_SZ, path, -1);
@@ -2802,30 +2806,68 @@ BOOL CMainWindow::LoadConfig(BOOL importingOldConfig, const CCommandLineParams* 
                 for (i = 0; i < (int)values; i++)
                 {
                     nameLen = 2;
-                    dataLen = MAX_PATH;
-                    res = RegEnumValue(actKey, i, name, &nameLen, 0, &type, path, &dataLen);
-                    if (res == ERROR_SUCCESS)
-                        if (type == REG_SZ)
-                        {
-                            char d2 = LowerCase[name[0]];
-                            if (d2 >= 'a' && d2 <= 'z')
-                            {
-                                if (dataLen > 2 && LowerCase[path[0]] == d2 &&
-                                    path[1] == ':' && path[2] == '\\')
-                                    memmove(DefaultDir[d2 - 'a'], path, dataLen);
-                                else
-                                    SalMessageBox(HWindow, LoadStr(IDS_UNEXPECTEDVALUE),
-                                                  LoadStr(IDS_ERRORLOADCONFIG), MB_OK | MB_ICONEXCLAMATION);
-                            }
-                            else
-                                SalMessageBox(HWindow, LoadStr(IDS_UNEXPECTEDVALUE),
-                                              LoadStr(IDS_ERRORLOADCONFIG), MB_OK | MB_ICONEXCLAMATION);
-                        }
-                        else
-                            SalMessageBox(HWindow, LoadStr(IDS_UNEXPECTEDVALUETYPE),
-                                          LoadStr(IDS_ERRORLOADCONFIG), MB_OK | MB_ICONEXCLAMATION);
-                    else
+                    dataLen = 0;
+                    res = RegEnumValue(actKey, i, name, &nameLen, 0, &type, NULL, &dataLen);
+                    if (res == ERROR_MORE_DATA)
+                    {
+                        TRACE_E("LoadConfig(): invalid Default Directories value name");
+                        continue;
+                    }
+                    if (res != ERROR_SUCCESS)
+                    {
                         SalMessageBox(HWindow, GetErrorText(res),
+                                      LoadStr(IDS_ERRORLOADCONFIG), MB_OK | MB_ICONEXCLAMATION);
+                        continue;
+                    }
+                    if (nameLen != 1 || name[0] == 0)
+                    {
+                        TRACE_E("LoadConfig(): unexpected Default Directories value name");
+                        continue;
+                    }
+                    char d2 = LowerCase[name[0]];
+                    if (d2 < 'a' || d2 > 'z')
+                    {
+                        TRACE_E("LoadConfig(): unexpected Default Directories drive");
+                        continue;
+                    }
+                    if (dataLen > MAX_PATH)
+                    {
+                        PreserveOversizedDefaultDir[d2 - 'a'] = TRUE;
+                        TRACE_E("LoadConfig(): preserving oversized Default Directories entry for drive " << d2);
+                        continue;
+                    }
+                    if (type != REG_SZ)
+                    {
+                        SalMessageBox(HWindow, LoadStr(IDS_UNEXPECTEDVALUETYPE),
+                                      LoadStr(IDS_ERRORLOADCONFIG), MB_OK | MB_ICONEXCLAMATION);
+                        continue;
+                    }
+
+                    // The value can grow between calls; never copy beyond the fixed legacy buffer.
+                    nameLen = 2;
+                    DWORD pathCapacity = MAX_PATH;
+                    res = RegEnumValue(actKey, i, name, &nameLen, 0, &type, path, &pathCapacity);
+                    if (res == ERROR_MORE_DATA)
+                    {
+                        PreserveOversizedDefaultDir[d2 - 'a'] = TRUE;
+                        TRACE_E("LoadConfig(): Default Directories entry grew for drive " << d2);
+                        continue;
+                    }
+                    if (res != ERROR_SUCCESS)
+                    {
+                        SalMessageBox(HWindow, GetErrorText(res),
+                                      LoadStr(IDS_ERRORLOADCONFIG), MB_OK | MB_ICONEXCLAMATION);
+                        continue;
+                    }
+                    dataLen = pathCapacity;
+                    if (type == REG_SZ && nameLen == 1 && dataLen > 3 && dataLen <= MAX_PATH &&
+                        path[dataLen - 1] == 0 && LowerCase[path[0]] == d2 &&
+                        path[1] == ':' && path[2] == '\\')
+                    {
+                        memmove(DefaultDir[d2 - 'a'], path, dataLen);
+                    }
+                    else
+                        SalMessageBox(HWindow, LoadStr(IDS_UNEXPECTEDVALUE),
                                       LoadStr(IDS_ERRORLOADCONFIG), MB_OK | MB_ICONEXCLAMATION);
                 }
             }
