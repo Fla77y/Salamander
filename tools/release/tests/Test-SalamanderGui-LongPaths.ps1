@@ -942,21 +942,25 @@ try {
             return
         }
 
-        # Both files are real and remain inside the disposable test fixture.
-        # Neither F2/F5/F6/F8 nor any other destructive GUI command is sent.
+        # The new W-backed per-row identity is allowed to export both
+        # source names, but destructive legacy operations still fail closed.
         Send-Keys '{END}'
-        Set-ClipboardText 'SENTINEL_COLLISION'
-        Invoke-SalamanderCommand -CommandId 710
-        Assert-True ((Get-ClipboardText) -ceq 'SENTINEL_COLLISION') 'Unicode filename collision refuses clipboard export'
-        Set-ClipboardText 'SENTINEL_COLLISION_FULLNAME'
-        Invoke-SalamanderCommand -CommandId 709
-        Assert-True ((Get-ClipboardText) -ceq 'SENTINEL_COLLISION_FULLNAME') 'Unicode collision refuses ambiguous full-path export'
+        $lastName = Read-FocusedFilename
+        $lastPath = Read-FocusedFullname
+        Send-Keys '{UP}'
+        $previousName = Read-FocusedFilename
+        $previousPath = Read-FocusedFullname
+        $actualNames = @($lastName, $previousName) | Sort-Object
+        $expectedNames = @($utfName, $utfCollisionName) | Sort-Object
+        Assert-True (($actualNames -join [char]0) -ceq ($expectedNames -join [char]0)) 'Unicode aliases retain distinct per-row names'
+        Assert-True (($lastPath -ceq (Join-Path $source $lastName)) -and
+            ($previousPath -ceq (Join-Path $source $previousName))) 'Unicode aliases retain distinct full paths'
         Assert-True ((Test-Content $unicodeShortFile) -and
             [Linq.Enumerable]::SequenceEqual[byte](
                 [IO.File]::ReadAllBytes($collisionFile), $collisionPayload
             )) 'Collision retained both original file contents'
         $passed = $true
-        Write-Host 'PASS: Unicode filename collision fails closed without modifying either file.'
+        Write-Host 'PASS: Unicode ANSI alias collision preserves two independently addressable panel identities.'
         return
     }
 
