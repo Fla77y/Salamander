@@ -514,12 +514,12 @@ int main()
     // Arrange: a genuine nested directory tree in the disposable >MAX_PATH
     // fixture. Move is a same-volume atomic directory rename: contents,
     // subdirectories and Unicode identity must remain unchanged.
-    const std::wstring originalTree = current + L"\tree_東京_😀";
-    const std::wstring movedTree = current + L"\tree_moved_東京_😀";
-    const std::wstring blockedTree = current + L"\tree_blocked_東京_😀";
-    const std::wstring originalChild = originalTree + L"\nested";
-    const std::wstring originalLeaf = originalChild + L"\payload_日本.txt";
-    const std::wstring movedLeaf = movedTree + L"\nested\payload_日本.txt";
+    const std::wstring originalTree = current + L"\\tree_東京_😀";
+    const std::wstring movedTree = current + L"\\tree_moved_東京_😀";
+    const std::wstring blockedTree = current + L"\\tree_blocked_東京_😀";
+    const std::wstring originalChild = originalTree + L"\\nested";
+    const std::wstring originalLeaf = originalChild + L"\\payload_日本.txt";
+    const std::wstring movedLeaf = movedTree + L"\\nested\\payload_日本.txt";
     std::wstring originalTreeExtended, movedTreeExtended, blockedTreeExtended;
     std::wstring originalChildExtended, originalLeafExtended, movedLeafExtended;
     Salamander::Utf16DiskPath ownedTree, ownedMovedTree, ownedBlockedTree;
@@ -582,7 +582,7 @@ int main()
     if (!contentsUnchanged)
         return Fail("directory move must preserve nested file bytes");
 
-    const std::wstring movedChildExtended = movedTreeExtended + L"\nested";
+    const std::wstring movedChildExtended = movedTreeExtended + L"\\nested";
     if (!DeleteFileW(movedLeafExtended.c_str()) ||
         !RemoveDirectoryW(movedChildExtended.c_str()) ||
         !RemoveDirectoryW(movedTreeExtended.c_str()) ||
