@@ -191,6 +191,39 @@ int main()
         return Fail("create 255-unit Unicode filename on long path");
     CloseHandle(maxFile);
 
+    // Arrange: the disk panel uses an ACP search-pattern adapter. Its
+    // current input can be represented in ACP, but exceeds MAX_PATH.
+    // Act: enumerate it through the real panel FindFirst adapter.
+    std::string longPanelPattern;
+    const std::wstring longWidePattern = current + L"\\*";
+    const int patternBytes = WideCharToMultiByte(
+        CP_ACP, WC_NO_BEST_FIT_CHARS, longWidePattern.c_str(), -1,
+        nullptr, 0, nullptr, nullptr);
+    if (patternBytes <= 0)
+        return Fail("encode long panel search pattern");
+    longPanelPattern.resize(static_cast<std::size_t>(patternBytes), '\0');
+    BOOL usedDefault = FALSE;
+    if (WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS,
+                            longWidePattern.c_str(), -1,
+                            &longPanelPattern[0], patternBytes,
+                            nullptr, &usedDefault) != patternBytes || usedDefault)
+        return Fail("long panel search pattern must not narrow lossy Unicode");
+    longPanelPattern.pop_back();
+    if (longPanelPattern.size() <= MAX_PATH)
+        return Fail("panel search pattern must exceed MAX_PATH");
+    WIN32_FIND_DATAA panelAnsiData = {};
+    WIN32_FIND_DATAW panelWideData = {};
+    HANDLE panelFind = Salamander::FindFirstUnicodePanelFile(
+        longPanelPattern.c_str(), panelAnsiData, panelWideData);
+    // Assert: the adapter must use a W extended-length search internally.
+    if (panelFind == INVALID_HANDLE_VALUE)
+        return Fail("W-backed panel enumeration of a long directory");
+    const bool panelNamePreserved =
+        std::wstring(panelWideData.cFileName) == L"Größe_東京_😀.txt";
+    FindClose(panelFind);
+    if (!panelNamePreserved)
+        return Fail("W-backed panel long directory preserves Unicode row identity");
+
     // Directory enumeration must preserve the exact UTF-16 filename. This
     // is needed before replacing Salamander's ANSI CFileData.Name flow.
     std::vector<Salamander::LongDirectoryEntry> entries;
