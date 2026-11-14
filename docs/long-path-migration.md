@@ -365,6 +365,76 @@ panel paths, multi-selection, folders, other delete entry points,
 security/undo policy parity and full progress/cancellation support.
 The draft PR must not be merged as complete Unicode/long-path support.
 
+## Primary W enumeration and per-row identity (14 November 2026)
+
+The native disk panel's **primary** directory listing is now driven by
+FindFirstFileW / FindNextFileW. A compatibility adapter transfers ordinary
+metadata to the existing ANSI CFileData builder without altering the
+plugin-visible structure. The original W name is stored in a separate
+UnicodePanelRowIdentities map keyed by the independently allocated
+CFileData::Name pointer. Sorting moves CFileData records but preserves
+that allocation, so two panel rows with an identical ACP alias no longer
+share one *read-only display/clipboard* identity.
+
+The Brief/Detailed name column and focused short/full Unicode clipboard
+export consult the row identity first. Export still checks that the exact
+wide path exists and has the correct file/directory type. The old
+collision-only GUI expectation that the clipboard must stay empty has
+been replaced by positive per-row name/path assertions; destructive
+legacy F2/F5/F6/F8 collision protection remains tested independently.
+
+**Important compatibility boundary:** CFileData::Name remains ANSI and
+WIN32_FIND_DATAA.cFileName still has a fixed-size capacity. If a valid
+W name expands to more ANSI bytes than that field can hold, the adapter
+fails with ERROR_FILENAME_EXCED_RANGE rather than silently truncating
+it; this is **not yet unrestricted filename support**. Sorting/filtering,
+all icon/thumbnail modes, plugin paths and other direct ANSI call sites
+need further migration.
+
+New CI/local native regression:
+tools/tests/win32_unicode_primary_panel.cpp verifies that two identical
+ANSI aliases keep different UTF-16 identities across row reordering,
+that refresh clears the mapping, and that W find metadata is adapted
+without truncation. New real desktop GUI acceptance modes:
+manage.cmd --test-gui-row-identities and the updated
+manage.cmd --test-gui-name-collisions.
+
+## Bounded Unicode multi-file copy/move and directory F2
+
+A separate F5/F6 handler covers **2–16 marked regular files** within a
+shared source panel and an existing disk destination (16 MiB total
+maximum). It resolves every file from the W row identity, then requires
+the existing alias safety index to report a *unique* identity; two
+colliding aliases are still blocked from **writes**. It preflights
+all source and target names before confirmation, rechecks identities
+and target nonexistence after confirmation, and uses no-overwrite W
+file operations. If the OS fails after some entries have succeeded,
+the partial transfer is reported with an exact completed count; no
+unsafe rollback silently deletes those completed files. Full progress,
+cancellation and recovery for arbitrarily large selections are not
+implemented. The interactive regression is
+manage.cmd --test-gui-unicode-multiselect.
+
+F2 now also permits renaming an ordinary (non-reparse-point) UTF-16
+directory, still with MoveFileExW and without replacement. It rejects
+renaming when the other disk panel points to that directory or any
+descendant, and keeps the Win32-on-Win64 redirected-directory case
+blocked. The interactive regression
+manage.cmd --test-gui-unicode-directory-rename checks the new name,
+old-path disappearance, and preservation of nested file bytes.
+Recursive F5 directory copy, F6 directory move and F8 directory
+recycling remain unavailable on lossy names.
+
+**Not a completed migration:** the GUI path fields Path[MAX_PATH] and
+related work/ZIP buffers, ChangePathToDisk, icon/thumbnail helpers,
+shell/context-menu/drag-and-drop entry points and plug-in boundaries
+still assume ANSI and/or MAX_PATH. Long directory *filesystem*
+enumeration already works in standalone W tests, but Salamander GUI
+navigation under and beyond MAX_PATH has **not** been migrated.
+Do not enable a manifest flag as a substitute. These changes must pass
+the current GitHub x64/Win32 application build plus the **new real
+desktop** tests before claiming behavior, and PR #6 remains draft.
+
 ## Phase 1: Baseline and bounded operations
 
 - `tools/tests/Test-LongPaths.ps1` generates disposable cases for total
