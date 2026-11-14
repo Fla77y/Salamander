@@ -1311,12 +1311,43 @@ try {
     Send-Keys '{DOWN}'
     Assert-True ((Read-FocusedFilename) -ceq $treeMoveName) 'Disposable source tree selected for F6'
     Send-Keys '{F6}'
-    Start-Sleep -Milliseconds 400
+    # Confirm the exact action before sending Enter. Otherwise an early
+    # refusal may be dismissed unnoticed and reported only as a timeout.
+    Wait-Until {
+        $dialog = Get-TestDialog
+        if (-not [string]::IsNullOrEmpty($dialog) -and
+            $dialog -notmatch 'Unicode directory move') {
+            throw "F6 directory move refused before confirmation: $dialog"
+        }
+        return $dialog -match 'Unicode directory move'
+    } 'F6 directory move confirmation'
+    Write-Host 'PASS: F6 opened native Unicode directory move confirmation'
     Send-Keys '{ENTER}'
     $treeMoveTarget = Join-Path $destination $treeMoveName
     $treeTargetLeaf = Join-Path (Join-Path $treeMoveTarget 'nested') 'payload.bin'
-    Wait-Until { (Test-Content $treeTargetLeaf) -and -not [IO.Directory]::Exists($treeMoveSource) } 'F6 atomic nested tree move'
-    Assert-True ((Test-Content $treeTargetLeaf) -and -not [IO.Directory]::Exists($treeMoveSource)) 'F6 directory move retains nested file bytes'
+    try {
+        Wait-Until {
+            $dialog = Get-TestDialog
+            if (-not [string]::IsNullOrEmpty($dialog)) {
+                throw "F6 directory move displayed a modal error: $dialog"
+            }
+            return (Test-Content -LiteralPath $treeTargetLeaf) -and
+                   -not [IO.Directory]::Exists($treeMoveSource)
+        } 'F6 atomic nested tree move'
+    }
+    catch {
+        $cause = $_.Exception.Message
+        $sourceExists = [IO.Directory]::Exists($treeMoveSource)
+        $targetExists = [IO.Directory]::Exists($treeMoveTarget)
+        $leafExists = [IO.File]::Exists($treeTargetLeaf)
+        $dialog = Get-TestDialog
+        $windowSummary = Get-ProcessWindowSummary -OwnerProcessId ([uint32]$process.Id)
+        throw ("F6 directory move failed: {0}; sourceExists={1}; targetExists={2}; " +
+               "targetLeafExists={3}; dialog='{4}'; Salamander windows={5}" -f
+               $cause, $sourceExists, $targetExists, $leafExists, $dialog, $windowSummary)
+    }
+    Assert-True ((Test-Content -LiteralPath $treeTargetLeaf) -and
+                 -not [IO.Directory]::Exists($treeMoveSource)) 'F6 directory move retains nested file bytes'
 
     # ACT + ASSERT: copying a normal short-path file INTO a long directory
     # must also avoid the ANSI engine. Only the disposable fixture is used.
