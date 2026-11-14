@@ -74,15 +74,18 @@ if ($errorCapture -lt 0 -or $dialogLookup -lt 0 -or
 }
 Write-Host 'PASS: GUI driver captures the original SendMessageTimeout Win32 error.'
 
-# Before adding GUI collision coverage, specify its non-destructive behavior.
+# W-based primary enumeration associates each CFileData Name allocation
+# with its original Unicode record. Clipboard identity may now be recovered
+# for two rows with the same ANSI alias; destructive legacy actions remain
+# independently fail-closed.
 $collisionBranch = $tree.Extent.Text
 if ($collisionBranch -notmatch '\[switch\]\$ShortUnicodeCollisionOnly' -or
-    $collisionBranch -notmatch 'SENTINEL_COLLISION' -or
-    $collisionBranch -notmatch 'Unicode filename collision refuses clipboard export' -or
+    $collisionBranch -notmatch 'Unicode aliases retain distinct per-row names' -or
+    $collisionBranch -notmatch 'Unicode aliases retain distinct full paths' -or
     $collisionBranch -notmatch 'Collision retained both original file contents') {
-    throw 'GUI Unicode collision regression must be present and check fail-closed export and data integrity.'
+    throw 'GUI collision regression must check independent wide row identities and data integrity.'
 }
-Write-Host 'PASS: Unicode collision regression is present and non-destructive.'
+Write-Host 'PASS: Unicode collision regression preserves distinct W-based panel identities.'
 
 if ($driverText -notmatch '\[switch\]\$ShortUnicodeUnsafeOperationsOnly' -or
     $driverText -notmatch 'safe refusal dialog for' -or
