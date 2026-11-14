@@ -1880,7 +1880,7 @@ BOOL CFilesWindow::CopyFocusedNameToClipboard(CCopyFocusedNameModeEnum mode)
     // A Windows ACP best-fit mapping may silently change a disk name
     // without producing '?'. Consult the complete per-listing UTF-16
     // identity index, not a character heuristic.
-    if (Is(ptDisk) && UnicodeDiskNames.IsUnsafeAnsiName(focusedItem->Name))
+    if (Is(ptDisk) && (HasLongDiskPath() || UnicodeDiskNames.IsUnsafeAnsiName(focusedItem->Name)))
     {
         // The W primary enumeration binds the original UTF-16 name to the
         // row's heap-backed Name pointer. This remains unambiguous when
@@ -2009,6 +2009,13 @@ BOOL CFilesWindow::CopyFocusedNameToClipboard(CCopyFocusedNameModeEnum mode)
 BOOL CFilesWindow::CopyCurrentPathToClipboard()
 {
     CALL_STACK_MESSAGE1("CFilesWindow::CopyCurrentPathToClipboard()");
+
+    if (HasLongDiskPath())
+    {
+        std::wstring directory;
+        return Salamander::TryGetUnicodePanelDirectory(GetPath(), directory) &&
+               Salamander::TryCopyUnicodeNameToClipboard(MainWindow->HWindow, directory);
+    }
 
     char buff[2 * MAX_PATH];
     buff[0] = 0;
