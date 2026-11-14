@@ -75,6 +75,58 @@ inline bool TryMoveUnicodeFileNoOverwrite(const Utf16DiskPath& source,
     return true;
 }
 
+// Same-volume directory move preserves the complete subtree without a
+// recursive copy/delete or a fall back to the legacy ANSI operation engine.
+// The source must be an ordinary directory (never a junction/symlink), and
+// the destination must not exist. MOVEFILE_COPY_ALLOWED is intentionally off.
+inline bool TryMoveUnicodeDirectoryNoOverwrite(const Utf16DiskPath& source,
+                                               const Utf16DiskPath& destination,
+                                               DWORD& error)
+{
+    std::wstring sourcePath, destinationPath;
+    if (!UnicodeFileOperationsDetail::TryGetExtendedPath(source, sourcePath, error) ||
+        !UnicodeFileOperationsDetail::TryGetExtendedPath(destination, destinationPath, error))
+        return false;
+
+    if (CompareStringOrdinal(sourcePath.c_str(), -1,
+                             destinationPath.c_str(), -1, TRUE) == CSTR_EQUAL)
+    {
+        error = ERROR_ALREADY_EXISTS;
+        return false;
+    }
+
+    const DWORD sourceAttributes = GetFileAttributesW(sourcePath.c_str());
+    if (sourceAttributes == INVALID_FILE_ATTRIBUTES)
+    {
+        error = GetLastError();
+        return false;
+    }
+    if ((sourceAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0 ||
+        (sourceAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
+    {
+        error = ERROR_ACCESS_DENIED;
+        return false;
+    }
+
+    const DWORD destinationAttributes = GetFileAttributesW(destinationPath.c_str());
+    if (destinationAttributes != INVALID_FILE_ATTRIBUTES)
+    {
+        error = ERROR_ALREADY_EXISTS;
+        return false;
+    }
+    error = GetLastError();
+    if (error != ERROR_FILE_NOT_FOUND)
+        return false;
+
+    if (!MoveFileExW(sourcePath.c_str(), destinationPath.c_str(), 0))
+    {
+        error = GetLastError();
+        return false;
+    }
+    error = ERROR_SUCCESS;
+    return true;
+}
+
 inline bool TryDeleteUnicodeFile(const Utf16DiskPath& file, DWORD& error)
 {
     std::wstring path;
