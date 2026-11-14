@@ -67,6 +67,79 @@ void CFilesWindow::Execute(int index)
 
     if (Is(ptDisk))
     {
+        if (HasLongDiskPath())
+        {
+            // Execute's legacy code below copies the current path into
+            // MAX_PATH buffers. Handle long-folder traversal before that
+            // code can run; file association/archive execution stays refused.
+            if (index >= Dirs->Count)
+            {
+                MessageBoxW(HWindow,
+                            L"Opening files from this long directory is not yet "
+                            L"supported by the legacy association/archive handler.",
+                            L"Long directory", MB_OK | MB_ICONINFORMATION);
+                EndStopRefresh();
+                return;
+            }
+
+            const CFileData& dir = Dirs->At(index);
+            const bool up = index == 0 && strcmp(dir.Name, "..") == 0;
+            std::string requested(GetPath());
+            std::string focusName;
+            bool valid = true;
+
+            if (up)
+            {
+                // The parent path and the name to refocus are owned before
+                // ChangePathToDisk closes or replaces the current listing.
+                while (requested.size() > 3 && requested.back() == '\\')
+                    requested.pop_back();
+                const std::size_t slash = requested.find_last_of('\\');
+                if (slash == std::string::npos || slash < 2 ||
+                    slash + 1 >= requested.size())
+                    valid = false;
+                else
+                {
+                    focusName = requested.substr(slash + 1);
+                    requested.resize(slash == 2 ? 3 : slash);
+                    // Never escape a UNC share into a server-only path.
+                    if (requested.size() > 2 &&
+                        requested[0] == '\\' && requested[1] == '\\')
+                    {
+                        const std::size_t serverEnd = requested.find('\\', 2);
+                        if (serverEnd == std::string::npos ||
+                            serverEnd + 1 >= requested.size())
+                            valid = false;
+                    }
+                }
+            }
+            else
+            {
+                std::wstring originalName;
+                if ((dir.Attr & FILE_ATTRIBUTE_REPARSE_POINT) != 0 ||
+                    !UnicodeDiskNames.TryGetRow(dir.Name, originalName) ||
+                    !Salamander::IsExactAnsiName(dir.Name, originalName.c_str()))
+                    valid = false; // refuse ambiguous or lossy ACP directory aliases
+                else
+                {
+                    if (requested.back() != '\\')
+                        requested.push_back('\\');
+                    requested.append(dir.Name);
+                }
+            }
+
+            if (valid)
+                ChangePathToDisk(HWindow, requested.c_str(), -1,
+                                 up ? focusName.c_str() : NULL);
+            else
+                MessageBoxW(HWindow,
+                            L"The directory cannot be navigated without losing "
+                            L"its exact Unicode identity.",
+                            L"Long directory", MB_OK | MB_ICONWARNING);
+            EndStopRefresh();
+            return;
+        }
+
         if (index >= Dirs->Count) // file
         {
             if (CheckPath(FALSE) != ERROR_SUCCESS) // current path is not accessible
