@@ -520,7 +520,12 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
 
     const std::string legacyAlias(entry.Name);
     std::wstring originalName;
-    if (!UnicodeDiskNames.TryGetLossy(legacyAlias.c_str(), originalName))
+    if (HasLongDiskPath())
+    {
+        if (!UnicodeDiskNames.TryGetRow(entry.Name, originalName))
+            return FALSE; // never infer a long-path file from its ACP alias
+    }
+    else if (!UnicodeDiskNames.TryGetLossy(legacyAlias.c_str(), originalName))
         return FALSE; // missing/colliding aliases stay protected
 
     const std::string sourcePanelPath(GetPath());
@@ -670,6 +675,21 @@ void CFilesWindow::FilesAction(CActionType type, CFilesWindow* target, int count
     CALL_STACK_MESSAGE3("CFilesWindow::FilesAction(%d, , %d)", type, countSizeMode);
     if (Dirs->Count + Files->Count == 0)
         return;
+
+    // Long folders must never enter the fixed-buffer ANSI operation engine.
+    // Use the existing W-only transfer path for ordinary selected files.
+    if (HasLongDiskPath())
+    {
+        if (countSizeMode == 0 &&
+            (TryUnicodeMultiFileTransfer(type, target) ||
+             TryUnicodeSingleFileTransfer(type, target)))
+            return;
+        SalMessageBox(HWindow,
+                      "This long directory requires a native Unicode file operation. "
+                      "The requested operation is unavailable; no files were changed.",
+                      LoadStr(IDS_ERRORTITLE), MB_OK | MB_ICONEXCLAMATION);
+        return;
+    }
 
     // The legacy disk operation engine addresses files through ANSI names.
     // Such a name cannot safely identify a Unicode file after substitution
