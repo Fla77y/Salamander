@@ -176,6 +176,21 @@ if ($panelSource -notmatch 'std::vector<char>\s+fileName\s*\(\s*\(pathLen\s*>\s*
     throw 'Dynamic panel scratch buffer must retain its minimum capacity and expose .data() to legacy pointer APIs.'
 }
 
+# Switching away from a long disk panel updates BOTH panels' DefaultDir
+# entries. The legacy entries have fixed ANSI capacity; neither panel may
+# write its long path into them, even when it is the inactive panel.
+$mainWindowSource = Get-Content -LiteralPath (Join-Path $toolsDir '..\..\src\mainwnd1.cpp') -Raw
+$defaultDirBlock = [regex]::Match(
+    $mainWindowSource,
+    '(?s)void CMainWindow::UpdateDefaultDir\(BOOL activePrefered\)(.*?)void CMainWindow::ToggleTopToolBar'
+).Groups[1].Value
+if ([string]::IsNullOrEmpty($defaultDirBlock) -or
+    $defaultDirBlock -notmatch 'active->HasLongDiskPath\(\)' -or
+    $defaultDirBlock -notmatch 'nonactive->HasLongDiskPath\(\)' -or
+    ([regex]::Matches($defaultDirBlock, 'strcpy\(DefaultDir\[')).Count -ne 2) {
+    throw 'Long panel paths must not overwrite either fixed-size DefaultDir entry during TAB switching.'
+}
+
 # MSBuild writes intermediate outputs beside .vcxproj files. Those generated
 # directories must not block the pipeline's safe Git fast-forward update.
 $repository = (Resolve-Path -LiteralPath (Join-Path $toolsDir '..\\..')).ProviderPath
