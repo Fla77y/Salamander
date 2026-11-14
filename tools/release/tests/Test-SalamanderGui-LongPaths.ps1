@@ -798,6 +798,7 @@ try {
         $unicodeCopy = Join-Path $destination $utfName
         $asciiCopy = Join-Path $destination $secondName
         Wait-Until { (Test-Content $unicodeCopy) -and
+            [IO.File]::Exists($asciiCopy) -and
             [Linq.Enumerable]::SequenceEqual[byte](
                 [IO.File]::ReadAllBytes($asciiCopy), $secondBytes) } 'Unicode F5 copies both selected files'
         Assert-True (Test-Content $unicodeShortFile) 'Unicode F5 multiselect preserved original'
@@ -817,6 +818,7 @@ try {
         $unicodeMoved = Join-Path $moveDir $utfName
         $asciiMoved = Join-Path $moveDir $secondName
         Wait-Until { (Test-Content $unicodeMoved) -and
+            [IO.File]::Exists($asciiMoved) -and
             [Linq.Enumerable]::SequenceEqual[byte](
                 [IO.File]::ReadAllBytes($asciiMoved), $secondBytes) -and
             -not [IO.File]::Exists($unicodeCopy) -and
