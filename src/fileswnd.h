@@ -1306,6 +1306,9 @@ public:
     // A conservative disk-to-disk UTF-16 transfer for one uniquely resolved
     // regular file. Returns false to keep unsupported selections fail-closed.
     BOOL TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* target);
+    // Bounded multi-selection of ordinary Unicode disk files; any unsupported
+    // selection remains behind the legacy ANSI fail-closed operation gate.
+    BOOL TryUnicodeMultiFileTransfer(CActionType type, CFilesWindow* target);
     // Only an explicitly configured recycle operation may handle a lossy
     // UTF-16 filename; permanent F8 and unsupported entries remain blocked.
     BOOL TryUnicodeSingleFileRecycle();
