@@ -343,12 +343,10 @@ $defaultDirectoriesWrite = [regex]::Match(
 ).Groups[1].Value
 if ([string]::IsNullOrEmpty($defaultDirectoriesRead) -or
     [string]::IsNullOrEmpty($defaultDirectoriesWrite) -or
-    $defaultDirectoriesRead -notmatch 'RegEnumValue\(actKey, i, name, &nameLen, 0, &type, NULL, &dataLen\)' -or
-    $defaultDirectoriesRead -notmatch 'dataLen > MAX_PATH' -or
+    $defaultDirectoriesRead -notmatch 'ReadLegacyDefaultDirectory' -or
+    $defaultDirectoriesRead -match 'RegEnumValue|RegQueryInfoKey' -or
     $defaultDirectoriesRead -notmatch 'PreserveOversizedDefaultDir' -or
-    $defaultDirectoriesRead -notmatch 'res == ERROR_MORE_DATA' -or
-    $defaultDirectoriesRead -notmatch 'path\[dataLen - 1\] == 0' -or
     $defaultDirectoriesWrite -notmatch 'PreserveOversizedDefaultDir') {
-    throw 'Oversized Default Directories registry values must be skipped without a modal startup error and preserved on save.'
+    throw 'Default directory loading must use bounded per-drive registry reads and preserve unsupported entries.'
 }
 Write-Host 'PASS: oversized legacy registry default directories cannot block GUI startup or be silently erased.'
