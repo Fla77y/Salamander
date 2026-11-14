@@ -65,13 +65,13 @@ if ([string]::IsNullOrEmpty($multiSelectBlock) -or
 # stall without repeating commands after success or hiding real modal errors.
 $navigationBlock = [regex]::Match(
     $guiDriver,
-    '(?s)function Go-ToPath\\s*\\{(.*?)\\nfunction Read-FocusedFilename'
+    '(?s)function Go-ToPath\s*\{(.*?)\nfunction Read-FocusedFilename'
 ).Groups[1].Value
 if ([string]::IsNullOrEmpty($navigationBlock) -or
-    $navigationBlock -notmatch 'maxNavigationAttempts\\s*=\\s*2' -or
+    $navigationBlock -notmatch 'maxNavigationAttempts\s*=\s*2' -or
     $navigationBlock -notmatch 'TimeoutSecondsOverride' -or
     $navigationBlock -notmatch 'Get-TestDialog' -or
-    $guiDriver -notmatch '(?s)function Read-PanelPath\\s*\\{.*?Invoke-SalamanderCommand -CommandId 711.*?for \\(\\$attempt') {
+    $guiDriver -notmatch '(?s)function Read-PanelPath\s*\{.*?Invoke-SalamanderCommand -CommandId 711.*?for \(\$attempt') {
     throw 'GUI navigation must bound clipboard retries, reject modal errors and verify an idempotent retry.'
 }
 foreach ($prefix in @(
