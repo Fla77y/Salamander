@@ -5,6 +5,8 @@
 #include "precomp.h"
 
 #include <shlwapi.h>
+#include <vector>
+#include <string>
 #undef PathIsPrefix // otherwise collision with CSalamanderGeneral::PathIsPrefix
 
 #include "cfgdlg.h"
@@ -668,10 +670,12 @@ BOOL CFilesWindow::PostProcessPathFromUser(HWND parent, char (&buff)[2 * MAX_PAT
 void CFilesWindow::ClipboardPastePath()
 {
     CALL_STACK_MESSAGE1("CFilesWindow::ClipboardPastePath()");
-    char buff[2 * MAX_PATH];
-    buff[0] = 0;
-    BOOL changePath = FALSE;
+
+    // The Win32 clipboard is untrusted. Do not assume its global-memory
+    // block is terminated, or truncate a long path to an existing prefix.
+    std::string clipboardPath;
     BOOL unicodeTextPresent = FALSE;
+    const SIZE_T maxAnsiBytes = 4 * 32768; // bounded input, including DBCS
 
     if (OpenClipboard(HWindow))
     {
@@ -679,43 +683,102 @@ void CFilesWindow::ClipboardPastePath()
         unicodeTextPresent = handle != NULL;
         if (handle != NULL)
         {
-            WCHAR* pathW = (WCHAR*)HANDLES(GlobalLock(handle));
-            if (pathW != NULL)
+            const SIZE_T capacity = GlobalSize(handle) / sizeof(WCHAR);
+            const WCHAR* text = (const WCHAR*)HANDLES(GlobalLock(handle));
+            if (text != NULL)
             {
-                while (*pathW != 0 && *pathW <= L' ')
-                    pathW++; // trim spaces+CR+LF before the path
-                if (ConvertU2A(pathW, -1, buff, _countof(buff)) &&
-                    Salamander::IsExactAnsiName(buff, pathW))
-                    changePath = TRUE;
-                // Never interpret a truncated or lossy CP_ACP conversion as a path.
-                // A prefix can name a different, existing directory.
+                const SIZE_T limit = capacity < 32768 ? capacity : 32768;
+                SIZE_T length = 0;
+                while (length < limit && text[length] != L'\0')
+                    ++length;
+                if (length < limit)
+                {
+                    SIZE_T begin = 0;
+                    while (begin < length && text[begin] <= L' ')
+                        ++begin;
+                    const std::wstring value(text + begin, length - begin);
+                    if (!value.empty())
+                    {
+                        const int required = WideCharToMultiByte(CP_ACP, WC_NO_BEST_FIT_CHARS,
+                                                                 value.c_str(), -1, NULL, 0, NULL, NULL);
+                        if (required > 0 && (SIZE_T)required <= maxAnsiBytes)
+                        {
+                            std::vector<char> ansi((SIZE_T)required);
+                            if (ConvertU2A(value.c_str(), -1, ansi.data(), required) &&
+                                Salamander::IsExactAnsiName(ansi.data(), value.c_str()))
+                                clipboardPath.assign(ansi.data());
+                        }
+                    }
+                }
                 HANDLES(GlobalUnlock(handle));
             }
         }
-        if (!changePath && !unicodeTextPresent) // fallback only when no Unicode text was published
+
+        if (clipboardPath.empty() && !unicodeTextPresent)
         {
             handle = GetClipboardData(CF_TEXT);
-            char* path = (char*)HANDLES(GlobalLock(handle));
-            if (path != NULL)
+            if (handle != NULL)
             {
-                while (*path != 0 && *path <= ' ')
-                    path++; // trim spaces+CR+LF before the path
-                // The legacy disk panel cannot store a longer ANSI path.
-                // Refuse the entire input rather than navigating to its prefix.
-                if (strlen(path) < sizeof(buff))
+                const SIZE_T capacity = GlobalSize(handle);
+                const char* text = (const char*)HANDLES(GlobalLock(handle));
+                if (text != NULL)
                 {
-                    lstrcpyn(buff, path, _countof(buff));
-                    changePath = TRUE;
+                    const SIZE_T limit = capacity < maxAnsiBytes ? capacity : maxAnsiBytes;
+                    SIZE_T length = 0;
+                    while (length < limit && text[length] != '\0')
+                        ++length;
+                    if (length < limit)
+                    {
+                        SIZE_T begin = 0;
+                        while (begin < length && (unsigned char)text[begin] <= ' ')
+                            ++begin;
+                        clipboardPath.assign(text + begin, length - begin);
+                    }
+                    HANDLES(GlobalUnlock(handle));
                 }
-                HANDLES(GlobalUnlock(handle));
             }
         }
         CloseClipboard();
     }
     else
         TRACE_E("OpenClipboard() has failed!");
-    if (changePath && PostProcessPathFromUser(HWindow, buff))
-        ChangeDir(buff); // change path
+
+    if (clipboardPath.empty())
+        return;
+
+    if (clipboardPath.size() < 2 * MAX_PATH)
+    {
+        // Keep URL, environment-variable, quote and plugin handling as before
+        // for every path that fits the existing legacy processing contract.
+        char buff[2 * MAX_PATH];
+        strcpy_s(buff, clipboardPath.c_str());
+        if (PostProcessPathFromUser(HWindow, buff))
+            ChangeDir(buff);
+        return;
+    }
+
+    // The older path post-processor has fixed 2*MAX_PATH storage and
+    // file URL/plugin APIs are not long-path capable. For longer input,
+    // permit only a complete absolute disk/UNC path, without interpreting
+    // truncated URLs, plugins or environment-variable expansions.
+    SIZE_T first = 0;
+    while (first < clipboardPath.size() && (unsigned char)clipboardPath[first] <= ' ')
+        ++first;
+    SIZE_T last = clipboardPath.size();
+    while (last > first && (unsigned char)clipboardPath[last - 1] <= ' ')
+        --last;
+    std::string path = clipboardPath.substr(first, last - first);
+    if (path.size() >= 2 && path.front() == '"' && path.back() == '"')
+        path = path.substr(1, path.size() - 2);
+    const bool driveAbsolute = path.size() >= 3 &&
+                               ((path[0] >= 'A' && path[0] <= 'Z') ||
+                                (path[0] >= 'a' && path[0] <= 'z')) &&
+                               path[1] == ':' && path[2] == '\\';
+    const bool uncAbsolute = path.size() >= 5 &&
+                             path[0] == '\\' && path[1] == '\\' &&
+                             path[2] != '\\' && path[2] != '?';
+    if (driveAbsolute || uncAbsolute)
+        ChangeDir(path.c_str());
 }
 
 void CFilesWindow::ChangeFilter(BOOL disable)
