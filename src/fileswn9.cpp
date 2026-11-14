@@ -108,16 +108,47 @@ BOOL SafeInvokeCommand(IContextMenu2* menu, CMINVOKECOMMANDINFO& ici)
 BOOL CFilesWindow::ClipboardPaste(BOOL onlyLinks, BOOL onlyTest, const char* pastePath)
 {
     CALL_STACK_MESSAGE4("CFilesWindow::ClipboardPaste(%d, %d, %s)", onlyLinks, onlyTest, pastePath);
-    // The IDataObject/DropPath transfer engine below still constructs bounded
-    // ANSI paths. Never let a long destination reach those operations.
+    // CM_CLIPPASTE tries file paste first, then uses ClipboardPastePath()
+    // when the clipboard contains plain text. Inspect actual file formats
+    // before rejecting a long destination, otherwise a text-only path
+    // navigation would raise a modal error on every paste.
     if (HasLongDiskPath() || (pastePath != NULL && strlen(pastePath) >= MAX_PATH))
     {
+        IDataObject* clipboardData = NULL;
+        if (OleGetClipboard(&clipboardData) != S_OK || clipboardData == NULL)
+            return FALSE;
+
+        BOOL hasFilePayload = IsFakeDataObject(clipboardData, NULL, NULL, 0);
+        IEnumFORMATETC* formats = NULL;
+        if (clipboardData->EnumFormatEtc(DATADIR_GET, &formats) == S_OK && formats != NULL)
+        {
+            const UINT cfIdList = RegisterClipboardFormat(CFSTR_SHELLIDLIST);
+            const UINT cfFileContent = RegisterClipboardFormat(CFSTR_FILECONTENTS);
+            FORMATETC format = {};
+            formats->Reset();
+            while (formats->Next(1, &format, NULL) == S_OK)
+            {
+                if (format.cfFormat == CF_HDROP ||
+                    format.cfFormat == cfIdList ||
+                    format.cfFormat == cfFileContent)
+                    hasFilePayload = TRUE;
+                if (format.ptd != NULL)
+                    CoTaskMemFree(format.ptd);
+                format.ptd = NULL;
+            }
+            formats->Release();
+        }
+        clipboardData->Release();
+
+        if (!hasFilePayload)
+            return FALSE; // text-only clipboard: allow ClipboardPastePath()
+
         if (!onlyTest)
             MessageBoxW(HWindow,
                         L"Pasting files into a long directory is not yet supported "
                         L"by the legacy clipboard transfer engine. No files were changed.",
                         L"Long directory", MB_OK | MB_ICONWARNING);
-        return FALSE;
+        return onlyTest ? FALSE : TRUE; // no ANSI transfer and no text fallback
     }
     IDataObject* dataObj;
     BOOL files = FALSE;       // check whether the clipboard data are files at all
