@@ -1213,12 +1213,25 @@ try {
     Send-Keys '{END}'
     Assert-True ((Read-FocusedFilename) -ceq $utfName) 'Unicode identity survives >2*MAX_PATH clipboard traversal'
 
-    # Exercise a genuine SMB UNC view of the same disposable source
-    # using an existing administrative localhost share when available.
-    # Never create/modify a system share as part of GUI regression tests.
+    # Test the same disposable fixture through an existing local SMB share.
+    # Never create or alter a system share. Missing administrative shares
+    # are explicitly reported as an untested integration, not as success.
     if ($deep -match '^[A-Za-z]:\\') {
         $drive = $deep.Substring(0, 1)
-        $uncDeep = ('\\\\localhost\\' + $drive + '
+        $uncDeep = '\\localhost\' + $drive + [char]36 + $deep.Substring(2)
+        $uncAvailable = $false
+        try { $uncAvailable = [IO.Directory]::Exists($uncDeep) } catch { }
+        if ($uncAvailable) {
+            Go-ToPath $uncDeep
+            Send-Keys '{END}'
+            Assert-True ((Read-FocusedFilename) -ceq $utfName) 'SMB UNC long path preserves Unicode row'
+            Go-ToPath $deep
+            Assert-True ((Read-PanelPath) -ceq $deep) 'UNC to drive long-path navigation restores source'
+        }
+        else {
+            Write-Host 'SKIP: local administrative SMB share inaccessible; UNC GUI integration unverified.'
+        }
+    }
 
     # ACT + ASSERT: switching away from a long source panel must preserve
     # the process and both panel paths. This regressed when UpdateDefaultDir
