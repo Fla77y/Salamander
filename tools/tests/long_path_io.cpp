@@ -511,6 +511,84 @@ int main()
         GetFileAttributesW(result.c_str()) == INVALID_FILE_ATTRIBUTES)
         return Fail("delete only chosen Unicode file and retain original");
 
+    // Arrange: a genuine nested directory tree in the disposable >MAX_PATH
+    // fixture. Move is a same-volume atomic directory rename: contents,
+    // subdirectories and Unicode identity must remain unchanged.
+    const std::wstring originalTree = current + L"\tree_東京_😀";
+    const std::wstring movedTree = current + L"\tree_moved_東京_😀";
+    const std::wstring blockedTree = current + L"\tree_blocked_東京_😀";
+    const std::wstring originalChild = originalTree + L"\nested";
+    const std::wstring originalLeaf = originalChild + L"\payload_日本.txt";
+    const std::wstring movedLeaf = movedTree + L"\nested\payload_日本.txt";
+    std::wstring originalTreeExtended, movedTreeExtended, blockedTreeExtended;
+    std::wstring originalChildExtended, originalLeafExtended, movedLeafExtended;
+    Salamander::Utf16DiskPath ownedTree, ownedMovedTree, ownedBlockedTree;
+    if (!Convert(originalTree, originalTreeExtended) ||
+        !Convert(movedTree, movedTreeExtended) ||
+        !Convert(blockedTree, blockedTreeExtended) ||
+        !Convert(originalChild, originalChildExtended) ||
+        !Convert(originalLeaf, originalLeafExtended) ||
+        !Convert(movedLeaf, movedLeafExtended) ||
+        !OwnPath(originalTree, ownedTree) ||
+        !OwnPath(movedTree, ownedMovedTree) ||
+        !OwnPath(blockedTree, ownedBlockedTree))
+        return Fail("prepare Unicode directory move fixture");
+    if (!CreateDirectoryW(originalTreeExtended.c_str(), nullptr) ||
+        !CreateDirectoryW(originalChildExtended.c_str(), nullptr) ||
+        !CreateDirectoryW(blockedTreeExtended.c_str(), nullptr))
+        return Fail("create Unicode directory move fixture");
+
+    HANDLE leaf = CreateFileW(originalLeafExtended.c_str(), GENERIC_WRITE, 0,
+                             nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (leaf == INVALID_HANDLE_VALUE)
+        return Fail("create Unicode nested tree payload");
+    const char treeBytes[] = "NESTED-TREE-ORIGINAL-BYTES";
+    DWORD treeWritten = 0;
+    const bool wroteTree = WriteFile(leaf, treeBytes, sizeof(treeBytes),
+                                     &treeWritten, nullptr) &&
+                           treeWritten == sizeof(treeBytes);
+    CloseHandle(leaf);
+    if (!wroteTree)
+        return Fail("write Unicode nested tree payload");
+
+    // Act / Assert: a collision must not modify either tree.
+    if (Salamander::TryMoveUnicodeDirectoryNoOverwrite(
+            ownedTree, ownedBlockedTree, operationError) ||
+        GetFileAttributesW(originalLeafExtended.c_str()) == INVALID_FILE_ATTRIBUTES ||
+        GetFileAttributesW(blockedTreeExtended.c_str()) == INVALID_FILE_ATTRIBUTES)
+        return Fail("directory collision must preserve both trees");
+
+    // Act / Assert: the complete tree moves atomically within one volume.
+    if (!Salamander::TryMoveUnicodeDirectoryNoOverwrite(
+            ownedTree, ownedMovedTree, operationError) ||
+        operationError != ERROR_SUCCESS ||
+        GetFileAttributesW(originalTreeExtended.c_str()) != INVALID_FILE_ATTRIBUTES ||
+        GetFileAttributesW(movedLeafExtended.c_str()) == INVALID_FILE_ATTRIBUTES)
+        return Fail("atomic long Unicode directory move");
+
+    HANDLE movedLeafHandle = CreateFileW(movedLeafExtended.c_str(), GENERIC_READ,
+                                        FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+                                        FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (movedLeafHandle == INVALID_HANDLE_VALUE)
+        return Fail("read moved Unicode directory payload");
+    char readTreeBytes[sizeof(treeBytes)] = {};
+    DWORD treeRead = 0;
+    const bool contentsUnchanged =
+        ReadFile(movedLeafHandle, readTreeBytes, sizeof(readTreeBytes),
+                 &treeRead, nullptr) &&
+        treeRead == sizeof(treeBytes) &&
+        std::memcmp(readTreeBytes, treeBytes, sizeof(treeBytes)) == 0;
+    CloseHandle(movedLeafHandle);
+    if (!contentsUnchanged)
+        return Fail("directory move must preserve nested file bytes");
+
+    const std::wstring movedChildExtended = movedTreeExtended + L"\nested";
+    if (!DeleteFileW(movedLeafExtended.c_str()) ||
+        !RemoveDirectoryW(movedChildExtended.c_str()) ||
+        !RemoveDirectoryW(movedTreeExtended.c_str()) ||
+        !RemoveDirectoryW(blockedTreeExtended.c_str()))
+        return Fail("cleanup Unicode directory move fixture");
+
     std::vector<Salamander::LongDirectoryEntry> invalidEntries;
     if (Salamander::TryEnumerateLongDirectory(L"relative\\directory", invalidEntries, enumError) ||
         enumError != ERROR_INVALID_NAME || !invalidEntries.empty())
