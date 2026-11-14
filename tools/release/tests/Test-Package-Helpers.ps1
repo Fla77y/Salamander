@@ -11,7 +11,8 @@ $scriptFiles = @(
     (Join-Path $toolsDir 'Package-Helpers.ps1'),
     (Join-Path $toolsDir 'Update-Build-Test-Package.ps1'),
     (Join-Path $toolsDir '..\Manage-Salamander.ps1'),
-    (Join-Path $toolsDir 'tests\Test-FilenamesAndPaths.ps1')
+    (Join-Path $toolsDir 'tests\Test-FilenamesAndPaths.ps1'),
+    (Join-Path $toolsDir 'tests\Test-SalamanderGui-LongPaths.ps1')
 )
 foreach ($file in $scriptFiles) {
     $tokens = $null
@@ -20,6 +21,174 @@ foreach ($file in $scriptFiles) {
     if ($errors.Count -gt 0) {
         throw "PowerShell parser errors in $file : $($errors -join '; ')"
     }
+}
+
+# The GUI driver dispatches the exact synchronous WM_COMMAND messages handled
+# by Salamander. Prevent accidental drift of command IDs in resource.rh2.
+$resourceCommands = Get-Content -LiteralPath (
+    Join-Path $toolsDir '..\..\src\resource.rh2') -Raw
+$guiDriver = Get-Content -LiteralPath (
+    Join-Path $toolsDir 'tests\Test-SalamanderGui-LongPaths.ps1') -Raw
+foreach ($command in @(
+    @{ Name = 'CM_CLIPPASTE'; Id = 775 }
+    @{ Name = 'CM_CLIPCOPYFULLPATH'; Id = 711 }
+    @{ Name = 'CM_CLIPCOPYNAME'; Id = 710 }
+)) {
+    $pattern = '(?m)^\s*#define\s+' + $command.Name +
+               '\s+' + $command.Id + '(?:\s|$)'
+    if ($resourceCommands -notmatch $pattern) {
+        throw "GUI test command ID no longer matches src/resource.rh2: $($command.Name)"
+    }
+}
+if ($guiDriver -notmatch 'SendMessageTimeout' -or
+    $guiDriver -notmatch 'Invoke-SalamanderCommand') {
+    throw 'GUI test must synchronize clipboard commands with the main window.'
+}
+
+
+
+# A single Shift+Up marks only the previously focused row in Salamander.
+# Both F5 and F6 fixtures must explicitly mark two verified regular files.
+$multiSelectBlock = [regex]::Match(
+    $guiDriver,
+    '(?s)if \(\$ShortUnicodeMultiSelectOnly\) \{\s*# Arrange: existing, distinct source and destination directories\.(.*?)if \(\$ShortUnicodeRowIdentityOnly\) \{'
+).Groups[1].Value
+if ([string]::IsNullOrEmpty($multiSelectBlock) -or
+    $multiSelectBlock -match "Send-Keys '\+\{UP\}'" -or
+    ([regex]::Matches($multiSelectBlock, 'Select-TwoRegularFiles')).Count -ne 2 -or
+    $guiDriver -notmatch '(?s)function Select-TwoRegularFiles\s*\{.*?Send-Keys ''\{INSERT\}''.*?Send-Keys ''\{INSERT\}''') {
+    throw 'GUI F5/F6 multiselect must mark two verified file rows using Insert, not a single Shift+Up.'
+}
+
+
+# The GUI driver must recover safely from a transient clipboard/navigation
+# stall without repeating commands after success or hiding real modal errors.
+$navigationBlock = [regex]::Match(
+    $guiDriver,
+    '(?s)function Go-ToPath\s*\{(.*?)\nfunction Read-FocusedFilename'
+).Groups[1].Value
+if ([string]::IsNullOrEmpty($navigationBlock) -or
+    $navigationBlock -notmatch 'maxNavigationAttempts\s*=\s*2' -or
+    $navigationBlock -notmatch 'TimeoutSecondsOverride' -or
+    $navigationBlock -notmatch 'Get-TestDialog' -or
+    $guiDriver -notmatch '(?s)function Read-PanelPath\s*\{.*?Invoke-SalamanderCommand -CommandId 711.*?for \(\$attempt') {
+    throw 'GUI navigation must bound clipboard retries, reject modal errors and verify an idempotent retry.'
+}
+foreach ($prefix in @(
+    'Cannot activate verified test Salamander',
+    'Salamander command {0} did not complete',
+    'GUI navigation failed: {0}',
+    'GUI startup failed: {0}'
+)) {
+    if ($guiDriver -notmatch [regex]::Escape('throw (("' + $prefix)) {
+        throw "GUI diagnostics must format the entire error message: $prefix"
+    }
+}
+
+
+# Closing a refusal dialog can return foreground focus to another process.
+# The test must restore its own verified main HWND before any next SendKeys,
+# while retaining Send-Keys' strict foreign-process input refusal.
+$unsafeOperationBlock = [regex]::Match(
+    $guiDriver,
+    '(?s)if \(\$ShortUnicodeUnsafeOperationsOnly\) \{\s*# Destructive shortcuts(.*?)\n    if \(\$ShortUnicodeCollisionOnly\) \{'
+).Groups[1].Value
+if ([string]::IsNullOrEmpty($unsafeOperationBlock) -or
+    $unsafeOperationBlock -notmatch "(?s)Send-Keys '\{ESC\}'\s*Wait-Until \{ -not \(Get-TestDialog\) \}[^\r\n]*\r?\n(?:\s*#[^\r\n]*\r?\n)*\s*Focus-TestProcess" -or
+    $unsafeOperationBlock -notmatch 'Assert-True \(\(Read-PanelPath\) -ceq \$source\)' -or
+    $guiDriver -notmatch 'Refusing to send input to a window owned by another process') {
+    throw 'Unicode unsafe-operation GUI test must restore verified app focus after modal refusal and validate source panel.'
+}
+
+
+# GUI tests are unattended: start only after the GUI message loop is idle,
+# and never send keyboard input to another process. A lost focus may be
+# restored only to the previously verified test HWND and only if no Salamander
+# modal dialog is awaiting input.
+$startupBlock = [regex]::Match(
+    $guiDriver,
+    '(?s)\$process = Start-Process(.*?)\n    Go-ToPath \$source'
+).Groups[1].Value
+$sendKeysBlock = [regex]::Match(
+    $guiDriver,
+    '(?s)function Send-Keys\s*\{(.*?)\n\}'
+).Groups[1].Value
+if ([string]::IsNullOrEmpty($startupBlock) -or
+    $startupBlock -notmatch '\.WaitForInputIdle\(' -or
+    [string]::IsNullOrEmpty($sendKeysBlock) -or
+    $sendKeysBlock -notmatch 'Get-TestDialog' -or
+    $sendKeysBlock -notmatch 'Focus-TestProcess' -or
+    $sendKeysBlock -notmatch 'Refusing to send input' -or
+    $sendKeysBlock -notmatch '\[Windows\.Forms\.SendKeys\]::SendWait') {
+    throw 'Unattended GUI tests require startup idle verification and guarded foreground recovery.'
+}
+
+
+# The baseline must prove keyboard focus, not merely a synchronous clipboard
+# WM_COMMAND. Without this assertion a user click could conceal a focus bug.
+$baselineCheck = [regex]::Match(
+    $guiDriver,
+    '(?s)Write-Host ''PASS: GUI driver can navigate a normal short directory''(.*?)\n    if \(\$ShortOperationsOnly\) \{'
+).Groups[1].Value
+if ([string]::IsNullOrEmpty($baselineCheck) -or
+    $baselineCheck -notmatch "Send-Keys '\{END\}'" -or
+    $baselineCheck -notmatch 'Read-FocusedFilename' -or
+    $guiDriver -notmatch '\$focusProbeName\s*=\s*''focus-probe.txt''') {
+    throw 'GUI baseline must verify real focused-file keyboard navigation.'
+}
+
+# A rejected long Unicode clipboard path must never fall back to a
+# truncated CP_ACP alias or a truncated CF_TEXT representation. Those
+# can refer to a different, existing directory.
+$pasteCode = Get-Content -LiteralPath (Join-Path $toolsDir '..\\..\\src\\fileswn9.cpp') -Raw
+$pasteBlock = [regex]::Match(
+    $pasteCode,
+    '(?s)void CFilesWindow::ClipboardPastePath\(\)(.*?)void CFilesWindow::ChangeFilter'
+).Groups[1].Value
+if ([string]::IsNullOrEmpty($pasteBlock) -or
+    $pasteBlock -match 'buff\[0\] != 0 && GetLastError\(\) == ERROR_INSUFFICIENT_BUFFER' -or
+    $pasteBlock -notmatch 'unicodeTextPresent' -or
+    $pasteBlock -notmatch 'Salamander::IsExactAnsiName\(buff, pathW\)' -or
+    $pasteBlock -notmatch 'strlen\(path\) < sizeof\(buff\)' -or
+    $pasteBlock -notmatch 'if \(!changePath && !unicodeTextPresent\)') {
+    throw 'Clipboard navigation must reject incomplete Unicode and ANSI clipboard paths.'
+}
+
+# The primary UTF-16 directory enumeration returns a native find handle.
+# It is not a C__Handles member; explicitly register successful opens,
+# because the legacy panel closes them through HANDLES(FindClose).
+$panelSource = Get-Content -LiteralPath (Join-Path $toolsDir '..\\..\\src\\fileswn3.cpp') -Raw
+if ($panelSource -match 'HANDLES(?:_Q)?\s*\(\s*Salamander::FindFirstUnicodePanelFile') {
+    throw 'Unicode panel enumeration must not be dispatched as a C__Handles member.'
+}
+if ($panelSource -notmatch 'search\s*=\s*Salamander::FindFirstUnicodePanelFile\s*\(' -or
+    $panelSource -notmatch 'if\s*\(search\s*!=\s*INVALID_HANDLE_VALUE\)\s*HANDLES_ADD\s*\(\s*__htFindFile\s*,\s*__hoFindFirstFile\s*,\s*search\s*\)') {
+    throw 'Unicode panel search handles must be tracked before monitored FindClose.'
+}
+
+# The disk listing scratch buffer is now dynamic. Preserve its previous
+# minimum size for extension processing and require explicit raw-pointer access.
+# Native Windows compilation remains the authoritative check for C++ types.
+if ($panelSource -notmatch 'std::vector<char>\s+fileName\s*\(\s*\(pathLen\s*>\s*MAX_PATH\s*\?\s*pathLen\s*:\s*MAX_PATH\)\s*\+\s*4\s*\)' -or
+    $panelSource -match 'strlen\s*\(\s*fileName\s*\)' -or
+    $panelSource -match 'char\s*\*\s*st\s*=\s*fileName\s*;' -or
+    $panelSource -match '(?m)^\s*st\s*=\s*fileName\s*;') {
+    throw 'Dynamic panel scratch buffer must retain its minimum capacity and expose .data() to legacy pointer APIs.'
+}
+
+# Switching away from a long disk panel updates BOTH panels' DefaultDir
+# entries. The legacy entries have fixed ANSI capacity; neither panel may
+# write its long path into them, even when it is the inactive panel.
+$mainWindowSource = Get-Content -LiteralPath (Join-Path $toolsDir '..\..\src\mainwnd1.cpp') -Raw
+$defaultDirBlock = [regex]::Match(
+    $mainWindowSource,
+    '(?s)void CMainWindow::UpdateDefaultDir\(BOOL activePrefered\)(.*?)BOOL CMainWindow::ToggleTopToolBar'
+).Groups[1].Value
+if ([string]::IsNullOrEmpty($defaultDirBlock) -or
+    $defaultDirBlock -notmatch 'active->HasLongDiskPath\(\)' -or
+    $defaultDirBlock -notmatch 'nonactive->HasLongDiskPath\(\)' -or
+    ([regex]::Matches($defaultDirBlock, 'strcpy\(DefaultDir\[')).Count -ne 2) {
+    throw 'Long panel paths must not overwrite either fixed-size DefaultDir entry during TAB switching.'
 }
 
 # MSBuild writes intermediate outputs beside .vcxproj files. Those generated

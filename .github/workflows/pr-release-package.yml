@@ -5,6 +5,9 @@ on:
     branches: ["**"]
     paths:
       - "tools/release/**"
+      - "src/safefile.cpp"
+      - "src/fileswn0.cpp"
+      - "src/common/win32_long_path.h"
       - ".github/workflows/pr-release-package.yml"
   workflow_dispatch:
 
@@ -56,6 +59,11 @@ jobs:
         run: ./tools/release/Update-Build-Test-Package.ps1 -SkipUpdate -BuildRoot (Join-Path $env:RUNNER_TEMP 'OpenSal')
 
       # Never expose Debug CRT DLLs via public workflow artifacts.
+      # GUI automation requires an unlocked interactive desktop. GitHub-hosted
+      # runners run as non-interactive services, so real UI tests are a
+      # separate locally executed acceptance gate, not part of this package job.
+      # Invoke .\\manage.cmd --test-gui-baseline, then --test-gui on Windows.
+
       - name: Upload redistributable Release outputs only
         if: success()
         uses: actions/upload-artifact@v4

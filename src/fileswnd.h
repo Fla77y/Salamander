@@ -4,6 +4,10 @@
 
 #pragma once
 
+#include "common/win32_unicode_panel_name.h"
+
+#include <string>
+
 #define NUM_OF_CHECKTHREADS 30                   // maximum number of threads for "non-blocking" path accessibility tests
 #define ICONOVR_REFRESH_PERIOD 2000              // minimum interval between icon-overlay refreshes in the panel (see IconOverlaysChangedOnPath)
 #define MIN_DELAY_BETWEENINACTIVEREFRESHES 2000  // minimum refresh interval when the main window is inactive
@@ -475,7 +479,7 @@ public:
 class CFilesWindowAncestor : public CWindow // the real object core - everything private ;-)
 {
 private:
-    char Path[MAX_PATH];      // path for a ptDisk panel - normal ("c:\path") or UNC ("\\server\share\path")
+    std::string Path; // owned disk path; legacy plugin contracts remain bounded
     BOOL SuppressAutoRefresh; // TRUE if the user canceled directory listing during reading and chose temporary auto-refresh suppression
 
     CPanelType PanelType; // type of panel (disk, archive, plugin FS)
@@ -547,7 +551,8 @@ public:
     // it returns TRUE if the path fits into the buffer completely, otherwise a truncated path is returned
     BOOL GetGeneralPath(char* buf, int bufSize, BOOL convertFSPathToExternal = FALSE);
 
-    const char* GetPath() { return Path; }
+    const char* GetPath() { return Path.c_str(); }
+    BOOL HasLongDiskPath() { return Is(ptDisk) && Path.size() >= MAX_PATH - 2; }
     BOOL Is(CPanelType type) { return type == PanelType; }
     CPanelType GetPanelType() { return PanelType; }
     BOOL GetMonitorChanges() { return MonitorChanges; }
@@ -706,6 +711,9 @@ enum CViewModeEnum;
 class CFilesWindow : public CFilesWindowAncestor
 {
 public:
+    // Read-only mapping from legacy disk-panel names to original UTF-16 names.
+    // Never put this state into the plug-in-visible CFileData structure.
+    Salamander::UnicodePanelNameCache UnicodeDiskNames;
     CViewTemplate* ViewTemplate;            // pointer to the template defining mode, name and visibility
                                             // of the standard Salamander columns VIEW_SHOW_xxxx
     BOOL NarrowedNameColumn;                // TRUE = Name column smart mode is enabled and it had to be narrowed
@@ -1069,6 +1077,10 @@ public:
     // but only if this is not a refresh;
     // only for FS in the panel: 'tryCloseReason' is the reason passed to CPluginFSInterfaceAbstract::TryCloseOrDetach()
     // returns TRUE if the requested path was listed successfully
+    BOOL ChangeLongPathToDisk(HWND parent, const char* path, int suggestedTopIndex,
+                              const char* suggestedFocusName, BOOL* noChange,
+                              BOOL refreshListBox, BOOL canForce, BOOL isRefresh,
+                              int* failReason, int tryCloseReason);
     BOOL ChangePathToDisk(HWND parent, const char* path, int suggestedTopIndex = -1,
                           const char* suggestedFocusName = NULL, BOOL* noChange = NULL,
                           BOOL refreshListBox = TRUE, BOOL canForce = FALSE, BOOL isRefresh = FALSE,
@@ -1298,6 +1310,15 @@ public:
     BOOL SetUnescapedHotPathToEmptyPos();
     void GotoRoot();
 
+    // A conservative disk-to-disk UTF-16 transfer for one uniquely resolved
+    // regular file. Returns false to keep unsupported selections fail-closed.
+    BOOL TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* target);
+    // Bounded multi-selection of ordinary Unicode disk files; any unsupported
+    // selection remains behind the legacy ANSI fail-closed operation gate.
+    BOOL TryUnicodeMultiFileTransfer(CActionType type, CFilesWindow* target);
+    // Only an explicitly configured recycle operation may handle a lossy
+    // UTF-16 filename; permanent F8 and unsupported entries remain blocked.
+    BOOL TryUnicodeSingleFileRecycle();
     void FilesAction(CActionType type, CFilesWindow* target = NULL, int countSizeMode = 0);
     void PluginFSFilesAction(CPluginFSActionType type);
     void CreateDir(CFilesWindow* target);

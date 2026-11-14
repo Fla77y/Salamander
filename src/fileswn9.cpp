@@ -23,6 +23,7 @@ extern "C"
 #include "shexreg.h"
 }
 #include "salshlib.h"
+#include "common/win32_unicode_panel_name.h"
 
 // !!! do not use StdColumnsPrivate directly, use GetStdColumn()
 CColumDataItem StdColumnsPrivate[STANDARD_COLUMNS_COUNT] =
@@ -628,10 +629,12 @@ void CFilesWindow::ClipboardPastePath()
     char buff[2 * MAX_PATH];
     buff[0] = 0;
     BOOL changePath = FALSE;
+    BOOL unicodeTextPresent = FALSE;
 
     if (OpenClipboard(HWindow))
     {
         HANDLE handle = GetClipboardData(CF_UNICODETEXT);
+        unicodeTextPresent = handle != NULL;
         if (handle != NULL)
         {
             WCHAR* pathW = (WCHAR*)HANDLES(GlobalLock(handle));
@@ -639,17 +642,15 @@ void CFilesWindow::ClipboardPastePath()
             {
                 while (*pathW != 0 && *pathW <= L' ')
                     pathW++; // trim spaces+CR+LF before the path
-                if (ConvertU2A(pathW, -1, buff, _countof(buff)))
+                if (ConvertU2A(pathW, -1, buff, _countof(buff)) &&
+                    Salamander::IsExactAnsiName(buff, pathW))
                     changePath = TRUE;
-                else
-                {
-                    if (buff[0] != 0 && GetLastError() == ERROR_INSUFFICIENT_BUFFER)
-                        changePath = TRUE; // if the buffer is small, ignore it (same as ANSI version)
-                }
+                // Never interpret a truncated or lossy CP_ACP conversion as a path.
+                // A prefix can name a different, existing directory.
                 HANDLES(GlobalUnlock(handle));
             }
         }
-        if (!changePath) // probably not Unicode, try ANSI (when Unicode is present ANSI is usually broken - without diacritics)
+        if (!changePath && !unicodeTextPresent) // fallback only when no Unicode text was published
         {
             handle = GetClipboardData(CF_TEXT);
             char* path = (char*)HANDLES(GlobalLock(handle));
@@ -657,9 +658,13 @@ void CFilesWindow::ClipboardPastePath()
             {
                 while (*path != 0 && *path <= ' ')
                     path++; // trim spaces+CR+LF before the path
-                lstrcpyn(buff, path, _countof(buff));
-
-                changePath = TRUE;
+                // The legacy disk panel cannot store a longer ANSI path.
+                // Refuse the entire input rather than navigating to its prefix.
+                if (strlen(path) < sizeof(buff))
+                {
+                    lstrcpyn(buff, path, _countof(buff));
+                    changePath = TRUE;
+                }
                 HANDLES(GlobalUnlock(handle));
             }
         }
@@ -1868,6 +1873,78 @@ BOOL CFilesWindow::CopyFocusedNameToClipboard(CCopyFocusedNameModeEnum mode)
     if (FocusedIndex < 0 || FocusedIndex >= Files->Count + Dirs->Count)
         return FALSE; // ignore an invalid index
 
+    CFileData* focusedItem = (FocusedIndex < Dirs->Count)
+                                ? &Dirs->At(FocusedIndex)
+                                : &Files->At(FocusedIndex - Dirs->Count);
+
+    // A Windows ACP best-fit mapping may silently change a disk name
+    // without producing '?'. Consult the complete per-listing UTF-16
+    // identity index, not a character heuristic.
+    if (Is(ptDisk) && (HasLongDiskPath() || UnicodeDiskNames.IsUnsafeAnsiName(focusedItem->Name)))
+    {
+        // The W primary enumeration binds the original UTF-16 name to the
+        // row's heap-backed Name pointer. This remains unambiguous when
+        // two distinct Unicode entries share the same ANSI alias.
+        std::wstring indexedName;
+        const bool hasRowIdentity =
+            UnicodeDiskNames.TryGetRow(focusedItem->Name, indexedName);
+        if (!hasRowIdentity &&
+            !UnicodeDiskNames.TryGetLossy(focusedItem->Name, indexedName))
+        {
+            TRACE_E("Cannot resolve Unicode disk name for focused row");
+            return FALSE;
+        }
+
+        std::wstring unicodeDirectory;
+        if (!Salamander::TryGetUnicodePanelDirectory(GetPath(), unicodeDirectory))
+            return FALSE;
+
+        DWORD error = ERROR_SUCCESS;
+        if (!hasRowIdentity)
+        {
+            // Compatibility fallback: only an alias with one unique W entry
+            // is exportable when the row identity is unavailable.
+            std::wstring resolvedName;
+            if (Salamander::ResolveUnicodePanelFileName(
+                    unicodeDirectory.c_str(), focusedItem->Name,
+                    resolvedName, error) !=
+                    Salamander::UnicodePanelNameResult::Unique ||
+                resolvedName != indexedName)
+            {
+                TRACE_E("Unicode disk name changed or became ambiguous (error " << error << ")");
+                return FALSE;
+            }
+        }
+
+        std::wstring unicodeFullPath = unicodeDirectory;
+        if (!unicodeFullPath.empty() && unicodeFullPath.back() != L'\\')
+            unicodeFullPath.push_back(L'\\');
+        unicodeFullPath.append(indexedName);
+
+        // Require the exact W path to still exist before exporting it.
+        // This check never substitutes a colliding ANSI alias.
+        std::wstring extendedPath;
+        if (!Salamander::TryMakeExtendedLengthPath(
+                unicodeFullPath.c_str(), extendedPath, error))
+            return FALSE;
+        const DWORD attributes = GetFileAttributesW(extendedPath.c_str());
+        if (attributes == INVALID_FILE_ATTRIBUTES ||
+            ((attributes & FILE_ATTRIBUTE_DIRECTORY) != 0) !=
+                ((focusedItem->Attr & FILE_ATTRIBUTE_DIRECTORY) != 0))
+            return FALSE;
+
+        if (mode == cfnmShort)
+            return Salamander::TryCopyUnicodeNameToClipboard(
+                MainWindow->HWindow, indexedName) ? TRUE : FALSE;
+
+        if (mode == cfnmFull)
+            return Salamander::TryCopyUnicodeNameToClipboard(
+                MainWindow->HWindow, unicodeFullPath) ? TRUE : FALSE;
+
+        // The existing ANSI UNC translation cannot preserve this name.
+        return FALSE;
+    }
+
     char buff[2 * MAX_PATH];
     buff[0] = 0;
 
@@ -1932,6 +2009,13 @@ BOOL CFilesWindow::CopyFocusedNameToClipboard(CCopyFocusedNameModeEnum mode)
 BOOL CFilesWindow::CopyCurrentPathToClipboard()
 {
     CALL_STACK_MESSAGE1("CFilesWindow::CopyCurrentPathToClipboard()");
+
+    if (HasLongDiskPath())
+    {
+        std::wstring directory;
+        return Salamander::TryGetUnicodePanelDirectory(GetPath(), directory) &&
+               Salamander::TryCopyUnicodeNameToClipboard(MainWindow->HWindow, directory);
+    }
 
     char buff[2 * MAX_PATH];
     buff[0] = 0;

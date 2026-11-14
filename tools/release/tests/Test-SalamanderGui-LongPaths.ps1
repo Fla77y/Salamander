@@ -1,0 +1,1277 @@
+#requires -Version 7.4
+# SPDX-FileCopyrightText: 2026 Open Salamander Authors
+# SPDX-License-Identifier: GPL-2.0-or-later
+<#
+.SYNOPSIS
+    Tests Salamander's GUI with Unicode names and paths >260 UTF-16 units.
+.DESCRIPTION
+    Requires unlocked interactive Windows desktop and PowerShell 7 in STA.
+    Uses documented Salamander commands and F2/F5/F6/F8 with synchronized clipboard access
+    shortcuts. Only creates/operates on disposable temporary files.
+    An explicit failure means no long-path GUI compatibility was proven.
+.EXAMPLE
+    pwsh -Sta -NoProfile -File .\tools\release\tests\Test-SalamanderGui-LongPaths.ps1
+#>
+[CmdletBinding()]
+param(
+    [string]$SalamanderExe = 'D:\Build\OpenSal\salamander\Release_x64\salamand.exe',
+    [ValidateRange(5,120)][int]$TimeoutSeconds = 25,
+    [switch]$KeepFixture,
+    [switch]$BaselineOnly,
+    [switch]$ShortUnicodeOnly,
+    [switch]$ShortUnicodeRenameOnly,
+    [switch]$ShortUnicodeRecycleOnly,
+    [switch]$ShortUnicodeTransferOnly,
+    [switch]$ShortUnicodeTransferCollisionOnly,
+    [switch]$ShortUnicodeBestFitOnly,
+    [switch]$ShortUnicodeCollisionOnly,
+    [switch]$ShortUnicodeRowIdentityOnly,
+    [switch]$ShortUnicodeMultiSelectOnly,
+    [switch]$ShortUnicodeDirectoryRenameOnly,
+    [switch]$ShortUnicodeUnsafeOperationsOnly,
+    [switch]$ShortOperationsOnly
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+if (-not $IsWindows) { throw 'This GUI test requires Windows.' }
+if ([Threading.Thread]::CurrentThread.GetApartmentState() -ne 'STA') {
+    throw 'Use STA mode: pwsh -Sta -NoProfile -File Test-SalamanderGui-LongPaths.ps1'
+}
+if (-not (Test-Path -LiteralPath $SalamanderExe -PathType Leaf)) {
+    throw "Salamander executable missing: $SalamanderExe"
+}
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+using System.Collections.Generic;
+using System.Text;
+public static class SalamanderGuiNative
+{
+    [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+    [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll", EntryPoint = "SendMessageTimeoutW", SetLastError = true)]
+    public static extern IntPtr SendMessageTimeout(
+        IntPtr hWnd, uint msg, UIntPtr wParam, IntPtr lParam,
+        uint flags, uint timeoutMilliseconds, out IntPtr result);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowTextW(IntPtr window, StringBuilder buffer, int capacity);
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetLastActivePopup(IntPtr window);
+    [DllImport("user32.dll")]
+    public static extern bool IsWindowVisible(IntPtr window);
+    [DllImport("user32.dll")]
+    public static extern bool IsHungAppWindow(IntPtr window);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern int WideCharToMultiByte(
+        uint codePage, uint flags, string source, int sourceLength,
+        byte[] destination, int destinationLength, IntPtr defaultChar, IntPtr usedDefault);
+    [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern int MultiByteToWideChar(
+        uint codePage, uint flags, byte[] source, int sourceLength,
+        [Out] char[] destination, int destinationLength);
+
+    // Use Windows CP_ACP itself, not .NET's UTF-8 Encoding.Default, to
+    // detect silent best-fit substitution without any '?' byte.
+    public static bool HasLossyAliasWithoutQuestionMark(string name)
+    {
+        int bytes = WideCharToMultiByte(0, 0, name, -1, null, 0, IntPtr.Zero, IntPtr.Zero);
+        if (bytes <= 1) return false;
+        byte[] encoded = new byte[bytes];
+        if (WideCharToMultiByte(0, 0, name, -1, encoded, bytes, IntPtr.Zero, IntPtr.Zero) != bytes)
+            return false;
+        for (int i = 0; i < bytes - 1; ++i)
+            if (encoded[i] == (byte)'?') return false;
+        int units = MultiByteToWideChar(0, 0, encoded, bytes, null, 0);
+        if (units <= 1) return false;
+        char[] roundTrip = new char[units];
+        if (MultiByteToWideChar(0, 0, encoded, bytes, roundTrip, units) != units)
+            return false;
+        return !String.Equals(name, new String(roundTrip, 0, units - 1), StringComparison.Ordinal);
+    }
+    public static string GetLegacyFilenameAliasHex(string name)
+    {
+        if (String.IsNullOrEmpty(name)) throw new ArgumentException("Missing filename", "name");
+        int bytes = WideCharToMultiByte(0, 0, name, -1, null, 0, IntPtr.Zero, IntPtr.Zero);
+        if (bytes <= 1) throw new InvalidOperationException("Cannot encode ANSI filename alias");
+        byte[] encoded = new byte[bytes];
+        if (WideCharToMultiByte(0, 0, name, -1, encoded, bytes, IntPtr.Zero, IntPtr.Zero) != bytes)
+            throw new InvalidOperationException("Cannot encode ANSI filename alias");
+        return BitConverter.ToString(encoded, 0, bytes - 1);
+    }
+    public delegate bool WindowCallback(IntPtr window, IntPtr parameter);
+    [DllImport("user32.dll")]
+    private static extern bool EnumChildWindows(IntPtr window, WindowCallback callback, IntPtr parameter);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool EnumWindows(WindowCallback callback, IntPtr parameter);
+
+    public sealed class TopLevelWindow
+    {
+        public IntPtr Handle { get; set; }
+        public uint ProcessId { get; set; }
+        public string Title { get; set; }
+        public bool Visible { get; set; }
+    }
+
+    // Enumerate real top-level HWNDs, not Process.MainWindowHandle's heuristic.
+    public static List<TopLevelWindow> GetProcessWindows(uint processId)
+    {
+        List<TopLevelWindow> windows = new List<TopLevelWindow>();
+        WindowCallback callback = (window, parameter) =>
+        {
+            uint ownerPid;
+            GetWindowThreadProcessId(window, out ownerPid);
+            if (ownerPid == processId)
+            {
+                StringBuilder title = new StringBuilder(512);
+                GetWindowTextW(window, title, title.Capacity);
+                windows.Add(new TopLevelWindow
+                {
+                    Handle = window,
+                    ProcessId = ownerPid,
+                    Title = title.ToString(),
+                    Visible = IsWindowVisible(window)
+                });
+            }
+            return true;
+        };
+        if (!EnumWindows(callback, IntPtr.Zero))
+            throw new InvalidOperationException("EnumWindows failed: " + Marshal.GetLastWin32Error());
+        return windows;
+    }
+
+    // Select only a visible Salamander top-level window owned by our launched PID.
+    public static IntPtr FindMainWindow(uint processId)
+    {
+        foreach (TopLevelWindow window in GetProcessWindows(processId))
+        {
+            if (window.Visible &&
+                window.Title.IndexOf("Open Salamander", StringComparison.OrdinalIgnoreCase) >= 0)
+                return window.Handle;
+        }
+        return IntPtr.Zero;
+    }
+
+    public static string GetWindowCaption(IntPtr window)
+    {
+        StringBuilder caption = new StringBuilder(512);
+        GetWindowTextW(window, caption, caption.Capacity);
+        return caption.ToString();
+    }
+
+    // A dialog's message is in child controls; the caption alone is ambiguous.
+    public static string DescribeWindow(IntPtr window) {
+        List<string> messages = new List<string>();
+        StringBuilder caption = new StringBuilder(512);
+        GetWindowTextW(window, caption, caption.Capacity);
+        if (caption.Length > 0) messages.Add(caption.ToString());
+        WindowCallback callback = (child, parameter) => {
+            StringBuilder label = new StringBuilder(512);
+            GetWindowTextW(child, label, label.Capacity);
+            if (label.Length > 0 && messages.Count < 12)
+                messages.Add(label.ToString());
+            return true;
+        };
+        EnumChildWindows(window, callback, IntPtr.Zero);
+        return string.Join(" | ", messages);
+    }
+    [StructLayout(LayoutKind.Sequential)]
+    public struct GuiRect { public int Left, Top, Right, Bottom; }
+    [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out GuiRect rect);
+    [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+    [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr window);
+    [DllImport("user32.dll")] private static extern bool BringWindowToTop(IntPtr window);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool AttachThreadInput(uint threadId, uint attachToId, bool attach);
+    [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
+
+    // Only a live, visible HWND belonging to the freshly launched test PID
+    // may be activated. The final fallback briefly shares the input queue
+    // with the foreground thread, then unconditionally detaches it.
+    // Windows can still deny foreground activation; callers must verify it.
+    public static bool TryActivateVerifiedWindow(IntPtr window, uint expectedPid, bool useSharedInputFallback)
+    {
+        if (window == IntPtr.Zero || expectedPid == 0 ||
+            !IsWindow(window) || !IsWindowVisible(window))
+            return false;
+
+        uint ownerPid;
+        uint ownerThread = GetWindowThreadProcessId(window, out ownerPid);
+        if (ownerThread == 0 || ownerPid != expectedPid)
+            return false;
+
+        if (GetForegroundWindow() == window)
+            return true;
+
+        ShowWindow(window, 9); // SW_RESTORE; harmless when already visible
+        SetForegroundWindow(window);
+        if (GetForegroundWindow() == window)
+            return true;
+        if (!useSharedInputFallback)
+            return false;
+
+        IntPtr previous = GetForegroundWindow();
+        uint previousPid;
+        uint foregroundThread = GetWindowThreadProcessId(previous, out previousPid);
+        uint currentThread = GetCurrentThreadId();
+        if (foregroundThread == 0 || foregroundThread == currentThread)
+            return false;
+
+        if (!AttachThreadInput(currentThread, foregroundThread, true))
+            return false;
+        try
+        {
+            // Do not race an intervening user focus change or a destroyed
+            // test window. Never attach to an unverified Salamander HWND.
+            uint latestPid;
+            if (GetForegroundWindow() != previous ||
+                !IsWindow(window) ||
+                GetWindowThreadProcessId(window, out latestPid) == 0 ||
+                latestPid != expectedPid)
+                return false;
+
+            BringWindowToTop(window);
+            SetForegroundWindow(window);
+        }
+        finally
+        {
+            AttachThreadInput(currentThread, foregroundThread, false);
+        }
+        return GetForegroundWindow() == window;
+    }
+}
+'@
+
+$oldClipboard = $null
+try { $oldClipboard = [System.Windows.Forms.Clipboard]::GetDataObject() }
+catch { Write-Warning 'Original clipboard could not be saved.' }
+
+$root = Join-Path ([IO.Path]::GetTempPath()) ('OpenSal-GuiLong-' + [guid]::NewGuid().ToString('N'))
+$source = Join-Path $root 'source'
+$destination = Join-Path $root 'destination'
+$moveDir = Join-Path $root 'move-target'
+$maxDir = Join-Path $root 'maximum-names'
+$maxName = ('n' * 251) + '.txt'
+$renamedName = 'Umbenannt_日本_😀.txt'
+$deep = $source
+$process = $null
+$mainWindowHandle = [IntPtr]::Zero
+$passed = $false
+$utfName = 'Größe_東京_😀.txt'
+$utfCollisionName = 'Größe_大阪_😀.txt'
+$bestFitName = $null
+$bestFitFile = $null
+$payload = [Text.Encoding]::UTF8.GetBytes(('Regression-äöü-東京-😀' * 1024))
+
+function Assert-True {
+    param([bool]$Condition, [string]$Description)
+    if (-not $Condition) { throw "FAIL: $Description" }
+    Write-Host "PASS: $Description"
+}
+
+function Wait-Until {
+    param(
+        [scriptblock]$Condition,
+        [string]$Description,
+        [ValidateRange(0,120)][int]$TimeoutSecondsOverride = 0
+    )
+    $seconds = if ($TimeoutSecondsOverride -gt 0) { $TimeoutSecondsOverride } else { $TimeoutSeconds }
+    $deadline = [DateTime]::UtcNow.AddSeconds($seconds)
+    do {
+        if (& $Condition) { return }
+        Start-Sleep -Milliseconds 200
+    } while ([DateTime]::UtcNow -lt $deadline)
+    throw "Timeout waiting for $Description"
+}
+
+function Get-ProcessWindowSummary {
+    param([uint32]$OwnerProcessId)
+
+    $windows = [SalamanderGuiNative]::GetProcessWindows($OwnerProcessId)
+    if ($windows.Count -eq 0) { return '<no top-level windows for launched process>' }
+    $descriptions = foreach ($window in $windows) {
+        $title = $window.Title.Replace([char]13, ' ').Replace([char]10, ' ')
+        'HWND=0x{0:X} visible={1} title={2}' -f
+            $window.Handle.ToInt64(), $window.Visible, $title
+    }
+    return ($descriptions -join '; ')
+}
+
+function Get-ActiveProcessId {
+    [uint32]$id = 0
+    $h = [SalamanderGuiNative]::GetForegroundWindow()
+    [void][SalamanderGuiNative]::GetWindowThreadProcessId($h, [ref]$id)
+    return $id
+}
+
+function Get-ForegroundWindowSummary {
+    $h = [SalamanderGuiNative]::GetForegroundWindow()
+    if ($h -eq [IntPtr]::Zero) { return 'HWND=<none>' }
+    [uint32]$ownerPid = 0
+    [void][SalamanderGuiNative]::GetWindowThreadProcessId($h, [ref]$ownerPid)
+    $caption = [SalamanderGuiNative]::GetWindowCaption($h)
+    return ('HWND=0x{0:X} PID={1} title={2}' -f
+            $h.ToInt64(), $ownerPid, $caption)
+}
+
+function Get-TestDialog {
+    if ($null -eq $process) { return $null }
+    $process.Refresh()
+    if ($process.HasExited) { return $null }
+    $main = $mainWindowHandle
+    if ($main -eq [IntPtr]::Zero) { return $null }
+    $popup = [SalamanderGuiNative]::GetLastActivePopup($main)
+    $foreground = [SalamanderGuiNative]::GetForegroundWindow()
+    [uint32]$ownerPid = 0
+    [void][SalamanderGuiNative]::GetWindowThreadProcessId($foreground, [ref]$ownerPid)
+    if ($ownerPid -eq [uint32]$process.Id -and $foreground -ne $main) {
+        return [SalamanderGuiNative]::DescribeWindow($foreground)
+    }
+    if ($popup -ne [IntPtr]::Zero -and $popup -ne $main -and
+        [SalamanderGuiNative]::IsWindowVisible($popup)) {
+        return [SalamanderGuiNative]::DescribeWindow($popup)
+    }
+    return $null
+}
+
+function Focus-TestProcess {
+    $process.Refresh()
+    if ($process.HasExited) { throw 'Test Salamander process terminated unexpectedly.' }
+    $h = $mainWindowHandle
+    if ($h -eq [IntPtr]::Zero) { throw 'No verified main window for test Salamander.' }
+
+    $attempts = 0
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    do {
+        $process.Refresh()
+        if ($process.HasExited) { throw 'Test Salamander process terminated unexpectedly.' }
+
+        [uint32]$windowPid = 0
+        [void][SalamanderGuiNative]::GetWindowThreadProcessId($h, [ref]$windowPid)
+        if ($windowPid -ne [uint32]$process.Id) {
+            throw "Main window no longer belongs to launched Salamander PID $($process.Id)."
+        }
+
+        $attempts++
+        # Two normal attempts first. Bounded input-queue recovery is used
+        # only on selected later attempts to avoid excessive UI disruption.
+        $useFallback = $attempts -eq 3 -or $attempts -eq 10
+        $activated = [SalamanderGuiNative]::TryActivateVerifiedWindow(
+            $h, [uint32]$process.Id, $useFallback)
+        if ($activated -and [SalamanderGuiNative]::GetForegroundWindow() -eq $h) {
+            return
+        }
+        Start-Sleep -Milliseconds 350
+    } while ([DateTime]::UtcNow -lt $deadline)
+
+    $foreground = Get-ForegroundWindowSummary
+    $windows = Get-ProcessWindowSummary -OwnerProcessId ([uint32]$process.Id)
+    throw (("Cannot activate verified test Salamander window HWND=0x{0:X} PID={1} " +
+           "after {2} attempts. Foreground: {3}; test process windows: {4}. " +
+           "Windows may deny SetForegroundWindow; no keys were sent.") -f
+           $h.ToInt64(), $process.Id, $attempts, $foreground, $windows)
+}
+
+function Send-Keys {
+    param([string]$Keys)
+
+    if ((Get-ActiveProcessId) -ne [uint32]$process.Id) {
+        # Never redirect input away from an outstanding Salamander dialog.
+        # Recover foreground focus only to the already verified test window.
+        $dialog = Get-TestDialog
+        if (-not [string]::IsNullOrEmpty($dialog)) {
+            throw "Refusing foreground recovery while a Salamander dialog is open: $dialog"
+        }
+
+        $previousForeground = Get-ForegroundWindowSummary
+        Focus-TestProcess
+        Write-Host "GUI focus recovered for test process; previous foreground: $previousForeground"
+    }
+
+    if ((Get-ActiveProcessId) -ne [uint32]$process.Id) {
+        throw "Refusing to send input to a window owned by another process. Foreground: $(Get-ForegroundWindowSummary)"
+    }
+
+    [Windows.Forms.SendKeys]::SendWait($Keys)
+    Start-Sleep -Milliseconds 200
+}
+
+# Salamander resource.rh2: CM_CLIPPASTE=775, CM_CLIPCOPYFULLPATH=711,
+# CM_CLIPCOPYNAME=710, CM_CLIPCOPYFULLNAME=709. Dispatch synchronously to avoid racing with clipboard
+# contents: SendKeys posts input, after which the test used to overwrite the
+# clipboard before Salamander had consumed the original path.
+function Invoke-SalamanderCommand {
+    param(
+        [ValidateSet(709,710,711,775)][int]$CommandId
+    )
+    $process.Refresh()
+    if ($process.HasExited) { throw 'Salamander exited while dispatching a GUI command.' }
+    $main = $mainWindowHandle
+    if ($main -eq [IntPtr]::Zero) { throw 'Verified Salamander main window handle missing.' }
+    [uint32]$ownerPid = 0
+    [void][SalamanderGuiNative]::GetWindowThreadProcessId($main, [ref]$ownerPid)
+    if ($ownerPid -ne [uint32]$process.Id) {
+        throw "Refusing GUI command: window owner PID $ownerPid does not match test process $($process.Id)."
+    }
+
+    [IntPtr]$commandResult = [IntPtr]::Zero
+    $timer = [Diagnostics.Stopwatch]::StartNew()
+    $sent = [SalamanderGuiNative]::SendMessageTimeout(
+        $main, [uint32]0x0111, [UIntPtr]::new([uint32]$CommandId),
+        [IntPtr]::Zero, [uint32]0x0002, [uint32]5000, [ref]$commandResult)
+    # Do not call Get-TestDialog (or any other P/Invoke) before capturing
+    # this error; otherwise the diagnostic loses the failed Win32 status.
+    $lastError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+    $timer.Stop()
+    if ($sent -eq [IntPtr]::Zero) {
+        $hung = [SalamanderGuiNative]::IsHungAppWindow($main)
+        $dialog = Get-TestDialog
+        throw (("Salamander command {0} did not complete after {1} ms; " +
+            "SendMessageTimeout Win32 error {2}; IsHungAppWindow={3}; modal dialog='{4}'") -f
+            $CommandId, $timer.ElapsedMilliseconds, $lastError, $hung, $dialog)
+    }
+}
+
+function Set-ClipboardText {
+    param([string]$Text)
+    for ($i=0; $i -lt 10; $i++) {
+        try { [Windows.Forms.Clipboard]::SetText($Text); return }
+        catch { Start-Sleep -Milliseconds 100 }
+    }
+    throw 'Clipboard unavailable for GUI input.'
+}
+
+function Get-ClipboardText {
+    for ($i=0; $i -lt 10; $i++) {
+        try { return [Windows.Forms.Clipboard]::GetText() }
+        catch { Start-Sleep -Milliseconds 100 }
+    }
+    throw 'Clipboard unavailable for GUI assertion.'
+}
+
+function Read-PanelPath {
+    # WM_COMMAND 711 is synchronous, but the clipboard can be briefly
+    # unavailable or a command can fail to publish text during startup.
+    # A failed read must not consume the entire navigation timeout.
+    $sentinel = 'SENTINEL_NOT_PATH'
+    Set-ClipboardText $sentinel
+    Invoke-SalamanderCommand -CommandId 711
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        for ($poll = 0; $poll -lt 4; $poll++) {
+            $observed = Get-ClipboardText
+            if (-not [string]::IsNullOrWhiteSpace($observed) -and $observed -cne $sentinel) {
+                return $observed.TrimEnd([char]13, [char]10)
+            }
+            Start-Sleep -Milliseconds 150
+        }
+        if ($attempt -lt 3) {
+            Set-ClipboardText $sentinel
+            Invoke-SalamanderCommand -CommandId 711
+        }
+    }
+    throw 'Panel path clipboard shortcut did not publish a path after 3 verified command dispatches.'
+}
+
+function Go-ToPath {
+    param([string]$Path)
+
+    # The only clipboard payload is CF_UNICODETEXT, not a file drop. The
+    # synchronous WM_COMMAND 775 requests navigation to that directory.
+    # A second request is permitted only after a verified timeout with no
+    # modal dialog and the original test process still in the foreground.
+    $maxNavigationAttempts = 2
+    $diagnostics = @{
+        ForegroundPid = 0
+        PanelPath = '<not read>'
+        PanelReadError = '<none>'
+    }
+
+    for ($attempt = 1; $attempt -le $maxNavigationAttempts; $attempt++) {
+        Focus-TestProcess
+        Set-ClipboardText $Path
+        Assert-True ((Get-ClipboardText) -ceq $Path) 'Clipboard contains only the requested text path'
+        Invoke-SalamanderCommand -CommandId 775
+
+        try {
+            # Short first attempt permits a bounded recovery from transient
+            # startup clipboard races. The final attempt uses the full timeout.
+            $probeSeconds = if ($attempt -eq 1) { 6 } else { $TimeoutSeconds }
+            Wait-Until {
+                $dialogText = Get-TestDialog
+                if (-not [string]::IsNullOrEmpty($dialogText)) {
+                    throw "Salamander raised a dialog during navigation to '$Path': $dialogText"
+                }
+                $diagnostics.ForegroundPid = Get-ActiveProcessId
+                if ($diagnostics.ForegroundPid -ne [uint32]$process.Id) { return $false }
+                # Do not steal focus from an error dialog to make a timeout look
+                # like an application path failure.
+                try {
+                    $diagnostics.PanelPath = Read-PanelPath
+                    $diagnostics.PanelReadError = '<none>'
+                    return $diagnostics.PanelPath -ceq $Path
+                }
+                catch {
+                    $diagnostics.PanelReadError = $_.Exception.Message
+                    return $false
+                }
+            } "Salamander navigation to $Path" -TimeoutSecondsOverride $probeSeconds
+
+            Assert-True ($diagnostics.PanelPath -ceq $Path) "Salamander panel path agrees with requested ($($Path.Length) UTF-16 units)"
+            return
+        }
+        catch {
+            $failure = $_.Exception.Message
+            $dialogText = Get-TestDialog
+            if ($attempt -lt $maxNavigationAttempts -and
+                $failure -like 'Timeout waiting for Salamander navigation*' -and
+                $diagnostics.ForegroundPid -eq [uint32]$process.Id -and
+                [string]::IsNullOrEmpty($dialogText)) {
+                Write-Warning ("GUI navigation not confirmed on attempt {0}; last path='{1}'; clipboard read='{2}'. Retrying once." -f
+                    $attempt, $diagnostics.PanelPath, $diagnostics.PanelReadError)
+                continue
+            }
+
+            $process.Refresh()
+            throw (("GUI navigation failed: {0}; Salamander PID={1}; HWND=0x{2:X}; title='{3}'; " +
+                "foreground PID={4}; last panel path='{5}'; panel read error='{6}'; dialog='{7}'; attempts={8}" ) -f
+                $failure, $process.Id, $mainWindowHandle.ToInt64(),
+                [SalamanderGuiNative]::GetWindowCaption($mainWindowHandle),
+                $diagnostics.ForegroundPid, $diagnostics.PanelPath,
+                $diagnostics.PanelReadError, $dialogText, $attempt)
+        }
+    }
+}
+
+function Read-FocusedFilename {
+    Set-ClipboardText 'SENTINEL_NOT_FILENAME'
+    Invoke-SalamanderCommand -CommandId 710
+    Wait-Until { (Get-ClipboardText) -ne 'SENTINEL_NOT_FILENAME' } 'focused file name clipboard shortcut'
+    return (Get-ClipboardText).TrimEnd([char]13, [char]10)
+}
+
+
+# Mark exactly two verified regular-file rows. In Salamander, one Shift+Up
+# selects the previous caret row only, so it cannot prove a two-file selection.
+# Insert toggles the focused row and advances to the next row when possible.
+function Select-TwoRegularFiles {
+    param([string[]]$ExpectedNames)
+    if ($ExpectedNames.Count -ne 2) {
+        throw 'Exactly two expected filenames are required.'
+    }
+
+    Send-Keys '{END}'
+    $lastName = Read-FocusedFilename
+    Send-Keys '{UP}'
+    $previousName = Read-FocusedFilename
+
+    $observedNames = @($previousName, $lastName) | Sort-Object
+    $expectedSorted = $ExpectedNames | Sort-Object
+    Assert-True (($observedNames -join [char]0) -ceq ($expectedSorted -join [char]0)) 'Both adjacent file rows match the expected source filenames'
+
+    Send-Keys '{INSERT}'
+    Assert-True ((Read-FocusedFilename) -ceq $lastName) 'Insert selected the previous row and advanced to the last row'
+    Send-Keys '{INSERT}'
+}
+
+function Read-FocusedFullname {
+    Set-ClipboardText 'SENTINEL_NOT_FULLNAME'
+    Invoke-SalamanderCommand -CommandId 709
+    Wait-Until { (Get-ClipboardText) -ne 'SENTINEL_NOT_FULLNAME' } 'focused full path clipboard shortcut'
+    return (Get-ClipboardText).TrimEnd([char]13, [char]10)
+}
+
+function Test-Content {
+    param([string]$Path)
+    if (-not [IO.File]::Exists($Path)) { return $false }
+    return [Linq.Enumerable]::SequenceEqual[byte]([IO.File]::ReadAllBytes($Path), $payload)
+}
+
+function Save-FailureScreenshot {
+    try {
+        # Save only the app window; other desktop windows may contain private data.
+        if ($null -eq $process -or $process.HasExited) { return }
+        $shotWindow = $mainWindowHandle
+        $foreground = [SalamanderGuiNative]::GetForegroundWindow()
+        [uint32]$ownerPid = 0
+        [void][SalamanderGuiNative]::GetWindowThreadProcessId($foreground, [ref]$ownerPid)
+        if ($ownerPid -eq [uint32]$process.Id) { $shotWindow = $foreground }
+        $b = [SalamanderGuiNative+GuiRect]::new()
+        if (-not [SalamanderGuiNative]::GetWindowRect($shotWindow, [ref]$b)) { return }
+        $width = $b.Right - $b.Left
+        $height = $b.Bottom - $b.Top
+        if ($width -le 0 -or $height -le 0) { return }
+        $bitmap = [Drawing.Bitmap]::new($width, $height)
+        try {
+            $graphics = [Drawing.Graphics]::FromImage($bitmap)
+            try { $graphics.CopyFromScreen($b.Left, $b.Top, 0, 0, [Drawing.Size]::new($width, $height)) }
+            finally { $graphics.Dispose() }
+            $file = Join-Path $root 'gui-failure.png'
+            $bitmap.Save($file, [Drawing.Imaging.ImageFormat]::Png)
+            Write-Warning "Screenshot of failed GUI test: $file"
+        }
+        finally { $bitmap.Dispose() }
+    }
+    catch { Write-Warning "Screenshot unavailable: $($_.Exception.Message)" }
+}
+
+try {
+    # ARRANGE: fixtures are scoped to the chosen test mode. In particular
+    # a baseline-only pass must never be confused with a long-path pass.
+    [IO.Directory]::CreateDirectory($source) | Out-Null
+    Assert-True ($source.Length -lt 257) 'Short-path GUI baseline fixture is below MAX_PATH'
+    if ($BaselineOnly) {
+        # The baseline must also demonstrate that the automated keystroke
+        # reaches the focused file panel without manual window activation.
+        $focusProbeName = 'focus-probe.txt'
+        [IO.File]::WriteAllBytes((Join-Path $source $focusProbeName), $payload)
+    }
+    if ($ShortOperationsOnly) {
+        # Arrange an independent, short ASCII operation baseline before
+        # migrating disk file operations. Never touch non-fixture files.
+        [IO.Directory]::CreateDirectory($destination) | Out-Null
+        [IO.Directory]::CreateDirectory($moveDir) | Out-Null
+        $asciiName = 'baseline.txt'
+        $asciiRenamedName = 'renamed-baseline.txt'
+        [IO.File]::WriteAllBytes((Join-Path $source $asciiName), $payload)
+    }
+    if (-not $BaselineOnly -and -not $ShortOperationsOnly -and
+        -not $ShortUnicodeBestFitOnly) {
+        # Independent Unicode-only fixture with a short total path.
+        $unicodeShortFile = Join-Path $source $utfName
+        [IO.File]::WriteAllBytes($unicodeShortFile, $payload)
+        Assert-True ($unicodeShortFile.Length -lt 260) 'Unicode filename fixture fits below MAX_PATH'
+    }
+    if ($ShortUnicodeBestFitOnly) {
+        foreach ($unicodeChar in @(
+            [char]0xFF21, [char]0xFF41, [char]0x2010,
+            [char]0x2011, [char]0x2013, [char]0x2014,
+            [char]0x2212, [char]0x2018, [char]0x2019,
+            [char]0x2460, [char]0x2160
+        )) {
+            $candidate = 'bestfit_' + $unicodeChar + '.txt'
+            if ([SalamanderGuiNative]::HasLossyAliasWithoutQuestionMark($candidate)) {
+                $bestFitName = $candidate
+                $bestFitFile = Join-Path $source $bestFitName
+                [IO.File]::WriteAllBytes($bestFitFile, $payload)
+                Assert-True ($bestFitFile.Length -lt 260) 'Best-fit Unicode filename fits below MAX_PATH'
+                break
+            }
+        }
+    }
+    if ($ShortUnicodeTransferOnly -or $ShortUnicodeTransferCollisionOnly -or $ShortUnicodeMultiSelectOnly) {
+        [IO.Directory]::CreateDirectory($destination) | Out-Null
+        [IO.Directory]::CreateDirectory($moveDir) | Out-Null
+    }
+    if ($ShortUnicodeDirectoryRenameOnly) {
+        $unicodeDirectoryName = 'Ordner_東京_😀'
+        $renamedUnicodeDirectoryName = 'Verschoben_大阪_😀'
+        $unicodeDirectoryPath = Join-Path $source $unicodeDirectoryName
+        [IO.Directory]::CreateDirectory($unicodeDirectoryPath) | Out-Null
+        [IO.File]::WriteAllBytes((Join-Path $unicodeDirectoryPath 'child.txt'), $payload)
+    }
+    if ($ShortUnicodeMultiSelectOnly) {
+        # The transfer source deliberately mixes one lossy Unicode name with
+        # one ordinary ASCII entry. F5/F6 must transfer BOTH selected rows.
+        $secondName = 'baseline-second.txt'
+        $secondBytes = [Text.Encoding]::UTF8.GetBytes('INDEPENDENT-ASCII-PAYLOAD')
+        [IO.File]::WriteAllBytes((Join-Path $source $secondName), $secondBytes)
+    }
+    if ($ShortUnicodeCollisionOnly -or $ShortUnicodeRowIdentityOnly -or $ShortUnicodeUnsafeOperationsOnly) {
+        # These distinct UTF-16 names may have the same CP_ACP alias.
+        # A distinct marker protects against cross-file identity errors.
+        if ($ShortUnicodeUnsafeOperationsOnly) {
+            [IO.Directory]::CreateDirectory($destination) | Out-Null
+        }
+        $collisionFile = Join-Path $source $utfCollisionName
+        $collisionPayload = [Text.Encoding]::UTF8.GetBytes('DISTINCT-OSAKA-FILE')
+        [IO.File]::WriteAllBytes($collisionFile, $collisionPayload)
+        Assert-True ($collisionFile.Length -lt 260) 'Unicode collision fixture uses a short path'
+    }
+    if (-not $BaselineOnly -and -not $ShortUnicodeOnly -and
+        -not $ShortUnicodeCollisionOnly -and -not $ShortUnicodeRowIdentityOnly -and
+        -not $ShortUnicodeBestFitOnly -and -not $ShortUnicodeRenameOnly -and
+        -not $ShortUnicodeTransferOnly -and -not $ShortUnicodeTransferCollisionOnly -and
+        -not $ShortUnicodeMultiSelectOnly -and
+        -not $ShortUnicodeDirectoryRenameOnly -and
+        -not $ShortUnicodeRecycleOnly -and
+        -not $ShortUnicodeUnsafeOperationsOnly -and -not $ShortOperationsOnly) {
+        [IO.Directory]::CreateDirectory($destination) | Out-Null
+        [IO.Directory]::CreateDirectory($moveDir) | Out-Null
+        [IO.Directory]::CreateDirectory($maxDir) | Out-Null
+        [IO.File]::WriteAllBytes((Join-Path $maxDir $maxName), $payload)
+        foreach ($n in 1..5) {
+            $deep = Join-Path $deep ('depth-' + $n + '-' + ('x' * 56))
+            [IO.Directory]::CreateDirectory($deep) | Out-Null
+        }
+        $sourceFile = Join-Path $deep $utfName
+        [IO.File]::WriteAllBytes($sourceFile, $payload)
+        Assert-True ($sourceFile.Length -gt 260) 'Long-path fixture exceeds 260 UTF-16 units'
+    }
+
+    # Never attach keystrokes to an existing user instance.
+    if (@(Get-Process salamand -ErrorAction SilentlyContinue).Count -gt 0) {
+        throw 'Please close existing Salamander instances before running automated GUI tests.'
+    }
+    $process = Start-Process -FilePath $SalamanderExe -WorkingDirectory (Split-Path -Parent $SalamanderExe) -PassThru
+    # Process.MainWindowHandle/MainWindowTitle may select an auxiliary
+    # window. The GUI driver must use the HWND found by Win32 enumeration.
+    try {
+        Wait-Until {
+            $process.Refresh()
+            if ($process.HasExited) {
+                throw 'Test Salamander exited before its main window became ready.'
+            }
+            $script:mainWindowHandle = [SalamanderGuiNative]::FindMainWindow([uint32]$process.Id)
+            return $script:mainWindowHandle -ne [IntPtr]::Zero
+        } 'visible Open Salamander top-level window owned by launched process'
+    }
+    catch {
+        $process.Refresh()
+        $windowSummary = Get-ProcessWindowSummary -OwnerProcessId ([uint32]$process.Id)
+        throw (("GUI startup failed: {0}; launched PID={1}; .NET MainWindowHandle=0x{2:X}; " +
+            ".NET title='{3}'; process windows: {4}") -f
+            $_.Exception.Message, $process.Id, $process.MainWindowHandle.ToInt64(),
+            $process.MainWindowTitle, $windowSummary)
+    }
+    # A visible top-level window is not evidence that startup has finished.
+    # Do not begin clipboard navigation or keyboard simulation until the
+    # launched GUI process has reached its initial input-idle state.
+    if (-not $process.WaitForInputIdle(10000)) {
+        throw "Test Salamander did not become input-idle within 10 seconds (PID $($process.Id))."
+    }
+    $process.Refresh()
+    $testIsAdmin = [Security.Principal.WindowsPrincipal]::new(
+        [Security.Principal.WindowsIdentity]::GetCurrent()
+    ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    $windowTitle = [SalamanderGuiNative]::GetWindowCaption($mainWindowHandle)
+    Write-Host ("GUI driver: Salamander PID = {0}; verified HWND = 0x{1:X}; title = '{2}'; test session elevated = {3}" -f
+        $process.Id, $mainWindowHandle.ToInt64(), $windowTitle, $testIsAdmin)
+    # Salamander marks its window title with '(Administrator)' when elevated.
+    # UIPI can silently block SendKeys from a non-elevated PowerShell process.
+    # Refuse to misclassify that as a path/name failure.
+    if (-not $testIsAdmin -and $windowTitle -match '\(Administrator\)') {
+        throw 'Salamander is elevated but the GUI-test PowerShell is not. Keyboard input can be blocked by Windows UIPI. Run both at the same integrity level, preferably both unelevated.'
+    }
+    Focus-TestProcess
+
+    # First validate the GUI driver against a normal short path. If this
+    # fails, treat it as an automation/infrastructure problem, NOT as proof
+    # that the application lacks long-path support.
+    Go-ToPath $source
+    # Go-ToPath already verified the observed panel path. A duplicate
+    # WM_COMMAND 711 adds no coverage and can race with GUI processing.
+    Write-Host 'PASS: GUI driver can navigate a normal short directory'
+    if ($BaselineOnly) {
+        Send-Keys '{END}'
+        Assert-True ((Read-FocusedFilename) -ceq $focusProbeName) 'Unattended keyboard focus reaches the test file panel'
+        $passed = $true
+        Write-Host 'PASS: GUI automation driver works with short ASCII paths and verified keyboard focus.'
+        return
+    }
+
+    if ($ShortOperationsOnly) {
+        # ACT + ASSERT: establish F5, F2, F6 and F8 behavior on a short ASCII
+        # path before changing the production file-operation engine.
+        Send-Keys '{END}'
+        Assert-True ((Read-FocusedFilename) -ceq $asciiName) 'ASCII source file selected for F5'
+        Send-Keys '{TAB}'
+        Go-ToPath $destination
+        Send-Keys '{TAB}'
+        Assert-True ((Read-PanelPath) -ceq $source) 'ASCII source panel active for F5'
+        Send-Keys '{END}'
+        Assert-True ((Read-FocusedFilename) -ceq $asciiName) 'Exact ASCII file selected before F5'
+        Send-Keys '{F5}'
+        Start-Sleep -Milliseconds 400
+        Send-Keys '{ENTER}'
+        $copied = Join-Path $destination $asciiName
+        Wait-Until { Test-Content $copied } 'ASCII F5 copy'
+        Assert-True (Test-Content (Join-Path $source $asciiName)) 'F5 preserved original ASCII source'
+
+        Send-Keys '{TAB}'
+        Assert-True ((Read-PanelPath) -ceq $destination) 'ASCII copy destination active for F2'
+        Send-Keys '{END}'
+        Assert-True ((Read-FocusedFilename) -ceq $asciiName) 'Exact ASCII file selected before F2'
+        Set-ClipboardText $asciiRenamedName
+        Send-Keys '{F2}'
+        Start-Sleep -Milliseconds 350
+        Send-Keys '^a'
+        Send-Keys '^v'
+        Send-Keys '{ENTER}'
+        $renamed = Join-Path $destination $asciiRenamedName
+        Wait-Until { (Test-Content $renamed) -and -not [IO.File]::Exists($copied) } 'ASCII F2 rename'
+
+        Send-Keys '{TAB}'
+        Go-ToPath $moveDir
+        Send-Keys '{TAB}'
+        Assert-True ((Read-PanelPath) -ceq $destination) 'ASCII source panel active for F6'
+        Send-Keys '{END}'
+        Assert-True ((Read-FocusedFilename) -ceq $asciiRenamedName) 'Exact ASCII file selected before F6'
+        Send-Keys '{F6}'
+        Start-Sleep -Milliseconds 400
+        Send-Keys '{ENTER}'
+        $moved = Join-Path $moveDir $asciiRenamedName
+        Wait-Until { (Test-Content $moved) -and -not [IO.File]::Exists($renamed) } 'ASCII F6 move'
+
+        Send-Keys '{TAB}'
+        Assert-True ((Read-PanelPath) -ceq $moveDir) 'Disposable ASCII panel active for F8'
+        Send-Keys '{END}'
+        Assert-True ((Read-FocusedFilename) -ceq $asciiRenamedName) 'Exact disposable ASCII file selected before F8'
+        Send-Keys '{F8}'
+        Start-Sleep -Milliseconds 350
+        Send-Keys '{ENTER}'
+        Wait-Until { -not [IO.File]::Exists($moved) } 'ASCII F8 deletion'
+        Assert-True (Test-Content (Join-Path $source $asciiName)) 'Original ASCII source unaffected by F8'
+
+        $passed = $true
+        Write-Host 'PASS: real short ASCII F5/F2/F6/F8 GUI operation baseline.'
+        return
+    }
+
+    if ($ShortUnicodeBestFitOnly) {
+        if ($null -eq $bestFitName) {
+            $passed = $true
+            Write-Host 'SKIP: Windows ACP has no best-fit mapping without a question mark among the test candidates.'
+            return
+        }
+
+        Send-Keys '{END}'
+        $actualName = Read-FocusedFilename
+        Write-Host "GUI best-fit filename comparison: expected='$bestFitName'; actual='$actualName'"
+        Assert-True ($actualName -ceq $bestFitName) 'Unicode best-fit filename recovered without question mark'
+        Assert-True ((Read-FocusedFullname) -ceq $bestFitFile) 'Best-fit Unicode full path recovered without question mark'
+        Assert-True (Test-Content $bestFitFile) 'Best-fit Unicode file content remains intact'
+        $passed = $true
+        Write-Host 'PASS: Unicode GUI filename round-trip survives non-question-mark ANSI best-fit mapping.'
+        return
+    }
+
+    if ($ShortUnicodeRecycleOnly) {
+        # Arrange: a single disposable source file, not a selected directory.
+        Send-Keys '{END}'
+        Assert-True ((Read-FocusedFilename) -ceq $utfName) 'Unicode F8 source identity verified'
+        # Act: the shell Recycle Bin path must never silently delete a file.
+        Send-Keys '{F8}'
+        $observed = @{ Dialog = $null }
+        Wait-Until {
+            $observed.Dialog = Get-TestDialog
+            return $observed.Dialog -match 'Recycle Unicode file|legacy ANSI file-operation engine'
+        } 'Unicode F8 recycle or safe refusal'
+        if ($observed.Dialog -match 'legacy ANSI file-operation engine') {
+            Send-Keys '{ESC}'
+            Assert-True (Test-Content $unicodeShortFile) 'Unicode F8 refusal preserves file bytes'
+            $passed = $true
+            Write-Host 'SKIP: Recycle Bin is not enabled or file is not eligible for wide-shell recycling.'
+            return
+        }
+        Send-Keys '{ENTER}'
+        Wait-Until { -not [IO.File]::Exists($unicodeShortFile) } 'Unicode F8 moves fixture to Recycle Bin'
+        $passed = $true
+        Write-Host 'PASS: Unicode F8 shell recycle request removed disposable source; Recycle Bin restoration needs manual verification.'
+        return
+    }
+
+    if ($ShortUnicodeDirectoryRenameOnly) {
+        # Directory sorting precedes files; the first non-".." entry is
+        # the disposable Unicode folder.
+        Send-Keys '{HOME}'
+        Send-Keys '{DOWN}'
+        Assert-True ((Read-FocusedFilename) -ceq $unicodeDirectoryName) 'Unicode directory row selected for F2'
+        Set-ClipboardText $renamedUnicodeDirectoryName
+        Send-Keys '{F2}'
+        Start-Sleep -Milliseconds 250
+        Send-Keys '^a'
+        Send-Keys '^v'
+        Send-Keys '{ENTER}'
+        $renamedDirectory = Join-Path $source $renamedUnicodeDirectoryName
+        Wait-Until { [IO.Directory]::Exists($renamedDirectory) -and
+            -not [IO.Directory]::Exists($unicodeDirectoryPath) } 'Unicode F2 directory rename'
+        Assert-True (Test-Content (Join-Path $renamedDirectory 'child.txt')) 'Unicode F2 directory child bytes retained'
+        $passed = $true
+        Write-Host 'PASS: Unicode F2 directory rename preserves nested contents.'
+        return
+    }
+
+    if ($ShortUnicodeMultiSelectOnly) {
+        # Arrange: existing, distinct source and destination directories.
+        Send-Keys '{TAB}'
+        Go-ToPath $destination
+        Send-Keys '{TAB}'
+        Assert-True ((Read-PanelPath) -ceq $source) 'Multi-file source panel verified'
+        Select-TwoRegularFiles -ExpectedNames @($utfName, $secondName)
+        Send-Keys '{F5}'
+        $observed = @{ Dialog = $null }
+        Wait-Until {
+            $observed.Dialog = Get-TestDialog
+            return -not [string]::IsNullOrEmpty($observed.Dialog)
+        } 'Unicode F5 multi-selection confirmation dialog'
+        if ($observed.Dialog -notmatch 'Copy 2 selected Unicode/ASCII disk files') {
+            throw "Expected two-file Unicode F5 batch confirmation; observed: $($observed.Dialog)"
+        }
+        Send-Keys '{ENTER}'
+        $unicodeCopy = Join-Path $destination $utfName
+        $asciiCopy = Join-Path $destination $secondName
+        Wait-Until { (Test-Content $unicodeCopy) -and
+            [IO.File]::Exists($asciiCopy) -and
+            [Linq.Enumerable]::SequenceEqual[byte](
+                [IO.File]::ReadAllBytes($asciiCopy), $secondBytes) } 'Unicode F5 copies both selected files'
+        Assert-True (Test-Content $unicodeShortFile) 'Unicode F5 multiselect preserved original'
+
+        # Arrange: right panel is now the source, left panel the new target.
+        Send-Keys '{TAB}'
+        Go-ToPath $destination
+        Send-Keys '{TAB}'
+        Go-ToPath $moveDir
+        Send-Keys '{TAB}'
+        Assert-True ((Read-PanelPath) -ceq $destination) 'Unicode F6 multi-file source panel verified'
+        Select-TwoRegularFiles -ExpectedNames @($utfName, $secondName)
+        Send-Keys '{F6}'
+        $observed = @{ Dialog = $null }
+        Wait-Until {
+            $observed.Dialog = Get-TestDialog
+            return -not [string]::IsNullOrEmpty($observed.Dialog)
+        } 'Unicode F6 multi-selection confirmation dialog'
+        if ($observed.Dialog -notmatch 'Move 2 selected Unicode/ASCII disk files') {
+            throw "Expected two-file Unicode F6 batch confirmation; observed: $($observed.Dialog)"
+        }
+        Send-Keys '{ENTER}'
+        $unicodeMoved = Join-Path $moveDir $utfName
+        $asciiMoved = Join-Path $moveDir $secondName
+        Wait-Until { (Test-Content $unicodeMoved) -and
+            [IO.File]::Exists($asciiMoved) -and
+            [Linq.Enumerable]::SequenceEqual[byte](
+                [IO.File]::ReadAllBytes($asciiMoved), $secondBytes) -and
+            -not [IO.File]::Exists($unicodeCopy) -and
+            -not [IO.File]::Exists($asciiCopy) } 'Unicode F6 moves both selected files'
+        Assert-True (Test-Content $unicodeShortFile) 'Original Unicode source retained'
+        $passed = $true
+        Write-Host 'PASS: multi-selection Unicode F5/F6 transfers every selected regular file.'
+        return
+    }
+
+    if ($ShortUnicodeRowIdentityOnly) {
+        # Arrange: two distinct Unicode source entries with an identical
+        # ANSI alias on non-UTF-8 code pages, present simultaneously.
+        Send-Keys '{END}'
+        $lastName = Read-FocusedFilename
+        $lastFull = Read-FocusedFullname
+        Send-Keys '{UP}'
+        $previousName = Read-FocusedFilename
+        $previousFull = Read-FocusedFullname
+        $actualNames = @($lastName, $previousName) | Sort-Object
+        $expectedNames = @($utfName, $utfCollisionName) | Sort-Object
+        Assert-True (($actualNames -join [char]0) -ceq ($expectedNames -join [char]0)) 'Distinct per-row Unicode names survive ANSI alias collision'
+        Assert-True (($lastFull -ceq (Join-Path $source $lastName)) -and
+            ($previousFull -ceq (Join-Path $source $previousName))) 'Distinct full Unicode clipboard paths follow selected panel row'
+        Assert-True ((Test-Content $unicodeShortFile) -and
+            ([Text.Encoding]::UTF8.GetString([IO.File]::ReadAllBytes($collisionFile)) -ceq 'DISTINCT-OSAKA-FILE')) 'Both Unicode collision fixture contents preserved'
+        $passed = $true
+        Write-Host 'PASS: both colliding ANSI alias rows retain their independent UTF-16 names and full paths.'
+        return
+    }
+
+    if ($ShortUnicodeTransferCollisionOnly) {
+        # Arrange: two distinct payloads under the same UTF-16 name.
+        $protected = Join-Path $destination $utfName
+        $marker = [Text.Encoding]::UTF8.GetBytes('TARGET-MUST-STAY-IN-PLACE')
+        [IO.File]::WriteAllBytes($protected, $marker)
+        Send-Keys '{TAB}'
+        Go-ToPath $destination
+        Send-Keys '{TAB}'
+        Send-Keys '{END}'
+        Assert-True ((Read-FocusedFilename) -ceq $utfName) 'Unicode collision source selected'
+        foreach ($operation in @('{F5}', '{F6}')) {
+            # Act: a name collision must never silently overwrite.
+            Send-Keys $operation
+            Wait-Until { (Get-TestDialog) -match 'Unicode file to the other panel' } 'Unicode transfer confirmation'
+            Send-Keys '{ENTER}'
+            Wait-Until { (Get-TestDialog) -match 'Unicode operation failed' } 'Unicode transfer overwrite refusal'
+            Send-Keys '{ESC}'
+            Wait-Until { -not (Get-TestDialog) } 'Unicode collision error dismissal'
+            # Assert: both files retain their independent bytes.
+            Assert-True (Test-Content $unicodeShortFile) 'Unicode transfer collision source intact'
+            Assert-True ([Linq.Enumerable]::SequenceEqual[byte](
+                [IO.File]::ReadAllBytes($protected), $marker)) 'Unicode transfer collision target intact'
+        }
+        $passed = $true
+        Write-Host 'PASS: UTF-16 F5/F6 do not overwrite existing Unicode destinations.'
+        return
+    }
+
+    if ($ShortUnicodeTransferOnly) {
+        # Arrange: separate source and target panels, both below MAX_PATH.
+        Send-Keys '{TAB}'
+        Go-ToPath $destination
+        Send-Keys '{TAB}'
+        Assert-True ((Read-PanelPath) -ceq $source) 'Unicode F5 source panel verified'
+        Send-Keys '{END}'
+        Assert-True ((Read-FocusedFilename) -ceq $utfName) 'Unicode F5 source identity verified'
+        # Act: F5 must use the exact UTF-16 source name and copy to destination.
+        Send-Keys '{F5}'
+        Wait-Until { (Get-TestDialog) -match 'Copy the Unicode file' } 'Unicode F5 confirmation'
+        Send-Keys '{ENTER}'
+        $copied = Join-Path $destination $utfName
+        Wait-Until { Test-Content $copied } 'Unicode F5 copy to other disk panel'
+        # Assert: original remains, payload matches.
+        Assert-True (Test-Content $unicodeShortFile) 'Unicode F5 preserves source bytes'
+
+        # Arrange: move the copy to a distinct disposable directory.
+        Send-Keys '{TAB}'
+        Assert-True ((Read-PanelPath) -ceq $destination) 'Unicode F6 source panel verified'
+        Send-Keys '{TAB}'
+        Go-ToPath $moveDir
+        Send-Keys '{TAB}'
+        Send-Keys '{END}'
+        Assert-True ((Read-FocusedFilename) -ceq $utfName) 'Unicode F6 source identity verified'
+        # Act: F6 must not leave a duplicate in the source directory.
+        Send-Keys '{F6}'
+        Wait-Until { (Get-TestDialog) -match 'Move the Unicode file' } 'Unicode F6 confirmation'
+        Send-Keys '{ENTER}'
+        $moved = Join-Path $moveDir $utfName
+        Wait-Until { (Test-Content $moved) -and -not [IO.File]::Exists($copied) } 'Unicode F6 move to other disk panel'
+        # Assert: both source-of-truth and moved content are intact.
+        Assert-True (Test-Content $unicodeShortFile) 'Unicode F6 leaves original fixture intact'
+        Assert-True (Test-Content $moved) 'Unicode F6 preserves moved content'
+        $passed = $true
+        Write-Host 'PASS: real Unicode F5 and F6 file transfer without ANSI narrowing.'
+        return
+    }
+
+    if ($ShortUnicodeRenameOnly) {
+        Send-Keys '{END}'
+        Assert-True ((Read-FocusedFilename) -ceq $utfName) 'Unicode source filename selected for F2'
+        Set-ClipboardText $renamedName
+        Send-Keys '{F2}'
+        Start-Sleep -Milliseconds 350
+        Send-Keys '^a'
+        Send-Keys '^v'
+        Send-Keys '{ENTER}'
+        $renamedPath = Join-Path $source $renamedName
+        Wait-Until { [IO.File]::Exists($renamedPath) -and
+            -not [IO.File]::Exists($unicodeShortFile) } 'UTF-16 F2 rename without ANSI narrowing'
+        Assert-True (Test-Content $renamedPath) 'Unicode F2 renamed file preserves original bytes'
+        $passed = $true
+        Write-Host 'PASS: genuine Unicode F2 rename works without ANSI conversion or overwrite.'
+        return
+    }
+
+    if ($ShortUnicodeUnsafeOperationsOnly) {
+        # Destructive shortcuts are only sent to disposable fixture names,
+        # and the operation MUST be rejected by the new production guard.
+        # An unexpected native rename/confirmation dialog is not accepted.
+        $aliasA = [SalamanderGuiNative]::GetLegacyFilenameAliasHex($utfName)
+        $aliasB = [SalamanderGuiNative]::GetLegacyFilenameAliasHex($utfCollisionName)
+        if ($aliasA -cne $aliasB) {
+            $passed = $true
+            Write-Host 'SKIP: current Windows ANSI code page does not conflate the Unicode test names.'
+            return
+        }
+
+        Send-Keys '{END}'
+        foreach ($operation in @(
+            @{ Key = '{F2}'; Name = 'F2 rename' },
+            @{ Key = '{F5}'; Name = 'F5 copy' },
+            @{ Key = '{F6}'; Name = 'F6 move' },
+            @{ Key = '{F8}'; Name = 'F8 delete' }
+        )) {
+            if ($operation.Name -eq 'F5 copy') {
+                Send-Keys '{TAB}'
+                Go-ToPath $destination
+                Send-Keys '{TAB}'
+                Send-Keys '{END}'
+            }
+
+            # The test must never send a destructive shortcut unless the
+            # disposable source panel and a known Unicode row are active.
+            Assert-True ((Read-PanelPath) -ceq $source) "Unicode source panel verified before $($operation.Name)"
+            $focusedName = Read-FocusedFilename
+            Assert-True (($focusedName -ceq $utfName) -or
+                ($focusedName -ceq $utfCollisionName)) "Disposable Unicode row verified before $($operation.Name)"
+
+            Send-Keys $operation.Key
+            $blocked = @{ Dialog = '<none>' }
+            Wait-Until {
+                $blocked.Dialog = Get-TestDialog
+                return $blocked.Dialog -match 'legacy ANSI file-operation engine'
+            } "safe refusal dialog for $($operation.Name)"
+            Write-Host "PASS: $($operation.Name) refused unsafe Unicode identity"
+            Send-Keys '{ESC}'
+            Wait-Until { -not (Get-TestDialog) } "dismissal of $($operation.Name) refusal dialog"
+            # The shell may hand foreground focus back to PowerShell after a
+            # modal dialog. Restore only the PID/HWND verified at startup.
+            # Send-Keys must continue to refuse unowned foreground windows.
+            Focus-TestProcess
+
+            Assert-True ((Test-Content $unicodeShortFile) -and
+                [Linq.Enumerable]::SequenceEqual[byte](
+                    [IO.File]::ReadAllBytes($collisionFile), $collisionPayload
+                )) "Original Unicode files intact after $($operation.Name)"
+            Assert-True (-not [IO.File]::Exists((Join-Path $destination $utfName)) -and
+                -not [IO.File]::Exists((Join-Path $destination $utfCollisionName))) "No Unicode destination created by $($operation.Name)"
+        }
+
+        $passed = $true
+        Write-Host 'PASS: F2/F5/F6/F8 reject lossy disk filenames without changing either file.'
+        return
+    }
+
+    if ($ShortUnicodeCollisionOnly) {
+        # Require an actual CP_ACP alias collision before checking that
+        # Salamander refuses to export a guessed filename. When the system
+        # ACP represents both names distinctly (e.g. UTF-8), skip cleanly.
+        $aliasA = [SalamanderGuiNative]::GetLegacyFilenameAliasHex($utfName)
+        $aliasB = [SalamanderGuiNative]::GetLegacyFilenameAliasHex($utfCollisionName)
+        if ($aliasA -cne $aliasB) {
+            $passed = $true
+            Write-Host 'SKIP: current Windows ANSI code page does not conflate the two Unicode names.'
+            return
+        }
+
+        # The new W-backed per-row identity is allowed to export both
+        # source names, but destructive legacy operations still fail closed.
+        Send-Keys '{END}'
+        $lastName = Read-FocusedFilename
+        $lastPath = Read-FocusedFullname
+        Send-Keys '{UP}'
+        $previousName = Read-FocusedFilename
+        $previousPath = Read-FocusedFullname
+        $actualNames = @($lastName, $previousName) | Sort-Object
+        $expectedNames = @($utfName, $utfCollisionName) | Sort-Object
+        Assert-True (($actualNames -join [char]0) -ceq ($expectedNames -join [char]0)) 'Unicode aliases retain distinct per-row names'
+        Assert-True (($lastPath -ceq (Join-Path $source $lastName)) -and
+            ($previousPath -ceq (Join-Path $source $previousName))) 'Unicode aliases retain distinct full paths'
+        Assert-True ((Test-Content $unicodeShortFile) -and
+            [Linq.Enumerable]::SequenceEqual[byte](
+                [IO.File]::ReadAllBytes($collisionFile), $collisionPayload
+            )) 'Collision retained both original file contents'
+        $passed = $true
+        Write-Host 'PASS: Unicode ANSI alias collision preserves two independently addressable panel identities.'
+        return
+    }
+
+    if ($ShortUnicodeOnly) {
+        # A failure here is a Unicode/ANSI filename issue, not a path-length
+        # failure: the full path has been checked to be below MAX_PATH.
+        Send-Keys '{END}'
+        $actualName = Read-FocusedFilename
+        # Retain the strict Unicode assertion; make a mismatch diagnosable.
+        # A fallback to the ANSI-transliterated name would conceal a defect.
+        Write-Host "GUI filename comparison: expected='$utfName'; actual='$actualName'"
+        $expectedUnits = ([char[]]$utfName | ForEach-Object { '{0:X4}' -f [int]$_ }) -join ' '
+        $actualUnits = ([char[]]$actualName | ForEach-Object { '{0:X4}' -f [int]$_ }) -join ' '
+        Write-Host "GUI filename UTF-16 units: expected=[$expectedUnits]; actual=[$actualUnits]"
+        Assert-True ($actualName -ceq $utfName) 'Short Unicode name preserved in Salamander panel'
+        Assert-True ((Read-FocusedFullname) -ceq $unicodeShortFile) 'Short Unicode full path preserved in clipboard'
+        Assert-True (Test-Content $unicodeShortFile) 'Unicode-only file bytes preserved'
+        $passed = $true
+        Write-Host 'PASS: Salamander GUI supports a Unicode name on a short path.'
+        return
+    }
+
+    # ACT + ASSERT: actual GUI long directory change and filename retrieval.
+    Go-ToPath $deep
+    Send-Keys '{END}'
+    Assert-True ((Read-FocusedFilename) -ceq $utfName) 'Salamander panel preserves Unicode filename'
+
+    # ACT + ASSERT: switching away from a long source panel must preserve
+    # the process and both panel paths. This regressed when UpdateDefaultDir
+    # copied the inactive 411-unit path into a fixed MAX_PATH buffer.
+    Send-Keys '{TAB}'
+    Assert-True ((Read-PanelPath) -cne $deep) 'TAB switches away from long path without terminating Salamander'
+    Go-ToPath $destination
+    Send-Keys '{TAB}'
+    Assert-True ((Read-PanelPath) -ceq $deep) 'Source panel still shows long path'
+    Send-Keys '{END}'
+    Assert-True ((Read-FocusedFilename) -ceq $utfName) 'Correct source selected before copy'
+    Send-Keys '{F5}'
+    Start-Sleep -Milliseconds 400
+    Send-Keys '{ENTER}'
+    $targetFile = Join-Path $destination $utfName
+    Wait-Until { Test-Content $targetFile } 'F5 copy and byte verification'
+    Assert-True (Test-Content $targetFile) 'F5 copy retains all UTF-8 file bytes'
+
+    # ACT + ASSERT: F2 renames the selected Unicode file in our test directory.
+    Send-Keys '{TAB}'
+    Assert-True ((Read-PanelPath) -ceq $destination) 'Destination panel active before rename'
+    Send-Keys '{END}'
+    Assert-True ((Read-FocusedFilename) -ceq $utfName) 'Copied file selected before F2'
+    Set-ClipboardText $renamedName
+    Send-Keys '{F2}'
+    Start-Sleep -Milliseconds 350
+    Send-Keys '^a'
+    Send-Keys '^v'
+    Send-Keys '{ENTER}'
+    $renamedFile = Join-Path $destination $renamedName
+    Wait-Until { (Test-Content $renamedFile) -and -not [IO.File]::Exists($targetFile) } 'F2 Unicode rename with byte integrity'
+    Assert-True (Test-Content $renamedFile) 'F2 Unicode rename preserved bytes'
+
+    # ACT + ASSERT: F6 moves from the verified destination to another
+    # disposable panel directory. Do not send F6 without verifying both.
+    Send-Keys '{TAB}'
+    Go-ToPath $moveDir
+    Send-Keys '{TAB}'
+    Assert-True ((Read-PanelPath) -ceq $destination) 'Source panel verified before F6'
+    Send-Keys '{END}'
+    Assert-True ((Read-FocusedFilename) -ceq $renamedName) 'Correct source file selected before F6'
+    Send-Keys '{F6}'
+    Start-Sleep -Milliseconds 400
+    Send-Keys '{ENTER}'
+    $movedFile = Join-Path $moveDir $renamedName
+    Wait-Until { (Test-Content $movedFile) -and -not [IO.File]::Exists($renamedFile) } 'F6 Unicode move with byte integrity'
+    Assert-True (Test-Content $movedFile) 'F6 move preserved all bytes'
+
+    # ACT + ASSERT: F8 deletes ONLY the fixture item after verifying the panel.
+    Send-Keys '{TAB}'
+    Assert-True ((Read-PanelPath) -ceq $moveDir) 'Deletion panel verified as disposable fixture'
+    Send-Keys '{END}'
+    Assert-True ((Read-FocusedFilename) -ceq $renamedName) 'Correct item selected before F8'
+    Send-Keys '{F8}'
+    Start-Sleep -Milliseconds 350
+    Send-Keys '{ENTER}'
+    Wait-Until { -not [IO.File]::Exists($movedFile) } 'F8 deletion of disposable Unicode file'
+    Assert-True (-not [IO.File]::Exists($movedFile)) 'F8 removed only the selected test file'
+
+    # ACT + ASSERT: a maximum-size single path component is not a long
+    # absolute path. The filename must be preserved exactly, not truncated.
+    Go-ToPath $maxDir
+    Send-Keys '{END}'
+    Assert-True ((Read-FocusedFilename) -ceq $maxName) '255-unit ASCII filename visible in Salamander panel'
+    Assert-True (Test-Content (Join-Path $maxDir $maxName)) '255-unit filename data intact'
+
+    $passed = $true
+    Write-Host 'PASS: REAL Salamander GUI long paths, Unicode, F2/F5/F6/F8, 255-unit names.'
+}
+catch {
+    Write-Warning "GUI integration FAILED: $($_.Exception.Message)"
+    Save-FailureScreenshot
+    throw
+}
+finally {
+    if ($null -ne $process) {
+        try {
+            if (-not $process.HasExited) {
+                [void]$process.CloseMainWindow()
+                if (-not $process.WaitForExit(4000)) {
+                    $process.Kill()
+                    [void]$process.WaitForExit(4000)
+                }
+            }
+        }
+        catch { Write-Warning "Could not stop test app: $($_.Exception.Message)" }
+        $process.Dispose()
+    }
+    if ($oldClipboard) {
+        try { [Windows.Forms.Clipboard]::SetDataObject($oldClipboard, $true) }
+        catch { Write-Warning 'Original clipboard could not be restored.' }
+    }
+    if ($passed -and -not $KeepFixture) {
+        try { [IO.Directory]::Delete($root, $true) }
+        catch { Write-Warning "Test fixture cleanup failed: $root - $($_.Exception.Message)" }
+    }
+    else {
+        Write-Host "Diagnostic fixture retained: $root"
+    }
+}

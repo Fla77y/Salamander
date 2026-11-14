@@ -20,6 +20,9 @@
 #include "codetbl.h"
 #include "find.h"
 #include "menu.h"
+#include "common/legacy_disk_name_safety.h"
+#include "common/win32_unicode_file_ops.h"
+#include "common/win32_unicode_rename_dialog.h"
 
 //
 // ****************************************************************************
@@ -2350,6 +2353,206 @@ void CFilesWindow::RenameFile(int specialIndex)
     CFileData* f = NULL;
     BOOL isDir = i < Dirs->Count;
     f = isDir ? &Dirs->At(i) : &Files->At(i - Dirs->Count);
+
+    // A uniquely mapped lossy filename can now be renamed with a native
+    // UTF-16 editor and a no-overwrite Win32 W operation. Ambiguous or
+    // missing identities must still be refused before prompting.
+    if (Is(ptDisk) && (HasLongDiskPath() || UnicodeDiskNames.IsUnsafeAnsiName(f->Name)))
+    {
+        // Reparse points must never be moved as if they were normal files.
+        // A Unicode directory may be renamed only if no other disk panel
+        // currently points into its subtree (otherwise that panel's path
+        // and handles would require a coordinated transaction).
+        if (f->Attr & FILE_ATTRIBUTE_REPARSE_POINT)
+        {
+            SalMessageBox(HWindow,
+                          "Unicode reparse-point rename is not supported safely. "
+                          "No files were changed.",
+                          LoadStr(IDS_ERRORRENAMINGFILE), MB_OK | MB_ICONEXCLAMATION);
+            return;
+        }
+#ifndef _WIN64
+        // The legacy Win32-on-Win64 redirected-directory handling is not
+        // yet integrated with the new wide rename path.
+        if (isDir && Windows64Bit)
+        {
+            SalMessageBox(HWindow,
+                          "Unicode directory rename in a redirected Win32 "
+                          "environment is unavailable. No files were changed.",
+                          LoadStr(IDS_ERRORRENAMINGFILE), MB_OK | MB_ICONEXCLAMATION);
+            return;
+        }
+#endif
+
+        const std::string legacyAlias(f->Name);
+        std::wstring originalName;
+        const bool hasOriginalName = HasLongDiskPath()
+            ? UnicodeDiskNames.TryGetRow(f->Name, originalName)
+            : UnicodeDiskNames.TryGetLossy(legacyAlias.c_str(), originalName);
+        if (!hasOriginalName)
+        {
+            SalMessageBox(HWindow,
+                          "This disk filename cannot be represented safely by the "
+                          "legacy ANSI file-operation engine. No files were changed.",
+                          LoadStr(IDS_ERRORTITLE), MB_OK | MB_ICONEXCLAMATION);
+            return;
+        }
+
+        std::wstring directory;
+        if (!Salamander::TryGetUnicodePanelDirectory(GetPath(), directory))
+        {
+            SalMessageBox(HWindow, GetErrorText(ERROR_INVALID_NAME),
+                          LoadStr(IDS_ERRORRENAMINGFILE), MB_OK | MB_ICONEXCLAMATION);
+            return;
+        }
+
+        // The old snapshot can be stale; the exact wide name must still
+        // resolve uniquely at the time of the operation.
+        std::wstring resolvedName;
+        DWORD error = ERROR_SUCCESS;
+        if (Salamander::ResolveUnicodePanelFileName(
+                directory.c_str(), legacyAlias.c_str(), resolvedName, error) !=
+                Salamander::UnicodePanelNameResult::Unique ||
+            resolvedName != originalName)
+        {
+            SalMessageBox(HWindow,
+                          "The Unicode filename changed or became ambiguous. "
+                          "Refresh the panel and retry. No files were changed.",
+                          LoadStr(IDS_ERRORRENAMINGFILE), MB_OK | MB_ICONEXCLAMATION);
+            return;
+        }
+
+        Salamander::Utf16DiskPath directoryPath;
+        Salamander::Utf16PathError pathError;
+        const std::u16string directoryUnits(directory.begin(), directory.end());
+        if (!Salamander::Utf16DiskPath::TryCreateAbsolute(
+                directoryUnits, directoryPath, pathError))
+        {
+            SalMessageBox(HWindow, GetErrorText(ERROR_INVALID_NAME),
+                          LoadStr(IDS_ERRORRENAMINGFILE), MB_OK | MB_ICONEXCLAMATION);
+            return;
+        }
+
+        const std::u16string originalUnits(originalName.begin(), originalName.end());
+        Salamander::Utf16FileName sourceComponent;
+        Salamander::Utf16DiskPath sourcePath;
+        if (!Salamander::Utf16FileName::TryCreate(
+                originalUnits, sourceComponent, pathError) ||
+            !directoryPath.TryAppend(sourceComponent, sourcePath, pathError))
+        {
+            SalMessageBox(HWindow, GetErrorText(ERROR_INVALID_NAME),
+                          LoadStr(IDS_ERRORRENAMINGFILE), MB_OK | MB_ICONEXCLAMATION);
+            return;
+        }
+
+        if (isDir)
+        {
+            CFilesWindow* otherPanel = MainWindow->GetNonActivePanel();
+            if (otherPanel != NULL && otherPanel->Is(ptDisk))
+            {
+                std::wstring otherDirectory;
+                if (!Salamander::TryGetUnicodePanelDirectory(
+                        otherPanel->GetPath(), otherDirectory))
+                    return;
+
+                const std::wstring currentFolder(
+                    sourcePath.Value().begin(), sourcePath.Value().end());
+                const std::size_t prefixLength = currentFolder.size();
+                if (otherDirectory.size() >= prefixLength &&
+                    CompareStringOrdinal(
+                        otherDirectory.c_str(), static_cast<int>(prefixLength),
+                        currentFolder.c_str(), static_cast<int>(prefixLength),
+                        TRUE) == CSTR_EQUAL &&
+                    (otherDirectory.size() == prefixLength ||
+                     otherDirectory[prefixLength] == L'\\'))
+                {
+                    SalMessageBox(HWindow,
+                                  "The other panel is inside this Unicode folder. "
+                                  "Navigate it elsewhere before renaming. "
+                                  "No files were changed.",
+                                  LoadStr(IDS_ERRORRENAMINGFILE),
+                                  MB_OK | MB_ICONEXCLAMATION);
+                    return;
+                }
+            }
+        }
+
+        std::wstring requestedName = originalName;
+        for (;;)
+        {
+            std::wstring inputName;
+            if (!Salamander::TryPromptUnicodeRename(
+                    HWindow, requestedName, isDir != FALSE,
+                    Configuration.QuickRenameSelectAll != FALSE, inputName))
+                return;
+
+            const std::u16string requestedUnits(inputName.begin(), inputName.end());
+            Salamander::Utf16FileName targetComponent;
+            Salamander::Utf16DiskPath targetPath;
+            if (!Salamander::Utf16FileName::TryCreate(
+                    requestedUnits, targetComponent, pathError) ||
+                !directoryPath.TryAppend(targetComponent, targetPath, pathError))
+            {
+                SalMessageBox(HWindow, GetErrorText(ERROR_INVALID_NAME),
+                              LoadStr(IDS_ERRORRENAMINGFILE), MB_OK | MB_ICONEXCLAMATION);
+                requestedName = inputName;
+                continue;
+            }
+
+            if (inputName == originalName)
+                return; // no rename needed
+
+            // A second wide enumeration limits stale-listing mistakes if
+            // external software changed the directory while editing.
+            resolvedName.clear();
+            if (Salamander::ResolveUnicodePanelFileName(
+                    directory.c_str(), legacyAlias.c_str(), resolvedName, error) !=
+                    Salamander::UnicodePanelNameResult::Unique ||
+                resolvedName != originalName)
+            {
+                SalMessageBox(HWindow,
+                              "The Unicode filename changed or became ambiguous. "
+                              "Refresh the panel and retry. No files were changed.",
+                              LoadStr(IDS_ERRORRENAMINGFILE), MB_OK | MB_ICONEXCLAMATION);
+                return;
+            }
+
+            // A modal dialog allows time for external changes. Do not
+            // rename a substituted reparse point or the wrong object type.
+            std::wstring extendedSource;
+            if (!Salamander::UnicodeFileOperationsDetail::TryGetExtendedPath(
+                    sourcePath, extendedSource, error))
+                return;
+            const DWORD currentAttributes =
+                GetFileAttributesW(extendedSource.c_str());
+            if (currentAttributes == INVALID_FILE_ATTRIBUTES ||
+                (currentAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0 ||
+                ((currentAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) !=
+                    (isDir != FALSE))
+            {
+                SalMessageBox(HWindow,
+                              "The Unicode source changed type or disappeared. "
+                              "No files were renamed.",
+                              LoadStr(IDS_ERRORRENAMINGFILE),
+                              MB_OK | MB_ICONEXCLAMATION);
+                return;
+            }
+
+            BeginSuspendMode();
+            const bool renamed = Salamander::TryMoveUnicodeFileNoOverwrite(
+                sourcePath, targetPath, error);
+            if (renamed)
+                MainWindow->PostChangeOnPathNotification(GetPath(), isDir);
+            EndSuspendMode();
+
+            if (renamed)
+                return;
+
+            SalMessageBox(HWindow, GetErrorText(error),
+                          LoadStr(IDS_ERRORRENAMINGFILE), MB_OK | MB_ICONEXCLAMATION);
+            requestedName = inputName;
+        }
+    }
 
     char formatedFileName[MAX_PATH];
     AlterFileName(formatedFileName, f->Name, -1, Configuration.FileNameFormat, 0, isDir);
