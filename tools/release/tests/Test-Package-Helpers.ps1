@@ -137,9 +137,10 @@ if ([string]::IsNullOrEmpty($baselineCheck) -or
     throw 'GUI baseline must verify real focused-file keyboard navigation.'
 }
 
-# A rejected long Unicode clipboard path must never fall back to a
-# truncated CP_ACP alias or a truncated CF_TEXT representation. Those
-# can refer to a different, existing directory.
+# Unicode clipboard navigation must preserve exact ACP round-trips.
+# Both text formats are scanned only within the actual HGLOBAL size;
+# missing terminators or lossy conversions must be rejected, never
+# truncated into a different (possibly existing) disk path.
 $pasteCode = Get-Content -LiteralPath (Join-Path $toolsDir '..\\..\\src\\fileswn9.cpp') -Raw
 $pasteBlock = [regex]::Match(
     $pasteCode,
@@ -148,9 +149,12 @@ $pasteBlock = [regex]::Match(
 if ([string]::IsNullOrEmpty($pasteBlock) -or
     $pasteBlock -match 'buff\[0\] != 0 && GetLastError\(\) == ERROR_INSUFFICIENT_BUFFER' -or
     $pasteBlock -notmatch 'unicodeTextPresent' -or
-    $pasteBlock -notmatch 'Salamander::IsExactAnsiName\(buff, pathW\)' -or
-    $pasteBlock -notmatch 'strlen\(path\) < sizeof\(buff\)' -or
-    $pasteBlock -notmatch 'if \(!changePath && !unicodeTextPresent\)') {
+    $pasteBlock -notmatch 'GlobalSize\(handle\)' -or
+    $pasteBlock -notmatch 'while \(length < limit && text\[length\]' -or
+    $pasteBlock -notmatch 'if \(length < limit\)' -or
+    $pasteBlock -notmatch 'Salamander::IsExactAnsiName\(ansi\.data\(\), value\.c_str\(\)\)' -or
+    $pasteBlock -notmatch 'if \(clipboardPath\.empty\(\) && !unicodeTextPresent\)' -or
+    $pasteBlock -notmatch 'clipboardPath\.assign\(text \+ begin, length - begin\)') {
     throw 'Clipboard navigation must reject incomplete Unicode and ANSI clipboard paths.'
 }
 
