@@ -55,7 +55,10 @@ inline LegacyDefaultDirectoryStatus ReadLegacyDefaultDirectory(
         std::memchr(candidate, '\0', capacity - 1) != nullptr)
         return LegacyDefaultDirectoryStatus::Preserve;
 
-    std::memcpy(destination, candidate, capacity);
+    // The Windows SDK's SAL annotation macro remaps memcpy in this project.
+    // A namespace-qualified call expands to std::_sal_safe_memcpy and fails
+    // to compile with MSVC. Use the existing project-compatible C API.
+    memcpy(destination, candidate, capacity);
     return LegacyDefaultDirectoryStatus::Loaded;
 }
 } // namespace Salamander
