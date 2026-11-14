@@ -378,9 +378,24 @@ function Focus-TestProcess {
 
 function Send-Keys {
     param([string]$Keys)
+
     if ((Get-ActiveProcessId) -ne [uint32]$process.Id) {
-        throw 'Refusing to send input to a window owned by another process.'
+        # Never redirect input away from an outstanding Salamander dialog.
+        # Recover foreground focus only to the already verified test window.
+        $dialog = Get-TestDialog
+        if (-not [string]::IsNullOrEmpty($dialog)) {
+            throw "Refusing foreground recovery while a Salamander dialog is open: $dialog"
+        }
+
+        $previousForeground = Get-ForegroundWindowSummary
+        Focus-TestProcess
+        Write-Host "GUI focus recovered for test process; previous foreground: $previousForeground"
     }
+
+    if ((Get-ActiveProcessId) -ne [uint32]$process.Id) {
+        throw "Refusing to send input to a window owned by another process. Foreground: $(Get-ForegroundWindowSummary)"
+    }
+
     [Windows.Forms.SendKeys]::SendWait($Keys)
     Start-Sleep -Milliseconds 200
 }
@@ -715,6 +730,12 @@ try {
             ".NET title='{3}'; process windows: {4}") -f
             $_.Exception.Message, $process.Id, $process.MainWindowHandle.ToInt64(),
             $process.MainWindowTitle, $windowSummary)
+    }
+    # A visible top-level window is not evidence that startup has finished.
+    # Do not begin clipboard navigation or keyboard simulation until the
+    # launched GUI process has reached its initial input-idle state.
+    if (-not $process.WaitForInputIdle(10000)) {
+        throw "Test Salamander did not become input-idle within 10 seconds (PID $($process.Id))."
     }
     $process.Refresh()
     $testIsAdmin = [Security.Principal.WindowsPrincipal]::new(
