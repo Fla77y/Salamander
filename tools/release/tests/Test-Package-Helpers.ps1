@@ -166,6 +166,19 @@ if ($panelSource -notmatch 'search\s*=\s*Salamander::FindFirstUnicodePanelFile\s
     throw 'Unicode panel search handles must be tracked before monitored FindClose.'
 }
 
+# The clipboard file-paste engine still constructs bounded ANSI target
+# paths. A long panel (or a long explicit drop target) must be refused before
+# any legacy IDataObject transfer or DropPath copy is attempted.
+$pasteSource = Get-Content -LiteralPath (Join-Path $toolsDir '..\..\src\fileswn9.cpp') -Raw
+$pasteHeader = [regex]::Match($pasteSource,
+    '(?s)BOOL CFilesWindow::ClipboardPaste\(BOOL onlyLinks, BOOL onlyTest, const char\* pastePath\)(.*?)IDataObject\* dataObj;').Groups[1].Value
+if ([string]::IsNullOrEmpty($pasteHeader) -or
+    $pasteHeader -notmatch 'HasLongDiskPath\(\)' -or
+    $pasteHeader -notmatch 'strlen\(pastePath\) >= MAX_PATH' -or
+    $pasteHeader -notmatch 'return FALSE;') {
+    throw 'Clipboard file paste must reject long panel and explicit target paths before legacy ANSI operations.'
+}
+
 # The disk listing scratch buffer is now dynamic. Preserve its previous
 # minimum size for extension processing and require explicit raw-pointer access.
 # Native Windows compilation remains the authoritative check for C++ types.
