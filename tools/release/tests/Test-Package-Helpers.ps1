@@ -60,6 +60,31 @@ if ([string]::IsNullOrEmpty($multiSelectBlock) -or
     throw 'GUI F5/F6 multiselect must mark two verified file rows using Insert, not a single Shift+Up.'
 }
 
+
+# The GUI driver must recover safely from a transient clipboard/navigation
+# stall without repeating commands after success or hiding real modal errors.
+$navigationBlock = [regex]::Match(
+    $guiDriver,
+    '(?s)function Go-ToPath\\s*\\{(.*?)\\nfunction Read-FocusedFilename'
+).Groups[1].Value
+if ([string]::IsNullOrEmpty($navigationBlock) -or
+    $navigationBlock -notmatch 'maxNavigationAttempts\\s*=\\s*2' -or
+    $navigationBlock -notmatch 'TimeoutSecondsOverride' -or
+    $navigationBlock -notmatch 'Get-TestDialog' -or
+    $guiDriver -notmatch '(?s)function Read-PanelPath\\s*\\{.*?Invoke-SalamanderCommand -CommandId 711.*?for \\(\\$attempt') {
+    throw 'GUI navigation must bound clipboard retries, reject modal errors and verify an idempotent retry.'
+}
+foreach ($prefix in @(
+    'Cannot activate verified test Salamander',
+    'Salamander command {0} did not complete',
+    'GUI navigation failed: {0}',
+    'GUI startup failed: {0}'
+)) {
+    if ($guiDriver -notmatch [regex]::Escape('throw (("' + $prefix)) {
+        throw "GUI diagnostics must format the entire error message: $prefix"
+    }
+}
+
 # The primary UTF-16 directory enumeration returns a native find handle.
 # It is not a C__Handles member; explicitly register successful opens,
 # because the legacy panel closes them through HANDLES(FindClose).
