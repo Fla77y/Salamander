@@ -1055,6 +1055,13 @@ try {
                 Send-Keys '{END}'
             }
 
+            # The test must never send a destructive shortcut unless the
+            # disposable source panel and a known Unicode row are active.
+            Assert-True ((Read-PanelPath) -ceq $source) "Unicode source panel verified before $($operation.Name)"
+            $focusedName = Read-FocusedFilename
+            Assert-True (($focusedName -ceq $utfName) -or
+                ($focusedName -ceq $utfCollisionName)) "Disposable Unicode row verified before $($operation.Name)"
+
             Send-Keys $operation.Key
             $blocked = @{ Dialog = '<none>' }
             Wait-Until {
@@ -1064,6 +1071,10 @@ try {
             Write-Host "PASS: $($operation.Name) refused unsafe Unicode identity"
             Send-Keys '{ESC}'
             Wait-Until { -not (Get-TestDialog) } "dismissal of $($operation.Name) refusal dialog"
+            # The shell may hand foreground focus back to PowerShell after a
+            # modal dialog. Restore only the PID/HWND verified at startup.
+            # Send-Keys must continue to refuse unowned foreground windows.
+            Focus-TestProcess
 
             Assert-True ((Test-Content $unicodeShortFile) -and
                 [Linq.Enumerable]::SequenceEqual[byte](
