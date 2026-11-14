@@ -23,6 +23,7 @@
 #include "tasklist.h"
 #include "pwdmngr.h"
 #include "common/legacy_default_directory_registry.h"
+#include "common/saved_panel_path_registry.h"
 
 //
 // ConfigVersion - version number of the loaded configuration
@@ -2394,13 +2395,17 @@ void CMainWindow::SaveConfig(HWND parent)
     }
 }
 
-void CMainWindow::LoadPanelConfig(char* panelPath, CFilesWindow* panel, HKEY hSalamander, const char* reg)
+void CMainWindow::LoadPanelConfig(std::string& panelPath, CFilesWindow* panel, HKEY hSalamander, const char* reg)
 {
     HKEY actKey;
     if (OpenKey(hSalamander, reg, actKey))
     {
         DWORD value;
-        if (GetValue(actKey, PANEL_PATH_REG, REG_SZ, panelPath, MAX_PATH))
+        // The panel already stores paths dynamically. Reading through MAX_PATH
+        // would show ERROR_MORE_DATA for a previously saved long directory.
+        const Salamander::SavedPanelPathStatus pathStatus =
+            Salamander::ReadSavedPanelPath(actKey, panelPath);
+        if (pathStatus == Salamander::SavedPanelPathStatus::Loaded)
         {
             if (GetValue(actKey, PANEL_HEADER_REG, REG_DWORD, &value, sizeof(DWORD)))
                 panel->HeaderLineVisible = value;
@@ -2520,6 +2525,27 @@ void LoadIconOvrlsInfo(const char* root)
         }
         CloseKey(hSalamander);
     }
+}
+
+// Restore fixed-size legacy paths through the established recovery procedure.
+// Long paths must bypass it: the panel's extended-length navigation already
+// validates the complete path and never truncates it to MAX_PATH.
+static BOOL RestoreSavedPanelPath(CFilesWindow* panel, const std::string& savedPath)
+{
+    if (savedPath.size() >= MAX_PATH - 2)
+        return panel->ChangePathToDisk(panel->HWindow, savedPath.c_str());
+
+    char legacyPath[MAX_PATH];
+    lstrcpyn(legacyPath, savedPath.c_str(), MAX_PATH);
+    DWORD error, lastError;
+    BOOL pathInvalid, cut;
+    BOOL tryNet = TRUE;
+    if (!SalCheckAndRestorePathWithCut(panel->HWindow, legacyPath, tryNet,
+                                       error, lastError, pathInvalid, cut, TRUE))
+        return FALSE;
+
+    panel->ChangePathToDisk(panel->HWindow, legacyPath);
+    return TRUE;
 }
 
 BOOL CMainWindow::LoadConfig(BOOL importingOldConfig, const CCommandLineParams* cmdLineParams)
@@ -3788,12 +3814,12 @@ BOOL CMainWindow::LoadConfig(BOOL importingOldConfig, const CCommandLineParams* 
 
         //---  left and right panel
 
-        char leftPanelPath[MAX_PATH];
-        char rightPanelPath[MAX_PATH];
-        GetSystemDirectory(leftPanelPath, MAX_PATH);
-        strcpy(rightPanelPath, leftPanelPath);
+        char systemDirectory[MAX_PATH];
+        GetSystemDirectory(systemDirectory, MAX_PATH);
+        std::string leftPanelPath(systemDirectory);
+        std::string rightPanelPath(systemDirectory);
         char sysDefDir[MAX_PATH];
-        lstrcpyn(sysDefDir, DefaultDir[LowerCase[leftPanelPath[0]] - 'a'], MAX_PATH);
+        lstrcpyn(sysDefDir, DefaultDir[LowerCase[systemDirectory[0]] - 'a'], MAX_PATH);
         LoadPanelConfig(leftPanelPath, LeftPanel, salamander, SALAMANDER_LEFTP_REG);
         LoadPanelConfig(rightPanelPath, RightPanel, salamander, SALAMANDER_RIGHTP_REG);
 
@@ -3983,32 +4009,19 @@ BOOL CMainWindow::LoadConfig(BOOL importingOldConfig, const CCommandLineParams* 
         if (rightPanelPathSet)
             RightPanel->RefreshVisibleItemsArray();
 
-        // leftPanelPath and rightPanelPath are only disk paths; we don't store archives or FS paths
-        DWORD err, lastErr;
-        BOOL pathInvalid, cut;
-        BOOL tryNet = TRUE;
+        // The legacy path-recovery helper uses fixed buffers. Long paths are
+        // restored through ChangePathToDisk's separately checked long-path route.
         if (!leftPanelPathSet)
         {
-            if (SalCheckAndRestorePathWithCut(LeftPanel->HWindow, leftPanelPath, tryNet,
-                                              err, lastErr, pathInvalid, cut, TRUE))
-            {
-                LeftPanel->ChangePathToDisk(LeftPanel->HWindow, leftPanelPath);
-            }
-            else
+            if (!RestoreSavedPanelPath(LeftPanel, leftPanelPath))
                 LeftPanel->ChangeToRescuePathOrFixedDrive(LeftPanel->HWindow);
             LeftPanel->RefreshVisibleItemsArray(); // see comment "RefreshVisibleItemsArray" above
         }
         UpdateWindow(LeftPanel->HWindow); // ensures dir/info line is drawn immediately after the panel content
 
-        tryNet = TRUE;
         if (!rightPanelPathSet)
         {
-            if (SalCheckAndRestorePathWithCut(RightPanel->HWindow, rightPanelPath, tryNet,
-                                              err, lastErr, pathInvalid, cut, TRUE))
-            {
-                RightPanel->ChangePathToDisk(RightPanel->HWindow, rightPanelPath);
-            }
-            else
+            if (!RestoreSavedPanelPath(RightPanel, rightPanelPath))
                 RightPanel->ChangeToRescuePathOrFixedDrive(RightPanel->HWindow);
             RightPanel->RefreshVisibleItemsArray(); // see comment "RefreshVisibleItemsArray" above
         }
