@@ -210,7 +210,7 @@ BOOL GetValue2Aux(HWND parent, HKEY hKey, const char* name, DWORD type1, DWORD t
         if (res != ERROR_FILE_NOT_FOUND)
         {
             const std::string message = FormatConfigRegistryReadError(res, name, suppliedBytes, bufferSize);
-                if (HLanguage == NULL)
+            if (HLanguage == NULL)
             {
                 MessageBox(parent, message.c_str(),
                            "Error Loading Configuration", MB_OK | MB_ICONEXCLAMATION);
