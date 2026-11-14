@@ -22,6 +22,7 @@
 #include "logo.h"
 #include "tasklist.h"
 #include "pwdmngr.h"
+#include "common/legacy_default_directory_registry.h"
 
 //
 // ConfigVersion - version number of the loaded configuration
@@ -358,7 +359,7 @@ const char* PANEL_FILTER = "Filter";
 
 const char* SALAMANDER_DEFDIRS_REG = "Default Directories";
 // Preserve unsupported legacy per-drive registry values instead of erasing them on save.
-static BOOL PreserveOversizedDefaultDir[26] = {};
+static BOOL PreserveUnsupportedDefaultDir[26] = {};
 
 const char* SALAMANDER_CONFIG_REG = "Configuration";
 const char* CONFIG_SKILLLEVEL_REG = "Skill Level";
@@ -1502,7 +1503,7 @@ void CMainWindow::SaveConfig(HWND parent)
                 for (d = 'A'; d <= 'Z'; d++)
                 {
                     name[0] = d;
-                    if (PreserveOversizedDefaultDir[d - 'A'])
+                    if (PreserveUnsupportedDefaultDir[d - 'A'])
                         continue;
                     char* path = DefaultDir[d - 'A'];
                     if (path[1] == ':' && path[2] == '\\' && path[3] != 0) // not "C:\"
@@ -2783,97 +2784,32 @@ BOOL CMainWindow::LoadConfig(BOOL importingOldConfig, const CCommandLineParams* 
 
         //---  default directories
 
+        // DefaultDir is a legacy MAX_PATH ANSI cache. Read the 26 supported
+        // drive values directly: enumerating arbitrary registry entries with
+        // fixed buffers can block startup with ERROR_MORE_DATA (234).
+        ZeroMemory(PreserveUnsupportedDefaultDir, sizeof(PreserveUnsupportedDefaultDir));
         if (OpenKey(salamander, SALAMANDER_DEFDIRS_REG, actKey))
         {
-            DWORD values;
-            DWORD res = RegQueryInfoKey(actKey, NULL, 0, 0, NULL, NULL, NULL, &values, NULL,
-                                        NULL, NULL, NULL);
-            if (res == ERROR_SUCCESS)
+            char dir[4] = " :\\";
+            for (char drive = 'A'; drive <= 'Z'; ++drive)
             {
-                char dir[4] = " :\\"; // reset DefaultDir
-                char d;
-                for (d = 'A'; d <= 'Z'; d++)
+                dir[0] = drive;
+                strcpy(DefaultDir[drive - 'A'], dir);
+            }
+
+            for (char drive = 'A'; drive <= 'Z'; ++drive)
+            {
+                const Salamander::LegacyDefaultDirectoryStatus status =
+                    Salamander::ReadLegacyDefaultDirectory(
+                        actKey, drive, DefaultDir[drive - 'A']);
+                if (status == Salamander::LegacyDefaultDirectoryStatus::Preserve)
                 {
-                    dir[0] = d;
-                    strcpy(DefaultDir[d - 'A'], dir);
-                }
-
-                char name[2];
-                BYTE path[MAX_PATH];
-                DWORD nameLen, dataLen, type;
-
-                int i;
-                for (i = 0; i < (int)values; i++)
-                {
-                    nameLen = 2;
-                    dataLen = 0;
-                    res = RegEnumValue(actKey, i, name, &nameLen, 0, &type, NULL, &dataLen);
-                    if (res == ERROR_MORE_DATA)
-                    {
-                        TRACE_E("LoadConfig(): invalid Default Directories value name");
-                        continue;
-                    }
-                    if (res != ERROR_SUCCESS)
-                    {
-                        SalMessageBox(HWindow, GetErrorText(res),
-                                      LoadStr(IDS_ERRORLOADCONFIG), MB_OK | MB_ICONEXCLAMATION);
-                        continue;
-                    }
-                    if (nameLen != 1 || name[0] == 0)
-                    {
-                        TRACE_E("LoadConfig(): unexpected Default Directories value name");
-                        continue;
-                    }
-                    char d2 = LowerCase[name[0]];
-                    if (d2 < 'a' || d2 > 'z')
-                    {
-                        TRACE_E("LoadConfig(): unexpected Default Directories drive");
-                        continue;
-                    }
-                    if (dataLen > MAX_PATH)
-                    {
-                        PreserveOversizedDefaultDir[d2 - 'a'] = TRUE;
-                        TRACE_E("LoadConfig(): preserving oversized Default Directories entry for drive " << d2);
-                        continue;
-                    }
-                    if (type != REG_SZ)
-                    {
-                        SalMessageBox(HWindow, LoadStr(IDS_UNEXPECTEDVALUETYPE),
-                                      LoadStr(IDS_ERRORLOADCONFIG), MB_OK | MB_ICONEXCLAMATION);
-                        continue;
-                    }
-
-                    // The value can grow between calls; never copy beyond the fixed legacy buffer.
-                    nameLen = 2;
-                    DWORD pathCapacity = MAX_PATH;
-                    res = RegEnumValue(actKey, i, name, &nameLen, 0, &type, path, &pathCapacity);
-                    if (res == ERROR_MORE_DATA)
-                    {
-                        PreserveOversizedDefaultDir[d2 - 'a'] = TRUE;
-                        TRACE_E("LoadConfig(): Default Directories entry grew for drive " << d2);
-                        continue;
-                    }
-                    if (res != ERROR_SUCCESS)
-                    {
-                        SalMessageBox(HWindow, GetErrorText(res),
-                                      LoadStr(IDS_ERRORLOADCONFIG), MB_OK | MB_ICONEXCLAMATION);
-                        continue;
-                    }
-                    dataLen = pathCapacity;
-                    if (type == REG_SZ && nameLen == 1 && dataLen > 3 && dataLen <= MAX_PATH &&
-                        path[dataLen - 1] == 0 && LowerCase[path[0]] == d2 &&
-                        path[1] == ':' && path[2] == '\\')
-                    {
-                        memmove(DefaultDir[d2 - 'a'], path, dataLen);
-                    }
-                    else
-                        SalMessageBox(HWindow, LoadStr(IDS_UNEXPECTEDVALUE),
-                                      LoadStr(IDS_ERRORLOADCONFIG), MB_OK | MB_ICONEXCLAMATION);
+                    // Retain the original registry value, not an ANSI-truncated
+                    // or default fallback, when the configuration is saved.
+                    PreserveUnsupportedDefaultDir[drive - 'A'] = TRUE;
+                    TRACE_E("LoadConfig(): preserving unsupported Default Directories value for drive " << drive);
                 }
             }
-            else if (res != ERROR_FILE_NOT_FOUND)
-                SalMessageBox(HWindow, GetErrorText(res),
-                              LoadStr(IDS_ERRORLOADCONFIG), MB_OK | MB_ICONEXCLAMATION);
             CloseKey(actKey);
         }
 
