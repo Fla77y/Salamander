@@ -166,17 +166,25 @@ if ($panelSource -notmatch 'search\s*=\s*Salamander::FindFirstUnicodePanelFile\s
     throw 'Unicode panel search handles must be tracked before monitored FindClose.'
 }
 
-# The clipboard file-paste engine still constructs bounded ANSI target
-# paths. A long panel (or a long explicit drop target) must be refused before
-# any legacy IDataObject transfer or DropPath copy is attempted.
+# CM_CLIPPASTE first checks for files, then falls back to clipboard text path
+# navigation. Reject actual file payloads on long targets, but NEVER display
+# a blocking dialog for plain CF_UNICODETEXT navigation. The second GUI
+# navigation to the long folder explicitly exercises this distinction.
 $pasteSource = Get-Content -LiteralPath (Join-Path $toolsDir '..\..\src\fileswn9.cpp') -Raw
-$pasteHeader = [regex]::Match($pasteSource,
-    '(?s)BOOL CFilesWindow::ClipboardPaste\(BOOL onlyLinks, BOOL onlyTest, const char\* pastePath\)(.*?)IDataObject\* dataObj;').Groups[1].Value
-if ([string]::IsNullOrEmpty($pasteHeader) -or
-    $pasteHeader -notmatch 'HasLongDiskPath\(\)' -or
-    $pasteHeader -notmatch 'strlen\(pastePath\) >= MAX_PATH' -or
-    $pasteHeader -notmatch 'return FALSE;') {
-    throw 'Clipboard file paste must reject long panel and explicit target paths before legacy ANSI operations.'
+$pasteBlock = [regex]::Match($pasteSource,
+    '(?s)BOOL CFilesWindow::ClipboardPaste\(BOOL onlyLinks, BOOL onlyTest, const char\* pastePath\)(.*?)BOOL CFilesWindow::ClipboardPasteToArcOrFS').Groups[1].Value
+if ([string]::IsNullOrEmpty($pasteBlock) -or
+    $pasteBlock -notmatch 'HasLongDiskPath\(\)' -or
+    $pasteBlock -notmatch 'strlen\(pastePath\) >= MAX_PATH' -or
+    $pasteBlock -notmatch 'EnumFormatEtc\(DATADIR_GET' -or
+    $pasteBlock -notmatch 'CF_HDROP' -or
+    $pasteBlock -notmatch 'CFSTR_SHELLIDLIST' -or
+    $pasteBlock -notmatch 'CFSTR_FILECONTENTS' -or
+    $pasteBlock -notmatch 'IsFakeDataObject' -or
+    $pasteBlock -notmatch 'if \(!hasFilePayload\)' -or
+    $pasteBlock -notmatch 'return FALSE;' -or
+    $pasteBlock -notmatch 'return TRUE;') {
+    throw 'Long-target clipboard paste must distinguish file data from a text path and refuse only file transfers.'
 }
 
 # The disk listing scratch buffer is now dynamic. Preserve its previous
