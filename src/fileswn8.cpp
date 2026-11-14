@@ -246,6 +246,229 @@ BOOL CFilesWindow::TryUnicodeSingleFileRecycle()
     return TRUE;
 }
 
+// Handles a small, explicitly selected set of regular files without ever
+// passing an ACP alias to the legacy transfer engine. The entire selection
+// and all destinations are preflighted before any filesystem change.
+// Win32 errors can still produce a *reported* partial batch; no unsafe
+// rollback deletes user files after an external race.
+BOOL CFilesWindow::TryUnicodeMultiFileTransfer(CActionType type, CFilesWindow* target)
+{
+    if ((type != atCopy && type != atMove) ||
+        !Is(ptDisk) || target == NULL || !target->Is(ptDisk))
+        return FALSE;
+
+    const int selectedCount = GetSelCount();
+    constexpr int MaxSynchronousItems = 16;
+    constexpr ULONGLONG MaxSynchronousBytes = 16ULL * 1024 * 1024;
+    if (selectedCount < 2 || selectedCount > MaxSynchronousItems)
+        return FALSE;
+
+    std::vector<int> indexes(static_cast<std::size_t>(selectedCount));
+    if (GetSelItems(selectedCount, indexes.data()) != selectedCount)
+        return FALSE;
+
+    const std::string sourcePanelPath(GetPath());
+    const std::string targetPanelPath(target->GetPath());
+    std::wstring sourceDirectory, targetDirectory;
+    if (!Salamander::TryGetUnicodePanelDirectory(
+            sourcePanelPath.c_str(), sourceDirectory) ||
+        !Salamander::TryGetUnicodePanelDirectory(
+            targetPanelPath.c_str(), targetDirectory))
+        return FALSE;
+
+    Salamander::Utf16PathError validationError;
+    Salamander::Utf16DiskPath sourceDir, targetDir;
+    if (!Salamander::Utf16DiskPath::TryCreateAbsolute(
+            std::u16string(sourceDirectory.begin(), sourceDirectory.end()),
+            sourceDir, validationError) ||
+        !Salamander::Utf16DiskPath::TryCreateAbsolute(
+            std::u16string(targetDirectory.begin(), targetDirectory.end()),
+            targetDir, validationError))
+        return FALSE;
+
+    DWORD error = ERROR_SUCCESS;
+    std::wstring targetDirectoryExtended;
+    if (!Salamander::UnicodeFileOperationsDetail::TryGetExtendedPath(
+            targetDir, targetDirectoryExtended, error))
+        return FALSE;
+    const DWORD targetAttributes =
+        GetFileAttributesW(targetDirectoryExtended.c_str());
+    if (targetAttributes == INVALID_FILE_ATTRIBUTES ||
+        (targetAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0 ||
+        (targetAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
+        return FALSE;
+
+    struct Transfer
+    {
+        std::string alias;
+        std::wstring original;
+        Salamander::Utf16DiskPath source;
+        Salamander::Utf16DiskPath destination;
+        std::wstring sourceExtended;
+        std::wstring targetExtended;
+    };
+    std::vector<Transfer> transfers;
+    transfers.reserve(static_cast<std::size_t>(selectedCount));
+    ULONGLONG totalBytes = 0;
+
+    for (const int index : indexes)
+    {
+        if (index < Dirs->Count || index >= Dirs->Count + Files->Count)
+            return FALSE; // no "..", folders or non-file rows
+
+        const CFileData& entry = Files->At(index - Dirs->Count);
+        if ((entry.Attr & (FILE_ATTRIBUTE_DIRECTORY |
+                           FILE_ATTRIBUTE_REPARSE_POINT)) != 0)
+            return FALSE;
+
+        Transfer item;
+        item.alias.assign(entry.Name);
+        if (!UnicodeDiskNames.TryGetRow(entry.Name, item.original))
+            return FALSE;
+
+        // Keep ambiguous ACP aliases guarded until every destructive entry
+        // point uses independent per-row identity, not just F5/F6.
+        if (UnicodeDiskNames.IsUnsafeAnsiName(entry.Name))
+        {
+            std::wstring uniqueAlias;
+            if (!UnicodeDiskNames.TryGetLossy(entry.Name, uniqueAlias) ||
+                uniqueAlias != item.original)
+                return FALSE;
+        }
+
+        Salamander::Utf16FileName filename;
+        if (!Salamander::Utf16FileName::TryCreate(
+                std::u16string(item.original.begin(), item.original.end()),
+                filename, validationError) ||
+            !sourceDir.TryAppend(filename, item.source, validationError) ||
+            !targetDir.TryAppend(filename, item.destination, validationError) ||
+            !Salamander::UnicodeFileOperationsDetail::TryGetExtendedPath(
+                item.source, item.sourceExtended, error) ||
+            !Salamander::UnicodeFileOperationsDetail::TryGetExtendedPath(
+                item.destination, item.targetExtended, error))
+            return FALSE;
+
+        std::wstring resolvedName;
+        if (Salamander::ResolveUnicodePanelFileName(
+                sourceDirectory.c_str(), item.alias.c_str(),
+                resolvedName, error) !=
+                Salamander::UnicodePanelNameResult::Unique ||
+            resolvedName != item.original)
+            return FALSE;
+
+        WIN32_FILE_ATTRIBUTE_DATA attributes = {};
+        if (!GetFileAttributesExW(item.sourceExtended.c_str(),
+                                 GetFileExInfoStandard, &attributes) ||
+            (attributes.dwFileAttributes &
+                (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0)
+            return FALSE;
+
+        const ULONGLONG bytes =
+            (static_cast<ULONGLONG>(attributes.nFileSizeHigh) << 32) |
+            attributes.nFileSizeLow;
+        if (bytes > MaxSynchronousBytes - totalBytes)
+            return FALSE; // no unbounded, synchronous UI thread operation
+        totalBytes += bytes;
+
+        const DWORD existing = GetFileAttributesW(item.targetExtended.c_str());
+        if (existing != INVALID_FILE_ATTRIBUTES ||
+            GetLastError() != ERROR_FILE_NOT_FOUND)
+            return FALSE; // no existing target may be overwritten
+        transfers.push_back(std::move(item));
+    }
+
+    const std::wstring prompt =
+        std::wstring(type == atCopy ? L"Copy " : L"Move ") +
+        std::to_wstring(transfers.size()) +
+        L" selected Unicode/ASCII disk files to the other panel?\n\n" +
+        L"Existing files will not be overwritten. If a later file fails, "
+        L"earlier completed transfers remain and will be reported.";
+    if (MessageBoxW(HWindow, prompt.c_str(), L"Unicode batch transfer",
+                    MB_OKCANCEL | MB_ICONQUESTION) != IDOK)
+        return TRUE;
+
+    if (sourcePanelPath != GetPath() ||
+        targetPanelPath != target->GetPath())
+        return TRUE;
+
+    // All entries are checked again after the modal confirmation. A failed
+    // preflight never starts any transfer and never falls through to ANSI.
+    for (const Transfer& item : transfers)
+    {
+        std::wstring resolvedName;
+        if (Salamander::ResolveUnicodePanelFileName(
+                sourceDirectory.c_str(), item.alias.c_str(),
+                resolvedName, error) !=
+                Salamander::UnicodePanelNameResult::Unique ||
+            resolvedName != item.original)
+        {
+            MessageBoxW(HWindow, L"A selected Unicode identity changed. "
+                        L"No files were transferred.",
+                        L"Unicode batch transfer", MB_OK | MB_ICONWARNING);
+            return TRUE;
+        }
+
+        WIN32_FILE_ATTRIBUTE_DATA attributes = {};
+        if (!GetFileAttributesExW(item.sourceExtended.c_str(),
+                                 GetFileExInfoStandard, &attributes) ||
+            (attributes.dwFileAttributes &
+                (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0)
+        {
+            MessageBoxW(HWindow, L"A source file disappeared or changed type. "
+                        L"No files were transferred.",
+                        L"Unicode batch transfer", MB_OK | MB_ICONWARNING);
+            return TRUE;
+        }
+        const DWORD existing = GetFileAttributesW(item.targetExtended.c_str());
+        if (existing != INVALID_FILE_ATTRIBUTES ||
+            GetLastError() != ERROR_FILE_NOT_FOUND)
+        {
+            MessageBoxW(HWindow, L"A Unicode destination now exists or "
+                        L"cannot be inspected. No files were transferred.",
+                        L"Unicode batch transfer", MB_OK | MB_ICONWARNING);
+            return TRUE;
+        }
+    }
+
+    std::size_t completed = 0;
+    BeginSuspendMode();
+    BeginStopRefresh();
+    for (const Transfer& item : transfers)
+    {
+        const bool succeeded = type == atCopy
+            ? Salamander::TryCopyUnicodeFileNoOverwrite(
+                item.source, item.destination, error)
+            : Salamander::TryMoveUnicodeFileNoOverwrite(
+                item.source, item.destination, error);
+        if (!succeeded)
+            break;
+        ++completed;
+    }
+    EndStopRefresh();
+    EndSuspendMode();
+
+    if (completed != 0)
+    {
+        if (type == atMove)
+            MainWindow->PostChangeOnPathNotification(sourcePanelPath.c_str(), FALSE);
+        MainWindow->PostChangeOnPathNotification(targetPanelPath.c_str(), FALSE);
+    }
+
+    if (completed != transfers.size())
+    {
+        wchar_t message[260];
+        swprintf_s(message, _countof(message),
+                   L"Unicode transfer stopped after %zu of %zu files "
+                   L"(Win32 error %lu). Earlier operations may have "
+                   L"completed. Refresh both panels; no existing "
+                   L"destination was overwritten.",
+                   completed, transfers.size(), error);
+        MessageBoxW(HWindow, message, L"Partial Unicode batch transfer",
+                    MB_OK | MB_ICONWARNING);
+    }
+    return TRUE;
+}
+
 // A deliberately narrow UTF-16 write path. The full file operation engine
 // remains ANSI and must never see a lossy filename.
 BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* target)
@@ -448,7 +671,8 @@ void CFilesWindow::FilesAction(CActionType type, CFilesWindow* target, int count
             // Handle exactly one uniquely identified, ordinary file by W APIs.
             // Every other unsafe selection keeps the original no-write guard.
             if (countSizeMode == 0 &&
-                (TryUnicodeSingleFileTransfer(type, target) ||
+                (TryUnicodeMultiFileTransfer(type, target) ||
+                 TryUnicodeSingleFileTransfer(type, target) ||
                  (type == atDelete && TryUnicodeSingleFileRecycle())))
                 return;
             SalMessageBox(HWindow,
