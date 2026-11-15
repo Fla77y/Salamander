@@ -67,11 +67,17 @@ void CFilesWindow::Execute(int index)
 
     if (Is(ptDisk))
     {
-        if (HasLongDiskPath())
+        // Also enter the wide path handler when a SHORT parent plus its
+        // selected directory would cross MAX_PATH. The legacy Enter branch
+        // below calls SalPathAppend(..., MAX_PATH) and otherwise rejects the
+        // directory before ChangePathToDisk can dispatch its long-path route.
+        const bool wouldEnterLongDirectory =
+            index < Dirs->Count &&
+            strlen(GetPath()) + strlen(Dirs->At(index).Name) + 1 >= MAX_PATH - 2;
+        if (HasLongDiskPath() || wouldEnterLongDirectory)
         {
-            // Execute's legacy code below copies the current path into
-            // MAX_PATH buffers. Handle long-folder traversal before that
-            // code can run; file association/archive execution stays refused.
+            // Execute's legacy code below copies paths into MAX_PATH buffers.
+            // Keep file association/archive execution refused on long paths.
             if (index >= Dirs->Count)
             {
                 MessageBoxW(HWindow,
