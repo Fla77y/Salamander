@@ -243,6 +243,42 @@ if (-not $directoryMove.Success -or
 }
 Write-Host 'PASS: F6 directory move uses original W-backed row identity.'
 
+# The GUI fixture defines Test-Content(Path) to compare bytes. It is not
+# Test-Path and does not accept -LiteralPath. A bad parameter binds before
+# any F6 result is evaluated, even if the move succeeded.
+$contentCalls = @($tree.FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.CommandAst] -and
+    $node.GetCommandName() -ceq 'Test-Content'
+}, $true))
+$invalidContentCalls = @($contentCalls | Where-Object {
+    @($_.CommandElements | Where-Object {
+        $_ -is [System.Management.Automation.Language.CommandParameterAst] -and
+        $_.ParameterName -ceq 'LiteralPath'
+    }).Count -gt 0
+})
+if ($invalidContentCalls.Count -gt 0) {
+    throw 'Test-Content is a custom byte-comparison helper: do not pass the unsupported -LiteralPath parameter.'
+}
+
+$treeMoveStart = $driverText.IndexOf('# ACT + ASSERT: an F6 directory move',
+    [StringComparison]::Ordinal)
+$treeMoveEnd = if ($treeMoveStart -ge 0) {
+    $driverText.IndexOf('# ACT + ASSERT: copying a normal short-path file',
+        $treeMoveStart, [StringComparison]::Ordinal)
+} else { -1 }
+if ($treeMoveStart -lt 0 -or $treeMoveEnd -le $treeMoveStart) {
+    throw 'F6 nested directory move GUI regression block is missing.'
+}
+$treeMoveText = $driverText.Substring($treeMoveStart, $treeMoveEnd - $treeMoveStart)
+if ($treeMoveText -notmatch 'Test-Content\s+\$treeTargetLeaf' -or
+    $treeMoveText -notmatch '\[IO\.Directory\]::Exists\(\$treeMoveSource\)' -or
+    $treeMoveText -notmatch '\$failureFormat\s+-f\s+\$cause') {
+    throw 'F6 tree move must verify nested bytes and removed source with working formatted diagnostics.'
+}
+Write-Host 'PASS: F6 directory GUI assertions use the valid byte-comparison helper and formatted diagnostics.'
+
+
 
 # Compile the embedded C# Win32 interop in the headless Windows test process.
 # PowerShell's AST check alone would not catch invalid P/Invoke signatures.
