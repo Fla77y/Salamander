@@ -1524,7 +1524,7 @@ try {
             if (-not [string]::IsNullOrEmpty($dialog)) {
                 throw "F6 directory move displayed a modal error: $dialog"
             }
-            return (Test-Content -LiteralPath $treeTargetLeaf) -and
+            return (Test-Content $treeTargetLeaf) -and
                    -not [IO.Directory]::Exists($treeMoveSource)
         } 'F6 atomic nested tree move'
     }
@@ -1535,11 +1535,12 @@ try {
         $leafExists = [IO.File]::Exists($treeTargetLeaf)
         $dialog = Get-TestDialog
         $windowSummary = Get-ProcessWindowSummary -OwnerProcessId ([uint32]$process.Id)
-        throw ("F6 directory move failed: {0}; sourceExists={1}; targetExists={2}; " +
-               "targetLeafExists={3}; dialog='{4}'; Salamander windows={5}" -f
-               $cause, $sourceExists, $targetExists, $leafExists, $dialog, $windowSummary)
+        $failureFormat = "F6 directory move failed: {0}; sourceExists={1}; targetExists={2}; " +
+                         "targetLeafExists={3}; dialog='{4}'; Salamander windows={5}"
+        throw ($failureFormat -f $cause, $sourceExists, $targetExists,
+               $leafExists, $dialog, $windowSummary)
     }
-    Assert-True ((Test-Content -LiteralPath $treeTargetLeaf) -and
+    Assert-True ((Test-Content $treeTargetLeaf) -and
                  -not [IO.Directory]::Exists($treeMoveSource)) 'F6 directory move retains nested file bytes'
 
     # ACT + ASSERT: copying a normal short-path file INTO a long directory
