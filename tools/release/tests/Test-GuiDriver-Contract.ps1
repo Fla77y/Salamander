@@ -79,6 +79,22 @@ if ($verifyPosition -lt 0 -or $dispatchPosition -lt 0 -or
 }
 Write-Host 'PASS: GUI navigation verifies exact clipboard content and retries only safe clipboard writes.'
 
+# Long-directory Enter navigation needs a read-only GUI focus snapshot and
+# the exact last observed path. Retrying Enter after a timeout could execute
+# an unrelated focused row, so retries must remain forbidden.
+$mainGuiSource = $tree.Extent.Text
+if ($mainGuiSource -notmatch 'GetGUIThreadInfo' -or
+    $mainGuiSource -notmatch 'GetInputFocusSummary' -or
+    $mainGuiSource -notmatch '\$focusBeforeEnter\s*=\s*\[SalamanderGuiNative\]::GetInputFocusSummary' -or
+    $mainGuiSource -notmatch '\$pathAfterEnter\s*=\s*Read-PanelPath' -or
+    $mainGuiSource -notmatch 'No additional Enter was sent' -or
+    $mainGuiSource -match 'Wait-Until\s*\{\s*Send-Keys\s+''\{ENTER\}''') {
+    throw 'Long-directory Enter test must capture focus/path and never retry an unconfirmed Enter.'
+}
+Write-Host 'PASS: long-directory Enter failure captures actual GUI focus and observed path.'
+
+
+
 # A synchronous WM_COMMAND 709/710 may return even when the focused row
 # was not exported. Never treat command dispatch as clipboard success, and
 # never change row selection merely to make a failed read pass.
