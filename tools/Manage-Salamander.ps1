@@ -13,7 +13,7 @@ $repository = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Provide
 $buildRoot = 'D:\Build\OpenSal'
 $configuration = 'Release'
 $validOptions = @('--update', '--build', '--test', '--setup', '--run',
-                  '--debug', '--release', '--all', '--test-gui', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-manual', '--help', '-h', '/?')
+                  '--debug', '--release', '--all', '--test-all', '--test-gui', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-manual', '--help', '-h', '/?')
 $requestedSet = [System.Collections.Generic.HashSet[string]]::new(
     [StringComparer]::OrdinalIgnoreCase)
 
@@ -33,6 +33,8 @@ Open Salamander – Verwaltung für Visual Studio 2026
   manage.cmd --update       Aktuellen Git-Branch sicher aktualisieren (nur fast-forward)
   manage.cmd --build        Debug und Release, jeweils x64, neu erstellen; CHM-Hilfe bauen
   manage.cmd --test         Windows-Dateisystem-/Namens-Tests und Projekt-Regressionstests
+  manage.cmd --test-all     Alle automatisierten Tests: --test und sämtliche GUI-Modi
+                            (Release und Debug x64; --release/--debug begrenzt die GUI-Modi)
   manage.cmd --setup        Debug- und Release-7z plus Inno-Setup-Pakete erzeugen
   manage.cmd --test-gui     Automatisierter GUI-Test: lange Pfade, Unicode-Dateien, F5
   manage.cmd --test-gui-baseline  GUI-Automation zunächst mit kurzen ASCII-Pfaden prüfen
@@ -57,6 +59,7 @@ Open Salamander – Verwaltung für Visual Studio 2026
 Mehrere Aktionen kombinieren:
   manage.cmd --update --build --test --setup
   manage.cmd --build --test --run
+  manage.cmd --build --test-all  Vollständige Suite auf beiden x64-Binaries
 
 Voraussetzungen:
   Windows 11, PowerShell 7.4+, VS 2026 mit MSVC v143/ATL, Windows SDK.
@@ -71,6 +74,40 @@ Die gesamte Ausgabe einschließlich Fehlern wird zum Schluss in die
 Windows-Zwischenablage kopiert. Bei einem Testfehler wird kein Setup/Run
 mehr gestartet; der Exitcode ist ungleich 0.
 '@ | Write-Host
+}
+
+# Select all existing and future automated GUI options from the CLI
+# registry. Manual GUI tests retain test fixtures and require user input,
+# so they are deliberately excluded from an unattended test suite.
+function Expand-AutomatedTestActions {
+    param(
+        [Parameter(Mandatory)][System.Collections.Generic.HashSet[string]]$RequestedSet,
+        [Parameter(Mandatory)][string[]]$AvailableOptions
+    )
+    if (-not $RequestedSet.Contains('--test-all')) { return }
+
+    [void]$RequestedSet.Add('--test')
+    foreach ($option in $AvailableOptions) {
+        if ($option.StartsWith('--test-gui', [StringComparison]::OrdinalIgnoreCase) -and
+            $option -ne '--test-gui-manual') {
+            [void]$RequestedSet.Add($option)
+        }
+    }
+}
+
+# --test-all exercises both build variants unless the user explicitly
+# selects one. Ordinary GUI switches keep their existing Release default.
+function Get-AutomatedGuiModes {
+    param(
+        [Parameter(Mandatory)][System.Collections.Generic.HashSet[string]]$RequestedSet
+    )
+    if ($RequestedSet.Contains('--test-all') -and
+        -not $RequestedSet.Contains('--debug') -and
+        -not $RequestedSet.Contains('--release')) {
+        return @('Release', 'Debug')
+    }
+    if ($RequestedSet.Contains('--debug')) { return 'Debug' }
+    return 'Release'
 }
 
 function Invoke-Native {
@@ -290,6 +327,8 @@ try {
             }
         }
 
+        Expand-AutomatedTestActions -RequestedSet $requestedSet -AvailableOptions $validOptions
+
         . (Join-Path $repository 'tools\release\Package-Helpers.ps1')
         $buildRoot = [IO.Path]::GetFullPath($buildRoot)
         New-Item -ItemType Directory -Path $buildRoot -Force | Out-Null
@@ -297,103 +336,106 @@ try {
         if ($requestedSet.Contains('--update')) { Update-Branch }
         if ($requestedSet.Contains('--build')) { Build-Variants }
         if ($requestedSet.Contains('--test')) { Run-Tests }
-        if ($requestedSet.Contains('--test-gui-baseline')) {
-            Write-Host '=== SALAMANDER-GUI-TESTTREIBER, KURZPFAD-BASIS ==='
-            $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
-            $testedExe = Join-Path (Get-VariantDirectory $configuration) 'salamand.exe'
-            Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
-                                      '-SalamanderExe', $testedExe, '-BaselineOnly')
-        }
-        if ($requestedSet.Contains('--test-gui-operations-baseline')) {
-            Write-Host '=== SALAMANDER-GUI-OPERATIONEN, ASCII-BASIS ==='
-            $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
-            $testedExe = Join-Path (Get-VariantDirectory $configuration) 'salamand.exe'
-            Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
-                                      '-SalamanderExe', $testedExe, '-ShortOperationsOnly')
-        }
-        if ($requestedSet.Contains('--test-gui-unsafe-unicode-operations')) {
-            Write-Host '=== SALAMANDER-GUI-SCHUTZ F2/F5/F6/F8 BEI UNICODE ==='
-            $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
-            $testedExe = Join-Path (Get-VariantDirectory $configuration) 'salamand.exe'
-            Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
-                                      '-SalamanderExe', $testedExe, '-ShortUnicodeUnsafeOperationsOnly')
-        }
-        if ($requestedSet.Contains('--test-gui-unicode-transfer-collision')) {
-            Write-Host '=== SALAMANDER-GUI-UNICODE F5/F6 OVERWRITE PROTECTION ==='
-            $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
-            $testedExe = Join-Path (Get-VariantDirectory $configuration) 'salamand.exe'
-            Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
-                                      '-SalamanderExe', $testedExe, '-ShortUnicodeTransferCollisionOnly')
-        }
-        if ($requestedSet.Contains('--test-gui-unicode-recycle')) {
-            Write-Host '=== SALAMANDER-GUI-UNICODE F8 RECYCLE BIN ==='
-            $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
-            $testedExe = Join-Path (Get-VariantDirectory $configuration) 'salamand.exe'
-            Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
-                                      '-SalamanderExe', $testedExe, '-ShortUnicodeRecycleOnly')
-        }
-        if ($requestedSet.Contains('--test-gui-unicode-transfer')) {
-            Write-Host '=== SALAMANDER-GUI-UNICODE F5/F6 TRANSFER ==='
-            $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
-            $testedExe = Join-Path (Get-VariantDirectory $configuration) 'salamand.exe'
-            Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
-                                      '-SalamanderExe', $testedExe, '-ShortUnicodeTransferOnly')
-        }
-        if ($requestedSet.Contains('--test-gui-unicode-rename')) {
-            Write-Host '=== SALAMANDER-GUI-UNICODE F2 RENAME ==='
-            $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
-            $testedExe = Join-Path (Get-VariantDirectory $configuration) 'salamand.exe'
-            Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
-                                      '-SalamanderExe', $testedExe, '-ShortUnicodeRenameOnly')
-        }
-        if ($requestedSet.Contains('--test-gui-bestfit')) {
-            Write-Host '=== SALAMANDER-GUI-UNICODE-ANSI-BEST-FIT ==='
-            $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
-            $testedExe = Join-Path (Get-VariantDirectory $configuration) 'salamand.exe'
-            Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
-                                      '-SalamanderExe', $testedExe, '-ShortUnicodeBestFitOnly')
-        }
-        if ($requestedSet.Contains('--test-gui-unicode-directory-rename')) {
-            Write-Host '=== SALAMANDER-GUI-UNICODE DIRECTORY F2 ==='
-            $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
-            $testedExe = Join-Path (Get-VariantDirectory $configuration) 'salamand.exe'
-            Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
-                                      '-SalamanderExe', $testedExe, '-ShortUnicodeDirectoryRenameOnly')
-        }
-        if ($requestedSet.Contains('--test-gui-unicode-multiselect')) {
-            Write-Host '=== SALAMANDER-GUI-UNICODE MULTI-SELECTION ==='
-            $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
-            $testedExe = Join-Path (Get-VariantDirectory $configuration) 'salamand.exe'
-            Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
-                                      '-SalamanderExe', $testedExe, '-ShortUnicodeMultiSelectOnly')
-        }
-        if ($requestedSet.Contains('--test-gui-row-identities')) {
-            Write-Host '=== SALAMANDER-GUI-WIDE ROW IDENTITIES ==='
-            $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
-            $testedExe = Join-Path (Get-VariantDirectory $configuration) 'salamand.exe'
-            Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
-                                      '-SalamanderExe', $testedExe, '-ShortUnicodeRowIdentityOnly')
-        }
-        if ($requestedSet.Contains('--test-gui-name-collisions')) {
-            Write-Host '=== SALAMANDER-GUI-UNICODE-NAMENSKOLLISIONEN ==='
-            $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
-            $testedExe = Join-Path (Get-VariantDirectory $configuration) 'salamand.exe'
-            Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
-                                      '-SalamanderExe', $testedExe, '-ShortUnicodeCollisionOnly')
-        }
-        if ($requestedSet.Contains('--test-gui-names')) {
-            Write-Host '=== SALAMANDER-GUI-UNICODE-NAMEN, KURZER PFAD ==='
-            $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
-            $testedExe = Join-Path (Get-VariantDirectory $configuration) 'salamand.exe'
-            Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
-                                      '-SalamanderExe', $testedExe, '-ShortUnicodeOnly')
-        }
-        if ($requestedSet.Contains('--test-gui')) {
-            Write-Host '=== AUTOMATISIERTER SALAMANDER-GUI-LANGPFADTEST ==='
-            $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
-            $testedExe = Join-Path (Get-VariantDirectory $configuration) 'salamand.exe'
-            Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
-                                      '-SalamanderExe', $testedExe)
+        $automatedGuiModes = @(Get-AutomatedGuiModes -RequestedSet $requestedSet)
+        foreach ($guiMode in $automatedGuiModes) {
+            if ($requestedSet.Contains('--test-gui-baseline')) {
+                Write-Host '=== SALAMANDER-GUI-TESTTREIBER, KURZPFAD-BASIS ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-BaselineOnly')
+            }
+            if ($requestedSet.Contains('--test-gui-operations-baseline')) {
+                Write-Host '=== SALAMANDER-GUI-OPERATIONEN, ASCII-BASIS ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-ShortOperationsOnly')
+            }
+            if ($requestedSet.Contains('--test-gui-unsafe-unicode-operations')) {
+                Write-Host '=== SALAMANDER-GUI-SCHUTZ F2/F5/F6/F8 BEI UNICODE ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-ShortUnicodeUnsafeOperationsOnly')
+            }
+            if ($requestedSet.Contains('--test-gui-unicode-transfer-collision')) {
+                Write-Host '=== SALAMANDER-GUI-UNICODE F5/F6 OVERWRITE PROTECTION ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-ShortUnicodeTransferCollisionOnly')
+            }
+            if ($requestedSet.Contains('--test-gui-unicode-recycle')) {
+                Write-Host '=== SALAMANDER-GUI-UNICODE F8 RECYCLE BIN ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-ShortUnicodeRecycleOnly')
+            }
+            if ($requestedSet.Contains('--test-gui-unicode-transfer')) {
+                Write-Host '=== SALAMANDER-GUI-UNICODE F5/F6 TRANSFER ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-ShortUnicodeTransferOnly')
+            }
+            if ($requestedSet.Contains('--test-gui-unicode-rename')) {
+                Write-Host '=== SALAMANDER-GUI-UNICODE F2 RENAME ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-ShortUnicodeRenameOnly')
+            }
+            if ($requestedSet.Contains('--test-gui-bestfit')) {
+                Write-Host '=== SALAMANDER-GUI-UNICODE-ANSI-BEST-FIT ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-ShortUnicodeBestFitOnly')
+            }
+            if ($requestedSet.Contains('--test-gui-unicode-directory-rename')) {
+                Write-Host '=== SALAMANDER-GUI-UNICODE DIRECTORY F2 ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-ShortUnicodeDirectoryRenameOnly')
+            }
+            if ($requestedSet.Contains('--test-gui-unicode-multiselect')) {
+                Write-Host '=== SALAMANDER-GUI-UNICODE MULTI-SELECTION ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-ShortUnicodeMultiSelectOnly')
+            }
+            if ($requestedSet.Contains('--test-gui-row-identities')) {
+                Write-Host '=== SALAMANDER-GUI-WIDE ROW IDENTITIES ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-ShortUnicodeRowIdentityOnly')
+            }
+            if ($requestedSet.Contains('--test-gui-name-collisions')) {
+                Write-Host '=== SALAMANDER-GUI-UNICODE-NAMENSKOLLISIONEN ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-ShortUnicodeCollisionOnly')
+            }
+            if ($requestedSet.Contains('--test-gui-names')) {
+                Write-Host '=== SALAMANDER-GUI-UNICODE-NAMEN, KURZER PFAD ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-ShortUnicodeOnly')
+            }
+            if ($requestedSet.Contains('--test-gui')) {
+                Write-Host '=== AUTOMATISIERTER SALAMANDER-GUI-LANGPFADTEST ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe)
+            }
         }
         if ($requestedSet.Contains('--test-gui-manual')) {
             Write-Host '=== MANUELLER SALAMANDER-GUI-LANGPFADTEST ==='
