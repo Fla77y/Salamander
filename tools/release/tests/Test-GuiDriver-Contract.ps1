@@ -181,6 +181,23 @@ if ($focusRecovery -notmatch 'IsFileListFocused' -or
 }
 Write-Host 'PASS: GUI scenarios verify file-list focus through a safe native activation notification.'
 
+# Previously the test closed Salamander normally, saving disposable panel
+# paths to HKCU. Those fixtures are deleted, so the next test could start
+# with Error Changing Directory (3) and no focused list. Explicit -l/-r
+# startup paths must override both restored panels, and the isolated test
+# process must not execute SaveConfig on shutdown.
+$startupSource = $driverText
+if ($startupSource -notmatch '\$startupArgs\s*=\s*''-l "\{0\}" -r "\{0\}" -p 2'' -f \$source' -or
+    $startupSource -notmatch 'Start-Process[^\r\n]*-ArgumentList \$startupArgs' -or
+    $startupSource -match '\$process\.CloseMainWindow\(' -or
+    $startupSource -notmatch '\$process\.Kill\(\)' -or
+    $startupSource -notmatch '\$window\.Title -ceq ''Error Changing Directory''' -or
+    $startupSource -notmatch 'GetProcessWindows\(\[uint32\]\$process\.Id\)') {
+    throw 'GUI test must start both panels in existing fixture paths, recognize directory-error dialogs and not persist disposable paths into user configuration.'
+}
+Write-Host 'PASS: GUI fixture startup and shutdown protect saved panel paths from disposable directories.'
+
+
 
 $dispatch = Get-FunctionSource 'Invoke-SalamanderCommand'
 $source = $dispatch.Extent.Text
