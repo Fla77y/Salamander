@@ -842,6 +842,22 @@ function Select-TwoRegularFiles {
     Send-Keys '{INSERT}'
 }
 
+# Move the caret by read-only filename observations. Never press Enter
+# until the exact directory row has been verified; this also works when
+# another fixture has an adjacent, similarly sorted filename.
+function Focus-DirectoryRow {
+    param([Parameter(Mandatory)][string]$Name)
+
+    Send-Keys '{HOME}'
+    for ($row = 0; $row -lt 24; $row++) {
+        if ((Read-FocusedFilename) -ceq $Name) {
+            return
+        }
+        Send-Keys '{DOWN}'
+    }
+    throw "Expected directory row was not found: '$Name'. No Enter was sent."
+}
+
 function Read-FocusedFullname {
     Read-FocusedClipboardValue -CommandId 709 -Sentinel 'SENTINEL_NOT_FULLNAME'
 }
@@ -965,6 +981,33 @@ try {
         [IO.Directory]::CreateDirectory($moveDir) | Out-Null
         [IO.Directory]::CreateDirectory($maxDir) | Out-Null
         [IO.File]::WriteAllBytes((Join-Path $maxDir $maxName), $payload)
+        # Manual OpenSal-Names fixtures expose two transitions from an
+        # ordinary short panel to a directory beyond MAX_PATH. The existing
+        # GUI test only entered child folders after the panel was already long.
+        $maxDirectoryName = 'd' * 255
+        $maxDirectoryPath = Join-Path $source $maxDirectoryName
+        [IO.Directory]::CreateDirectory($maxDirectoryPath) | Out-Null
+        [IO.File]::WriteAllBytes(
+            (Join-Path $maxDirectoryPath 'max-directory-marker.bin'), $payload)
+        $boundaryDirectoryNames = @(
+            'Ordner-A-' + ('a' * 68)
+            'Ordner-B-' + ('b' * 68)
+            'Ordner-C-' + ('c' * 68)
+            'Ordner-D-' + ('d' * 68)
+        )
+        $boundaryDirectoryPaths = @()
+        $parentDirectory = $source
+        foreach ($directoryName in $boundaryDirectoryNames) {
+            $parentDirectory = Join-Path $parentDirectory $directoryName
+            [IO.Directory]::CreateDirectory($parentDirectory) | Out-Null
+            $boundaryDirectoryPaths += $parentDirectory
+        }
+        [IO.File]::WriteAllBytes(
+            (Join-Path $parentDirectory 'nested-directory-marker.bin'), $payload)
+        Assert-True (($maxDirectoryName.Length -eq 255) -and
+            ($maxDirectoryPath.Length -gt 260)) '255-unit directory fixture crosses MAX_PATH'
+        Assert-True (($boundaryDirectoryPaths[1].Length -lt 260) -and
+            ($boundaryDirectoryPaths[2].Length -gt 260)) 'Nested directory fixture crosses MAX_PATH on Enter'
         foreach ($n in 1..5) {
             $deep = Join-Path $deep ('depth-' + $n + '-' + ('x' * 56))
             [IO.Directory]::CreateDirectory($deep) | Out-Null
@@ -1469,6 +1512,32 @@ try {
         Write-Host 'PASS: Salamander GUI supports a Unicode name on a short path.'
         return
     }
+
+    # ACT + ASSERT: a 255-character directory row from an ordinary short
+    # panel must open normally. The Windows filesystem created both paths;
+    # this test exercises the actual Enter navigation in Salamander instead
+    # of jumping directly to the long absolute path through the clipboard.
+    Go-ToPath $source
+    Restore-FilePanelFocus -ExpectedPath $source
+    Focus-DirectoryRow -Name $maxDirectoryName
+    Send-Keys '{ENTER}'
+    Wait-Until { (Read-PanelPath) -ceq $maxDirectoryPath } 'Enter 255-unit directory from a short panel'
+    Assert-True (Test-Content (Join-Path $maxDirectoryPath 'max-directory-marker.bin')) '255-unit directory opened without losing file bytes'
+    Send-Keys '{BACKSPACE}'
+    Wait-Until { (Read-PanelPath) -ceq $source } 'Backspace from 255-unit directory to short parent'
+
+    # ACT + ASSERT: entering Ordner-C crosses MAX_PATH, while Ordner-A/B
+    # remain short. Continue with Ordner-D while the panel is already long.
+    Go-ToPath $source
+    Restore-FilePanelFocus -ExpectedPath $source
+    for ($part = 0; $part -lt $boundaryDirectoryNames.Count; $part++) {
+        Focus-DirectoryRow -Name $boundaryDirectoryNames[$part]
+        Send-Keys '{ENTER}'
+        $expectedDirectory = $boundaryDirectoryPaths[$part]
+        Wait-Until { (Read-PanelPath) -ceq $expectedDirectory } "Enter nested directory component $($part + 1)"
+        Write-Host "PASS: Enter navigated nested directory component $($part + 1)"
+    }
+    Assert-True (Test-Content (Join-Path $boundaryDirectoryPaths[-1] 'nested-directory-marker.bin')) 'Nested path crossing MAX_PATH preserves file bytes'
 
     # ACT + ASSERT: actual GUI long directory change and filename retrieval.
     Go-ToPath $deep
