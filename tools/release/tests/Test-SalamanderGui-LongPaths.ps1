@@ -842,13 +842,14 @@ function Select-TwoRegularFiles {
     Send-Keys '{INSERT}'
 }
 
-# Move the caret by read-only filename observations. Never press Enter
-# until the exact directory row has been verified; this also works when
-# another fixture has an adjacent, similarly sorted filename.
+# Locate a real directory row in a non-root test fixture. Its first row
+# is the synthetic '..' entry, which does not publish a name via WM_COMMAND 710.
+# Never press Enter until the exact directory row has been verified.
 function Focus-DirectoryRow {
     param([Parameter(Mandatory)][string]$Name)
 
     Send-Keys '{HOME}'
+    Send-Keys '{DOWN}'
     for ($row = 0; $row -lt 24; $row++) {
         if ((Read-FocusedFilename) -ceq $Name) {
             return
