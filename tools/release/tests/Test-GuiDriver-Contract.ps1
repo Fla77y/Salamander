@@ -79,6 +79,25 @@ if ($verifyPosition -lt 0 -or $dispatchPosition -lt 0 -or
 }
 Write-Host 'PASS: GUI navigation verifies exact clipboard content and retries only safe clipboard writes.'
 
+# A synchronous WM_COMMAND 709/710 may return even when the focused row
+# was not exported. Never treat command dispatch as clipboard success, and
+# never change row selection merely to make a failed read pass.
+$focusedRead = Get-FunctionSource 'Read-FocusedClipboardValue'
+$focusedReadSource = $focusedRead.Extent.Text
+$focusedShort = (Get-FunctionSource 'Read-FocusedFilename').Extent.Text
+$focusedFull = (Get-FunctionSource 'Read-FocusedFullname').Extent.Text
+if ($focusedReadSource -notmatch '\$maxAttempts\s*=\s*2' -or
+    $focusedReadSource -notmatch 'GetClipboardSequenceNumber' -or
+    $focusedReadSource -notmatch 'return \$observed\.TrimEnd' -or
+    $focusedReadSource -notmatch 'Read-PanelPath' -or
+    $focusedReadSource -match 'Send-Keys|\{END\}|\{HOME\}|\{DOWN\}|\{UP\}' -or
+    $focusedShort -notmatch 'Read-FocusedClipboardValue -CommandId 710' -or
+    $focusedFull -notmatch 'Read-FocusedClipboardValue -CommandId 709') {
+    throw 'Focused-name clipboard reads must retry bounded, read-only requests and report the panel state on failure.'
+}
+Write-Host 'PASS: focused clipboard reads are bounded, non-destructive, and diagnostic.'
+
+
 
 $dispatch = Get-FunctionSource 'Invoke-SalamanderCommand'
 $source = $dispatch.Extent.Text
