@@ -184,6 +184,52 @@ public static class SalamanderGuiNative
     public struct GuiRect { public int Left, Top, Right, Bottom; }
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out GuiRect rect);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct GuiThreadInfo
+    {
+        public uint cbSize;
+        public uint flags;
+        public IntPtr hwndActive;
+        public IntPtr hwndFocus;
+        public IntPtr hwndCapture;
+        public IntPtr hwndMenuOwner;
+        public IntPtr hwndMoveSize;
+        public IntPtr hwndCaret;
+        public GuiRect rcCaret;
+    }
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool GetGUIThreadInfo(uint threadId, ref GuiThreadInfo info);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetClassNameW")]
+    private static extern int GetClassName(IntPtr window, StringBuilder buffer, int capacity);
+
+    // Read the actual focused control in Salamander's UI thread, without
+    // activating a window or changing its state.
+    public static string GetInputFocusSummary(IntPtr mainWindow, uint expectedPid)
+    {
+        uint mainPid;
+        uint threadId = GetWindowThreadProcessId(mainWindow, out mainPid);
+        if (threadId == 0 || mainPid != expectedPid)
+            return "main HWND owner mismatch";
+
+        GuiThreadInfo info = new GuiThreadInfo();
+        info.cbSize = (uint)Marshal.SizeOf(typeof(GuiThreadInfo));
+        if (!GetGUIThreadInfo(threadId, ref info))
+            return "GetGUIThreadInfo failed: " + Marshal.GetLastWin32Error();
+
+        uint focusPid = 0;
+        if (info.hwndFocus != IntPtr.Zero)
+            GetWindowThreadProcessId(info.hwndFocus, out focusPid);
+        StringBuilder windowClass = new StringBuilder(128);
+        if (info.hwndFocus != IntPtr.Zero)
+            GetClassName(info.hwndFocus, windowClass, windowClass.Capacity);
+
+        return String.Format(
+            "thread={0}; active=0x{1:X}; focus=0x{2:X}; focusOwnerPid={3}; focusClass={4}",
+            threadId, info.hwndActive.ToInt64(), info.hwndFocus.ToInt64(),
+            focusPid, windowClass.ToString());
+    }
+
     [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr window);
     [DllImport("user32.dll")] private static extern bool BringWindowToTop(IntPtr window);
     [DllImport("user32.dll", SetLastError = true)]
@@ -1304,9 +1350,45 @@ try {
     Send-Keys '{HOME}'
     Send-Keys '{DOWN}'
     Assert-True ((Read-FocusedFilename) -ceq 'nested-child') 'Long-path child directory selected'
+    # A focused filename copied by WM_COMMAND 710 does not prove that
+    # SendKeys reached the file panel. Capture read-only focus information
+    # and the last observed panel path; never retry Enter blindly.
+    $focusBeforeEnter = [SalamanderGuiNative]::GetInputFocusSummary(
+        $mainWindowHandle, [uint32]$process.Id)
+    $pathAfterEnter = '<not read>'
+    $pathReadError = '<none>'
     Send-Keys '{ENTER}'
-    Wait-Until { (Read-PanelPath) -ceq $nestedLongDirectory } 'Enter child directory from long panel'
-    Assert-True ((Read-PanelPath) -ceq $nestedLongDirectory) 'Long-path child directory opened'
+    try {
+        Wait-Until {
+            $dialogText = Get-TestDialog
+            if (-not [string]::IsNullOrEmpty($dialogText)) {
+                throw "Salamander raised a dialog after Enter: $dialogText"
+            }
+            try {
+                $pathAfterEnter = Read-PanelPath
+                $pathReadError = '<none>'
+            }
+            catch {
+                $pathReadError = $_.Exception.Message
+                return $false
+            }
+            return $pathAfterEnter -ceq $nestedLongDirectory
+        } 'Enter child directory from long panel'
+    }
+    catch {
+        $failure = $_.Exception.Message
+        $focusAfterEnter = [SalamanderGuiNative]::GetInputFocusSummary(
+            $mainWindowHandle, [uint32]$process.Id)
+        $dialogText = Get-TestDialog
+        throw ("Long-path Enter navigation failed: {0}; last observed path='{1}'; " +
+            "path read error='{2}'; focus before Enter=[{3}]; focus after Enter=[{4}]; " +
+            "foreground={5}; dialog='{6}'; child directory exists={7}. " +
+            "No additional Enter was sent." -f
+            $failure, $pathAfterEnter, $pathReadError, $focusBeforeEnter,
+            $focusAfterEnter, (Get-ForegroundWindowSummary), $dialogText,
+            [IO.Directory]::Exists($nestedLongDirectory))
+    }
+    Assert-True ($pathAfterEnter -ceq $nestedLongDirectory) 'Long-path child directory opened'
     Send-Keys '{BACKSPACE}'
     Wait-Until { (Read-PanelPath) -ceq $deep } 'Backspace to long directory parent'
     Assert-True ((Read-PanelPath) -ceq $deep) 'Backspace restores long directory'
