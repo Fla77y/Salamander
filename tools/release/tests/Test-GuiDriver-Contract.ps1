@@ -61,6 +61,25 @@ Write-Host 'PASS: GUI baseline has no redundant read after verified navigation.'
 
 Write-Host 'PASS: GUI navigation reuses the observed path without a redundant WM_COMMAND.'
 
+# Navigation must never consume an unverified clipboard value. Retrying
+# SetText/GetText is safe; retrying WM_COMMAND with wrong data is not.
+$navigationSource = $navigate.Extent.Text
+$verifiedClipboard = Get-FunctionSource 'Set-VerifiedNavigationClipboard'
+$clipboardSource = $verifiedClipboard.Extent.Text
+$verifyPosition = $navigationSource.IndexOf('Set-VerifiedNavigationClipboard', [StringComparison]::Ordinal)
+$dispatchPosition = $navigationSource.IndexOf('Invoke-SalamanderCommand -CommandId 775', [StringComparison]::Ordinal)
+if ($verifyPosition -lt 0 -or $dispatchPosition -lt 0 -or
+    $verifyPosition -ge $dispatchPosition -or
+    $navigationSource -match 'Set-ClipboardText\s+\$Path' -or
+    $clipboardSource -notmatch '\[StringComparison\]::Ordinal' -or
+    $clipboardSource -notmatch '\$maxAttempts\s*=\s*4' -or
+    $clipboardSource -notmatch 'No navigation command was sent' -or
+    $clipboardSource -match 'Invoke-SalamanderCommand') {
+    throw 'GUI navigation must verify exact clipboard round-trip before dispatching WM_COMMAND 775.'
+}
+Write-Host 'PASS: GUI navigation verifies exact clipboard content and retries only safe clipboard writes.'
+
+
 $dispatch = Get-FunctionSource 'Invoke-SalamanderCommand'
 $source = $dispatch.Extent.Text
 $errorCapture = $source.IndexOf(
