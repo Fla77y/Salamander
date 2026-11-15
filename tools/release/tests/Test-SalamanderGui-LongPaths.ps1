@@ -468,7 +468,7 @@ function Set-VerifiedNavigationClipboard {
         Set-ClipboardText $Text
         $observed = Get-ClipboardText
         if ([string]::Equals($observed, $Text, [StringComparison]::Ordinal)) {
-            Assert-True $true 'Clipboard contains only the requested text path'
+            Write-Host 'PASS: Clipboard contains only the requested text path'
             return
         }
 
