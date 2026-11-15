@@ -647,6 +647,8 @@ function Read-FocusedClipboardValue {
     $lastSequenceBefore = 0
     $lastSequenceAfter = 0
     $lastFailure = '<none>'
+    $lastFocusBefore = '<not measured>'
+    $lastFocusAfter = '<not measured>'
 
     for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
         $dialog = Get-TestDialog
@@ -663,7 +665,11 @@ function Read-FocusedClipboardValue {
         }
         else {
             $lastSequenceBefore = [SalamanderGuiNative]::GetClipboardSequenceNumber()
+            $lastFocusBefore = [SalamanderGuiNative]::GetInputFocusSummary(
+                $mainWindowHandle, [uint32]$process.Id)
             Invoke-SalamanderCommand -CommandId $CommandId
+            $lastFocusAfter = [SalamanderGuiNative]::GetInputFocusSummary(
+                $mainWindowHandle, [uint32]$process.Id)
             for ($poll = 0; $poll -lt 6; $poll++) {
                 $observed = Get-ClipboardText
                 $lastSequenceAfter = [SalamanderGuiNative]::GetClipboardSequenceNumber()
@@ -679,9 +685,12 @@ function Read-FocusedClipboardValue {
         }
 
         if ($attempt -lt $maxAttempts) {
-            Write-Warning ("Focused clipboard command {0} did not publish on attempt {1}/{2} " +
-                "({3}); retrying read-only command without changing selection." -f
-                $CommandId, $attempt, $maxAttempts, $lastFailure)
+            $retryFormat = "Focused clipboard command {0} did not publish on attempt {1}/{2} " +
+                           "({3}); sequence before={4}, after={5}; focus before=[{6}]; " +
+                           "focus after=[{7}]. Retrying read-only command without changing selection."
+            Write-Warning ($retryFormat -f $CommandId, $attempt, $maxAttempts,
+                           $lastFailure, $lastSequenceBefore, $lastSequenceAfter,
+                           $lastFocusBefore, $lastFocusAfter)
             Start-Sleep -Milliseconds 250
         }
     }
@@ -696,12 +705,14 @@ function Read-FocusedClipboardValue {
         catch { $panelPath = '<read failed: ' + $_.Exception.Message + '>' }
     }
 
-    throw ("Focused clipboard command {0} failed after {1} attempts: {2}; " +
-        "observed UTF-16 units={3}; sequence before={4}, after={5}; " +
-        "panel path='{6}'; foreground={7}; dialog='{8}'" -f
-        $CommandId, $maxAttempts, $lastFailure, $lastObservedLength,
-        $lastSequenceBefore, $lastSequenceAfter, $panelPath,
-        (Get-ForegroundWindowSummary), (Get-TestDialog))
+    $failureFormat = "Focused clipboard command {0} failed after {1} attempts: {2}; " +
+                     "observed UTF-16 units={3}; sequence before={4}, after={5}; " +
+                     "panel path='{6}'; foreground={7}; dialog='{8}'; " +
+                     "focus before=[{9}]; focus after=[{10}]"
+    throw ($failureFormat -f $CommandId, $maxAttempts, $lastFailure,
+           $lastObservedLength, $lastSequenceBefore, $lastSequenceAfter,
+           $panelPath, (Get-ForegroundWindowSummary), (Get-TestDialog),
+           $lastFocusBefore, $lastFocusAfter)
 }
 
 function Read-FocusedFilename {
@@ -936,8 +947,21 @@ try {
     # WM_COMMAND 711 adds no coverage and can race with GUI processing.
     Write-Host 'PASS: GUI driver can navigate a normal short directory'
     if ($BaselineOnly) {
+        $focusBeforeEnd = [SalamanderGuiNative]::GetInputFocusSummary(
+            $mainWindowHandle, [uint32]$process.Id)
         Send-Keys '{END}'
-        Assert-True ((Read-FocusedFilename) -ceq $focusProbeName) 'Unattended keyboard focus reaches the test file panel'
+        try {
+            $focusedName = Read-FocusedFilename
+        }
+        catch {
+            $focusAfterEnd = [SalamanderGuiNative]::GetInputFocusSummary(
+                $mainWindowHandle, [uint32]$process.Id)
+            throw ("Short-path GUI focus probe failed: {0}; focus before End=[{1}]; " +
+                   "focus after End=[{2}]; test file exists={3}. No extra keys were sent." -f
+                   $_.Exception.Message, $focusBeforeEnd, $focusAfterEnd,
+                   [IO.File]::Exists((Join-Path $source $focusProbeName)))
+        }
+        Assert-True ($focusedName -ceq $focusProbeName) 'Unattended keyboard focus reaches the test file panel'
         $passed = $true
         Write-Host 'PASS: GUI automation driver works with short ASCII paths and verified keyboard focus.'
         return
