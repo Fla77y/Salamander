@@ -448,10 +448,12 @@ function Focus-TestProcess {
            $h.ToInt64(), $process.Id, $attempts, $foreground, $windows)
 }
 
-# A synchronous clipboard-navigation WM_COMMAND can leave keyboard focus
-# on the main HWND rather than the active file list. A verified double Tab
-# uses Salamander's own panel-switch shortcut, then restores the starting
-# panel. Do not send further file-operation keys if focus/path differ.
+# The clipboard path command can leave focus on Salamander's main HWND.
+# Salamander's WM_ACTIVATE/WA_ACTIVE handler calls FocusPanel(GetActivePanel()).
+# Use that native focus route once, then verify the actual IDC_FILES control
+# (950), the observed path and the absence of any modal dialog. Do not guess
+# which of the two file lists is active, or dispatch keyboard/file actions
+# while focus is unresolved.
 function Restore-FilePanelFocus {
     param([Parameter(Mandatory)][string]$ExpectedPath)
 
@@ -462,28 +464,52 @@ function Restore-FilePanelFocus {
 
     $focusBefore = [SalamanderGuiNative]::GetInputFocusSummary(
         $mainWindowHandle, [uint32]$process.Id)
+    $dialogBefore = Get-TestDialog
     if ((Get-ActiveProcessId) -ne [uint32]$process.Id -or
-        -not [string]::IsNullOrEmpty((Get-TestDialog))) {
-        throw "Cannot recover file-panel focus while Salamander is inactive or a dialog is open: $focusBefore"
+        [SalamanderGuiNative]::GetForegroundWindow() -ne $mainWindowHandle -or
+        -not [string]::IsNullOrEmpty($dialogBefore)) {
+        throw ("Cannot restore file-panel focus: Salamander main window is not foreground " +
+               "or a modal dialog is open. Before=[$focusBefore]; dialog='$dialogBefore'.")
     }
 
-    # Exactly two panel switches; never retry a command that manipulates
-    # files or trust a foreground main window as proof of listbox focus.
-    Send-Keys '{TAB}'
-    Send-Keys '{TAB}'
+    [uint32]$ownerPid = 0
+    [void][SalamanderGuiNative]::GetWindowThreadProcessId(
+        $mainWindowHandle, [ref]$ownerPid)
+    if ($ownerPid -ne [uint32]$process.Id) {
+        throw "Cannot restore file-panel focus: main HWND owner changed."
+    }
 
+    # WA_ACTIVE is a focus notification, not a keyboard command. Dispatch
+    # it synchronously to the verified main HWND and never repeat blindly.
+    [IntPtr]$activationResult = [IntPtr]::Zero
+    $sent = [SalamanderGuiNative]::SendMessageTimeout(
+        $mainWindowHandle, [uint32]0x0006, [UIntPtr]::new([uint32]1),
+        [IntPtr]::Zero, [uint32]0x0002, [uint32]5000,
+        [ref]$activationResult)
+    $activationError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+    if ($sent -eq [IntPtr]::Zero) {
+        throw "Salamander WM_ACTIVATE focus recovery failed (Win32 error $activationError). No keys were sent."
+    }
+
+    $observedPath = '<unavailable>'
+    $readError = '<none>'
+    try { $observedPath = Read-PanelPath }
+    catch { $readError = $_.Exception.Message }
     $focusAfter = [SalamanderGuiNative]::GetInputFocusSummary(
         $mainWindowHandle, [uint32]$process.Id)
-    $observedPath = Read-PanelPath
+    $dialogAfter = Get-TestDialog
     if (-not [SalamanderGuiNative]::IsFileListFocused(
             $mainWindowHandle, [uint32]$process.Id) -or
-        $observedPath -cne $ExpectedPath) {
+        $observedPath -cne $ExpectedPath -or
+        -not [string]::IsNullOrEmpty($dialogAfter)) {
         $failureFormat = "File-panel focus recovery failed. Before=[{0}]; after=[{1}]; " +
-                         "expected path='{2}'; observed path='{3}'. No file-operation keys were sent."
-        throw ($failureFormat -f $focusBefore, $focusAfter, $ExpectedPath, $observedPath)
+                         "expected path='{2}'; observed path='{3}'; read error='{4}'; " +
+                         "dialog='{5}'. No keyboard or file-operation keys were sent."
+        throw ($failureFormat -f $focusBefore, $focusAfter, $ExpectedPath,
+               $observedPath, $readError, $dialogAfter)
     }
 
-    Write-Host 'PASS: Verified file-panel keyboard focus restored after clipboard navigation'
+    Write-Host 'PASS: Verified file-panel keyboard focus restored through Salamander WM_ACTIVATE'
 }
 
 function Send-Keys {
