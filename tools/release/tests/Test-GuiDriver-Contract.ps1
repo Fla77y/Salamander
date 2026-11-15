@@ -155,6 +155,27 @@ if (-not $baselineProbe.Success -or
 }
 Write-Host 'PASS: short GUI focus baseline captures keyboard target and never retries input blindly.'
 
+# Every GUI mode shares the initial short-path navigation, and its first
+# keyboard operation requires CFilesBox to own focus. Recovery is allowed
+# only after the process-owned input target and original panel path are
+# verified; two normal Tab switches must restore the original panel.
+$focusRecovery = (Get-FunctionSource 'Restore-FilePanelFocus').Extent.Text
+$guiInterop = $driverText
+$tabMatches = [regex]::Matches($focusRecovery, "Send-Keys '\{TAB\}'")
+if ($focusRecovery -notmatch 'IsFileListFocused' -or
+    $focusRecovery -notmatch 'Get-ActiveProcessId' -or
+    $focusRecovery -notmatch 'Get-TestDialog' -or
+    $focusRecovery -notmatch '\$observedPath\s*=\s*Read-PanelPath' -or
+    $focusRecovery -notmatch '\$observedPath\s+-cne\s+\$ExpectedPath' -or
+    $focusRecovery -notmatch '\$failureFormat\s+-f\s+\$focusBefore' -or
+    $tabMatches.Count -ne 2 -or
+    $guiInterop -notmatch 'GetDlgCtrlID\(info\.hwndFocus\)\s*==\s*950' -or
+    $guiInterop -notmatch 'Go-ToPath\s+\$source\s+Restore-FilePanelFocus\s+-ExpectedPath\s+\$source') {
+    throw 'GUI baseline must check and safely recover process-owned file-list focus before sending test operation keys.'
+}
+Write-Host 'PASS: GUI scenarios verify file-list focus after initial clipboard navigation.'
+
+
 
 
 
