@@ -170,6 +170,23 @@ if ($driverText -notmatch '\[switch\]\$ShortUnicodeDirectoryRenameOnly' -or
 }
 Write-Host 'PASS: UTF-16 directory F2 rename contract is present.'
 
+# The W-backed row identity is keyed by CFileData::Name's allocation
+# address, not by the bytes of a copied std::string. The latter made the
+# F6 long-path directory move decline before opening its confirmation.
+$directoryMoveSource = Get-Content -LiteralPath (
+    Join-Path $PSScriptRoot '..\..\..\src\fileswn8.cpp') -Raw
+$directoryMove = [regex]::Match(
+    $directoryMoveSource,
+    '(?s)BOOL CFilesWindow::TryUnicodeSingleDirectoryMove\(.*?\r?\n\}\r?\n'
+)
+if (-not $directoryMove.Success -or
+    $directoryMove.Value -notmatch 'UnicodeDiskNames\.TryGetRow\(entry\.Name, originalName\)' -or
+    $directoryMove.Value -match 'UnicodeDiskNames\.TryGetRow\(alias\.c_str\(\), originalName\)') {
+    throw 'F6 directory move must retrieve W row identity using the original CFileData::Name allocation.'
+}
+Write-Host 'PASS: F6 directory move uses original W-backed row identity.'
+
+
 # Compile the embedded C# Win32 interop in the headless Windows test process.
 # PowerShell's AST check alone would not catch invalid P/Invoke signatures.
 $interopSource = [regex]::Match(
