@@ -1355,8 +1355,13 @@ try {
     # and the last observed panel path; never retry Enter blindly.
     $focusBeforeEnter = [SalamanderGuiNative]::GetInputFocusSummary(
         $mainWindowHandle, [uint32]$process.Id)
-    $pathAfterEnter = '<not read>'
-    $pathReadError = '<none>'
+    # Wait-Until invokes its condition with &, in a child PowerShell scope.
+    # Store the observed path in a shared reference-type object, not in a
+    # scalar local that would disappear when the polling scriptblock returns.
+    $enterDiagnostics = @{
+        PanelPath = '<not read>'
+        PanelReadError = '<none>'
+    }
     Send-Keys '{ENTER}'
     try {
         Wait-Until {
@@ -1365,14 +1370,14 @@ try {
                 throw "Salamander raised a dialog after Enter: $dialogText"
             }
             try {
-                $pathAfterEnter = Read-PanelPath
-                $pathReadError = '<none>'
+                $enterDiagnostics.PanelPath = Read-PanelPath
+                $enterDiagnostics.PanelReadError = '<none>'
             }
             catch {
-                $pathReadError = $_.Exception.Message
+                $enterDiagnostics.PanelReadError = $_.Exception.Message
                 return $false
             }
-            return $pathAfterEnter -ceq $nestedLongDirectory
+            return $enterDiagnostics.PanelPath -ceq $nestedLongDirectory
         } 'Enter child directory from long panel'
     }
     catch {
@@ -1384,11 +1389,11 @@ try {
             "path read error='{2}'; focus before Enter=[{3}]; focus after Enter=[{4}]; " +
             "foreground={5}; dialog='{6}'; child directory exists={7}. " +
             "No additional Enter was sent." -f
-            $failure, $pathAfterEnter, $pathReadError, $focusBeforeEnter,
+            $failure, $enterDiagnostics.PanelPath, $enterDiagnostics.PanelReadError, $focusBeforeEnter,
             $focusAfterEnter, (Get-ForegroundWindowSummary), $dialogText,
             [IO.Directory]::Exists($nestedLongDirectory))
     }
-    Assert-True ($pathAfterEnter -ceq $nestedLongDirectory) 'Long-path child directory opened'
+    Assert-True ($enterDiagnostics.PanelPath -ceq $nestedLongDirectory) 'Long-path child directory opened'
     Send-Keys '{BACKSPACE}'
     Wait-Until { (Read-PanelPath) -ceq $deep } 'Backspace to long directory parent'
     Assert-True ((Read-PanelPath) -ceq $deep) 'Backspace restores long directory'
