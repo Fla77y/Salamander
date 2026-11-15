@@ -74,6 +74,7 @@ if ($verifyPosition -lt 0 -or $dispatchPosition -lt 0 -or
     $clipboardSource -notmatch '\[StringComparison\]::Ordinal' -or
     $clipboardSource -notmatch '\$maxAttempts\s*=\s*4' -or
     $clipboardSource -notmatch 'No navigation command was sent' -or
+    $clipboardSource -notmatch '\$warningFormat\s+-f\s+\$attempt' -or
     $clipboardSource -match 'Invoke-SalamanderCommand') {
     throw 'GUI navigation must verify exact clipboard round-trip before dispatching WM_COMMAND 775.'
 }
