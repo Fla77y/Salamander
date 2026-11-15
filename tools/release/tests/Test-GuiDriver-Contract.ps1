@@ -98,15 +98,18 @@ Write-Host 'PASS: long-directory Enter failure captures actual GUI focus and obs
 # Wait-Until invokes a supplied scriptblock using &, which creates a
 # child scope. A scalar assignment within the poll must not be used after
 # Wait-Until returns; only the shared hashtable's mutation survives.
-$enterNavigation = [regex]::Match(
-    $mainGuiSource,
-    "(?s)\\\$enterDiagnostics\\s*=\\s*@\\\\{.*?Send-Keys '\\{BACKSPACE\\}'"
-)
-if (-not $enterNavigation.Success -or
-    $enterNavigation.Value -notmatch '\$enterDiagnostics\.PanelPath\s*=\s*Read-PanelPath' -or
-    $enterNavigation.Value -notmatch 'return\s+\$enterDiagnostics\.PanelPath\s+-ceq\s+\$nestedLongDirectory' -or
-    $enterNavigation.Value -notmatch 'Assert-True\s+\(\$enterDiagnostics\.PanelPath\s+-ceq\s+\$nestedLongDirectory\)' -or
-    $enterNavigation.Value -match 'Assert-True\s+\(\(Read-PanelPath\)') {
+$enterStart = $mainGuiSource.IndexOf('$enterDiagnostics = @{', [StringComparison]::Ordinal)
+$enterEnd = if ($enterStart -ge 0) {
+    $mainGuiSource.IndexOf("Send-Keys '{BACKSPACE}'", $enterStart, [StringComparison]::Ordinal)
+} else { -1 }
+if ($enterStart -lt 0 -or $enterEnd -le $enterStart) {
+    throw 'Long-directory Enter diagnostics or the following Backspace operation were not found.'
+}
+$enterNavigation = $mainGuiSource.Substring($enterStart, $enterEnd - $enterStart)
+if ($enterNavigation -notmatch '\$enterDiagnostics\.PanelPath\s*=\s*Read-PanelPath' -or
+    $enterNavigation -notmatch 'return\s+\$enterDiagnostics\.PanelPath\s+-ceq\s+\$nestedLongDirectory' -or
+    $enterNavigation -notmatch 'Assert-True\s+\(\$enterDiagnostics\.PanelPath\s+-ceq\s+\$nestedLongDirectory\)' -or
+    $enterNavigation -match 'Assert-True\s+\(\(Read-PanelPath\)') {
     throw 'Long-directory Enter must assert the same path observed by Wait-Until through a reference-type diagnostic object.'
 }
 Write-Host 'PASS: Enter navigation preserves the successful poll result across PowerShell scopes.'
