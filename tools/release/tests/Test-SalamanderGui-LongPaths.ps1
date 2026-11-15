@@ -585,11 +585,80 @@ function Go-ToPath {
     }
 }
 
+# Commands 709/710 can fail to publish without raising a dialog (e.g. when
+# the '..' row is focused or the W-backed row identity is unavailable).
+# Retry only this read-only command, never alter the focused row or assume
+# that a successful WM_COMMAND dispatch implies clipboard publication.
+function Read-FocusedClipboardValue {
+    param(
+        [ValidateSet(709,710)][int]$CommandId,
+        [Parameter(Mandatory)][string]$Sentinel
+    )
+
+    $maxAttempts = 2
+    $lastObservedLength = -1
+    $lastSequenceBefore = 0
+    $lastSequenceAfter = 0
+    $lastFailure = '<none>'
+
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        $dialog = Get-TestDialog
+        if (-not [string]::IsNullOrEmpty($dialog)) {
+            throw "Cannot read focused clipboard value while a Salamander dialog is open: $dialog"
+        }
+        if ((Get-ActiveProcessId) -ne [uint32]$process.Id) {
+            throw "Cannot read focused clipboard value while Salamander is not foreground: $(Get-ForegroundWindowSummary)"
+        }
+
+        Set-ClipboardText $Sentinel
+        if ((Get-ClipboardText) -cne $Sentinel) {
+            $lastFailure = 'Clipboard sentinel did not round-trip'
+        }
+        else {
+            $lastSequenceBefore = [SalamanderGuiNative]::GetClipboardSequenceNumber()
+            Invoke-SalamanderCommand -CommandId $CommandId
+            for ($poll = 0; $poll -lt 6; $poll++) {
+                $observed = Get-ClipboardText
+                $lastSequenceAfter = [SalamanderGuiNative]::GetClipboardSequenceNumber()
+                $lastObservedLength = if ($null -eq $observed) { -1 } else { $observed.Length }
+                if ($lastSequenceAfter -ne $lastSequenceBefore -and
+                    -not [string]::IsNullOrWhiteSpace($observed) -and
+                    $observed -cne $Sentinel) {
+                    return $observed.TrimEnd([char]13, [char]10)
+                }
+                Start-Sleep -Milliseconds 150
+            }
+            $lastFailure = 'Command did not publish nonempty new clipboard text'
+        }
+
+        if ($attempt -lt $maxAttempts) {
+            Write-Warning ("Focused clipboard command {0} did not publish on attempt {1}/{2} " +
+                "({3}); retrying read-only command without changing selection." -f
+                $CommandId, $attempt, $maxAttempts, $lastFailure)
+            Start-Sleep -Milliseconds 250
+        }
+    }
+
+    # A fresh path read identifies whether the panel is still in the expected
+    # directory. Keep errors as diagnostics, not as a replacement for the
+    # original failure.
+    $panelPath = '<unavailable>'
+    if ((Get-ActiveProcessId) -eq [uint32]$process.Id -and
+        [string]::IsNullOrEmpty((Get-TestDialog))) {
+        try { $panelPath = Read-PanelPath }
+        catch { $panelPath = '<read failed: ' + $_.Exception.Message + '>' }
+    }
+
+    throw ("Focused clipboard command {0} failed after {1} attempts: {2}; " +
+        "observed UTF-16 units={3}; sequence before={4}, after={5}; " +
+        "panel path='{6}'; foreground={7}; dialog='{8}'" -f
+        $CommandId, $maxAttempts, $lastFailure, $lastObservedLength,
+        $lastSequenceBefore, $lastSequenceAfter, $panelPath,
+        (Get-ForegroundWindowSummary), (Get-TestDialog))
+}
+
 function Read-FocusedFilename {
-    Set-ClipboardText 'SENTINEL_NOT_FILENAME'
-    Invoke-SalamanderCommand -CommandId 710
-    Wait-Until { (Get-ClipboardText) -ne 'SENTINEL_NOT_FILENAME' } 'focused file name clipboard shortcut'
-    return (Get-ClipboardText).TrimEnd([char]13, [char]10)
+    return Read-FocusedClipboardValue -CommandId 710 -Sentinel 'SENTINEL_NOT_FILENAME'
 }
 
 
@@ -617,10 +686,7 @@ function Select-TwoRegularFiles {
 }
 
 function Read-FocusedFullname {
-    Set-ClipboardText 'SENTINEL_NOT_FULLNAME'
-    Invoke-SalamanderCommand -CommandId 709
-    Wait-Until { (Get-ClipboardText) -ne 'SENTINEL_NOT_FULLNAME' } 'focused full path clipboard shortcut'
-    return (Get-ClipboardText).TrimEnd([char]13, [char]10)
+    return Read-FocusedClipboardValue -CommandId 709 -Sentinel 'SENTINEL_NOT_FULLNAME'
 }
 
 function Test-Content {
