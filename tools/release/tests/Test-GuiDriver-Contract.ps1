@@ -155,28 +155,31 @@ if (-not $baselineProbe.Success -or
 }
 Write-Host 'PASS: short GUI focus baseline captures keyboard target and never retries input blindly.'
 
-# Every GUI mode shares the initial short-path navigation, and its first
-# keyboard operation requires CFilesBox to own focus. Recovery is allowed
-# only after the process-owned input target and original panel path are
-# verified; two normal Tab switches must restore the original panel.
+# Every GUI mode shares the initial short-path navigation. WM_ACTIVATE
+# restores focus using Salamander's own FocusPanel(GetActivePanel()) path;
+# it is permitted only for the verified foreground HWND, never a guessed
+# left/right child window or a modal popup. Verify file-list focus and path
+# before any file-operation keystrokes.
 $focusRecovery = (Get-FunctionSource 'Restore-FilePanelFocus').Extent.Text
 $guiInterop = $driverText
-$tabMatches = [regex]::Matches($focusRecovery, "Send-Keys '\{TAB\}'")
 if ($focusRecovery -notmatch 'IsFileListFocused' -or
     $focusRecovery -notmatch 'Get-ActiveProcessId' -or
     $focusRecovery -notmatch 'Get-TestDialog' -or
+    $focusRecovery -notmatch 'GetForegroundWindow\(\)\s+-ne\s+\$mainWindowHandle' -or
+    $focusRecovery -notmatch 'GetWindowThreadProcessId' -or
+    $focusRecovery -notmatch 'SendMessageTimeout' -or
+    $focusRecovery -notmatch '\[uint32\]0x0006' -or
+    $focusRecovery -notmatch '\[uint32\]1' -or
+    $focusRecovery -notmatch '\$activationError\s*=\s*\[Runtime\.InteropServices\.Marshal\]::GetLastWin32Error\(\)' -or
     $focusRecovery -notmatch '\$observedPath\s*=\s*Read-PanelPath' -or
     $focusRecovery -notmatch '\$observedPath\s+-cne\s+\$ExpectedPath' -or
     $focusRecovery -notmatch '\$failureFormat\s+-f\s+\$focusBefore' -or
-    $tabMatches.Count -ne 2 -or
+    $focusRecovery -match 'Send-Keys|Focus-TestProcess|AttachThreadInput' -or
     $guiInterop -notmatch 'GetDlgCtrlID\(info\.hwndFocus\)\s*==\s*950' -or
     $guiInterop -notmatch 'Go-ToPath\s+\$source\s+Restore-FilePanelFocus\s+-ExpectedPath\s+\$source') {
-    throw 'GUI baseline must check and safely recover process-owned file-list focus before sending test operation keys.'
+    throw 'GUI baseline must restore and verify file-list focus via the native activation handler, never through blind keystrokes.'
 }
-Write-Host 'PASS: GUI scenarios verify file-list focus after initial clipboard navigation.'
-
-
-
+Write-Host 'PASS: GUI scenarios verify file-list focus through a safe native activation notification.'
 
 
 $dispatch = Get-FunctionSource 'Invoke-SalamanderCommand'
