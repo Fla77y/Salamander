@@ -658,7 +658,7 @@ function Read-FocusedClipboardValue {
 }
 
 function Read-FocusedFilename {
-    return Read-FocusedClipboardValue -CommandId 710 -Sentinel 'SENTINEL_NOT_FILENAME'
+    Read-FocusedClipboardValue -CommandId 710 -Sentinel 'SENTINEL_NOT_FILENAME'
 }
 
 
@@ -686,7 +686,7 @@ function Select-TwoRegularFiles {
 }
 
 function Read-FocusedFullname {
-    return Read-FocusedClipboardValue -CommandId 709 -Sentinel 'SENTINEL_NOT_FULLNAME'
+    Read-FocusedClipboardValue -CommandId 709 -Sentinel 'SENTINEL_NOT_FULLNAME'
 }
 
 function Test-Content {
