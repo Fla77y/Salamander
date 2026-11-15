@@ -478,9 +478,9 @@ function Restore-FilePanelFocus {
     if (-not [SalamanderGuiNative]::IsFileListFocused(
             $mainWindowHandle, [uint32]$process.Id) -or
         $observedPath -cne $ExpectedPath) {
-        throw ("File-panel focus recovery failed. Before=[{0}]; after=[{1}]; " +
-               "expected path='{2}'; observed path='{3}'. No file-operation keys were sent." -f
-               $focusBefore, $focusAfter, $ExpectedPath, $observedPath)
+        $failureFormat = "File-panel focus recovery failed. Before=[{0}]; after=[{1}]; " +
+                         "expected path='{2}'; observed path='{3}'. No file-operation keys were sent."
+        throw ($failureFormat -f $focusBefore, $focusAfter, $ExpectedPath, $observedPath)
     }
 
     Write-Host 'PASS: Verified file-panel keyboard focus restored after clipboard navigation'
