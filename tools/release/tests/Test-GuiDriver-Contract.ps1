@@ -127,6 +127,9 @@ $focusedShort = (Get-FunctionSource 'Read-FocusedFilename').Extent.Text
 $focusedFull = (Get-FunctionSource 'Read-FocusedFullname').Extent.Text
 if ($focusedReadSource -notmatch '\$maxAttempts\s*=\s*2' -or
     $focusedReadSource -notmatch 'GetClipboardSequenceNumber' -or
+    $focusedReadSource -notmatch 'GetInputFocusSummary' -or
+    $focusedReadSource -notmatch '\$retryFormat\s+-f\s+\$CommandId' -or
+    $focusedReadSource -notmatch '\$failureFormat\s+-f\s+\$CommandId' -or
     $focusedReadSource -notmatch 'return \$observed\.TrimEnd' -or
     $focusedReadSource -notmatch 'Read-PanelPath' -or
     $focusedReadSource -match 'Send-Keys|\{END\}|\{HOME\}|\{DOWN\}|\{UP\}' -or
@@ -135,6 +138,23 @@ if ($focusedReadSource -notmatch '\$maxAttempts\s*=\s*2' -or
     throw 'Focused-name clipboard reads must retry bounded, read-only requests and report the panel state on failure.'
 }
 Write-Host 'PASS: focused clipboard reads are bounded, non-destructive, and diagnostic.'
+
+# A focused filename read is not proof that SendKeys reached the file-list
+# control. On failure, retain the pre-/post-key focus and the source fixture
+# existence, without retrying or forcing a new focus target.
+$baselineProbe = [regex]::Match(
+    $driverText,
+    '(?s)if \(\$BaselineOnly\) \{\s*\$focusBeforeEnd.*?No extra keys were sent.*?\$focusedName -ceq \$focusProbeName'
+)
+if (-not $baselineProbe.Success -or
+    $baselineProbe.Value -notmatch 'GetInputFocusSummary' -or
+    $baselineProbe.Value -notmatch '\[IO.File\]::Exists' -or
+    $baselineProbe.Value -notmatch 'Send-Keys ''\{END\}''' -or
+    $baselineProbe.Value -match 'Focus-TestProcess|Send-Keys ''\{END\}''.*Send-Keys ''\{END\}''') {
+    throw 'Short ASCII baseline must diagnose focused HWND and fixture without masking lost keyboard focus.'
+}
+Write-Host 'PASS: short GUI focus baseline captures keyboard target and never retries input blindly.'
+
 
 
 
