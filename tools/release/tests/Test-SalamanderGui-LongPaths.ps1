@@ -1020,10 +1020,10 @@ try {
         catch {
             $focusAfterEnd = [SalamanderGuiNative]::GetInputFocusSummary(
                 $mainWindowHandle, [uint32]$process.Id)
-            throw ("Short-path GUI focus probe failed: {0}; focus before End=[{1}]; " +
-                   "focus after End=[{2}]; test file exists={3}. No extra keys were sent." -f
-                   $_.Exception.Message, $focusBeforeEnd, $focusAfterEnd,
-                   [IO.File]::Exists((Join-Path $source $focusProbeName)))
+            $failureFormat = "Short-path GUI focus probe failed: {0}; focus before End=[{1}]; " +
+                             "focus after End=[{2}]; test file exists={3}. No extra keys were sent."
+            throw ($failureFormat -f $_.Exception.Message, $focusBeforeEnd,
+                   $focusAfterEnd, [IO.File]::Exists((Join-Path $source $focusProbeName)))
         }
         Assert-True ($focusedName -ceq $focusProbeName) 'Unattended keyboard focus reaches the test file panel'
         $passed = $true
