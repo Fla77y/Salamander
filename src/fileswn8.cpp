@@ -694,7 +694,9 @@ BOOL CFilesWindow::TryUnicodeSingleDirectoryMove(CActionType type, CFilesWindow*
 
     const std::string alias(entry.Name);
     std::wstring originalName;
-    if (!UnicodeDiskNames.TryGetRow(alias.c_str(), originalName) ||
+    // Row identities are keyed by the allocation of CFileData::Name.
+    // A copied std::string alias has different storage and cannot resolve.
+    if (!UnicodeDiskNames.TryGetRow(entry.Name, originalName) ||
         UnicodeDiskNames.IsUnsafeAnsiName(alias.c_str()))
         return FALSE;
 
