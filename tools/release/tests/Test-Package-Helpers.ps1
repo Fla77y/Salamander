@@ -23,6 +23,108 @@ foreach ($file in $scriptFiles) {
     }
 }
 
+# Arrange: inspect the actual management CLI and load only its pure
+# --test-all selection helpers. Never run the manager or launch a GUI here.
+$managerPath = Join-Path $toolsDir '..\Manage-Salamander.ps1'
+$managerTokens = $null
+$managerErrors = $null
+$managerAst = [System.Management.Automation.Language.Parser]::ParseFile(
+    $managerPath, [ref]$managerTokens, [ref]$managerErrors)
+if (@($managerErrors).Count -gt 0) {
+    throw "Management CLI parse errors: $($managerErrors -join '; ')"
+}
+foreach ($name in @('Expand-AutomatedTestActions', 'Get-AutomatedGuiModes')) {
+    $definition = @($managerAst.FindAll({
+        param($node)
+        $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -ceq $name
+    }, $true))
+    if ($definition.Count -ne 1) {
+        throw "Expected one pure management test selector '$name'."
+    }
+    . ([scriptblock]::Create($definition[0].Extent.Text))
+}
+
+$managerSource = Get-Content -LiteralPath $managerPath -Raw
+$optionDeclaration = [regex]::Match($managerSource, '(?s)\$validOptions\s*=\s*@\((.*?)\)')
+if (-not $optionDeclaration.Success) { throw 'Management CLI option registry is missing.' }
+$registeredOptions = @([regex]::Matches($optionDeclaration.Groups[1].Value, "'([^']+)'") |
+    ForEach-Object { $_.Groups[1].Value })
+$guiModes = @($registeredOptions | Where-Object {
+    $_.StartsWith('--test-gui', [StringComparison]::OrdinalIgnoreCase) -and
+    $_ -ne '--test-gui-manual'
+})
+if ($guiModes.Count -lt 1 -or $registeredOptions -notcontains '--test-all') {
+    throw '--test-all and automated GUI options must be registered.'
+}
+
+# Act: expand --test-all, including a hypothetical later GUI scenario.
+$selected = [System.Collections.Generic.HashSet[string]]::new(
+    [StringComparer]::OrdinalIgnoreCase)
+[void]$selected.Add('--test-all')
+$futureOption = '--test-gui-future-regression'
+Expand-AutomatedTestActions -RequestedSet $selected -AvailableOptions @(
+    $registeredOptions + $futureOption)
+$allModes = @(Get-AutomatedGuiModes -RequestedSet $selected)
+
+# Assert: all registered and future automated tests, but no manual/setup/run
+# actions, are selected; full suite covers both binary configurations.
+foreach ($required in @('--test', $futureOption) + $guiModes) {
+    if (-not $selected.Contains($required)) {
+        throw "--test-all failed to include automated test '$required'."
+    }
+}
+foreach ($excluded in @('--test-gui-manual', '--setup', '--run', '--build', '--update')) {
+    if ($selected.Contains($excluded)) {
+        throw "--test-all unexpectedly enables non-test action '$excluded'."
+    }
+}
+if ($allModes.Count -ne 2 -or $allModes[0] -cne 'Release' -or
+    $allModes[1] -cne 'Debug') {
+    throw '--test-all must exercise Release and Debug x64 by default.'
+}
+foreach ($variant in @('Debug', 'Release')) {
+    $single = [System.Collections.Generic.HashSet[string]]::new(
+        [StringComparer]::OrdinalIgnoreCase)
+    [void]$single.Add('--test-all')
+    [void]$single.Add("--$($variant.ToLowerInvariant())")
+    $modes = @(Get-AutomatedGuiModes -RequestedSet $single)
+    if ($modes.Count -ne 1 -or $modes[0] -cne $variant) {
+        throw "--test-all --$($variant.ToLowerInvariant()) must select only $variant."
+    }
+}
+
+$withoutAll = [System.Collections.Generic.HashSet[string]]::new(
+    [StringComparer]::OrdinalIgnoreCase)
+[void]$withoutAll.Add('--test-gui-baseline')
+Expand-AutomatedTestActions -RequestedSet $withoutAll -AvailableOptions $registeredOptions
+if ($withoutAll.Count -ne 1 -or -not $withoutAll.Contains('--test-gui-baseline')) {
+    throw 'Existing individual GUI test switches must not be expanded.'
+}
+$guiSectionStart = $managerSource.IndexOf(
+    'if ($requestedSet.Contains(''--test-gui-baseline''))',
+    [StringComparison]::Ordinal)
+$manualStart = $managerSource.IndexOf(
+    'if ($requestedSet.Contains(''--test-gui-manual''))',
+    [StringComparison]::Ordinal)
+if ($guiSectionStart -lt 0 -or $manualStart -le $guiSectionStart -or
+    $managerSource -notmatch 'foreach \(\$guiMode in \$automatedGuiModes\)' -or
+    $managerSource -notmatch 'Expand-AutomatedTestActions -RequestedSet \$requestedSet -AvailableOptions \$validOptions') {
+    throw '--test-all must route through existing automated GUI dispatch and normal test action.'
+}
+$guiDispatch = $managerSource.Substring($guiSectionStart, $manualStart - $guiSectionStart)
+foreach ($option in $guiModes) {
+    if (-not $guiDispatch.Contains(('$requestedSet.Contains(''{0}'')' -f $option))) {
+        throw "Automated GUI mode '$option' is not wired to the existing dispatcher."
+    }
+}
+if ($guiDispatch -notmatch 'Get-VariantDirectory \$guiMode' -or
+    $guiDispatch -match 'Get-VariantDirectory \$configuration') {
+    throw 'Automated GUI tests must run against the selected Release/Debug binary.'
+}
+Write-Host 'PASS: --test-all expands all automated suites, excludes manual actions and selects both x64 modes.'
+
+
 # The GUI driver dispatches the exact synchronous WM_COMMAND messages handled
 # by Salamander. Prevent accidental drift of command IDs in resource.rh2.
 $resourceCommands = Get-Content -LiteralPath (
