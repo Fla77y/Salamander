@@ -29,6 +29,18 @@ int main()
         !rows.TryGet(right.name, name) || name != L"東京_😀.txt")
         return std::puts("FAIL: Unicode row identity lost after sort"), 1;
 
+    // F6 directory-move regression: the copied ANSI alias has the same
+    // bytes but not the identity of the actual panel row allocation.
+    char directoryRowName[] = "tree-move";
+    Salamander::UnicodePanelRowIdentities directoryRows;
+    directoryRows.Record(directoryRowName, L"tree-move");
+    const std::string copiedAlias(directoryRowName);
+    if (directoryRows.TryGet(copiedAlias.c_str(), name) ||
+        !name.empty() ||
+        !directoryRows.TryGet(directoryRowName, name) ||
+        name != L"tree-move")
+        return std::puts("FAIL: F6 directory row identity must use original Name allocation"), 1;
+
     rows.Clear();
     if (rows.TryGet(first, name) || !name.empty())
         return std::puts("FAIL: Unicode identity persisted across refresh"), 1;
