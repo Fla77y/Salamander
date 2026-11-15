@@ -521,10 +521,11 @@ function Set-VerifiedNavigationClipboard {
         $lastObservedLength = if ($null -eq $observed) { -1 } else { $observed.Length }
         $lastSequence = [SalamanderGuiNative]::GetClipboardSequenceNumber()
         if ($attempt -lt $maxAttempts) {
-            Write-Warning ("GUI clipboard changed before navigation (attempt {0}/{1}; " +
-                "expected UTF-16 units={2}; observed UTF-16 units={3}; sequence={4}). " +
-                "Retrying clipboard write only." -f
-                $attempt, $maxAttempts, $Text.Length, $lastObservedLength, $lastSequence)
+            $warningFormat = "GUI clipboard changed before navigation (attempt {0}/{1}; " +
+                             "expected UTF-16 units={2}; observed UTF-16 units={3}; sequence={4}). " +
+                             "Retrying clipboard write only."
+            Write-Warning ($warningFormat -f $attempt, $maxAttempts, $Text.Length,
+                           $lastObservedLength, $lastSequence)
             Start-Sleep -Milliseconds 250
         }
     }
