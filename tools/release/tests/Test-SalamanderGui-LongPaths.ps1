@@ -202,6 +202,31 @@ public static class SalamanderGuiNative
     private static extern bool GetGUIThreadInfo(uint threadId, ref GuiThreadInfo info);
     [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetClassNameW")]
     private static extern int GetClassName(IntPtr window, StringBuilder buffer, int capacity);
+    // IDC_FILES is 950 in src/resource.rh2, and CFilesWindow creates the
+    // actual keyboard target as a child control with that ID.
+    [DllImport("user32.dll")]
+    private static extern int GetDlgCtrlID(IntPtr window);
+
+    public static bool IsFileListFocused(IntPtr mainWindow, uint expectedPid)
+    {
+        uint mainPid;
+        uint threadId = GetWindowThreadProcessId(mainWindow, out mainPid);
+        if (threadId == 0 || mainPid != expectedPid)
+            return false;
+
+        GuiThreadInfo info = new GuiThreadInfo();
+        info.cbSize = (uint)Marshal.SizeOf(typeof(GuiThreadInfo));
+        if (!GetGUIThreadInfo(threadId, ref info) ||
+            info.hwndFocus == IntPtr.Zero)
+            return false;
+
+        uint focusPid;
+        GetWindowThreadProcessId(info.hwndFocus, out focusPid);
+        return focusPid == expectedPid &&
+               info.hwndFocus != mainWindow &&
+               GetDlgCtrlID(info.hwndFocus) == 950;
+    }
+
 
     // Read the actual focused control in Salamander's UI thread, without
     // activating a window or changing its state.
@@ -421,6 +446,44 @@ function Focus-TestProcess {
            "after {2} attempts. Foreground: {3}; test process windows: {4}. " +
            "Windows may deny SetForegroundWindow; no keys were sent.") -f
            $h.ToInt64(), $process.Id, $attempts, $foreground, $windows)
+}
+
+# A synchronous clipboard-navigation WM_COMMAND can leave keyboard focus
+# on the main HWND rather than the active file list. A verified double Tab
+# uses Salamander's own panel-switch shortcut, then restores the starting
+# panel. Do not send further file-operation keys if focus/path differ.
+function Restore-FilePanelFocus {
+    param([Parameter(Mandatory)][string]$ExpectedPath)
+
+    if ([SalamanderGuiNative]::IsFileListFocused(
+            $mainWindowHandle, [uint32]$process.Id)) {
+        return
+    }
+
+    $focusBefore = [SalamanderGuiNative]::GetInputFocusSummary(
+        $mainWindowHandle, [uint32]$process.Id)
+    if ((Get-ActiveProcessId) -ne [uint32]$process.Id -or
+        -not [string]::IsNullOrEmpty((Get-TestDialog))) {
+        throw "Cannot recover file-panel focus while Salamander is inactive or a dialog is open: $focusBefore"
+    }
+
+    # Exactly two panel switches; never retry a command that manipulates
+    # files or trust a foreground main window as proof of listbox focus.
+    Send-Keys '{TAB}'
+    Send-Keys '{TAB}'
+
+    $focusAfter = [SalamanderGuiNative]::GetInputFocusSummary(
+        $mainWindowHandle, [uint32]$process.Id)
+    $observedPath = Read-PanelPath
+    if (-not [SalamanderGuiNative]::IsFileListFocused(
+            $mainWindowHandle, [uint32]$process.Id) -or
+        $observedPath -cne $ExpectedPath) {
+        throw ("File-panel focus recovery failed. Before=[{0}]; after=[{1}]; " +
+               "expected path='{2}'; observed path='{3}'. No file-operation keys were sent." -f
+               $focusBefore, $focusAfter, $ExpectedPath, $observedPath)
+    }
+
+    Write-Host 'PASS: Verified file-panel keyboard focus restored after clipboard navigation'
 }
 
 function Send-Keys {
@@ -943,6 +1006,7 @@ try {
     # fails, treat it as an automation/infrastructure problem, NOT as proof
     # that the application lacks long-path support.
     Go-ToPath $source
+    Restore-FilePanelFocus -ExpectedPath $source
     # Go-ToPath already verified the observed panel path. A duplicate
     # WM_COMMAND 711 adds no coverage and can race with GUI processing.
     Write-Host 'PASS: GUI driver can navigate a normal short directory'
