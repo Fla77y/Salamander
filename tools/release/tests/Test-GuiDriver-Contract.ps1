@@ -86,12 +86,31 @@ $mainGuiSource = $tree.Extent.Text
 if ($mainGuiSource -notmatch 'GetGUIThreadInfo' -or
     $mainGuiSource -notmatch 'GetInputFocusSummary' -or
     $mainGuiSource -notmatch '\$focusBeforeEnter\s*=\s*\[SalamanderGuiNative\]::GetInputFocusSummary' -or
-    $mainGuiSource -notmatch '\$pathAfterEnter\s*=\s*Read-PanelPath' -or
+    $mainGuiSource -notmatch '\$enterDiagnostics\.PanelPath\s*=\s*Read-PanelPath' -or
+    $mainGuiSource -notmatch 'Assert-True\s+\(\$enterDiagnostics\.PanelPath\s+-ceq\s+\$nestedLongDirectory\)' -or
+    $mainGuiSource -match '\$pathAfterEnter\s*=\s*Read-PanelPath' -or
     $mainGuiSource -notmatch 'No additional Enter was sent' -or
     $mainGuiSource -match 'Wait-Until\s*\{\s*Send-Keys\s+''\{ENTER\}''') {
     throw 'Long-directory Enter test must capture focus/path and never retry an unconfirmed Enter.'
 }
 Write-Host 'PASS: long-directory Enter failure captures actual GUI focus and observed path.'
+
+# Wait-Until invokes a supplied scriptblock using &, which creates a
+# child scope. A scalar assignment within the poll must not be used after
+# Wait-Until returns; only the shared hashtable's mutation survives.
+$enterNavigation = [regex]::Match(
+    $mainGuiSource,
+    "(?s)\\\$enterDiagnostics\\s*=\\s*@\\\\{.*?Send-Keys '\\{BACKSPACE\\}'"
+)
+if (-not $enterNavigation.Success -or
+    $enterNavigation.Value -notmatch '\$enterDiagnostics\.PanelPath\s*=\s*Read-PanelPath' -or
+    $enterNavigation.Value -notmatch 'return\s+\$enterDiagnostics\.PanelPath\s+-ceq\s+\$nestedLongDirectory' -or
+    $enterNavigation.Value -notmatch 'Assert-True\s+\(\$enterDiagnostics\.PanelPath\s+-ceq\s+\$nestedLongDirectory\)' -or
+    $enterNavigation.Value -match 'Assert-True\s+\(\(Read-PanelPath\)') {
+    throw 'Long-directory Enter must assert the same path observed by Wait-Until through a reference-type diagnostic object.'
+}
+Write-Host 'PASS: Enter navigation preserves the successful poll result across PowerShell scopes.'
+
 
 
 
