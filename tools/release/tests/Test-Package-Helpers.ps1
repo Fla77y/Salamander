@@ -472,3 +472,47 @@ if ([string]::IsNullOrEmpty($panelLoad) -or
     throw 'Saved panel paths must load dynamically and use the long-path navigation branch.'
 }
 Write-Host 'PASS: saved panel paths use dynamic configuration storage and long-path startup navigation.'
+
+# Regression: CM_CLIPCOPYNAME publishes no filename when the '..' row is
+# focused. Folder discovery must skip that synthetic parent row before reading.
+$guiPath = Join-Path $toolsDir 'tests\Test-SalamanderGui-LongPaths.ps1'
+$guiTokens = $null
+$guiErrors = $null
+$guiAst = [System.Management.Automation.Language.Parser]::ParseFile(
+    $guiPath, [ref]$guiTokens, [ref]$guiErrors)
+if (@($guiErrors).Count -gt 0) { throw 'GUI driver has PowerShell parser errors.' }
+$focusFunctions = @($guiAst.FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+    $node.Name -ceq 'Focus-DirectoryRow'
+}, $true))
+if ($focusFunctions.Count -ne 1) { throw 'Expected one Focus-DirectoryRow function.' }
+. ([scriptblock]::Create($focusFunctions[0].Extent.Text))
+
+# Arrange: moving Home selects the synthetic '..' row, which cannot publish a filename.
+$script:focusProbeRows = @('..', 'target-directory', 'another-directory')
+$script:focusProbeIndex = -1
+function Send-Keys {
+    param([string]$Keys)
+    switch ($Keys) {
+        '{HOME}' { $script:focusProbeIndex = 0; break }
+        '{DOWN}' { $script:focusProbeIndex++; break }
+        default { throw "Unexpected keyboard input in directory-focus regression: $Keys" }
+    }
+}
+function Read-FocusedFilename {
+    $name = $script:focusProbeRows[$script:focusProbeIndex]
+    if ($name -ceq '..') {
+        throw "CM_CLIPCOPYNAME did not publish a filename for '..'."
+    }
+    return $name
+}
+
+# Act: locate the first real directory without reading the synthetic parent row.
+Focus-DirectoryRow -Name 'target-directory'
+
+# Assert: the actual target row, not '..', is focused.
+if ($script:focusProbeIndex -ne 1) {
+    throw 'Directory focus must skip the synthetic parent row and select the expected folder.'
+}
+Write-Host 'PASS: directory row discovery skips the synthetic parent row before copying names.'
