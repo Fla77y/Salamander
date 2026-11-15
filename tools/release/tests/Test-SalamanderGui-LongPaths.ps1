@@ -396,6 +396,16 @@ function Get-TestDialog {
     if ($process.HasExited) { return $null }
     $main = $mainWindowHandle
     if ($main -eq [IntPtr]::Zero) { return $null }
+    # The startup/error dialog may not yet be the foreground window or the
+    # last-active popup. Inspect visible top-level windows of this PID before
+    # concluding the GUI is free of known navigation/configuration errors.
+    foreach ($window in [SalamanderGuiNative]::GetProcessWindows([uint32]$process.Id)) {
+        if ($window.Visible -and $window.Handle -ne $main -and
+            ($window.Title -ceq 'Error Changing Directory' -or
+             $window.Title -ceq 'Error Loading Configuration')) {
+            return [SalamanderGuiNative]::DescribeWindow($window.Handle)
+        }
+    }
     $popup = [SalamanderGuiNative]::GetLastActivePopup($main)
     $foreground = [SalamanderGuiNative]::GetForegroundWindow()
     [uint32]$ownerPid = 0
@@ -978,7 +988,12 @@ try {
     if (@(Get-Process salamand -ErrorAction SilentlyContinue).Count -gt 0) {
         throw 'Please close existing Salamander instances before running automated GUI tests.'
     }
-    $process = Start-Process -FilePath $SalamanderExe -WorkingDirectory (Split-Path -Parent $SalamanderExe) -PassThru
+    # Always override BOTH saved panel paths before LoadConfig restores them.
+    # Previous GUI runs may have persisted a disposable fixture path which was
+    # subsequently deleted. -p 2 makes the active test panel deterministic.
+    # Quotes keep paths with spaces safe for Salamander's command-line parser.
+    $startupArgs = '-l "{0}" -r "{0}" -p 2' -f $source
+    $process = Start-Process -FilePath $SalamanderExe -ArgumentList $startupArgs -WorkingDirectory (Split-Path -Parent $SalamanderExe) -PassThru
     # Process.MainWindowHandle/MainWindowTitle may select an auxiliary
     # window. The GUI driver must use the HWND found by Win32 enumeration.
     try {
@@ -1693,15 +1708,20 @@ catch {
 finally {
     if ($null -ne $process) {
         try {
+            $process.Refresh()
             if (-not $process.HasExited) {
-                [void]$process.CloseMainWindow()
+                # CloseMainWindow invokes Salamander's SaveConfig, persisting
+                # paths into the soon-to-be-deleted disposable fixture and
+                # overwriting the user's saved panel paths. The process belongs
+                # exclusively to this test; terminate it without invoking that
+                # normal configuration-save path.
+                $process.Kill()
                 if (-not $process.WaitForExit(4000)) {
-                    $process.Kill()
-                    [void]$process.WaitForExit(4000)
+                    Write-Warning "Test Salamander PID $($process.Id) did not exit after termination."
                 }
             }
         }
-        catch { Write-Warning "Could not stop test app: $($_.Exception.Message)" }
+        catch { Write-Warning "Could not stop isolated test app: $($_.Exception.Message)" }
         $process.Dispose()
     }
     if ($oldClipboard) {
