@@ -53,6 +53,7 @@ public static class SalamanderGuiNative
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] public static extern uint GetClipboardSequenceNumber();
     [DllImport("user32.dll", EntryPoint = "SendMessageTimeoutW", SetLastError = true)]
     public static extern IntPtr SendMessageTimeout(
         IntPtr hWnd, uint msg, UIntPtr wParam, IntPtr lParam,
@@ -453,6 +454,45 @@ function Get-ClipboardText {
     throw 'Clipboard unavailable for GUI assertion.'
 }
 
+function Set-VerifiedNavigationClipboard {
+    param([Parameter(Mandatory)][string]$Text)
+
+    # A clipboard manager or the launching GUI can replace CF_UNICODETEXT
+    # between a successful SetText and the immediate GetText. Never dispatch
+    # WM_COMMAND 775 until the complete value has round-tripped exactly.
+    $maxAttempts = 4
+    $lastObservedLength = -1
+    $firstSequence = [SalamanderGuiNative]::GetClipboardSequenceNumber()
+    $lastSequence = $firstSequence
+    for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
+        Set-ClipboardText $Text
+        $observed = Get-ClipboardText
+        if ([string]::Equals($observed, $Text, [StringComparison]::Ordinal)) {
+            Assert-True $true 'Clipboard contains only the requested text path'
+            return
+        }
+
+        $lastObservedLength = if ($null -eq $observed) { -1 } else { $observed.Length }
+        $lastSequence = [SalamanderGuiNative]::GetClipboardSequenceNumber()
+        if ($attempt -lt $maxAttempts) {
+            Write-Warning ("GUI clipboard changed before navigation (attempt {0}/{1}; " +
+                "expected UTF-16 units={2}; observed UTF-16 units={3}; sequence={4}). " +
+                "Retrying clipboard write only." -f
+                $attempt, $maxAttempts, $Text.Length, $lastObservedLength, $lastSequence)
+            Start-Sleep -Milliseconds 250
+        }
+    }
+
+    $foreground = Get-ForegroundWindowSummary
+    $dialog = Get-TestDialog
+    throw ("GUI clipboard text did not round-trip after {0} writes; " +
+        "expected UTF-16 units={1}; observed UTF-16 units={2}; " +
+        "sequence before={3}, after={4}; foreground={5}; dialog='{6}'. " +
+        "No navigation command was sent." -f
+        $maxAttempts, $Text.Length, $lastObservedLength,
+        $firstSequence, $lastSequence, $foreground, $dialog)
+}
+
 function Read-PanelPath {
     # WM_COMMAND 711 is synchronous, but the clipboard can be briefly
     # unavailable or a command can fail to publish text during startup.
@@ -492,8 +532,7 @@ function Go-ToPath {
 
     for ($attempt = 1; $attempt -le $maxNavigationAttempts; $attempt++) {
         Focus-TestProcess
-        Set-ClipboardText $Path
-        Assert-True ((Get-ClipboardText) -ceq $Path) 'Clipboard contains only the requested text path'
+        Set-VerifiedNavigationClipboard -Text $Path
         Invoke-SalamanderCommand -CommandId 775
 
         try {
