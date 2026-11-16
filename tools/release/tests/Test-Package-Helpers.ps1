@@ -542,3 +542,16 @@ if ($registeredOptions -notcontains '--test-gui-max-path' -or
     throw 'Real Salamander maximum-path GUI mode is missing from --test-all.'
 }
 Write-Host 'PASS: near-maximum path regression is wired into the manager and real GUI gate.'
+
+# A crash while navigating a 32K long directory must not trigger another
+# buffer overrun inside the bug reporter's 1024-byte static output buffer.
+$bugReportSource = Get-Content -LiteralPath (
+    Join-Path $toolsDir '..\..\src\bugreprt.cpp') -Raw
+$managerText = Get-Content -LiteralPath (
+    Join-Path $toolsDir '..\Manage-Salamander.ps1') -Raw
+if ($bugReportSource -notmatch 'FormatBugReportPanelPath\(' -or
+    $bugReportSource -match 'sprintf\s*\(\s*buf\s*,\s*"Path = %s"' -or
+    $managerText -notmatch [regex]::Escape("'tools\tests\bug_report_path.cpp'")) {
+    throw 'Crash-report path must be bounded and its 32444-byte regression executed by --test.'
+}
+Write-Host 'PASS: crash-report panel-path formatting is bounded and registered for real C++ regression.'
