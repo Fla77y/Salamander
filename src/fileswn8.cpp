@@ -847,6 +847,8 @@ BOOL CFilesWindow::HasUnsupportedLegacyPluginSelection()
             return FALSE;
         const CFileData& item = index < directoryCount
             ? Dirs->At(index) : Files->At(index - directoryCount);
+        if (index < directoryCount && strcmp(item.Name, "..") == 0)
+            return FALSE; // synthetic navigation row, not a disk identity
         return UnicodeDiskNames.IsUnsafeAnsiName(item.Name);
     }
     for (int index = 0; index < count; ++index)
