@@ -33,7 +33,8 @@ by PVW32 may have no WIC codec and must not be advertised as working.
   fit-to-window (0), zoom +/- or mouse wheel, PageUp/PageDown for
   multipage WIC formats; R/Shift+R rotate clockwise/counterclockwise, H/V
   mirror the current in-memory frame, Ctrl+C copies a composited bitmap,
-  Ctrl+Shift+S exports a new image; Escape/close exits.
+  Ctrl+Shift+S exports a new image; Ctrl+V loads an uncompressed 24/32-bit
+  Windows DIB from the clipboard as an unsaved in-memory image; Escape/close exits.
 - `pictview.cpp`: `InitViewer` no longer calls `LoadPictViewDll` or
   `PVSetParam`; the existing viewer entry point delegates to
   `RunNativeViewer`. The old PVW32 renderer is **not reached by the
@@ -44,8 +45,10 @@ by PVW32 may have no WIC codec and must not be advertised as working.
   action encodes before creating a destination with CREATE_NEW, protecting
   existing files; JPEG/BMP alpha is flattened over white. This is not
   an in-place overwrite/save function.
-- `WicImageClipboard`: validates the image and creates a top-down CF_DIB
-  bitmap with alpha flattened over white for Ctrl+C.
+- `WicImageClipboard`: validates and creates a top-down CF_DIB bitmap
+  for Ctrl+C; Ctrl+V parses supported bottom-up/top-down 24/32-bit BI_RGB
+  clipboard data with checked row alignment, size and ownership. Unsupported
+  clipboard formats are rejected without changing the current picture.
 - `thumbs.cpp`: the plugin thumbnail callback decodes through WIC,
   respects cancellation, reports dimensions and streams composited rows
   to the Salamander thumbnail maker.
@@ -71,8 +74,9 @@ product. The following old capabilities are **not migrated**:
   frame navigation (PageUp/PageDown), not animation scheduling
 - Cropping, selections, additional pixel editing, in-place save/overwrite,
   editable history/undo and the old save-format choices
-- Clipboard paste and screen capture, TWAIN/WIA, wallpaper, print and
-  batch operations; plain-image clipboard **copy** is implemented
+- Screen capture, TWAIN/WIA, wallpaper, print and batch operations;
+  clipboard copy and BI_RGB 24/32-bit paste are implemented, but other
+  clipboard formats and image sources still need dedicated support
 - Legacy format-specific codecs (RAW, CDR, PSP, etc.) not provided by WIC
 - EXIF orientation/color management, metadata UI and legacy PictView menus
 - Advanced slideshow/navigation, persistent viewer layout/configuration,
@@ -117,3 +121,7 @@ rotation/mirroring and safe new-file PNG export at commit 7e8aa1c9.
 The clipboard DIB tests and complete native plugin builds require fresh
 verification on the latest source commit. These unit tests are not a real GUI
 acceptance of the in-process PictView plug-in.
+
+The clipboard test now checks strict CF_DIB parsing, bottom-up 24-bit
+row reordering, source alpha compositing and malformed-header rejection.
+The changed source requires fresh Windows CI and real desktop acceptance.
