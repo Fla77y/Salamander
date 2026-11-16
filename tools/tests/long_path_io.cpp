@@ -92,6 +92,29 @@ int main()
         error != ERROR_INVALID_PARAMETER || !result.empty())
         return Fail("null path must be rejected");
 
+    // Arrange / Act / Assert: exact namespace boundaries for the real Win32
+    // conversion helper. These checks are purely syntactic; Windows' actual
+    // achievable on-disk path limit can be lower than the namespace limit.
+    const auto makeBoundaryPath = [](std::wstring path, std::size_t length) {
+        while (path.size() < length)
+        {
+            if (path.back() != L'\\')
+                path.push_back(L'\\');
+            const std::size_t remaining = length - path.size();
+            path.append(remaining > 200 ? 200 : remaining, L'x');
+        }
+        return path;
+    };
+    const auto maxDrive = makeBoundaryPath(L"C:\\", 32762);
+    const auto maxUnc = makeBoundaryPath(L"\\\\server\\share", 32760);
+    const auto invalidDrive = makeBoundaryPath(L"C:\\", 32763);
+    const auto invalidUnc = makeBoundaryPath(L"\\\\server\\share", 32761);
+    if (!Convert(maxDrive, result) || result.size() != 32766 ||
+        !Convert(maxUnc, result) || result.size() != 32766 ||
+        !Reject(invalidDrive, ERROR_FILENAME_EXCED_RANGE) ||
+        !Reject(invalidUnc, ERROR_FILENAME_EXCED_RANGE))
+        return Fail("Win32 32767-unit drive and UNC namespace boundary");
+
     std::wstring tooLong = L"C:\\";
     tooLong.append(32767, L'x');
     if (!Reject(tooLong, ERROR_FILENAME_EXCED_RANGE))
