@@ -68,6 +68,25 @@ static bool RejectsOversizeWithoutWrites()
     return true;
 }
 
+static bool AcceptsLastValidMaxPathLength()
+{
+    // Arrange: MAX_PATH+1 bytes hold a 259-byte path and two NULs.
+    std::array<char, 261> result;
+    result.fill('X');
+    const std::string source(259, 'a');
+
+    // Act
+    const bool accepted = BuildShellFileOperationNameList(
+        source.c_str(), result.data(), result.size());
+
+    // Assert
+    return Check(accepted, "259-byte path fits 261-byte destination") &&
+           Check(std::memcmp(result.data(), source.data(), source.size()) == 0,
+                 "full boundary path copied") &&
+           Check(result[259] == '\0' && result[260] == '\0',
+                 "last two bytes are terminators");
+}
+
 static bool RejectsMaxPathBoundaryWithoutWrites()
 {
     // Arrange: original worker allocated MAX_PATH+1 and wrote at [261]
@@ -120,6 +139,7 @@ int main()
     if (!AcceptsExactBoundaryAndDoubleTerminator() ||
         !LeavesTrailingBufferUntouched() ||
         !RejectsOversizeWithoutWrites() ||
+        !AcceptsLastValidMaxPathLength() ||
         !RejectsMaxPathBoundaryWithoutWrites() ||
         !RejectsInvalidArgumentsWithoutWrites())
         return 1;
