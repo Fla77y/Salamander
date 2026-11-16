@@ -21,4 +21,7 @@ bool FitImage(UINT width, UINT height, const RECT& client, RECT& target) noexcep
 // Draw a decoded first frame with GDI. Caller owns the HDC and its lifetime.
 // Neither the input pixels nor the device context state is retained.
 HRESULT PaintImage(HDC dc, const RECT& client, const DecodedImage& image) noexcept;
+
+// Draw at an already validated destination (the HDC may clip it).
+HRESULT PaintImageAt(HDC dc, const RECT& destination, const DecodedImage& image) noexcept;
 } // namespace pictview::wic
