@@ -48,6 +48,56 @@ if ($versionHeader -notmatch '(?m)^#define\s+LAST_VERSION_OF_SALAMANDER\s+103\s*
     $versionHeader -notmatch 'This plugin requires Open Salamander 5\.0') {
     throw 'Do not raise the minimum compatible plug-in SDK version for a product-label-only change.'
 }
+# A product-version migration must use a distinct configuration root.
+# The legacy 5.0 settings must remain available to older installations.
+# THIS_CONFIG_VERSION also triggers the built-in plugin discovery upgrade.
+$configSource = Get-Content -LiteralPath (Join-Path $repository 'src\mainwnd2.cpp') -Raw
+$configConstants = Get-Content -LiteralPath (Join-Path $repository 'src\consts.h') -Raw
+if ($configSource -notmatch '(?m)^// 105 = 5\.2\s+only to transfer plugin configuration from version 5\.0' -or
+    $configSource -notmatch '(?m)^const DWORD THIS_CONFIG_VERSION = 105;\s*
+
+if (-not [string]::IsNullOrWhiteSpace($BinaryPath)) {
+    # Arrange: inspect the *built* Win32 VERSIONINFO, not only preprocessor source.
+    if (-not (Test-Path -LiteralPath $BinaryPath -PathType Leaf)) {
+        throw "Missing product executable for version assertion: $BinaryPath"
+    }
+    # Act
+    $binaryVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo(
+        [IO.Path]::GetFullPath($BinaryPath))
+    # Assert
+    if ($binaryVersion.ProductMajorPart -ne $expectedMajor -or
+        $binaryVersion.ProductMinorPart -ne $expectedMinor -or
+        -not $binaryVersion.ProductVersion.StartsWith('5.2', [StringComparison]::Ordinal)) {
+        throw "Built binary has inconsistent product version: $BinaryPath : $($binaryVersion.ProductVersion)"
+    }
+    Write-Host "PASS: built executable has 5.2 VERSIONINFO: $BinaryPath"
+}
+ -or
+    $configConstants -notmatch '(?m)^#define SALCFG_ROOTS_COUNT 84\s*
+
+if (-not [string]::IsNullOrWhiteSpace($BinaryPath)) {
+    # Arrange: inspect the *built* Win32 VERSIONINFO, not only preprocessor source.
+    if (-not (Test-Path -LiteralPath $BinaryPath -PathType Leaf)) {
+        throw "Missing product executable for version assertion: $BinaryPath"
+    }
+    # Act
+    $binaryVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo(
+        [IO.Path]::GetFullPath($BinaryPath))
+    # Assert
+    if ($binaryVersion.ProductMajorPart -ne $expectedMajor -or
+        $binaryVersion.ProductMinorPart -ne $expectedMinor -or
+        -not $binaryVersion.ProductVersion.StartsWith('5.2', [StringComparison]::Ordinal)) {
+        throw "Built binary has inconsistent product version: $BinaryPath : $($binaryVersion.ProductVersion)"
+    }
+    Write-Host "PASS: built executable has 5.2 VERSIONINFO: $BinaryPath"
+}
+) {
+    throw 'Salamander 5.2 must advance configuration version 104 to 105 and account for one new registry root.'
+}
+if ($configSource -notmatch '(?s)const char\* SalamanderConfigurationRoots\[SALCFG_ROOTS_COUNT \+ 1\]\s*=\s*\{\s*"Software\\\\Open Salamander\\\\5\.2",\s*"Software\\\\Open Salamander\\\\5\.0"' -or
+    $configSource -notmatch '(?s)const char\* SalamanderConfigurationVersions\[SALCFG_ROOTS_COUNT\]\s*=\s*\{\s*"5\.2",\s*"5\.0"') {
+    throw 'Salamander 5.2 must have its own registry configuration root and retain version 5.0 for safe migration.'
+}
 Write-Host 'PASS: Open Salamander 5.2 product, installer, shell extension and preserved plugin SDK compatibility.'
 
 if (-not [string]::IsNullOrWhiteSpace($BinaryPath)) {
