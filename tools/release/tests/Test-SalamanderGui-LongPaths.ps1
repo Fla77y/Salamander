@@ -382,10 +382,11 @@ public static class SalamanderGuiNative
         return result;
     }
 
-    // MessageBoxW creates an owned top-level #32770 dialog. Its OK
-    // command can be posted to the dialog itself without relying on a
-    // transient IDOK button HWND returned by GetDlgItem().
-    public static void PostVerifiedFindNoticeOk(
+    // MessageBoxW owns its #32770 window procedure. Sending a fabricated
+    // WM_COMMAND/IDOK did not dismiss this system dialog in real Windows
+    // GUI tests. WM_CLOSE follows the same route as its visible Close (X).
+    // Only the exact notice owned by our launched Unicode Find may receive it.
+    public static void PostVerifiedFindNoticeClose(
         IntPtr notice, IntPtr findWindow, uint pid)
     {
         uint noticePid, findPid;
@@ -400,14 +401,13 @@ public static class SalamanderGuiNative
             ClassName(findWindow) != "OpenSalUnicodeFindWindow" ||
             GetWindow(notice, 4) != findWindow) // GW_OWNER
             throw new InvalidOperationException(
-                "Refusing to acknowledge an unverified Unicode Find message box");
+                "Refusing to close an unverified Unicode Find message box");
 
-        // BN_CLICKED is zero; IDOK is 1. The dialog's WM_COMMAND handler
-        // handles IDOK even if the button control cannot be queried yet.
-        // Post, then let the PowerShell caller verify that the dialog closed.
-        if (!PostMessageW(notice, 0x0111, new UIntPtr(1), IntPtr.Zero))
+        // Post, never synchronously block the test process on the modal
+        // dialog's message loop. The caller verifies that it disappears.
+        if (!PostMessageW(notice, 0x0010, UIntPtr.Zero, IntPtr.Zero)) // WM_CLOSE
             throw new InvalidOperationException(
-                "Could not queue IDOK for verified Unicode Find dialog: " +
+                "Could not queue WM_CLOSE for verified Unicode Find dialog: " +
                 Marshal.GetLastWin32Error());
     }
 
@@ -1337,7 +1337,7 @@ function Assert-FindNotice {
     $message = [SalamanderGuiNative]::DescribeWindow($script:findNotice)
     Assert-True ($message.Contains($ExpectedText, [StringComparison]::Ordinal)) (
         "Unicode Find warning identifies unsupported operation: $ExpectedText")
-    [SalamanderGuiNative]::PostVerifiedFindNoticeOk(
+    [SalamanderGuiNative]::PostVerifiedFindNoticeClose(
         $script:findNotice, $script:findWindow, [uint32]$process.Id)
     Wait-Until {
         [SalamanderGuiNative]::FindUnicodeNotice(
