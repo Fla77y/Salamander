@@ -12,8 +12,21 @@ function Get-PictViewHostFailureHint {
     [CmdletBinding()]
     param(
         [AllowEmptyString()][string]$DialogText = '',
-        [bool]$PictViewResident = $false
+        [bool]$PictViewResident = $false,
+        [AllowEmptyString()][string]$ActualViewerClass = ''
     )
+
+    # Internal viewer is conclusive evidence that F3 did not select WIC.
+    # Do not conflate a functioning internal viewer with a decode failure.
+    if ($ActualViewerClass -ceq "Salamander's Viewer Window") {
+        return ('F3 opened the built-in Salamander internal text viewer for the test BMP, ' +
+                'not PictView. The file and keyboard navigation worked, but *.bmp is ' +
+                'not currently routed to the PictView WIC plugin. Check Plugins > ' +
+                'Plugins Manager for an installed PictView, then Options > ' +
+                'Configuration > Viewers: add or move its *.bmp association ahead ' +
+                'of the internal *.* rule. Rebuild alone will not override ' +
+                'existing user Viewer settings.')
+    }
 
     $missingVariable = [regex]::Match(
         $DialogText,
