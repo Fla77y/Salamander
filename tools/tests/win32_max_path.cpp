@@ -5,6 +5,7 @@
 // extended-length namespace limit. Not a Salamander GUI or plugin test.
 #include "../../src/common/win32_long_path.h"
 #include "../../src/common/win32_long_directory.h"
+#include "../../src/common/win32_unicode_find.h"
 #include "../../src/common/win32_unicode_file_ops.h"
 
 #include <windows.h>
@@ -171,6 +172,25 @@ int main()
         error != ERROR_SUCCESS ||
         entries.size() != 1 || entries[0].name != filename)
         return Fail("W-backed enumeration preserves near-limit Unicode filename");
+
+    // F2 regression: the actual search worker must recover the same
+    // 32700-unit filename through its public callback without ACP narrowing.
+    Salamander::UnicodeFindOptions findOptions;
+    findOptions.root = current;
+    findOptions.masks = L"*.bin";
+    findOptions.content = L"32700-unit path preserves Unicode identity";
+    findOptions.includeSubdirectories = false;
+    std::vector<Salamander::UnicodeFindHit> findResults;
+    if (!Salamander::SearchUnicodeDirectory(findOptions,
+            [&](const Salamander::UnicodeFindHit& hit) {
+                findResults.push_back(hit);
+                return true;
+            }, nullptr, error) ||
+        error != ERROR_SUCCESS ||
+        findResults.size() != 1 ||
+        findResults[0].name != filename ||
+        findResults[0].FullPath() != longFile)
+        return Fail("F2 search preserves full 32700-unit Unicode result and content");
 
     const std::wstring shortCopy = std::wstring(tempDirectory) +
                                    L"OpenSal-max-copy-" +
