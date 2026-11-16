@@ -66,6 +66,20 @@ desktop. To avoid touching other plug-ins, the PictView HWND test runs the
 standalone viewer, **not** an in-process Salamander plug-in manager test.
 The opt-in real-host F3 smoke covers one BMP on an unlocked desktop; other modes, codecs, actions and saved configurations remain separate release gates.
 
+The F3 host smoke respects the developer's existing Salamander Viewer
+associations; it does not silently overwrite registry preferences. In
+particular, an external Viewer rule for `*.bmp` can intercept F3 before the
+PictView plug-in is loaded. If the dialog reports
+`Environment variable "X8D_BIN_TOOLS_PATH" was not found`, this indicates
+that a configured external Viewer command references an undefined environment
+variable. Do **not** set the variable to a dummy directory: that would test the
+wrong Viewer. In Salamander, open **Options > Configuration > Viewers**, assign
+`*.bmp` to PictView ahead of matching external rules, and confirm PictView is
+installed under **Plugins > Plugins Manager**. The host diagnostic now points
+to this configuration problem without changing the environment, registry or
+the user's saved Viewer associations. The F3 test must actually open the WIC
+viewer to pass.
+
 Test outputs are generated beneath the user's temporary
 `OpenSalamander\PictView-Tests` directory unless `-OutputDirectory` is
 specified for `Invoke-PictViewTests.ps1`. No test overwrites user files.
