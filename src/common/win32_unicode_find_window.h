@@ -12,6 +12,7 @@
 #include <cwchar>
 #include <functional>
 #include <mutex>
+#include <new>
 #include <string>
 #include <thread>
 #include <utility>
@@ -49,7 +50,7 @@ class UnicodeFindWindow
     HWND results_ = nullptr;
     HWND status_ = nullptr;
     std::wstring initialRoot_;
-    std::function<void()> legacyFind_;
+    std::function<void(const std::wstring&)> legacyFind_;
     std::thread worker_;
     std::mutex queueMutex_;
     std::vector<UnicodeFindHit> pending_;
@@ -149,7 +150,6 @@ class UnicodeFindWindow
         const int editWidth = contentWidth - labelWidth;
         // Three rows of search controls plus a status line. The listview
         // takes all remaining space and never overlaps the command buttons.
-        MoveWindow(GetControl(0), inset, 15, labelWidth, 22, TRUE);
         MoveWindow(root_, editX, 12, editWidth, 24, TRUE);
         // The label windows need distinct identities: static id 0 is used
         // by more than one, so enumerate siblings in creation order below.
@@ -393,7 +393,7 @@ class UnicodeFindWindow
                         L"Unicode Find", MB_OK | MB_ICONINFORMATION);
             return;
         }
-        legacyFind_();
+        legacyFind_(root);
     }
 
     static LRESULT CALLBACK WindowProcedure(HWND window, UINT message,
@@ -457,7 +457,7 @@ class UnicodeFindWindow
 
 public:
     UnicodeFindWindow(std::wstring initialRoot,
-                      std::function<void()> legacyFind)
+                      std::function<void(const std::wstring&)> legacyFind)
         : initialRoot_(std::move(initialRoot)),
           legacyFind_(std::move(legacyFind))
     {
@@ -466,7 +466,7 @@ public:
     // Opens a modeless Unicode result window. Lifetime is owned by HWND and
     // terminated only after the background search worker has been cancelled.
     static bool Open(HWND owner, const std::wstring& initialRoot,
-                     std::function<void()> legacyFind)
+                     std::function<void(const std::wstring&)> legacyFind)
     {
         const wchar_t* cls = L"OpenSalUnicodeFindWindow";
         WNDCLASSEXW info{};
