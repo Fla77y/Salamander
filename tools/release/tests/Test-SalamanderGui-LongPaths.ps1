@@ -24,6 +24,7 @@ param(
     [switch]$ShortUnicodeRecycleOnly,
     [switch]$VerifyRecycleRestore,
     [switch]$PluginLoadSmokeOnly,
+    [switch]$WicViewerVerified,
     [switch]$ShortUnicodeTransferOnly,
     [switch]$ShortUnicodeTransferCollisionOnly,
     [switch]$ShortUnicodeBestFitOnly,
@@ -1695,7 +1696,7 @@ function Test-PluginLoadSmoke {
     # Fail closed even when the GUI driver is invoked directly rather than
     # via manage.cmd. PictView is unrelated to the four target plugins.
     . (Join-Path $PSScriptRoot '..\Plugin-Runtime-Prerequisites.ps1')
-    $missingPictView = @(Get-MissingPictViewRuntimeFiles -BuildDirectory $binaryRoot)
+    $missingPictView = @(Get-MissingPictViewRuntimeFiles -BuildDirectory $binaryRoot -WicViewerVerified:$WicViewerVerified)
     if ($missingPictView.Count -gt 0) {
         throw ("Refusing global Test All with incomplete PictView runtime: " +
                ($missingPictView -join '; ') +
