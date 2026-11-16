@@ -138,6 +138,50 @@ The test is deliberately read-only and does not load the DLLs.
 Actual plug-in GUI behavior must be tested separately. The build
 artifacts were reused; no fresh build was performed by this command.
 
+## Opt-in real plug-in initialization test (not yet accepted)
+
+The next slice drives the **real Salamander Plugin Manager** on a
+disposable, GUI-driver-owned Salamander process:
+
+```powershell
+.\manage.cmd --update --test-plugin-load
+# Optional: add --debug for the x64 Debug executable
+```
+
+The test opens the Plugin Manager with the existing `CM_PLUGINS`
+command ID (815). Before invoking its existing **Test All** button
+(`IDB_PLUGINTESTALL`, ID 2616), it verifies the owning window/PID,
+dialog class, owner main HWND, and `IDL_PLUGINS` (2601) and button
+controls. The Salamander implementation then calls
+`CPlugins::TestAll`, which invokes `CPluginData::InitDLL` with
+normal SDK entry-point and interface checks.
+
+After that command the test enumerates modules in the **actual**
+Salamander process, requiring all four fully-qualified x64 plug-in
+paths from the build folder (`7zip`, `checksum`, `filecomp`,
+`renamer`). Matching solely by DLL basename is insufficient.
+It also verifies that the disposable Unicode source file has identical
+bytes before and after the plugin initialization.
+
+**Important risk:** `Test All` initializes **every configured
+plug-in**, potentially including third-party plug-ins. Their
+initialization can have side effects outside this harness. Do not
+run on a production configuration with untrusted plugins. The
+test only uses a GUID-scoped file fixture, never issues an archive
+or rename operation, and terminates its own Salamander process
+without triggering normal configuration-save on exit. It does
+not pretend this prevents independently implemented plug-in side
+effects or registry writes.
+
+This scenario is strictly **opt-in**, excluded from `--test-all`
+and CI GUI execution. Modules retained in the process demonstrate
+real load/SDK initialization, but not that menu commands, archive
+operations, or Unicode/long-path input work.
+
+**Acceptance status:** new source and static driver contract
+committed; live Windows execution pending. The original 8/8
+binary export ABI checks remain separately passed.
+
 ## Next independently testable development slices
 
 1. **Recycle restoration acceptance:** the first opt-in Unicode round trip
