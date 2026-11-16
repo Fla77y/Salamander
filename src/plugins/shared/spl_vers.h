@@ -23,7 +23,7 @@
 #define VERSINFO_str(s) #s
 
 #define VERSINFO_SALAMANDER_MAJOR 5
-#define VERSINFO_SALAMANDER_MINORA 1
+#define VERSINFO_SALAMANDER_MINORA 2
 #define VERSINFO_SALAMANDER_MINORB 0
 
 #if (VERSINFO_SALAMANDER_MINORB == 0) // omit the trailing zero in the hundredths place: 2.50 -> 2.5
@@ -91,11 +91,12 @@
 // 180 - 4.0
 // 181 - 4.0 (SDK)
 // 182 - 4.0 (CB182)
-// 183 - 5.0
+// 183 - 5.0 (also used for 5.1)
+// 184 - 5.2
 
 // ! IMPORTANT: new build numbers must be added to the "default" branch first, and only then
 //             to the other branch (the complete list is only in the "default" branch)
-#define VERSINFO_BUILDNUMBER 183
+#define VERSINFO_BUILDNUMBER 184
 
 // VERSINFO_BETAVERSION_TXT:
 //
