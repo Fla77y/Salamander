@@ -245,6 +245,35 @@ LRESULT CALLBACK ViewerProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
                 }
                 return 0;
             }
+            case 'V':
+                if (GetKeyState(VK_CONTROL) < 0)
+                {
+                    DecodedImage image;
+                    if (SUCCEEDED(PasteImageFromClipboard(hwnd, image)))
+                    {
+                        std::vector<std::uint8_t> opaque;
+                        if (SUCCEEDED(PrepareOpaqueBgra(image, opaque)))
+                        {
+                            state->image = std::move(image);
+                            state->opaque = std::move(opaque);
+                            state->frame = 0;
+                            state->frameCount = 1;
+                            state->fit = true;
+                            state->zoom = 100;
+                            state->path = L"Clipboard";
+                            SetWindowTextW(hwnd, L"PictView - Clipboard (unsaved)");
+                            InvalidateRect(hwnd, nullptr, FALSE);
+                            return 0;
+                        }
+                    }
+                    MessageBoxW(hwnd,
+                        L"Clipboard does not contain a supported 24/32-bit bitmap.",
+                        L"PictView", MB_OK | MB_ICONERROR);
+                    return 0;
+                }
+                if (TransformFrame(*state, ImageTransform::FlipVertical))
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                return 0;
             case 'C':
                 if (GetKeyState(VK_CONTROL) < 0)
                 {
@@ -270,10 +299,6 @@ LRESULT CALLBACK ViewerProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
                 return 0;
             case 'H':
                 if (TransformFrame(*state, ImageTransform::FlipHorizontal))
-                    InvalidateRect(hwnd, nullptr, FALSE);
-                return 0;
-            case 'V':
-                if (TransformFrame(*state, ImageTransform::FlipVertical))
                     InvalidateRect(hwnd, nullptr, FALSE);
                 return 0;
             case '0':
