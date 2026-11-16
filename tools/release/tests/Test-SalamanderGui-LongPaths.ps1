@@ -18,6 +18,7 @@ param(
     [ValidateRange(5,120)][int]$TimeoutSeconds = 25,
     [switch]$KeepFixture,
     [switch]$BaselineOnly,
+    [switch]$MaximumPathOnly,
     [switch]$ShortUnicodeOnly,
     [switch]$ShortUnicodeRenameOnly,
     [switch]$ShortUnicodeRecycleOnly,
@@ -902,6 +903,33 @@ try {
     # a baseline-only pass must never be confused with a long-path pass.
     [IO.Directory]::CreateDirectory($source) | Out-Null
     Assert-True ($source.Length -lt 257) 'Short-path GUI baseline fixture is below MAX_PATH'
+    if ($MaximumPathOnly) {
+        # Arrange: real Win32-scale directory depth with a single 255-unit
+        # Unicode file. This mode performs read-only GUI checks and never
+        # sends F2/F5/F6/F8 to such an extreme fixture.
+        $maximumName = 'Größe_東京_😀_'
+        $maximumName += 'x' * (255 - $maximumName.Length - '.bin'.Length)
+        $maximumName += '.bin'
+        Assert-True ($maximumName.Length -eq 255) 'Maximum GUI filename is 255 UTF-16 units'
+
+        $maximumDirectory = $source
+        $requestedLength = 32700
+        $parentLength = $requestedLength - 1 - $maximumName.Length
+        while ($maximumDirectory.Length -lt $parentLength) {
+            $remaining = $parentLength - $maximumDirectory.Length
+            if ($remaining -lt 2) {
+                throw 'Cannot build an exact maximum-length directory component.'
+            }
+            $length = if ($remaining -le 202) { $remaining - 1 } else { 200 }
+            $maximumDirectory = Join-Path $maximumDirectory ('x' * $length)
+            [IO.Directory]::CreateDirectory($maximumDirectory) | Out-Null
+        }
+
+        $maximumFile = Join-Path $maximumDirectory $maximumName
+        Assert-True ($maximumFile.Length -eq $requestedLength) 'Maximum GUI file path is 32700 UTF-16 units'
+        [IO.File]::WriteAllBytes($maximumFile, $payload)
+        Assert-True (Test-Content $maximumFile) 'Near-maximum GUI fixture bytes written intact'
+    }
     if ($BaselineOnly) {
         # The baseline must also demonstrate that the automated keystroke
         # reaches the focused file panel without manual window activation.
@@ -977,7 +1005,8 @@ try {
         -not $ShortUnicodeMultiSelectOnly -and
         -not $ShortUnicodeDirectoryRenameOnly -and
         -not $ShortUnicodeRecycleOnly -and
-        -not $ShortUnicodeUnsafeOperationsOnly -and -not $ShortOperationsOnly) {
+        -not $ShortUnicodeUnsafeOperationsOnly -and -not $ShortOperationsOnly -and
+        -not $MaximumPathOnly) {
         [IO.Directory]::CreateDirectory($destination) | Out-Null
         [IO.Directory]::CreateDirectory($moveDir) | Out-Null
         [IO.Directory]::CreateDirectory($maxDir) | Out-Null
@@ -1095,6 +1124,21 @@ try {
     # Go-ToPath already verified the observed panel path. A duplicate
     # WM_COMMAND 711 adds no coverage and can race with GUI processing.
     Write-Host 'PASS: GUI driver can navigate a normal short directory'
+    if ($MaximumPathOnly) {
+        # Act: navigate using Salamander's real clipboard command, not .NET.
+        # Assert both the complete panel path and the focused full filename;
+        # any truncation, ANSI alias or unhandled limit is a test failure.
+        Go-ToPath $maximumDirectory
+        Assert-True ((Read-PanelPath) -ceq $maximumDirectory) 'GUI preserves 32444-unit parent directory'
+        Restore-FilePanelFocus -ExpectedPath $maximumDirectory
+        Send-Keys '{END}'
+        Assert-True ((Read-FocusedFilename) -ceq $maximumName) 'GUI preserves 255-unit Unicode filename at 32700-unit total path'
+        Assert-True ((Read-FocusedFullname) -ceq $maximumFile) 'GUI publishes complete 32700-unit Unicode file path'
+        Assert-True (Test-Content $maximumFile) 'GUI read-only checks did not change near-limit bytes'
+        $passed = $true
+        Write-Host 'PASS: REAL Salamander GUI 32700-unit path with a 255-unit Unicode filename.'
+        return
+    }
     if ($BaselineOnly) {
         $focusBeforeEnd = [SalamanderGuiNative]::GetInputFocusSummary(
             $mainWindowHandle, [uint32]$process.Id)
