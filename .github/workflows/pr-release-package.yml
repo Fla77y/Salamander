@@ -58,6 +58,10 @@ jobs:
         shell: pwsh
         run: ./tools/release/Update-Build-Test-Package.ps1 -SkipUpdate -BuildRoot (Join-Path $env:RUNNER_TEMP 'OpenSal')
 
+      - name: Verify redistributable Release SHA256 manifest
+        shell: pwsh
+        run: ./tools/release/tests/Test-ReleaseChecksumManifest.ps1 -DistributionDirectory (Join-Path $env:RUNNER_TEMP 'OpenSal\dist')
+
       # Never expose Debug CRT DLLs via public workflow artifacts.
       # GUI automation requires an unlocked interactive desktop. GitHub-hosted
       # runners run as non-interactive services, so real UI tests are a
@@ -72,4 +76,5 @@ jobs:
           path: |
             ${{ runner.temp }}\OpenSal\dist\OpenSalamander-Release-x64.7z
             ${{ runner.temp }}\OpenSal\dist\OpenSalamander-Release-x64-Setup.exe
+            ${{ runner.temp }}\OpenSal\dist\SHA256SUMS-Release.txt
           if-no-files-found: error
