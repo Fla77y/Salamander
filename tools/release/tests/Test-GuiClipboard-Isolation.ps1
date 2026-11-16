@@ -32,7 +32,6 @@ Add-Type -TypeDefinition $match.Groups[1].Value -ErrorAction Stop
 $root = Join-Path ([IO.Path]::GetTempPath()) ('OpenSal-ClipboardTest-' + [guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($root)
 $reader = Join-Path $root 'reader.ps1'
-$result = Join-Path $root 'read.txt'
 $original = $null
 $owner = [SalamanderGuiClipboardOwner]::new()
 try {
@@ -46,59 +45,122 @@ try {
         throw 'The global UTF-16 clipboard payload was not preserved.'
     }
 
+    # Exercise the native text path and OLE format enumeration separately.
+    # A stage file identifies exactly which call stalls without pumping the
+    # management STA, matching its synchronous GUI-command behaviour.
     @'
-param([string]$Output)
-Add-Type -AssemblyName System.Windows.Forms
-$text = [Windows.Forms.Clipboard]::GetText()
-# Salamander invokes OleGetClipboard and enumerates data formats before
-# falling back to text-only path navigation. Reproduce that OLE boundary.
-Add-Type -TypeDefinition @"
+param(
+    [Parameter(Mandatory)][string]$Output,
+    [Parameter(Mandatory)][string]$Stage,
+    [Parameter(Mandatory)][ValidateSet('Text','Ole')][string]$Mode
+)
+$ErrorActionPreference = 'Stop'
+function Set-Stage([string]$Value) {
+    [IO.File]::WriteAllText($Stage, $Value)
+}
+Set-Stage 'child started'
+try {
+    if ($Mode -eq 'Text') {
+        Add-Type -AssemblyName System.Windows.Forms
+        Set-Stage 'before Clipboard.GetText'
+        $value = [Windows.Forms.Clipboard]::GetText()
+        Set-Stage 'after Clipboard.GetText'
+        [IO.File]::WriteAllText($Output, $value)
+    }
+    else {
+        Set-Stage 'before OLE interop compilation'
+        Add-Type -TypeDefinition @"
 using System;
+using System.IO;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.ComTypes;
 public static class SalamanderClipboardOleProbe
 {
     [DllImport("ole32.dll")]
+    private static extern int OleInitialize(IntPtr reserved);
+    [DllImport("ole32.dll")]
+    private static extern void OleUninitialize();
+    [DllImport("ole32.dll")]
     private static extern int OleGetClipboard(out IDataObject data);
 
-    public static void InspectFormats()
+    public static void InspectFormats(string stagePath)
     {
-        IDataObject data = null;
-        int hr = OleGetClipboard(out data);
-        if (hr != 0 || data == null)
-            throw new InvalidOperationException("OleGetClipboard failed: " + hr);
+        int initialized = OleInitialize(IntPtr.Zero);
+        if (initialized < 0)
+            throw new InvalidOperationException(
+                "OleInitialize failed: HRESULT 0x" + initialized.ToString("X8"));
         try
         {
-            IEnumFORMATETC formats = data.EnumFormatEtc(DATADIR.DATADIR_GET);
-            if (formats == null)
-                throw new InvalidOperationException("OLE clipboard has no format enumerator.");
-            Marshal.ReleaseComObject(formats);
+            File.WriteAllText(stagePath, "before OleGetClipboard");
+            IDataObject data = null;
+            int hr = OleGetClipboard(out data);
+            if (hr != 0 || data == null)
+                throw new InvalidOperationException(
+                    "OleGetClipboard failed: HRESULT 0x" + hr.ToString("X8"));
+            try
+            {
+                File.WriteAllText(stagePath, "before IDataObject.EnumFormatEtc");
+                IEnumFORMATETC formats = data.EnumFormatEtc(DATADIR.DATADIR_GET);
+                if (formats == null)
+                    throw new InvalidOperationException(
+                        "OLE clipboard has no format enumerator.");
+                try {
+                    File.WriteAllText(stagePath, "OLE formats enumerated");
+                }
+                finally { Marshal.ReleaseComObject(formats); }
+            }
+            finally { Marshal.ReleaseComObject(data); }
         }
-        finally { Marshal.ReleaseComObject(data); }
+        finally { OleUninitialize(); }
     }
 }
 "@
-[SalamanderClipboardOleProbe]::InspectFormats()
-[IO.File]::WriteAllText($Output, $text)
-'@ | Set-Content -LiteralPath $reader -Encoding utf8
-    $process = Start-Process -FilePath (Join-Path $PSHOME 'pwsh.exe') -ArgumentList @(
-        '-Sta', '-NoLogo', '-NoProfile', '-NonInteractive', '-File',
-        ('"' + $reader + '"'), ('"' + $result + '"')
-    ) -PassThru
-    try {
-        if (-not $process.WaitForExit(10000)) {
-            $process.Kill()
-            [void]$process.WaitForExit(4000)
-            throw 'Cross-process clipboard reader stalled while owner STA was blocked.'
-        }
-        if ($process.ExitCode -ne 0 -or
-            -not [IO.File]::Exists($result) -or
-            [IO.File]::ReadAllText($result) -cne $text) {
-            throw 'Second process could not read UTF-16 text while clipboard owner was blocked.'
-        }
+        Set-Stage 'before OLE inspection'
+        [SalamanderClipboardOleProbe]::InspectFormats($Stage)
     }
-    finally { $process.Dispose() }
-    Write-Host 'PASS: independently pumped clipboard owner serves CF_UNICODETEXT and OLE format enumeration while management STA is blocked.'
+    Set-Stage 'completed'
+}
+catch {
+    Set-Stage ("FAILED: " + $_.Exception.Message)
+    throw
+}
+'@ | Set-Content -LiteralPath $reader -Encoding utf8
+
+    foreach ($mode in @('Text', 'Ole')) {
+        $readOutput = Join-Path $root ('read-' + $mode + '.txt')
+        $stageFile = Join-Path $root ('stage-' + $mode + '.txt')
+        $process = Start-Process -FilePath (Join-Path $PSHOME 'pwsh.exe') -ArgumentList @(
+            '-Sta', '-NoLogo', '-NoProfile', '-NonInteractive', '-File',
+            ('"' + $reader + '"'), ('"' + $readOutput + '"'),
+            ('"' + $stageFile + '"'), $mode
+        ) -PassThru
+        try {
+            if (-not $process.WaitForExit(15000)) {
+                $stage = if ([IO.File]::Exists($stageFile)) {
+                    [IO.File]::ReadAllText($stageFile)
+                } else { '<child did not reach its first stage>' }
+                $process.Kill()
+                [void]$process.WaitForExit(4000)
+                throw (("Cross-process clipboard {0} reader stalled while the " +
+                        "management STA was blocked; last stage: {1}.") -f
+                       $mode, $stage)
+            }
+            if ($process.ExitCode -ne 0) {
+                $stage = if ([IO.File]::Exists($stageFile)) {
+                    [IO.File]::ReadAllText($stageFile)
+                } else { '<no stage marker>' }
+                throw (("Cross-process clipboard {0} reader exited with code {1}; " +
+                        "last stage: {2}.") -f $mode, $process.ExitCode, $stage)
+            }
+            if ($mode -eq 'Text' -and
+                (-not [IO.File]::Exists($readOutput) -or
+                [IO.File]::ReadAllText($readOutput) -cne $text)) {
+                throw 'Cross-process CF_UNICODETEXT payload was not preserved.'
+            }
+            Write-Host "PASS: cross-process clipboard $mode reader completed while management STA was blocked."
+        }
+        finally { $process.Dispose() }
+    }
 
     # The next clipboard owner may be this blocked test STA itself. This
     # catches WM_DESTROYCLIPBOARD callbacks during a cross-STA replacement.
