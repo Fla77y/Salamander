@@ -13,7 +13,7 @@ $repository = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Provide
 $buildRoot = 'D:\Build\OpenSal'
 $configuration = 'Release'
 $validOptions = @('--update', '--build', '--test', '--setup', '--run',
-                  '--debug', '--release', '--all', '--test-all', '--test-gui', '--test-gui-max-path', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-unicode-find', '--test-gui-manual', '--help', '-h', '/?')
+                  '--debug', '--release', '--all', '--test-all', '--test-gui', '--test-gui-max-path', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-unicode-find', '--test-gui-manual', '--test-pictview', '--test-pictview-window', '--help', '-h', '/?')
 $requestedSet = [System.Collections.Generic.HashSet[string]]::new(
     [StringComparer]::OrdinalIgnoreCase)
 
@@ -36,6 +36,9 @@ Open Salamander – Verwaltung für Visual Studio 2026
   manage.cmd --test-all     Alle automatisierten Tests: --test und sämtliche GUI-Modi
                             (Release und Debug x64; --release/--debug begrenzt die GUI-Modi)
   manage.cmd --setup        Debug- und Release-7z plus Inno-Setup-Pakete erzeugen
+  manage.cmd --test-pictview  WIC-Decoder, GDI, Frames, Export, Clipboard, Transforms: MSVC x86/x64
+  manage.cmd --test-pictview-window  Zusätzlich echten WIC-Viewer-HWND testen
+                                 (unverriegelter Windows-Desktop erforderlich)
   manage.cmd --test-gui     Automatisierter GUI-Test: lange Pfade, Unicode-Dateien, F5
   manage.cmd --test-gui-max-path  Reale GUI-Prüfung nahe 32767: 32700 Gesamt- und 255 UTF-16-Namenseinheiten
   manage.cmd --test-gui-baseline  GUI-Automation zunächst mit kurzen ASCII-Pfaden prüfen
@@ -62,6 +65,8 @@ Mehrere Aktionen kombinieren:
   manage.cmd --update --build --test --setup
   manage.cmd --build --test --run
   manage.cmd --build --test-all  Vollständige Suite auf beiden x64-Binaries
+  manage.cmd --test-pictview  WIC-Tests lokal mit x86 und x64 kompilieren und ausführen
+  manage.cmd --test-pictview-window  Zusätzlich einen echten WIC-Viewer öffnen/schließen
 
 Voraussetzungen:
   Windows 11, PowerShell 7.4+, VS 2026 mit MSVC v143/ATL, Windows SDK.
@@ -89,6 +94,8 @@ function Expand-AutomatedTestActions {
     if (-not $RequestedSet.Contains('--test-all')) { return }
 
     [void]$RequestedSet.Add('--test')
+    [void]$RequestedSet.Add('--test-pictview')
+    [void]$RequestedSet.Add('--test-pictview-window')
     foreach ($option in $AvailableOptions) {
         if ($option.StartsWith('--test-gui', [StringComparison]::OrdinalIgnoreCase) -and
             $option -ne '--test-gui-manual') {
@@ -206,6 +213,9 @@ function Run-Tests {
 
     $productVersionTest = Join-Path $repository 'tools\release\tests\Test-ProductVersion.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $productVersionTest)
+
+    $pictviewContract = Join-Path $repository 'tools\release\tests\Test-PictView-Management.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $pictviewContract)
 
     $guiDriverContract = Join-Path $repository 'tools\release\tests\Test-GuiDriver-Contract.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $guiDriverContract)
@@ -342,6 +352,16 @@ try {
         if ($requestedSet.Contains('--update')) { Update-Branch }
         if ($requestedSet.Contains('--build')) { Build-Variants }
         if ($requestedSet.Contains('--test')) { Run-Tests }
+        if ($requestedSet.Contains('--test-pictview') -or
+            $requestedSet.Contains('--test-pictview-window')) {
+            $pictviewRunner = Join-Path $repository 'tools\release\tests\Invoke-PictViewTests.ps1'
+            $pictviewArgs = @('-NoProfile', '-File', $pictviewRunner,
+                              '-Repository', $repository)
+            if ($requestedSet.Contains('--test-pictview-window')) {
+                $pictviewArgs += '-InteractiveWindowTests'
+            }
+            Invoke-Native 'pwsh.exe' $pictviewArgs
+        }
         $automatedGuiModes = @(Get-AutomatedGuiModes -RequestedSet $requestedSet)
         foreach ($guiMode in $automatedGuiModes) {
             if ($requestedSet.Contains('--test-gui-baseline')) {
