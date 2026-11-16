@@ -539,10 +539,16 @@ if (-not $interopSource.Success) {
 Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
 . (Join-Path $PSScriptRoot 'Get-GuiInteropReferences.ps1')
 $guiReferences = @(Get-GuiInteropReferences)
-if (@($guiReferences | Where-Object {
-    [IO.Path]::GetFileName($_) -ieq 'System.Windows.Forms.Primitives.dll'
-}).Count -ne 1) {
-    throw 'GUI C# compiler references must contain System.Windows.Forms.Primitives.dll exactly once.'
+foreach ($requiredReference in @(
+    'System.Windows.Forms.dll',
+    'System.Windows.Forms.Primitives.dll',
+    'System.Private.Windows.Core.dll'
+)) {
+    if (@($guiReferences | Where-Object {
+        [IO.Path]::GetFileName($_) -ieq $requiredReference
+    }).Count -ne 1) {
+        throw "GUI C# compiler references must contain $requiredReference exactly once."
+    }
 }
 Add-Type -TypeDefinition $interopSource.Groups[1].Value `
     -ReferencedAssemblies $guiReferences -ErrorAction Stop
