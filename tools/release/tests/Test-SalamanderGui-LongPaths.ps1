@@ -30,7 +30,8 @@ param(
     [switch]$ShortUnicodeMultiSelectOnly,
     [switch]$ShortUnicodeDirectoryRenameOnly,
     [switch]$ShortUnicodeUnsafeOperationsOnly,
-    [switch]$ShortOperationsOnly
+    [switch]$ShortOperationsOnly,
+    [switch]$UnicodeFindOnly
 )
 
 Set-StrictMode -Version Latest
@@ -321,6 +322,154 @@ public static class SalamanderGuiNative
             AttachThreadInput(currentThread, foregroundThread, false);
         }
         return GetForegroundWindow() == window;
+    }
+
+    // Only operate on controls whose top-level window belongs to the isolated
+    // Salamander PID. WM_SETTEXT/WM_GETTEXT are system-marshalled messages;
+    // custom ListView messages must not carry pointers across processes.
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern IntPtr GetDlgItem(IntPtr parent, int id);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool PostMessageW(IntPtr window, uint message, UIntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")]
+    private static extern void mouse_event(uint flags, uint x, uint y, uint data, UIntPtr extra);
+    [StructLayout(LayoutKind.Sequential)]
+    public struct NativePoint { public int X; public int Y; }
+    [DllImport("user32.dll")]
+    private static extern IntPtr WindowFromPoint(NativePoint point);
+
+    private static string ClassName(IntPtr window)
+    {
+        StringBuilder name = new StringBuilder(128);
+        GetClassName(window, name, name.Capacity);
+        return name.ToString();
+    }
+
+    public static IntPtr FindUnicodeSearchWindow(uint pid)
+    {
+        IntPtr result = IntPtr.Zero;
+        foreach (TopLevelWindow top in GetProcessWindows(pid))
+        {
+            if (top.Visible && ClassName(top.Handle) == "OpenSalUnicodeFindWindow")
+            {
+                if (result != IntPtr.Zero)
+                    throw new InvalidOperationException("Multiple Unicode Find windows in test process");
+                result = top.Handle;
+            }
+        }
+        return result;
+    }
+
+    public static IntPtr FindRenameDialog(uint pid)
+    {
+        foreach (TopLevelWindow top in GetProcessWindows(pid))
+            if (top.Visible && top.Title == "Rename Unicode item" &&
+                ClassName(top.Handle) == "#32770")
+                return top.Handle;
+        return IntPtr.Zero;
+    }
+
+    public static IntPtr VerifiedChild(IntPtr window, uint pid, int id)
+    {
+        uint actual;
+        if (window == IntPtr.Zero || !IsWindow(window) ||
+            GetWindowThreadProcessId(window, out actual) == 0 || actual != pid)
+            throw new InvalidOperationException("Find control parent has wrong process identity");
+        IntPtr child = GetDlgItem(window, id);
+        if (child == IntPtr.Zero ||
+            GetWindowThreadProcessId(child, out actual) == 0 || actual != pid)
+            throw new InvalidOperationException("Missing or unowned Find child " + id);
+        return child;
+    }
+
+    private static IntPtr SendChecked(IntPtr window, uint msg, UIntPtr wp, IntPtr lp)
+    {
+        IntPtr result;
+        IntPtr sent = SendMessageTimeout(window, msg, wp, lp, 2, 5000, out result);
+        if (sent == IntPtr.Zero)
+            throw new InvalidOperationException(
+                "Unicode Find Win32 message " + msg +
+                " failed: " + Marshal.GetLastWin32Error());
+        return result;
+    }
+
+    public static void SetFindText(IntPtr window, uint pid, int id, string text)
+    {
+        IntPtr child = VerifiedChild(window, pid, id);
+        IntPtr bytes = Marshal.StringToHGlobalUni(text);
+        try
+        {
+            if (SendChecked(child, 0x000C, UIntPtr.Zero, bytes) == IntPtr.Zero)
+                throw new InvalidOperationException("WM_SETTEXT rejected Find control " + id);
+        }
+        finally { Marshal.FreeHGlobal(bytes); }
+        if (!String.Equals(ReadFindText(window, pid, id), text, StringComparison.Ordinal))
+            throw new InvalidOperationException("Find edit control did not preserve UTF-16 text");
+    }
+
+    public static string ReadFindText(IntPtr window, uint pid, int id)
+    {
+        IntPtr child = VerifiedChild(window, pid, id);
+        const int capacity = 32767;
+        IntPtr buffer = Marshal.AllocHGlobal(capacity * sizeof(char));
+        try
+        {
+            long count = SendChecked(child, 0x000D, new UIntPtr(capacity), buffer).ToInt64();
+            if (count < 0 || count >= capacity - 1)
+                throw new InvalidOperationException("Truncated Unicode Find control text");
+            return Marshal.PtrToStringUni(buffer, (int)count);
+        }
+        finally { Marshal.FreeHGlobal(buffer); }
+    }
+
+    public static void ClickFindButton(IntPtr window, uint pid, int id)
+    {
+        IntPtr button = VerifiedChild(window, pid, id);
+        SendChecked(window, 0x0111, new UIntPtr((uint)id), button);
+    }
+
+    public static void PostFindButton(IntPtr window, uint pid, int id)
+    {
+        IntPtr button = VerifiedChild(window, pid, id);
+        if (!PostMessageW(window, 0x0111, new UIntPtr((uint)id), button))
+            throw new InvalidOperationException("Could not queue Unicode Find command " + id);
+    }
+
+    public static int FindResultCount(IntPtr window, uint pid)
+    {
+        IntPtr list = VerifiedChild(window, pid, 5117);
+        if (ClassName(list) != "SysListView32")
+            throw new InvalidOperationException("Unicode Find results are not a ListView");
+        return checked((int)SendChecked(list, 0x1004, UIntPtr.Zero, IntPtr.Zero).ToInt64());
+    }
+
+    // Use a real mouse click at the first visible row after the ListView
+    // header. Reject an obscured window or unexpected selection. No file
+    // operation is permitted until the selection and path are verified.
+    public static int SelectSingleFindResult(IntPtr window, uint pid)
+    {
+        IntPtr list = VerifiedChild(window, pid, 5117);
+        if (FindResultCount(window, pid) != 1 ||
+            !TryActivateVerifiedWindow(window, pid, true) ||
+            GetForegroundWindow() != window)
+            throw new InvalidOperationException("Find result window is not safely foreground");
+        IntPtr header = SendChecked(list, 0x101F, UIntPtr.Zero, IntPtr.Zero);
+        GuiRect listBounds, headerBounds;
+        if (header == IntPtr.Zero || !GetWindowRect(list, out listBounds) ||
+            !GetWindowRect(header, out headerBounds))
+            throw new InvalidOperationException("Find results have no visible header");
+        NativePoint point = new NativePoint { X = listBounds.Left + 25,
+            Y = headerBounds.Bottom + 10 };
+        if (point.Y >= listBounds.Bottom || WindowFromPoint(point) != list)
+            throw new InvalidOperationException("Find result row is obscured or outside list");
+        if (!SetCursorPos(point.X, point.Y))
+            throw new InvalidOperationException("Could not position pointer over Find result");
+        mouse_event(0x0002, 0, 0, 0, UIntPtr.Zero);
+        mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero);
+        return checked((int)SendChecked(list, 0x100C,
+            new UIntPtr(ulong.MaxValue), new IntPtr(2)).ToInt64());
     }
 }
 '@
@@ -1014,6 +1163,130 @@ function Test-Content {
     return [Linq.Enumerable]::SequenceEqual[byte]([IO.File]::ReadAllBytes($Path), $payload)
 }
 
+
+# The new modeless Find window uses fixed control IDs from
+# src/common/win32_unicode_find_window.h. Send only bounded Win32 messages
+# to HWNDs verified as children of the launched Salamander process.
+function Get-UnicodeFindWindow {
+    [SalamanderGuiNative]::FindUnicodeSearchWindow([uint32]$process.Id)
+}
+
+function Wait-FindCompleted {
+    param([int]$Count)
+    Wait-Until {
+        $status = [SalamanderGuiNative]::ReadFindText(
+            $script:findWindow, [uint32]$process.Id, 5118)
+        if ($status -like 'Search incomplete*') { throw "Unicode Find failed: $status" }
+        return $status -ceq "Completed: $Count Unicode results."
+    } "Unicode Find completion with $Count results"
+    Assert-True ([SalamanderGuiNative]::FindResultCount(
+        $script:findWindow, [uint32]$process.Id) -eq $Count) "Unicode Find displays $Count results"
+}
+
+function Start-FindQuery {
+    param([string]$Mask, [string]$Content, [int]$ExpectedCount)
+    [SalamanderGuiNative]::SetFindText($script:findWindow, [uint32]$process.Id, 5102, $Mask)
+    [SalamanderGuiNative]::SetFindText($script:findWindow, [uint32]$process.Id, 5103, $Content)
+    [SalamanderGuiNative]::ClickFindButton($script:findWindow, [uint32]$process.Id, 5107)
+    Wait-FindCompleted -Count $ExpectedCount
+}
+
+function Select-VerifiedFindResult {
+    param([string]$ExpectedPath)
+    $oldMouse = [Windows.Forms.Cursor]::Position
+    try {
+        $selected = [SalamanderGuiNative]::SelectSingleFindResult(
+            $script:findWindow, [uint32]$process.Id)
+    }
+    finally { [Windows.Forms.Cursor]::Position = $oldMouse }
+    Assert-True ($selected -eq 0) 'Unicode Find selected exactly one visible result'
+    Set-ClipboardText 'SENTINEL_NOT_A_FIND_PATH'
+    [SalamanderGuiNative]::ClickFindButton($script:findWindow, [uint32]$process.Id, 5109)
+    $foundPath = Get-ClipboardText
+    Assert-True ($foundPath -ceq $ExpectedPath) 'Unicode Find copied the exact UTF-16 result path'
+}
+
+function Test-UnicodeFindGui {
+    # Arrange: the GUI root is >MAX_PATH. Only test-owned files are altered.
+    Go-ToPath $findRoot
+    Restore-FilePanelFocus -ExpectedPath $findRoot
+    Send-Keys '%{F7}'
+    Wait-Until {
+        $script:findWindow = Get-UnicodeFindWindow
+        return $script:findWindow -ne [IntPtr]::Zero
+    } 'modeless Unicode Find window launched by Alt+F7'
+    Assert-True ([SalamanderGuiNative]::ReadFindText(
+        $script:findWindow, [uint32]$process.Id, 5101) -ceq $findRoot) 'Unicode Find preserves full long-path search root'
+
+    # Act / Assert: recursive enumeration, two original W names, two
+    # different content encodings and empty-result handling.
+    Start-FindQuery -Mask '*.txt' -Content '' -ExpectedCount 2
+    Start-FindQuery -Mask '*.txt' -Content 'unique-utf8-probe' -ExpectedCount 1
+    Select-VerifiedFindResult -ExpectedPath $findUtf8Path
+    Start-FindQuery -Mask '*.txt' -Content 'unique-utf16-probe' -ExpectedCount 1
+    Select-VerifiedFindResult -ExpectedPath $findUtf16Path
+    Start-FindQuery -Mask '*.txt|*utf16*' -Content '' -ExpectedCount 1
+    Select-VerifiedFindResult -ExpectedPath $findUtf8Path
+    Start-FindQuery -Mask '*.txt' -Content 'not-present-in-disposable-fixtures' -ExpectedCount 0
+
+    # Reject a relative root rather than searching the working directory.
+    [SalamanderGuiNative]::SetFindText($script:findWindow, [uint32]$process.Id, 5101, 'relative\unsafe')
+    [SalamanderGuiNative]::ClickFindButton($script:findWindow, [uint32]$process.Id, 5107)
+    Assert-True ([SalamanderGuiNative]::ReadFindText(
+        $script:findWindow, [uint32]$process.Id, 5118) -ceq
+        'Invalid or too-long absolute search root.') 'Unicode Find rejects a relative search root'
+    [SalamanderGuiNative]::SetFindText($script:findWindow, [uint32]$process.Id, 5101, $findRoot)
+
+    # Copy and collision refusal must never change the original or target
+    # bytes; result selection is rechecked against the clipboard identity.
+    Start-FindQuery -Mask $findUtf8Name -Content '' -ExpectedCount 1
+    Select-VerifiedFindResult -ExpectedPath $findUtf8Path
+    [SalamanderGuiNative]::SetFindText($script:findWindow, [uint32]$process.Id, 5104, $findCopyPath)
+    [SalamanderGuiNative]::ClickFindButton($script:findWindow, [uint32]$process.Id, 5111)
+    Wait-Until { [IO.File]::Exists($findCopyPath) } 'Unicode Find copies file to new destination'
+    Assert-True ([Linq.Enumerable]::SequenceEqual[byte](
+        [IO.File]::ReadAllBytes($findCopyPath), $findUtf8Bytes) -and
+        [Linq.Enumerable]::SequenceEqual[byte](
+        [IO.File]::ReadAllBytes($findUtf8Path), $findUtf8Bytes)) 'Unicode Find copy preserves source and destination bytes'
+    [SalamanderGuiNative]::ClickFindButton($script:findWindow, [uint32]$process.Id, 5111)
+    Assert-True ([SalamanderGuiNative]::ReadFindText(
+        $script:findWindow, [uint32]$process.Id, 5118) -like 'File action rejected*') 'Unicode Find refuses destination overwrite'
+    Assert-True ([Linq.Enumerable]::SequenceEqual[byte](
+        [IO.File]::ReadAllBytes($findCopyPath), $findUtf8Bytes)) 'Unicode Find collision preserves destination bytes'
+
+    # Move uses the selected original long Unicode name, not a best-fit alias.
+    [SalamanderGuiNative]::SetFindText($script:findWindow, [uint32]$process.Id, 5104, $findMovePath)
+    [SalamanderGuiNative]::ClickFindButton($script:findWindow, [uint32]$process.Id, 5112)
+    Wait-Until { [IO.File]::Exists($findMovePath) -and
+        -not [IO.File]::Exists($findUtf8Path) } 'Unicode Find moves original file without overwrite'
+    Assert-True ([Linq.Enumerable]::SequenceEqual[byte](
+        [IO.File]::ReadAllBytes($findMovePath), $findUtf8Bytes)) 'Unicode Find move preserves exact bytes'
+
+    # The second result exercises the real native modal Unicode rename dialog.
+    Start-FindQuery -Mask $findUtf16Name -Content 'unique-utf16-probe' -ExpectedCount 1
+    Select-VerifiedFindResult -ExpectedPath $findUtf16Path
+    [SalamanderGuiNative]::PostFindButton($script:findWindow, [uint32]$process.Id, 5113)
+    Wait-Until {
+        $script:renameWindow = [SalamanderGuiNative]::FindRenameDialog([uint32]$process.Id)
+        return $script:renameWindow -ne [IntPtr]::Zero
+    } 'native Unicode Find rename confirmation dialog'
+    [SalamanderGuiNative]::SetFindText($script:renameWindow, [uint32]$process.Id, 4101, $findRenamedName)
+    [SalamanderGuiNative]::PostFindButton($script:renameWindow, [uint32]$process.Id, 1)
+    Wait-Until { [IO.File]::Exists($findRenamedPath) -and
+        -not [IO.File]::Exists($findUtf16Path) } 'Unicode Find renames nested result'
+    Assert-True ([Linq.Enumerable]::SequenceEqual[byte](
+        [IO.File]::ReadAllBytes($findRenamedPath), $findUtf16Bytes)) 'Unicode Find rename preserves UTF-16LE content'
+    Start-FindQuery -Mask $findRenamedName -Content 'unique-utf16-probe' -ExpectedCount 1
+    Select-VerifiedFindResult -ExpectedPath $findRenamedPath
+
+    # Closing the modeless Find window must leave the Salamander owner alive.
+    [SalamanderGuiNative]::PostFindButton($script:findWindow, [uint32]$process.Id, 5116)
+    Wait-Until { (Get-UnicodeFindWindow) -eq [IntPtr]::Zero } 'Unicode Find window closure'
+    $process.Refresh()
+    Assert-True (-not $process.HasExited) 'Closing Unicode Find preserves Salamander process'
+    Write-Host 'PASS: Unicode Find GUI search, Unicode path, copy, collision, move, rename and close.'
+}
+
 function Save-FailureScreenshot {
     try {
         # Save only the app window; other desktop windows may contain private data.
@@ -1073,6 +1346,31 @@ try {
         Assert-True ($maximumFile.Length -eq $requestedLength) 'Maximum GUI file path is 32700 UTF-16 units'
         [IO.File]::WriteAllBytes($maximumFile, $payload)
         Assert-True (Test-Content $maximumFile) 'Near-maximum GUI fixture bytes written intact'
+    }
+    if ($UnicodeFindOnly) {
+        # Arrange: two independently identifiable search files. The root is
+        # beyond MAX_PATH, and the second file requires recursive search.
+        $findRoot = $source
+        foreach ($index in 1..4) {
+            $findRoot = Join-Path $findRoot ('find-depth-' + $index + '-' + ('q' * 62))
+            [IO.Directory]::CreateDirectory($findRoot) | Out-Null
+        }
+        Assert-True ($findRoot.Length -gt 260) 'Unicode Find fixture root exceeds MAX_PATH'
+        $findNested = Join-Path $findRoot 'nested-大阪'
+        [IO.Directory]::CreateDirectory($findNested) | Out-Null
+        [IO.Directory]::CreateDirectory($destination) | Out-Null
+        $findUtf8Name = 'find_utf8_東京.txt'
+        $findUtf16Name = 'find_utf16_大阪.txt'
+        $findRenamedName = 'renamed_日本_😀.txt'
+        $findUtf8Path = Join-Path $findRoot $findUtf8Name
+        $findUtf16Path = Join-Path $findNested $findUtf16Name
+        $findCopyPath = Join-Path $destination 'copied_東京.txt'
+        $findMovePath = Join-Path $destination 'moved_東京.txt'
+        $findRenamedPath = Join-Path $findNested $findRenamedName
+        $findUtf8Bytes = [Text.Encoding]::UTF8.GetBytes('source unique-utf8-probe 東京 😀')
+        $findUtf16Bytes = [Text.Encoding]::Unicode.GetBytes('source unique-utf16-probe 大阪 😀')
+        [IO.File]::WriteAllBytes($findUtf8Path, $findUtf8Bytes)
+        [IO.File]::WriteAllBytes($findUtf16Path, $findUtf16Bytes)
     }
     if ($BaselineOnly) {
         # The baseline must also demonstrate that the automated keystroke
@@ -1150,7 +1448,7 @@ try {
         -not $ShortUnicodeDirectoryRenameOnly -and
         -not $ShortUnicodeRecycleOnly -and
         -not $ShortUnicodeUnsafeOperationsOnly -and -not $ShortOperationsOnly -and
-        -not $MaximumPathOnly) {
+        -not $UnicodeFindOnly -and -not $MaximumPathOnly) {
         [IO.Directory]::CreateDirectory($destination) | Out-Null
         [IO.Directory]::CreateDirectory($moveDir) | Out-Null
         [IO.Directory]::CreateDirectory($maxDir) | Out-Null
@@ -1268,6 +1566,11 @@ try {
     # Go-ToPath already verified the observed panel path. A duplicate
     # WM_COMMAND 711 adds no coverage and can race with GUI processing.
     Write-Host 'PASS: GUI driver can navigate a normal short directory'
+    if ($UnicodeFindOnly) {
+        Test-UnicodeFindGui
+        $passed = $true
+        return
+    }
     if ($MaximumPathOnly) {
         # Act: navigate using Salamander's real clipboard command, not .NET.
         # Assert both the complete panel path and the focused full filename;
