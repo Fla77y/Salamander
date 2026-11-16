@@ -65,6 +65,15 @@ public static class PictViewHostWindows
     public static extern bool IsWindow(IntPtr hwnd);
     [DllImport("user32.dll")]
     public static extern bool IsWindowVisible(IntPtr hwnd);
+
+    // Main title can change after WaitForInputIdle returns.
+    public static string GetWindowCaption(IntPtr hwnd)
+    {
+        var title = new StringBuilder(512);
+        GetWindowText(hwnd, title, title.Capacity);
+        return title.ToString();
+    }
+
     [DllImport("user32.dll")]
     public static extern bool SetForegroundWindow(IntPtr hwnd);
     [DllImport("user32.dll")]
@@ -216,7 +225,7 @@ try {
     }
     $expectedHash = [Convert]::ToHexString(
         [Security.Cryptography.SHA256]::HashData([IO.File]::ReadAllBytes($fixture)))
-    $startupArgs = '-l "{0}" -r "{0}" -p 2' -f $root
+    $startupArgs = '-a "{0}" -p 2' -f $root
     $process = Start-Process -FilePath $SalamanderExe -ArgumentList $startupArgs -WorkingDirectory (Split-Path -Parent $SalamanderExe) -PassThru
 
     # Act: open the single BMP fixture through Salamander's normal F3.
@@ -238,12 +247,31 @@ try {
     $main = @([PictViewHostWindows]::ForProcess([uint32]$process.Id) |
               Where-Object { $_.Title -match 'Open Salamander' -and
                              [PictViewHostWindows]::IsWindowVisible($_.Handle) })[0]
-    if ($main.Title -notmatch [regex]::Escape((Split-Path -Leaf $root))) {
-        throw "Salamander is not showing the single BMP fixture directory: $($main.Title)"
+    # WaitForInputIdle is not sufficient: LoadConfig and command-line
+    # panel navigation are completed after the main HWND appears.
+    # Observe the live title rather than a one-time Window.Title snapshot.
+    $expectedDirectoryName = Split-Path -Leaf $root
+    $observedTitle = '<not observed>'
+    try {
+        Wait-For -Description 'Salamander active panel path applied' -Condition {
+            $process.Refresh()
+            if ($process.HasExited -or
+                -not [PictViewHostWindows]::IsWindow($main.Handle)) {
+                throw 'Salamander exited before the test directory was selected.'
+            }
+            $startupDialog = [PictViewHostWindows]::GetDialogDetails([uint32]$process.Id)
+            if (-not [string]::IsNullOrEmpty($startupDialog)) {
+                throw "Salamander displayed a modal dialog before F3: $startupDialog"
+            }
+            $observedTitle = [PictViewHostWindows]::GetWindowCaption($main.Handle)
+            return $observedTitle.Contains($expectedDirectoryName,
+                                            [StringComparison]::OrdinalIgnoreCase)
+        }
     }
-    $startupDialog = [PictViewHostWindows]::GetDialogDetails([uint32]$process.Id)
-    if (-not [string]::IsNullOrEmpty($startupDialog)) {
-        throw "Salamander displayed a modal dialog before F3: $startupDialog"
+    catch {
+        throw ("Salamander did not apply -a to the test-owned active panel. " +
+               "Expected directory '$root'; last main title '$observedTitle'. " +
+               "Viewer not invoked. $($_.Exception.Message)")
     }
     if (-not [PictViewHostWindows]::SetForegroundWindow($main.Handle) -or
         [PictViewHostWindows]::GetForegroundWindow() -ne $main.Handle) {
