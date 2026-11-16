@@ -723,14 +723,14 @@ if ($managerSource -notmatch [regex]::Escape("'tools\tests\unicode_find.cpp'") -
 # and instruments ordinary new in Debug (precomp.h). Validate both source
 # contracts to catch the original C2664/C2061 compiler regressions.
 $precompiledHeader = Get-Content -LiteralPath (
-    Join-Path $toolsDir '..\\..\\src\\precomp.h') -Raw
-if ($precompiledHeader -match '(?m)^#define new new \\(_NORMAL_BLOCK' -and
-    ($wideFindWindow -match 'LoadCursorW\\(nullptr,\\s*IDC_ARROW\\)' -or
-     $wideFindWindow -match 'new\\s*\\(\\s*std::nothrow\\s*\\)')) {
+    Join-Path $toolsDir '..\..\src\precomp.h') -Raw
+if ($precompiledHeader -match '(?m)^#define new new \(_NORMAL_BLOCK' -and
+    ($wideFindWindow -match 'LoadCursorW\(nullptr,\s*IDC_ARROW\)' -or
+     $wideFindWindow -match 'new\s*\(\s*std::nothrow\s*\)')) {
     throw 'F2: Unicode Find window must avoid ANSI cursor resource and Debug CRT new-macro incompatibilities.'
 }
-if ($wideFindWindow -notmatch 'LoadCursorW\\(nullptr,\\s*MAKEINTRESOURCEW\\(OCR_NORMAL\\)\\)' -or
-    $wideFindWindow -notmatch 'new UnicodeFindWindow\\(') {
+if ($wideFindWindow -notmatch 'LoadCursorW\(nullptr,\s*MAKEINTRESOURCEW\(OCR_NORMAL\)\)' -or
+    $wideFindWindow -notmatch 'new UnicodeFindWindow\(') {
     throw 'F2: Unicode Find window requires wide cursor ID and project-compatible allocation.'
 }
 Write-Host 'PASS: F2 Unicode Find window respects non-UNICODE Win32 resources and Debug CRT allocator.'
