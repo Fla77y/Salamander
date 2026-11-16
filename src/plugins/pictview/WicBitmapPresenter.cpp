@@ -4,6 +4,7 @@
 #include "WicBitmapPresenter.h"
 
 #include <algorithm>
+#include <climits>
 #include <limits>
 #include <new>
 #include <utility>
