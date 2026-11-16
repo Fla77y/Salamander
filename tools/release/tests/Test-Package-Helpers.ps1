@@ -30,6 +30,14 @@ if (-not $releaseWorkflow.Contains('OpenSal\dist\SHA256SUMS-Release.txt') -or
 # Detect a broken optional PictView installation without loading or
 # distributing its unavailable proprietary converter components.
 & (Join-Path $PSScriptRoot 'Test-PictViewRuntime-Prerequisites.ps1')
+# If payload validation fails after installation, the smoke must attempt
+# only its test-owned Inno uninstaller before deleting the temporary directory.
+$installerSmokeSource = Get-Content -LiteralPath (
+    Join-Path $toolsDir 'tests\Test-ReleaseInstaller.ps1') -Raw
+if (-not $installerSmokeSource.Contains('$uninstallAttempted') -or
+    -not $installerSmokeSource.Contains('Invoke-BoundedSetup -Executable $cleanupUninstaller.FullName')) {
+    throw 'Release installer smoke must attempt test-owned uninstall on early validation failures.'
+}
 $scriptFiles = @(
     (Join-Path $toolsDir 'Package-Helpers.ps1'),
     (Join-Path $toolsDir 'Update-Build-Test-Package.ps1'),
