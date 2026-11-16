@@ -18,6 +18,7 @@ param(
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 if (-not $IsWindows) { throw 'This integration test requires Windows.' }
+. (Join-Path $PSScriptRoot '..\Plugin-Export-Parser.ps1')
 
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
 $toolchainRoot = Join-Path $VisualStudioRoot 'VC\Tools\MSVC'
@@ -66,9 +67,18 @@ foreach ($name in $pluginNames) {
                 "(?im)^\s*EXPORTS\s+$([regex]::Escape($symbol))\s*$")) {
             throw "Export $symbol missing in $declaration"
         }
-        if (-not [regex]::IsMatch($report,
-                "(?m)^\s*\d+\s+[0-9A-Fa-f]+\s+[0-9A-Fa-f]+\s+$([regex]::Escape($symbol))\s*$")) {
-            throw "Built plug-in does not export $symbol : $binary"
+        if (-not (Test-PeNamedExport -Report $report -Name $symbol)) {
+            # When the ABI is really absent, show the actual dumpbin rows.
+            # This also diagnoses unforeseen linker output formats without
+            # guessing that a plug-in is broken.
+            $nearby = @($dump | Where-Object {
+                $_ -match '(?i)ordinal\s+hint\s+RVA|SalamanderPlugin'
+            } | Select-Object -First 12)
+            if ($nearby.Count -eq 0) {
+                $nearby = @($dump | Select-Object -Last 12)
+            }
+            throw "No exact public PE export '$symbol' in $binary. dumpbin excerpt:" +
+                  [Environment]::NewLine + ($nearby -join [Environment]::NewLine)
         }
     }
     Write-Host "PASS: $name x64 plug-in binary exports required Salamander SDK entry points"
