@@ -713,3 +713,42 @@ Then manually open Find from a disposable >260-unit disk directory and
 verify W results, UTF-8 and UTF-16LE content, selected-path clipboard,
 copy/move/rename no-overwrite behavior and cancellation in the real GUI.
 Current commits are NOT yet verified by a new interactive GUI run.
+
+
+## Automated desktop GUI regression for native Unicode Find (16 November 2026)
+
+The modeless UTF-16 Find window now has a dedicated interactive-desktop
+regression in the existing GUI driver:
+
+    .\manage.cmd --update --test-gui-unicode-find
+
+--test-all also runs it for both x64 Release and Debug. This scenario
+creates an isolated directory longer than MAX_PATH containing UTF-8 and
+UTF-16LE files with distinct Unicode names. It opens Find through the
+actual Alt+F7 shortcut from a verified file panel and checks:
+
+- The initial search root is the complete long UTF-16 panel path.
+- Recursive results, name exclusion masks, content matches in both
+  encodings, zero matches, and refusal of an invalid relative root.
+- A selected result's CF_UNICODETEXT clipboard path matches the actual
+  full path, including its Unicode name.
+- No-overwrite copy, refusal on a second copy, exact source/destination
+  bytes, and move of the original Unicode file.
+- Native modal rename of a nested Unicode result, unchanged file bytes,
+  and independent discovery of the renamed result.
+- Closing the search window leaves the owning Salamander process alive.
+
+The automation uses the normal panel/keyboard command to open Find and
+bounded Win32 messages directed only to controls owned by the test PID.
+The single displayed result is selected with a verified on-screen
+ListView click; no unsafe cross-process LVM_GETITEM pointer is passed.
+All writes target disposable fixtures. A failure retains diagnostic
+fixtures and captures a screenshot of the application's window.
+
+**Verification status:** This change is only source-reviewed and
+statically wired so far. A new unlocked Windows desktop run is required
+to prove the new GUI behavior. The CI parser/interop contract tests are
+not a substitute for the interactive test. This scenario does not yet
+cover a reliably forced mid-search cancellation, Recycle Bin restoration,
+shell associations, advanced legacy search criteria, or every plug-in.
+PR #6 must remain Draft until the real run and outstanding coverage pass.
