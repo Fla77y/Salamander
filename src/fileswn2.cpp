@@ -148,6 +148,19 @@ void CFilesWindow::Execute(int index)
 
         if (index >= Dirs->Count) // file
         {
+            // Even under MAX_PATH an ACP best-fit alias can point to a
+            // different file. Do not enter the legacy association/archive
+            // handler without an exact, unique W-backed identity.
+            const CFileData& selectedFile = Files->At(index - Dirs->Count);
+            if (UnicodeDiskNames.IsUnsafeAnsiName(selectedFile.Name))
+            {
+                MessageBoxW(HWindow,
+                            L"This Unicode filename cannot be opened safely by "
+                            L"the legacy ANSI association/archive handler.",
+                            L"Unicode file", MB_OK | MB_ICONWARNING);
+                EndStopRefresh();
+                return;
+            }
             if (CheckPath(FALSE) != ERROR_SUCCESS) // current path is not accessible
             {
                 RefreshDirectory(); // refresh panel (e.g., asks for disk or changes path)
