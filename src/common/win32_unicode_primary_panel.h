@@ -10,6 +10,8 @@
 #include <cwchar>
 #include <string>
 #include <unordered_map>
+#include <cstdint>
+#include <cstdio>
 
 namespace Salamander
 {
@@ -46,6 +48,23 @@ private:
     std::unordered_map<const char*, std::wstring> rows_;
 };
 
+// Some valid 255-UTF-16-unit names expand to more than WIN32_FIND_DATAA
+// allows under DBCS code pages. Use a deliberately INVALID filesystem name
+// as the compatibility-row placeholder, never a truncated real name.
+// Per-row W identity remains authoritative for display and W-only actions.
+inline void MakeUnrepresentableAnsiPanelAlias(
+    const wchar_t* name, char (&destination)[MAX_PATH])
+{
+    std::uint64_t hash = 14695981039346656037ULL;
+    for (const wchar_t* cursor = name; *cursor != L'\0'; ++cursor)
+    {
+        hash ^= static_cast<std::uint16_t>(*cursor);
+        hash *= 1099511628211ULL;
+    }
+    sprintf_s(destination, sizeof(destination), "?UNICODE_%016llX",
+              static_cast<unsigned long long>(hash));
+}
+
 // Adapt the metadata from a W enumeration to the existing ANSI CFileData
 // construction code. This is strictly a compatibility boundary; callers
 // must keep the independent original W name for identity-based operations.
@@ -69,9 +88,9 @@ inline bool TryConvertUnicodePanelFindData(
     if (nameBytes == 0)
     {
         error = GetLastError();
-        if (error == ERROR_INSUFFICIENT_BUFFER)
-            error = ERROR_FILENAME_EXCED_RANGE;
-        return false;
+        if (error != ERROR_INSUFFICIENT_BUFFER)
+            return false;
+        MakeUnrepresentableAnsiPanelAlias(wide.cFileName, converted.cFileName);
     }
 
     // The optional short name is not part of the primary identity.
@@ -85,9 +104,10 @@ inline bool TryConvertUnicodePanelFindData(
         if (alternateBytes == 0)
         {
             error = GetLastError();
-            if (error == ERROR_INSUFFICIENT_BUFFER)
-                error = ERROR_FILENAME_EXCED_RANGE;
-            return false;
+            if (error != ERROR_INSUFFICIENT_BUFFER)
+                return false;
+            // Optional 8.3 alias is not a filesystem identity.
+            converted.cAlternateFileName[0] = 0;
         }
     }
 
