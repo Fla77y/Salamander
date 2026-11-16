@@ -6,6 +6,27 @@
 
 #include "mainwnd.h"
 
+#include <string>
+
+// Include the registry value name and sizes only when a value cannot fit.
+// Never disclose its contents, and retain the original Win32 error text.
+static std::string FormatConfigRegistryReadError(LONG error, const char* valueName,
+                                                 DWORD suppliedBytes, DWORD reportedBytes)
+{
+    std::string message = GetErrorText(error);
+    if (error == ERROR_MORE_DATA)
+    {
+        message += "\r\nRegistry value: ";
+        message += valueName != NULL ? valueName : "(Default)";
+        message += "\r\nBuffer bytes: ";
+        message += std::to_string(suppliedBytes);
+        message += "\r\nRequired bytes: ";
+        message += std::to_string(reportedBytes);
+    }
+    return message;
+}
+
+
 CRegistryWorkerThread RegistryWorkerThread;
 
 // ****************************************************************************
@@ -113,6 +134,7 @@ BOOL DeleteKeyAux(HKEY hKey, const char* name)
 
 BOOL GetValueAux(HWND parent, HKEY hKey, const char* name, DWORD type, void* buffer, DWORD bufferSize, BOOL quiet)
 {
+    const DWORD suppliedBytes = bufferSize;
     DWORD gettedType;
     LONG res = SalRegQueryValueEx(hKey, name, 0, &gettedType, (BYTE*)buffer, &bufferSize);
     if (res == ERROR_SUCCESS)
@@ -141,14 +163,15 @@ BOOL GetValueAux(HWND parent, HKEY hKey, const char* name, DWORD type, void* buf
         {
             if (!quiet)
             {
+                const std::string message = FormatConfigRegistryReadError(res, name, suppliedBytes, bufferSize);
                 if (HLanguage == NULL)
                 {
-                    MessageBox(parent, GetErrorText(res),
+                    MessageBox(parent, message.c_str(),
                                "Error Loading Configuration", MB_OK | MB_ICONEXCLAMATION);
                 }
                 else
                 {
-                    SalMessageBox(parent, GetErrorText(res),
+                    SalMessageBox(parent, message.c_str(),
                                   LoadStr(IDS_ERRORLOADCONFIG), MB_OK | MB_ICONEXCLAMATION);
                 }
             }
@@ -159,6 +182,7 @@ BOOL GetValueAux(HWND parent, HKEY hKey, const char* name, DWORD type, void* buf
 
 BOOL GetValue2Aux(HWND parent, HKEY hKey, const char* name, DWORD type1, DWORD type2, DWORD* returnedType, void* buffer, DWORD bufferSize)
 {
+    const DWORD suppliedBytes = bufferSize;
     DWORD gettedType;
     LONG res = SalRegQueryValueEx(hKey, name, 0, &gettedType, (BYTE*)buffer, &bufferSize);
     if (res == ERROR_SUCCESS)
@@ -185,14 +209,15 @@ BOOL GetValue2Aux(HWND parent, HKEY hKey, const char* name, DWORD type1, DWORD t
     {
         if (res != ERROR_FILE_NOT_FOUND)
         {
+            const std::string message = FormatConfigRegistryReadError(res, name, suppliedBytes, bufferSize);
             if (HLanguage == NULL)
             {
-                MessageBox(parent, GetErrorText(res),
+                MessageBox(parent, message.c_str(),
                            "Error Loading Configuration", MB_OK | MB_ICONEXCLAMATION);
             }
             else
             {
-                SalMessageBox(parent, GetErrorText(res),
+                SalMessageBox(parent, message.c_str(),
                               LoadStr(IDS_ERRORLOADCONFIG), MB_OK | MB_ICONEXCLAMATION);
             }
         }
@@ -268,14 +293,15 @@ BOOL GetSizeAux(HWND parent, HKEY hKey, const char* name, DWORD type, DWORD& buf
     {
         if (res != ERROR_FILE_NOT_FOUND)
         {
+            const std::string message = FormatConfigRegistryReadError(res, name, 0, bufferSize);
             if (HLanguage == NULL)
             {
-                MessageBox(parent, GetErrorText(res),
+                MessageBox(parent, message.c_str(),
                            "Error Loading Configuration", MB_OK | MB_ICONEXCLAMATION);
             }
             else
             {
-                SalMessageBox(parent, GetErrorText(res),
+                SalMessageBox(parent, message.c_str(),
                               LoadStr(IDS_ERRORLOADCONFIG), MB_OK | MB_ICONEXCLAMATION);
             }
         }

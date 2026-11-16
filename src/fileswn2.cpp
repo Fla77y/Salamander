@@ -67,8 +67,100 @@ void CFilesWindow::Execute(int index)
 
     if (Is(ptDisk))
     {
+        // Also enter the wide path handler when a SHORT parent plus its
+        // selected directory would cross MAX_PATH. The legacy Enter branch
+        // below calls SalPathAppend(..., MAX_PATH) and otherwise rejects the
+        // directory before ChangePathToDisk can dispatch its long-path route.
+        const bool wouldEnterLongDirectory =
+            index < Dirs->Count &&
+            strlen(GetPath()) + strlen(Dirs->At(index).Name) + 1 >= MAX_PATH - 2;
+        if (HasLongDiskPath() || wouldEnterLongDirectory)
+        {
+            // Execute's legacy code below copies paths into MAX_PATH buffers.
+            // Keep file association/archive execution refused on long paths.
+            if (index >= Dirs->Count)
+            {
+                MessageBoxW(HWindow,
+                            L"Opening files from this long directory is not yet "
+                            L"supported by the legacy association/archive handler.",
+                            L"Long directory", MB_OK | MB_ICONINFORMATION);
+                EndStopRefresh();
+                return;
+            }
+
+            const CFileData& dir = Dirs->At(index);
+            const bool up = index == 0 && strcmp(dir.Name, "..") == 0;
+            std::string requested(GetPath());
+            std::string focusName;
+            bool valid = true;
+
+            if (up)
+            {
+                // The parent path and the name to refocus are owned before
+                // ChangePathToDisk closes or replaces the current listing.
+                while (requested.size() > 3 && requested.back() == '\\')
+                    requested.pop_back();
+                const std::size_t slash = requested.find_last_of('\\');
+                if (slash == std::string::npos || slash < 2 ||
+                    slash + 1 >= requested.size())
+                    valid = false;
+                else
+                {
+                    focusName = requested.substr(slash + 1);
+                    requested.resize(slash == 2 ? 3 : slash);
+                    // Never escape a UNC share into a server-only path.
+                    if (requested.size() > 2 &&
+                        requested[0] == '\\' && requested[1] == '\\')
+                    {
+                        const std::size_t serverEnd = requested.find('\\', 2);
+                        if (serverEnd == std::string::npos ||
+                            serverEnd + 1 >= requested.size())
+                            valid = false;
+                    }
+                }
+            }
+            else
+            {
+                std::wstring originalName;
+                if ((dir.Attr & FILE_ATTRIBUTE_REPARSE_POINT) != 0 ||
+                    !UnicodeDiskNames.TryGetRow(dir.Name, originalName) ||
+                    !Salamander::IsExactAnsiName(dir.Name, originalName.c_str()))
+                    valid = false; // refuse ambiguous or lossy ACP directory aliases
+                else
+                {
+                    if (requested.back() != '\\')
+                        requested.push_back('\\');
+                    requested.append(dir.Name);
+                }
+            }
+
+            if (valid)
+                ChangePathToDisk(HWindow, requested.c_str(), -1,
+                                 up ? focusName.c_str() : NULL);
+            else
+                MessageBoxW(HWindow,
+                            L"The directory cannot be navigated without losing "
+                            L"its exact Unicode identity.",
+                            L"Long directory", MB_OK | MB_ICONWARNING);
+            EndStopRefresh();
+            return;
+        }
+
         if (index >= Dirs->Count) // file
         {
+            // Even under MAX_PATH an ACP best-fit alias can point to a
+            // different file. Do not enter the legacy association/archive
+            // handler without an exact, unique W-backed identity.
+            const CFileData& selectedFile = Files->At(index - Dirs->Count);
+            if (UnicodeDiskNames.IsUnsafeAnsiName(selectedFile.Name))
+            {
+                MessageBoxW(HWindow,
+                            L"This Unicode filename cannot be opened safely by "
+                            L"the legacy ANSI association/archive handler.",
+                            L"Unicode file", MB_OK | MB_ICONWARNING);
+                EndStopRefresh();
+                return;
+            }
             if (CheckPath(FALSE) != ERROR_SUCCESS) // current path is not accessible
             {
                 RefreshDirectory(); // refresh panel (e.g., asks for disk or changes path)
@@ -1387,7 +1479,8 @@ void CFilesWindow::CloseCurrentPath(HWND parent, BOOL cancel, BOOL detachFS, BOO
             {
                 const char* path = GetPath();
                 // HICON hIcon = GetFileOrPathIconAux(path, FALSE, TRUE); // we retrieve the icon
-                MainWindow->DirHistoryAddPathUnique(0, path, NULL, NULL /*hIcon*/, NULL, NULL);
+                if (!HasLongDiskPath())
+                    MainWindow->DirHistoryAddPathUnique(0, path, NULL, NULL /*hIcon*/, NULL, NULL);
                 if (!newPathIsTheSame)
                     UserWorkedOnThisPath = FALSE;
             }
@@ -1565,7 +1658,8 @@ void CFilesWindow::RefreshPathHistoryData()
         {
             if (Is(ptDisk))
             {
-                PathHistory->ChangeActualPathData(0, GetPath(), NULL, NULL, NULL, topIndex, file->Name);
+                if (!HasLongDiskPath())
+                    PathHistory->ChangeActualPathData(0, GetPath(), NULL, NULL, NULL, topIndex, file->Name);
             }
             else
             {
@@ -1636,6 +1730,100 @@ void CFilesWindow::InvalidateChangesInPanelWeHaveNewListing()
     }
 }
 
+// Navigation to a long ordinary disk directory must not enter the legacy
+// MAX_PATH path-normalization and disk-listing stack. Validate the complete
+// identity with Win32 W APIs before changing the panel's current directory.
+BOOL CFilesWindow::ChangeLongPathToDisk(HWND parent, const char* path, int suggestedTopIndex,
+                                       const char* suggestedFocusName, BOOL* noChange,
+                                       BOOL refreshListBox, BOOL canForce, BOOL isRefresh,
+                                       int* failReason, int tryCloseReason)
+{
+    if (failReason != NULL)
+        *failReason = CHPPFR_INVALIDPATH;
+    if (noChange != NULL)
+        *noChange = TRUE;
+    if (path == NULL)
+        return FALSE;
+
+    std::wstring extended;
+    DWORD error = ERROR_SUCCESS;
+    if (!Salamander::TryMakeExtendedLengthPathFromAnsi(path, extended, error))
+    {
+        SalMessageBox(parent, GetErrorText(error), LoadStr(IDS_ERRORCHANGINGDIR),
+                      MB_OK | MB_ICONEXCLAMATION);
+        return FALSE;
+    }
+
+    const DWORD attributes = GetFileAttributesW(extended.c_str());
+    if (attributes == INVALID_FILE_ATTRIBUTES ||
+        (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0)
+    {
+        error = attributes == INVALID_FILE_ATTRIBUTES ? GetLastError() : ERROR_DIRECTORY;
+        SalMessageBox(parent, GetErrorText(error), LoadStr(IDS_ERRORCHANGINGDIR),
+                      MB_OK | MB_ICONEXCLAMATION);
+        return FALSE;
+    }
+
+    // Verify enumeration before discarding the previous panel listing.
+    // ERROR_FILE_NOT_FOUND denotes an existing but empty directory.
+    std::wstring search = extended;
+    if (search.back() != L'\\')
+        search.push_back(L'\\');
+    search.push_back(L'*');
+    WIN32_FIND_DATAW first = {};
+    HANDLE handle = FindFirstFileW(search.c_str(), &first);
+    if (handle == INVALID_HANDLE_VALUE)
+    {
+        error = GetLastError();
+        if (error != ERROR_FILE_NOT_FOUND && error != ERROR_NO_MORE_FILES)
+        {
+            SalMessageBox(parent, GetErrorText(error), LoadStr(IDS_ERRORCHANGINGDIR),
+                          MB_OK | MB_ICONEXCLAMATION);
+            return FALSE;
+        }
+    }
+    else
+        FindClose(handle);
+
+    BOOL detachFS = FALSE;
+    if (!PrepareCloseCurrentPath(parent, canForce, TRUE, detachFS, tryCloseReason))
+    {
+        if (failReason != NULL)
+            *failReason = CHPPFR_CANNOTCLOSEPATH;
+        return FALSE;
+    }
+
+    // An input pointer can alias GetPath(); SetPath may reallocate it.
+    const char requestedDrive = path[0];
+    const char requestedSeparator = path[1];
+    const BOOL samePath = Is(ptDisk) && lstrcmpiA(GetPath(), path) == 0;
+    if (!HasLongDiskPath())
+        RefreshPathHistoryData();
+    if (!isRefresh)
+        MainWindow->CancelPanelsUI();
+    CloseCurrentPath(parent, FALSE, detachFS, samePath, isRefresh, !samePath);
+    SetPanelType(ptDisk);
+    SetPath(path);
+    if (noChange != NULL)
+        *noChange = FALSE;
+
+    const BOOL listed = CommonRefresh(parent, suggestedTopIndex,
+                                     suggestedFocusName, refreshListBox, TRUE, isRefresh);
+    if (listed)
+    {
+        if (failReason != NULL)
+            *failReason = CHPPFR_SUCCESS;
+        return TRUE;
+    }
+
+    // On an unexpected listing failure, keep the pane in an ordinary,
+    // known short root rather than treating an empty pane as a success.
+    char root[4] = {requestedDrive, ':', '\\', 0};
+    if (requestedSeparator == ':')
+        ChangePathToDisk(parent, root, -1, NULL, NULL, TRUE, FALSE, FALSE);
+    return FALSE;
+}
+
 BOOL CFilesWindow::ChangePathToDisk(HWND parent, const char* path, int suggestedTopIndex,
                                     const char* suggestedFocusName, BOOL* noChange,
                                     BOOL refreshListBox, BOOL canForce, BOOL isRefresh, int* failReason,
@@ -1647,14 +1835,10 @@ BOOL CFilesWindow::ChangePathToDisk(HWND parent, const char* path, int suggested
 
     //TRACE_I("change-to-disk: begin");
 
-    if (strlen(path) >= MAX_PATH - 2)
-    {
-        SalMessageBox(parent, LoadStr(IDS_TOOLONGNAME), LoadStr(IDS_ERRORCHANGINGDIR),
-                      MB_OK | MB_ICONEXCLAMATION);
-        if (failReason != NULL)
-            *failReason = CHPPFR_INVALIDPATH;
-        return FALSE;
-    }
+    if (strlen(path) >= MAX_PATH - 2 || HasLongDiskPath())
+        return ChangeLongPathToDisk(parent, path, suggestedTopIndex,
+                                   suggestedFocusName, noChange, refreshListBox,
+                                   canForce, isRefresh, failReason, tryCloseReason);
 
     // we make backup copies
     char backup[MAX_PATH];
@@ -3429,6 +3613,12 @@ BOOL CFilesWindow::ChangePathToDetachedFS(int fsIndex, int suggestedTopIndex,
 void CFilesWindow::RefreshDiskFreeSpace(BOOL check, BOOL doNotRefreshOtherPanel)
 {
     CALL_STACK_MESSAGE3("CFilesWindow::RefreshDiskFreeSpace(%d, %d)", check, doNotRefreshOtherPanel);
+    if (HasLongDiskPath())
+    {
+        // Disk-space helpers still construct bounded ANSI paths.
+        DirectoryLine->SetSize(CQuadWord(-1, -1));
+        return;
+    }
     if (Is(ptDisk))
     {
         if (!check || CheckPath(FALSE) == ERROR_SUCCESS)

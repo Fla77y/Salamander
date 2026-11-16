@@ -12,6 +12,7 @@
 #include "viewer.h"
 #include "shellib.h"
 #include "find.h"
+#include "common/win32_unicode_panel_name.h"
 #include "gui.h"
 #include "usermenu.h"
 #include "execute.h"
@@ -351,15 +352,18 @@ void CFoundFilesListView::CheckAndRemoveSelectedItems(BOOL forceRemove, int last
             BOOL remove = forceRemove;
             if (!forceRemove)
             {
-                char fullPath[MAX_PATH];
-                int pathLen = lstrlen(ptr->Path);
-                memmove(fullPath, ptr->Path, pathLen + 1);
-                if (ptr->Path[pathLen - 1] != '\\')
-                {
-                    fullPath[pathLen] = '\\';
-                    fullPath[pathLen + 1] = '\0';
-                }
-                lstrcat(fullPath, ptr->Name);
+                // A result may outlive the original search. Never build a
+                // new path with unchecked concatenation into MAX_PATH.
+                const size_t pathLen = strlen(ptr->Path);
+                const size_t nameLen = strlen(ptr->Name);
+                if (pathLen == 0 || pathLen >= MAX_PATH ||
+                    nameLen >= MAX_PATH - pathLen - 1)
+                    continue;
+                char fullPath[MAX_PATH] = {};
+                strcpy_s(fullPath, ptr->Path);
+                if (fullPath[pathLen - 1] != '\\')
+                    strcat_s(fullPath, "\\");
+                strcat_s(fullPath, ptr->Name);
                 remove = (SalGetFileAttributes(fullPath) == -1);
             }
             if (remove)
@@ -1329,6 +1333,7 @@ CFindDialog::CFindDialog(HWND hCenterAgainst, const char* initPath)
 
     // additional data
     DlgFailed = FALSE;
+    InitRootTooLong = FALSE;
     MainMenu = NULL;
     TBHeader = NULL;
     MenuBar = NULL;
@@ -1374,7 +1379,14 @@ CFindDialog::CFindDialog(HWND hCenterAgainst, const char* initPath)
         lstrcpy(Data.NamedText, "*.*");
     if (Data.LookInText[0] == 0)
     {
-        const char* s = initPath;
+        // The legacy Find dialog cannot represent this root. Never
+        // silently search the existing prefix of a truncated input.
+        if (initPath == NULL || strlen(initPath) >= LOOKIN_TEXT_LEN)
+        {
+            InitRootTooLong = TRUE;
+            Data.LookInText[0] = 0;
+        }
+        const char* s = InitRootTooLong ? "" : initPath;
         char* d = Data.LookInText;
         char* end = Data.LookInText + LOOKIN_TEXT_LEN - 1; // -1 leaves room for the null terminator at the end of the string
         while (*s != 0 && d < end)
@@ -1701,14 +1713,48 @@ void CFindDialog::Validate(CTransferInfo& ti)
 
         if (ti.IsGood())
         {
-            SendMessage(hLookInWnd, WM_GETTEXT, LOOKIN_TEXT_LEN, (LPARAM)Data.LookInText);
-
-            BuildSerchForData();
-            if (SearchForData.Count == 0)
+            // Read the entire Unicode edit value first. WM_GETTEXT into an
+            // ANSI MAX_PATH buffer could silently redirect the search to
+            // a truncated existing directory or a best-fit ACP alias.
+            const int lengthW = GetWindowTextLengthW(hLookInWnd);
+            const bool validUnits = lengthW >= 0 && lengthW < LOOKIN_TEXT_LEN;
+            std::wstring wideInput;
+            if (validUnits)
             {
-                SalMessageBox(HWindow, LoadStr(IDS_FF_EMPTYSTRING), LoadStr(IDS_ERRORTITLE),
-                              MB_OK | MB_ICONEXCLAMATION);
+                wideInput.resize(static_cast<size_t>(lengthW) + 1, L'\0');
+                GetWindowTextW(hLookInWnd, &wideInput[0],
+                               static_cast<int>(wideInput.size()));
+                wideInput.resize(wcslen(wideInput.c_str()));
+            }
+            const int bytes = validUnits
+                ? WideCharToMultiByte(CP_ACP, 0, wideInput.c_str(),
+                                      -1, NULL, 0, NULL, NULL)
+                : 0;
+            char exactInput[LOOKIN_TEXT_LEN] = {};
+            const bool validInput = bytes > 0 && bytes <= LOOKIN_TEXT_LEN &&
+                WideCharToMultiByte(CP_ACP, 0, wideInput.c_str(), -1,
+                                    exactInput, bytes, NULL, NULL) == bytes &&
+                (wideInput.empty() ||
+                 Salamander::IsExactAnsiName(exactInput, wideInput.c_str()));
+            if (!validInput)
+            {
+                SalMessageBox(HWindow,
+                    "The search root cannot be represented without Unicode "
+                    "loss or truncation. Choose a shorter ANSI-compatible "
+                    "directory. No search was started.",
+                    LoadStr(IDS_ERRORTITLE), MB_OK | MB_ICONWARNING);
                 ti.ErrorOn(IDC_FIND_LOOKIN);
+            }
+            else
+            {
+                strcpy_s(Data.LookInText, exactInput);
+                BuildSerchForData();
+                if (SearchForData.Count == 0)
+                {
+                    SalMessageBox(HWindow, LoadStr(IDS_FF_EMPTYSTRING), LoadStr(IDS_ERRORTITLE),
+                                  MB_OK | MB_ICONEXCLAMATION);
+                    ti.ErrorOn(IDC_FIND_LOOKIN);
+                }
             }
         }
 
@@ -1907,6 +1953,18 @@ void CFindDialog::StartSearch(WORD command)
     CALL_STACK_MESSAGE1("CFindDialog::StartSearch()");
     if (FoundFilesListView == NULL || GrepThread != NULL)
         return;
+
+    if (InitRootTooLong)
+    {
+        InitRootTooLong = FALSE;
+        SalMessageBox(HWindow,
+                      "The initial directory exceeds the legacy Find dialog's "
+                      "path capacity. It was not truncated to another location. "
+                      "Choose a shorter search root; Unicode long-path search "
+                      "is not yet available.",
+                      LoadStr(IDS_ERRORTITLE), MB_OK | MB_ICONWARNING);
+        return;
+    }
 
     // if we are searching for duplicates, ask for additional options
     CFindDuplicatesDialog findDupDlg(HWindow);
@@ -2372,16 +2430,21 @@ BOOL CFindDialog::GetFocusedFile(char* buffer, int bufferLen, int* viewedIndex)
         *viewedIndex = index;
 
     CFoundFilesData* data = FoundFilesListView->At(index);
-    if (data->IsDir)
+    if (data->IsDir || !ValidateLegacyFindResult(data->Path, data->Name) ||
+        buffer == NULL || bufferLen <= 0)
         return FALSE;
-    char longName[MAX_PATH];
-    int len = (int)strlen(data->Path);
-    memmove(longName, data->Path, len);
-    if (data->Path[len - 1] != '\\')
-        longName[len++] = '\\';
-    strcpy(longName + len, data->Name);
-
-    lstrcpyn(buffer, longName, bufferLen);
+    const size_t pathLength = strlen(data->Path);
+    const size_t nameLength = strlen(data->Name);
+    const bool needsSlash = data->Path[pathLength - 1] != '\\';
+    const size_t totalUnits = pathLength + (needsSlash ? 1 : 0) + nameLength + 1;
+    if (totalUnits > MAX_PATH || totalUnits > static_cast<size_t>(bufferLen))
+        return FALSE;
+    char longName[MAX_PATH] = {};
+    strcpy_s(longName, data->Path);
+    if (needsSlash)
+        strcat_s(longName, "\\");
+    strcat_s(longName, data->Name);
+    strcpy_s(buffer, static_cast<size_t>(bufferLen), longName);
     return TRUE;
 }
 

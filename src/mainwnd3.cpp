@@ -5592,6 +5592,14 @@ MENU_TEMPLATE_ITEM AddToSystemMenu[] =
     case WM_USER_POSTMENUEXTCMD:
     {
         CPluginData* data = Plugins.GetPluginData((CPluginInterfaceAbstract*)wParam);
+        // Posted callbacks bypass the regular plug-in menu command gate.
+        if (GetActivePanel()->HasUnsupportedLegacyPluginSelection())
+        {
+            SalMessageBox(HWindow, "The legacy plugin cannot safely address "
+                          "this Unicode item or long directory.",
+                          LoadStr(IDS_ERRORTITLE), MB_OK | MB_ICONWARNING);
+            return 0;
+        }
         if (data != NULL && data->GetLoaded())
         {
             if (data->GetPluginInterfaceForMenuExt()->NotEmpty())

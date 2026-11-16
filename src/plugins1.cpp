@@ -3472,6 +3472,13 @@ BOOL CPluginData::ExecuteMenuItem(CFilesWindow* panel, HWND parent, int index, i
 {
     CALL_STACK_MESSAGE5("CPluginData::ExecuteMenuItem(, , %d, %d, ) (%s v. %s)", index, suid, DLLName, Version);
     unselect = FALSE;
+    if (panel != NULL && panel->HasUnsupportedLegacyPluginSelection())
+    {
+        SalMessageBox(parent, "The legacy plugin interface cannot safely handle "
+                      "this Unicode filename or long directory. No plugin command "
+                      "was started.", LoadStr(IDS_ERRORTITLE), MB_OK | MB_ICONWARNING);
+        return TRUE;
+    }
     int id;
     int i;
     for (i = 0; i < MenuItems.Count; i++)
@@ -3496,6 +3503,13 @@ BOOL CPluginData::ExecuteMenuItem2(CFilesWindow* panel, HWND parent, int index, 
 {
     CALL_STACK_MESSAGE5("CPluginData::ExecuteMenuItem2(, , %d, %d, ) (%s v. %s)", index, id, DLLName, Version);
     unselect = FALSE;
+    if (panel != NULL && panel->HasUnsupportedLegacyPluginSelection())
+    {
+        SalMessageBox(parent, "The legacy plugin interface cannot safely handle "
+                      "this Unicode filename or long directory. No plugin command "
+                      "was started.", LoadStr(IDS_ERRORTITLE), MB_OK | MB_ICONWARNING);
+        return TRUE;
+    }
     int i;
     for (i = 0; i < MenuItems.Count; i++)
     {

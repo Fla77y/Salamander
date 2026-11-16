@@ -31,7 +31,7 @@ CFilesWindowAncestor::CFilesWindowAncestor()
     Dirs = new CFilesArray;
     SelectedCount = 0;
 
-    Path[0] = 0;
+    Path.clear();
     SuppressAutoRefresh = FALSE;
     PanelType = ptDisk;
     MonitorChanges = TRUE;
@@ -48,7 +48,9 @@ CFilesWindowAncestor::CFilesWindowAncestor()
 
     char buf[MAX_PATH];
     GetSystemDirectory(buf, MAX_PATH);
-    GetRootPath(Path, buf);
+    char root[MAX_PATH];
+    GetRootPath(root, buf);
+    Path.assign(root);
 
     OnlyDetachFSListing = FALSE;
     NewFSFiles = NULL;
@@ -82,6 +84,21 @@ CFilesWindowAncestor::CheckPath(BOOL echo, const char* path, DWORD err, BOOL pos
     parent = (parent == NULL) ? HWindow : parent;
     if (path == NULL)
         path = GetPath();
+
+    if (Is(ptDisk) && strlen(path) >= MAX_PATH - 2)
+    {
+        // The legacy SalCheckPath path recovery uses fixed ANSI buffers.
+        // Long paths are checked through their exact, extended W identity.
+        std::wstring extended;
+        DWORD pathError = ERROR_SUCCESS;
+        if (!Salamander::TryMakeExtendedLengthPathFromAnsi(path, extended, pathError))
+            return pathError;
+        const DWORD attributes = GetFileAttributesW(extended.c_str());
+        if (attributes != INVALID_FILE_ATTRIBUTES &&
+            (attributes & FILE_ATTRIBUTE_DIRECTORY) != 0)
+            return ERROR_SUCCESS;
+        return attributes == INVALID_FILE_ATTRIBUTES ? GetLastError() : ERROR_DIRECTORY;
+    }
 
     return SalCheckPath(echo, path, err, postRefresh, parent);
 }
@@ -219,14 +236,19 @@ BOOL CFilesWindowAncestor::GetGeneralPath(char* buf, int bufSize, BOOL convertFS
 void CFilesWindowAncestor::SetPath(const char* path)
 {
     CALL_STACK_MESSAGE2("CFilesWindowAncestor::SetPath(%s)", path);
-    if (SuppressAutoRefresh && (!Is(ptDisk) || !IsTheSamePath(path, Path)))
+    // The caller may pass GetPath(), so keep an independent copy until
+    // old path notifications are detached and storage is replaced.
+    const std::string newPath(path);
+    if (SuppressAutoRefresh && (!Is(ptDisk) || !IsTheSamePath(newPath.c_str(), Path.c_str())))
         SuppressAutoRefresh = FALSE;
     DetachDirectory((CFilesWindow*)this);
-    strcpy(Path, path);
+    Path = newPath;
+    path = Path.c_str();
 
     //--- detection of file-based compression/encryption and FAT32
     DWORD dummy1, flags;
     if ((Is(ptDisk) || Is(ptZIPArchive)) &&
+        Path.size() < MAX_PATH - 2 &&
         MyGetVolumeInformation(path, NULL, NULL, NULL, NULL, 0, NULL, &dummy1, &flags, NULL, 0))
     {
         ((CFilesWindow*)this)->FileBasedCompression = (flags & FS_FILE_COMPRESSION) != 0 && Is(ptDisk);
@@ -244,7 +266,20 @@ void CFilesWindowAncestor::SetPath(const char* path)
     DriveType = DRIVE_UNKNOWN;
     if (!Is(ptPluginFS)) // pluginFS handles changes differently...
     {
-        DriveType = MyGetDriveType(Path);
+        if (Path.size() >= MAX_PATH - 2)
+        {
+            // Disk notifications and the legacy drive helper retain fixed
+            // buffers. Long-path panels use explicit refresh for now.
+            if (Path.size() >= 3 && Path[1] == ':' && Path[2] == '\\')
+            {
+                char root[] = {Path[0], ':', '\\', 0};
+                DriveType = GetDriveTypeA(root);
+            }
+            else
+                DriveType = DRIVE_REMOTE;
+        }
+        else
+            DriveType = MyGetDriveType(Path.c_str());
         switch (DriveType)
         {
         case DRIVE_REMOVABLE:
@@ -280,12 +315,13 @@ void CFilesWindowAncestor::SetPath(const char* path)
         }
         }
 
-        // we handle suppression of auto refresh
-        if (SuppressAutoRefresh)
+        // Long paths must not reach the bounded legacy change monitor.
+        // Refresh remains available explicitly through the panel.
+        if (SuppressAutoRefresh || Path.size() >= MAX_PATH - 2)
             MonitorChanges = FALSE;
 
         if (MonitorChanges)
-            AddDirectory((CFilesWindow*)this, Path, DriveType == DRIVE_REMOVABLE || DriveType == DRIVE_FIXED);
+            AddDirectory((CFilesWindow*)this, Path.c_str(), DriveType == DRIVE_REMOVABLE || DriveType == DRIVE_FIXED);
         else // if changes are not monitored, Snooper does not call SetAutomaticRefresh -> we do it here
         {
             ((CFilesWindow*)this)->SetAutomaticRefresh(FALSE, TRUE);
@@ -356,15 +392,15 @@ void CFilesWindowAncestor::SetZIPArchive(const char* archive)
 BOOL CFilesWindowAncestor::SamePath(CFilesWindowAncestor* other)
 {
     CALL_STACK_MESSAGE_NONE
-    int l1 = (int)strlen(Path);
+    int l1 = (int)Path.size();
     if (l1 > 0 && Path[l1 - 1] == '\\')
         l1--;
-    int l2 = (int)strlen(other->Path);
+    int l2 = (int)other->Path.size();
     if (l2 > 0 && other->Path[l2 - 1] == '\\')
         l2--;
     return (PanelType == ptDisk || PanelType == ptZIPArchive) &&
            (other->PanelType == ptDisk || other->PanelType == ptZIPArchive) &&
-           l1 == l2 && StrNICmp(Path, other->Path, l1) == 0;
+           l1 == l2 && StrNICmp(Path.c_str(), other->Path.c_str(), l1) == 0;
 }
 
 //
@@ -1674,7 +1710,9 @@ void CFilesWindow::DirectoryLineSetText()
     {
         if (Is(ptDisk))
         {
-            PathHistory->AddPath(0, GetPath(), NULL, NULL, NULL);
+            // Legacy history entries have MAX_PATH-sized buffers.
+            if (!HasLongDiskPath())
+                PathHistory->AddPath(0, GetPath(), NULL, NULL, NULL);
             path = GetPath();
         }
         else
@@ -1698,6 +1736,13 @@ void CFilesWindow::DirectoryLineSetText()
 
     if (path == NULL)
         return;
+
+    if (FilterEnabled && HasLongDiskPath())
+    {
+        // The old filter caption combines two bounded ANSI strings.
+        DirectoryLine->SetText(path);
+        return;
+    }
 
     if (FilterEnabled)
     {

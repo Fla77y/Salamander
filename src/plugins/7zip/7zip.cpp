@@ -970,6 +970,11 @@ BOOL CPluginInterfaceForArchiver::PackToArchive(CSalamanderForOperationsAbstract
     CALL_STACK_MESSAGE5("CPluginInterfaceForArchiver::PackToArchive(, %s, %s, %d, %s, ,)", fileName,
                         archiveRoot, move, sourcePath);
 
+    // A move deletes originals only after packing. Reject unsupported source
+    // paths BEFORE creating/updating the archive or deleting any source file.
+    if (sourcePath == NULL || (move && strlen(sourcePath) >= MAX_PATH - 1))
+        return FALSE;
+
     // test whether the archive exists (we need to distinguish between updating and creating a new archive)
     BOOL isNewArchive = FALSE;
     HANDLE hArchive = ::CreateFile(fileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -1172,7 +1177,8 @@ BOOL CPluginInterfaceForArchiver::PackToArchive(CSalamanderForOperationsAbstract
             {
                 // prepare the buffer for names
                 char sourceName[MAX_PATH + 1]; // buffer for the full name on disk
-                strcpy(sourceName, sourcePath);
+                // sourcePath was checked before the archive was modified.
+                strcpy_s(sourceName, sourcePath);
                 char* endSource = sourceName + strlen(sourceName); // space for the names from the 'next' enumeration
                 if (endSource > sourceName && *(endSource - 1) != '\\')
                 {
@@ -1387,8 +1393,16 @@ static BOOL TestArchive(CSalamanderForOperationsAbstract* salamander, HWND hPare
     sprintf(fileName, LoadStr(IDS_TESTING_ARCHIVE_NAME), cfd->Name);
     salamander->ProgressDialogAddText(fileName, FALSE);
 
-    SalamanderGeneral->GetPanelPath(PANEL_SOURCE, fileName, 2 * MAX_PATH, NULL, NULL);
-    SalamanderGeneral->SalPathAppend(fileName, cfd->Name, 2 * MAX_PATH);
+    if (!SalamanderGeneral->GetPanelPath(PANEL_SOURCE, fileName,
+                                         2 * MAX_PATH, NULL, NULL) ||
+        !SalamanderGeneral->SalPathAppend(fileName, cfd->Name, 2 * MAX_PATH))
+    {
+        salamander->CloseProgressDialog();
+        SalamanderGeneral->SalMessageBox(hParent,
+            "The archive path exceeds the supported legacy ANSI limit.",
+            LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONWARNING);
+        return FALSE;
+    }
     int ret = client.TestArchive(salamander, fileName);
     salamander->CloseProgressDialog();
 

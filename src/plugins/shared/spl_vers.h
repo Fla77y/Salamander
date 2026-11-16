@@ -23,7 +23,7 @@
 #define VERSINFO_str(s) #s
 
 #define VERSINFO_SALAMANDER_MAJOR 5
-#define VERSINFO_SALAMANDER_MINORA 0
+#define VERSINFO_SALAMANDER_MINORA 1
 #define VERSINFO_SALAMANDER_MINORB 0
 
 #if (VERSINFO_SALAMANDER_MINORB == 0) // omit the trailing zero in the hundredths place: 2.50 -> 2.5

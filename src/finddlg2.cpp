@@ -14,6 +14,7 @@
 #include "gui.h"
 #include "plugins.h"
 #include "fileswnd.h"
+#include "common/win32_unicode_panel_name.h"
 #include "dialogs.h"
 
 //****************************************************************************
@@ -127,12 +128,88 @@ void CFindDialog::OnHideDuplicateNames()
     SetCursor(hOldCursor);
 }
 
+// A legacy ANSI Find result has no independent W identity. Before handing
+// it to Shell APIs, enumerate its parent directory and require exactly one
+// matching original name, with an exact ACP round-trip. A '?' or best-fit
+// alias must never become a shell wildcard or name of another file.
+BOOL CFindDialog::ValidateLegacyFindResult(const char* path, const char* name)
+{
+    if (path == NULL || name == NULL || *name == 0)
+        return FALSE;
+    const size_t pathLength = strlen(path);
+    const size_t nameLength = strlen(name);
+    if (pathLength == 0 || pathLength >= MAX_PATH ||
+        nameLength >= MAX_PATH - pathLength - 1 ||
+        strchr(path, '?') != NULL || strchr(path, '*') != NULL)
+        return FALSE;
+
+    std::wstring wideDirectory;
+    if (!Salamander::TryGetUnicodePanelDirectory(path, wideDirectory))
+        return FALSE;
+
+    DWORD error = ERROR_SUCCESS;
+    std::wstring originalName;
+    if (Salamander::ResolveUnicodePanelFileName(
+            wideDirectory.c_str(), name, originalName, error) !=
+        Salamander::UnicodePanelNameResult::Unique)
+        return FALSE;
+    return Salamander::IsExactAnsiName(name, originalName.c_str());
+}
+
+// Validate the entire selection before starting any shell action. Never
+// execute a safe subset when another selected filename is ambiguous.
+BOOL CFindDialog::ValidateSelectedLegacyFindResults()
+{
+    const HWND list = FoundFilesListView->HWindow;
+    std::unordered_map<std::string, Salamander::UnicodePanelNameCache> snapshots;
+    int index = -1;
+    while ((index = ListView_GetNextItem(list, index, LVNI_SELECTED)) != -1)
+    {
+        const CFoundFilesData* item = FoundFilesListView->At(index);
+        bool safe = false;
+        if (item->Path != NULL && item->Name != NULL && *item->Name != 0)
+        {
+            const size_t pathLen = strlen(item->Path);
+            const size_t nameLen = strlen(item->Name);
+            if (pathLen > 0 && pathLen < MAX_PATH &&
+                nameLen < MAX_PATH - pathLen - 1 &&
+                strchr(item->Path, '?') == NULL &&
+                strchr(item->Path, '*') == NULL)
+            {
+                // One complete W directory enumeration per selected parent
+                // avoids repeatedly scanning large directories for each row.
+                auto inserted = snapshots.try_emplace(item->Path);
+                auto& names = inserted.first->second;
+                std::wstring wideDirectory;
+                DWORD error = ERROR_SUCCESS;
+                if (!inserted.second ||
+                    (Salamander::TryGetUnicodePanelDirectory(
+                         item->Path, wideDirectory) &&
+                     names.Load(wideDirectory.c_str(), error)))
+                {
+                    std::wstring original;
+                    safe = names.TryGet(item->Name, original) &&
+                           Salamander::IsExactAnsiName(item->Name, original.c_str());
+                }
+            }
+        }
+        if (safe)
+            continue;
+        SalMessageBox(HWindow,
+                      "This search result cannot be identified safely by the "
+                      "legacy ANSI file and shell interfaces. No action was started.",
+                      LoadStr(IDS_ERRORTITLE), MB_OK | MB_ICONEXCLAMATION);
+        return FALSE;
+    }
+    return TRUE;
+}
+
 void CFindDialog::OnDelete(BOOL toRecycle)
 {
     CALL_STACK_MESSAGE1("CFindDialog::OnDelete()");
     HWND hListView = FoundFilesListView->HWindow;
     DWORD selCount = ListView_GetSelectedCount(hListView);
-    if (selCount == 0)
+    if (selCount == 0 || !ValidateSelectedLegacyFindResults())
         return;
 
     // compute the final size of the list
@@ -1341,7 +1418,7 @@ void CFindDialog::OnDrag(BOOL rightMouseButton)
 
     HWND hListView = FoundFilesListView->HWindow;
     DWORD selCount = ListView_GetSelectedCount(hListView);
-    if (selCount < 1)
+    if (selCount < 1 || !ValidateSelectedLegacyFindResults())
         return;
 
     char commonPrefixPath[MAX_PATH];
@@ -1418,7 +1495,7 @@ void CFindDialog::OnContextMenu(int x, int y)
 
     HWND hListView = FoundFilesListView->HWindow;
     DWORD selCount = ListView_GetSelectedCount(hListView);
-    if (selCount < 1)
+    if (selCount < 1 || !ValidateSelectedLegacyFindResults())
         return;
 
     char commonPrefixPath[MAX_PATH];
@@ -1501,7 +1578,7 @@ BOOL CFindDialog::InvokeContextMenu(const char* lpVerb)
     BOOL ret = FALSE;
     HWND hListView = FoundFilesListView->HWindow;
     DWORD selCount = ListView_GetSelectedCount(hListView);
-    if (selCount < 1)
+    if (selCount < 1 || !ValidateSelectedLegacyFindResults())
         return FALSE;
     HCURSOR hOldCursor = SetCursor(LoadCursor(NULL, IDC_WAIT));
     if (InitializeOle())
@@ -1564,7 +1641,7 @@ void CFindDialog::OnProperties()
 void CFindDialog::OnOpen(BOOL onlyFocused)
 {
     int count = ListView_GetSelectedCount(FoundFilesListView->HWindow);
-    if (count == 0)
+    if (count == 0 || !ValidateSelectedLegacyFindResults())
         return;
 
     if (!InitializeOle())

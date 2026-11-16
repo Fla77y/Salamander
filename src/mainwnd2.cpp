@@ -22,6 +22,8 @@
 #include "logo.h"
 #include "tasklist.h"
 #include "pwdmngr.h"
+#include "common/legacy_default_directory_registry.h"
+#include "common/saved_panel_path_registry.h"
 
 //
 // ConfigVersion - version number of the loaded configuration
@@ -357,6 +359,8 @@ const char* PANEL_FILTERHISTORY_REG = "Filter History";
 const char* PANEL_FILTER = "Filter";
 
 const char* SALAMANDER_DEFDIRS_REG = "Default Directories";
+// Preserve unsupported legacy per-drive registry values instead of erasing them on save.
+static BOOL PreserveUnsupportedDefaultDir[26] = {};
 
 const char* SALAMANDER_CONFIG_REG = "Configuration";
 const char* CONFIG_SKILLLEVEL_REG = "Skill Level";
@@ -1500,6 +1504,8 @@ void CMainWindow::SaveConfig(HWND parent)
                 for (d = 'A'; d <= 'Z'; d++)
                 {
                     name[0] = d;
+                    if (PreserveUnsupportedDefaultDir[d - 'A'])
+                        continue;
                     char* path = DefaultDir[d - 'A'];
                     if (path[1] == ':' && path[2] == '\\' && path[3] != 0) // not "C:\"
                         SetValue(actKey, name, REG_SZ, path, -1);
@@ -2389,13 +2395,17 @@ void CMainWindow::SaveConfig(HWND parent)
     }
 }
 
-void CMainWindow::LoadPanelConfig(char* panelPath, CFilesWindow* panel, HKEY hSalamander, const char* reg)
+void CMainWindow::LoadPanelConfig(std::string& panelPath, CFilesWindow* panel, HKEY hSalamander, const char* reg)
 {
     HKEY actKey;
     if (OpenKey(hSalamander, reg, actKey))
     {
         DWORD value;
-        if (GetValue(actKey, PANEL_PATH_REG, REG_SZ, panelPath, MAX_PATH))
+        // The panel already stores paths dynamically. Reading through MAX_PATH
+        // would show ERROR_MORE_DATA for a previously saved long directory.
+        const Salamander::SavedPanelPathStatus pathStatus =
+            Salamander::ReadSavedPanelPath(actKey, panelPath);
+        if (pathStatus == Salamander::SavedPanelPathStatus::Loaded)
         {
             if (GetValue(actKey, PANEL_HEADER_REG, REG_DWORD, &value, sizeof(DWORD)))
                 panel->HeaderLineVisible = value;
@@ -2515,6 +2525,27 @@ void LoadIconOvrlsInfo(const char* root)
         }
         CloseKey(hSalamander);
     }
+}
+
+// Restore fixed-size legacy paths through the established recovery procedure.
+// Long paths must bypass it: the panel's extended-length navigation already
+// validates the complete path and never truncates it to MAX_PATH.
+static BOOL RestoreSavedPanelPath(CFilesWindow* panel, const std::string& savedPath)
+{
+    if (savedPath.size() >= static_cast<std::size_t>(MAX_PATH - 2))
+        return panel->ChangePathToDisk(panel->HWindow, savedPath.c_str());
+
+    char legacyPath[MAX_PATH];
+    lstrcpyn(legacyPath, savedPath.c_str(), MAX_PATH);
+    DWORD error, lastError;
+    BOOL pathInvalid, cut;
+    BOOL tryNet = TRUE;
+    if (!SalCheckAndRestorePathWithCut(panel->HWindow, legacyPath, tryNet,
+                                       error, lastError, pathInvalid, cut, TRUE))
+        return FALSE;
+
+    panel->ChangePathToDisk(panel->HWindow, legacyPath);
+    return TRUE;
 }
 
 BOOL CMainWindow::LoadConfig(BOOL importingOldConfig, const CCommandLineParams* cmdLineParams)
@@ -2779,59 +2810,32 @@ BOOL CMainWindow::LoadConfig(BOOL importingOldConfig, const CCommandLineParams* 
 
         //---  default directories
 
+        // DefaultDir is a legacy MAX_PATH ANSI cache. Read the 26 supported
+        // drive values directly: enumerating arbitrary registry entries with
+        // fixed buffers can block startup with ERROR_MORE_DATA (234).
+        ZeroMemory(PreserveUnsupportedDefaultDir, sizeof(PreserveUnsupportedDefaultDir));
         if (OpenKey(salamander, SALAMANDER_DEFDIRS_REG, actKey))
         {
-            DWORD values;
-            DWORD res = RegQueryInfoKey(actKey, NULL, 0, 0, NULL, NULL, NULL, &values, NULL,
-                                        NULL, NULL, NULL);
-            if (res == ERROR_SUCCESS)
+            char dir[4] = " :\\";
+            for (char drive = 'A'; drive <= 'Z'; ++drive)
             {
-                char dir[4] = " :\\"; // reset DefaultDir
-                char d;
-                for (d = 'A'; d <= 'Z'; d++)
-                {
-                    dir[0] = d;
-                    strcpy(DefaultDir[d - 'A'], dir);
-                }
+                dir[0] = drive;
+                strcpy(DefaultDir[drive - 'A'], dir);
+            }
 
-                char name[2];
-                BYTE path[MAX_PATH];
-                DWORD nameLen, dataLen, type;
-
-                int i;
-                for (i = 0; i < (int)values; i++)
+            for (char drive = 'A'; drive <= 'Z'; ++drive)
+            {
+                const Salamander::LegacyDefaultDirectoryStatus status =
+                    Salamander::ReadLegacyDefaultDirectory(
+                        actKey, drive, DefaultDir[drive - 'A']);
+                if (status == Salamander::LegacyDefaultDirectoryStatus::Preserve)
                 {
-                    nameLen = 2;
-                    dataLen = MAX_PATH;
-                    res = RegEnumValue(actKey, i, name, &nameLen, 0, &type, path, &dataLen);
-                    if (res == ERROR_SUCCESS)
-                        if (type == REG_SZ)
-                        {
-                            char d2 = LowerCase[name[0]];
-                            if (d2 >= 'a' && d2 <= 'z')
-                            {
-                                if (dataLen > 2 && LowerCase[path[0]] == d2 &&
-                                    path[1] == ':' && path[2] == '\\')
-                                    memmove(DefaultDir[d2 - 'a'], path, dataLen);
-                                else
-                                    SalMessageBox(HWindow, LoadStr(IDS_UNEXPECTEDVALUE),
-                                                  LoadStr(IDS_ERRORLOADCONFIG), MB_OK | MB_ICONEXCLAMATION);
-                            }
-                            else
-                                SalMessageBox(HWindow, LoadStr(IDS_UNEXPECTEDVALUE),
-                                              LoadStr(IDS_ERRORLOADCONFIG), MB_OK | MB_ICONEXCLAMATION);
-                        }
-                        else
-                            SalMessageBox(HWindow, LoadStr(IDS_UNEXPECTEDVALUETYPE),
-                                          LoadStr(IDS_ERRORLOADCONFIG), MB_OK | MB_ICONEXCLAMATION);
-                    else
-                        SalMessageBox(HWindow, GetErrorText(res),
-                                      LoadStr(IDS_ERRORLOADCONFIG), MB_OK | MB_ICONEXCLAMATION);
+                    // Retain the original registry value, not an ANSI-truncated
+                    // or default fallback, when the configuration is saved.
+                    PreserveUnsupportedDefaultDir[drive - 'A'] = TRUE;
+                    TRACE_E("LoadConfig(): preserving unsupported Default Directories value for drive " << drive);
                 }
             }
-            else if (res != ERROR_FILE_NOT_FOUND)
-                SalMessageBox(HWindow, GetErrorText(res),
-                              LoadStr(IDS_ERRORLOADCONFIG), MB_OK | MB_ICONEXCLAMATION);
             CloseKey(actKey);
         }
 
@@ -3810,12 +3814,12 @@ BOOL CMainWindow::LoadConfig(BOOL importingOldConfig, const CCommandLineParams* 
 
         //---  left and right panel
 
-        char leftPanelPath[MAX_PATH];
-        char rightPanelPath[MAX_PATH];
-        GetSystemDirectory(leftPanelPath, MAX_PATH);
-        strcpy(rightPanelPath, leftPanelPath);
+        char systemDirectory[MAX_PATH];
+        GetSystemDirectory(systemDirectory, MAX_PATH);
+        std::string leftPanelPath(systemDirectory);
+        std::string rightPanelPath(systemDirectory);
         char sysDefDir[MAX_PATH];
-        lstrcpyn(sysDefDir, DefaultDir[LowerCase[leftPanelPath[0]] - 'a'], MAX_PATH);
+        lstrcpyn(sysDefDir, DefaultDir[LowerCase[systemDirectory[0]] - 'a'], MAX_PATH);
         LoadPanelConfig(leftPanelPath, LeftPanel, salamander, SALAMANDER_LEFTP_REG);
         LoadPanelConfig(rightPanelPath, RightPanel, salamander, SALAMANDER_RIGHTP_REG);
 
@@ -4005,32 +4009,19 @@ BOOL CMainWindow::LoadConfig(BOOL importingOldConfig, const CCommandLineParams* 
         if (rightPanelPathSet)
             RightPanel->RefreshVisibleItemsArray();
 
-        // leftPanelPath and rightPanelPath are only disk paths; we don't store archives or FS paths
-        DWORD err, lastErr;
-        BOOL pathInvalid, cut;
-        BOOL tryNet = TRUE;
+        // The legacy path-recovery helper uses fixed buffers. Long paths are
+        // restored through ChangePathToDisk's separately checked long-path route.
         if (!leftPanelPathSet)
         {
-            if (SalCheckAndRestorePathWithCut(LeftPanel->HWindow, leftPanelPath, tryNet,
-                                              err, lastErr, pathInvalid, cut, TRUE))
-            {
-                LeftPanel->ChangePathToDisk(LeftPanel->HWindow, leftPanelPath);
-            }
-            else
+            if (!RestoreSavedPanelPath(LeftPanel, leftPanelPath))
                 LeftPanel->ChangeToRescuePathOrFixedDrive(LeftPanel->HWindow);
             LeftPanel->RefreshVisibleItemsArray(); // see comment "RefreshVisibleItemsArray" above
         }
         UpdateWindow(LeftPanel->HWindow); // ensures dir/info line is drawn immediately after the panel content
 
-        tryNet = TRUE;
         if (!rightPanelPathSet)
         {
-            if (SalCheckAndRestorePathWithCut(RightPanel->HWindow, rightPanelPath, tryNet,
-                                              err, lastErr, pathInvalid, cut, TRUE))
-            {
-                RightPanel->ChangePathToDisk(RightPanel->HWindow, rightPanelPath);
-            }
-            else
+            if (!RestoreSavedPanelPath(RightPanel, rightPanelPath))
                 RightPanel->ChangeToRescuePathOrFixedDrive(RightPanel->HWindow);
             RightPanel->RefreshVisibleItemsArray(); // see comment "RefreshVisibleItemsArray" above
         }

@@ -5,6 +5,8 @@
 #include "precomp.h"
 
 #include <shlwapi.h>
+#include <vector>
+#include <string>
 #undef PathIsPrefix // otherwise collision with CSalamanderGeneral::PathIsPrefix
 
 #include "cfgdlg.h"
@@ -23,6 +25,7 @@ extern "C"
 #include "shexreg.h"
 }
 #include "salshlib.h"
+#include "common/win32_unicode_panel_name.h"
 
 // !!! do not use StdColumnsPrivate directly, use GetStdColumn()
 CColumDataItem StdColumnsPrivate[STANDARD_COLUMNS_COUNT] =
@@ -107,6 +110,48 @@ BOOL SafeInvokeCommand(IContextMenu2* menu, CMINVOKECOMMANDINFO& ici)
 BOOL CFilesWindow::ClipboardPaste(BOOL onlyLinks, BOOL onlyTest, const char* pastePath)
 {
     CALL_STACK_MESSAGE4("CFilesWindow::ClipboardPaste(%d, %d, %s)", onlyLinks, onlyTest, pastePath);
+    // CM_CLIPPASTE tries file paste first, then uses ClipboardPastePath()
+    // when the clipboard contains plain text. Inspect actual file formats
+    // before rejecting a long destination, otherwise a text-only path
+    // navigation would raise a modal error on every paste.
+    if (HasLongDiskPath() || (pastePath != NULL && strlen(pastePath) >= MAX_PATH))
+    {
+        IDataObject* clipboardData = NULL;
+        if (OleGetClipboard(&clipboardData) != S_OK || clipboardData == NULL)
+            return FALSE;
+
+        BOOL hasFilePayload = IsFakeDataObject(clipboardData, NULL, NULL, 0);
+        IEnumFORMATETC* formats = NULL;
+        if (clipboardData->EnumFormatEtc(DATADIR_GET, &formats) == S_OK && formats != NULL)
+        {
+            const UINT cfIdList = RegisterClipboardFormat(CFSTR_SHELLIDLIST);
+            const UINT cfFileContent = RegisterClipboardFormat(CFSTR_FILECONTENTS);
+            FORMATETC format = {};
+            formats->Reset();
+            while (formats->Next(1, &format, NULL) == S_OK)
+            {
+                if (format.cfFormat == CF_HDROP ||
+                    format.cfFormat == cfIdList ||
+                    format.cfFormat == cfFileContent)
+                    hasFilePayload = TRUE;
+                if (format.ptd != NULL)
+                    CoTaskMemFree(format.ptd);
+                format.ptd = NULL;
+            }
+            formats->Release();
+        }
+        clipboardData->Release();
+
+        if (!hasFilePayload)
+            return FALSE; // text-only clipboard: allow ClipboardPastePath()
+
+        if (!onlyTest)
+            MessageBoxW(HWindow,
+                        L"Pasting files into a long directory is not yet supported "
+                        L"by the legacy clipboard transfer engine. No files were changed.",
+                        L"Long directory", MB_OK | MB_ICONWARNING);
+        return onlyTest ? FALSE : TRUE; // no ANSI transfer and no text fallback
+    }
     IDataObject* dataObj;
     BOOL files = FALSE;       // check whether the clipboard data are files at all
     BOOL filesOnClip = FALSE; // check if there is our data on the clipboard for pasting files/directories
@@ -625,50 +670,117 @@ BOOL CFilesWindow::PostProcessPathFromUser(HWND parent, char (&buff)[2 * MAX_PAT
 void CFilesWindow::ClipboardPastePath()
 {
     CALL_STACK_MESSAGE1("CFilesWindow::ClipboardPastePath()");
-    char buff[2 * MAX_PATH];
-    buff[0] = 0;
-    BOOL changePath = FALSE;
+
+    // The Win32 clipboard is untrusted. Do not assume its global-memory
+    // block is terminated, or truncate a long path to an existing prefix.
+    std::string clipboardPath;
+    BOOL unicodeTextPresent = FALSE;
+    const SIZE_T maxAnsiBytes = 4 * 32768; // bounded input, including DBCS
 
     if (OpenClipboard(HWindow))
     {
         HANDLE handle = GetClipboardData(CF_UNICODETEXT);
+        unicodeTextPresent = handle != NULL;
         if (handle != NULL)
         {
-            WCHAR* pathW = (WCHAR*)HANDLES(GlobalLock(handle));
-            if (pathW != NULL)
+            const SIZE_T capacity = GlobalSize(handle) / sizeof(WCHAR);
+            const WCHAR* text = (const WCHAR*)HANDLES(GlobalLock(handle));
+            if (text != NULL)
             {
-                while (*pathW != 0 && *pathW <= L' ')
-                    pathW++; // trim spaces+CR+LF before the path
-                if (ConvertU2A(pathW, -1, buff, _countof(buff)))
-                    changePath = TRUE;
-                else
+                const SIZE_T limit = capacity < 32768 ? capacity : 32768;
+                SIZE_T length = 0;
+                while (length < limit && text[length] != L'\0')
+                    ++length;
+                if (length < limit)
                 {
-                    if (buff[0] != 0 && GetLastError() == ERROR_INSUFFICIENT_BUFFER)
-                        changePath = TRUE; // if the buffer is small, ignore it (same as ANSI version)
+                    SIZE_T begin = 0;
+                    while (begin < length && text[begin] <= L' ')
+                        ++begin;
+                    const std::wstring value(text + begin, length - begin);
+                    if (!value.empty())
+                    {
+                        // CP_ACP can be UTF-8, which rejects WC_NO_BEST_FIT_CHARS. The
+                        // exact round-trip check below detects lossy conversions.
+                        const int required = WideCharToMultiByte(CP_ACP, 0,
+                                                                 value.c_str(), -1, NULL, 0, NULL, NULL);
+                        if (required > 0 && (SIZE_T)required <= maxAnsiBytes)
+                        {
+                            std::vector<char> ansi((SIZE_T)required);
+                            if (ConvertU2A(value.c_str(), -1, ansi.data(), required) &&
+                                Salamander::IsExactAnsiName(ansi.data(), value.c_str()))
+                                clipboardPath.assign(ansi.data());
+                        }
+                    }
                 }
                 HANDLES(GlobalUnlock(handle));
             }
         }
-        if (!changePath) // probably not Unicode, try ANSI (when Unicode is present ANSI is usually broken - without diacritics)
+
+        if (clipboardPath.empty() && !unicodeTextPresent)
         {
             handle = GetClipboardData(CF_TEXT);
-            char* path = (char*)HANDLES(GlobalLock(handle));
-            if (path != NULL)
+            if (handle != NULL)
             {
-                while (*path != 0 && *path <= ' ')
-                    path++; // trim spaces+CR+LF before the path
-                lstrcpyn(buff, path, _countof(buff));
-
-                changePath = TRUE;
-                HANDLES(GlobalUnlock(handle));
+                const SIZE_T capacity = GlobalSize(handle);
+                const char* text = (const char*)HANDLES(GlobalLock(handle));
+                if (text != NULL)
+                {
+                    const SIZE_T limit = capacity < maxAnsiBytes ? capacity : maxAnsiBytes;
+                    SIZE_T length = 0;
+                    while (length < limit && text[length] != '\0')
+                        ++length;
+                    if (length < limit)
+                    {
+                        SIZE_T begin = 0;
+                        while (begin < length && (unsigned char)text[begin] <= ' ')
+                            ++begin;
+                        clipboardPath.assign(text + begin, length - begin);
+                    }
+                    HANDLES(GlobalUnlock(handle));
+                }
             }
         }
         CloseClipboard();
     }
     else
         TRACE_E("OpenClipboard() has failed!");
-    if (changePath && PostProcessPathFromUser(HWindow, buff))
-        ChangeDir(buff); // change path
+
+    if (clipboardPath.empty())
+        return;
+
+    if (clipboardPath.size() < 2 * MAX_PATH)
+    {
+        // Keep URL, environment-variable, quote and plugin handling as before
+        // for every path that fits the existing legacy processing contract.
+        char buff[2 * MAX_PATH];
+        strcpy_s(buff, clipboardPath.c_str());
+        if (PostProcessPathFromUser(HWindow, buff))
+            ChangeDir(buff);
+        return;
+    }
+
+    // The older path post-processor has fixed 2*MAX_PATH storage and
+    // file URL/plugin APIs are not long-path capable. For longer input,
+    // permit only a complete absolute disk/UNC path, without interpreting
+    // truncated URLs, plugins or environment-variable expansions.
+    SIZE_T first = 0;
+    while (first < clipboardPath.size() && (unsigned char)clipboardPath[first] <= ' ')
+        ++first;
+    SIZE_T last = clipboardPath.size();
+    while (last > first && (unsigned char)clipboardPath[last - 1] <= ' ')
+        --last;
+    std::string path = clipboardPath.substr(first, last - first);
+    if (path.size() >= 2 && path.front() == '"' && path.back() == '"')
+        path = path.substr(1, path.size() - 2);
+    const bool driveAbsolute = path.size() >= 3 &&
+                               ((path[0] >= 'A' && path[0] <= 'Z') ||
+                                (path[0] >= 'a' && path[0] <= 'z')) &&
+                               path[1] == ':' && path[2] == '\\';
+    const bool uncAbsolute = path.size() >= 5 &&
+                             path[0] == '\\' && path[1] == '\\' &&
+                             path[2] != '\\' && path[2] != '?';
+    if (driveAbsolute || uncAbsolute)
+        ChangeDir(path.c_str());
 }
 
 void CFilesWindow::ChangeFilter(BOOL disable)
@@ -1868,6 +1980,78 @@ BOOL CFilesWindow::CopyFocusedNameToClipboard(CCopyFocusedNameModeEnum mode)
     if (FocusedIndex < 0 || FocusedIndex >= Files->Count + Dirs->Count)
         return FALSE; // ignore an invalid index
 
+    CFileData* focusedItem = (FocusedIndex < Dirs->Count)
+                                ? &Dirs->At(FocusedIndex)
+                                : &Files->At(FocusedIndex - Dirs->Count);
+
+    // A Windows ACP best-fit mapping may silently change a disk name
+    // without producing '?'. Consult the complete per-listing UTF-16
+    // identity index, not a character heuristic.
+    if (Is(ptDisk) && (HasLongDiskPath() || UnicodeDiskNames.IsUnsafeAnsiName(focusedItem->Name)))
+    {
+        // The W primary enumeration binds the original UTF-16 name to the
+        // row's heap-backed Name pointer. This remains unambiguous when
+        // two distinct Unicode entries share the same ANSI alias.
+        std::wstring indexedName;
+        const bool hasRowIdentity =
+            UnicodeDiskNames.TryGetRow(focusedItem->Name, indexedName);
+        if (!hasRowIdentity &&
+            !UnicodeDiskNames.TryGetLossy(focusedItem->Name, indexedName))
+        {
+            TRACE_E("Cannot resolve Unicode disk name for focused row");
+            return FALSE;
+        }
+
+        std::wstring unicodeDirectory;
+        if (!Salamander::TryGetUnicodePanelDirectory(GetPath(), unicodeDirectory))
+            return FALSE;
+
+        DWORD error = ERROR_SUCCESS;
+        if (!hasRowIdentity)
+        {
+            // Compatibility fallback: only an alias with one unique W entry
+            // is exportable when the row identity is unavailable.
+            std::wstring resolvedName;
+            if (Salamander::ResolveUnicodePanelFileName(
+                    unicodeDirectory.c_str(), focusedItem->Name,
+                    resolvedName, error) !=
+                    Salamander::UnicodePanelNameResult::Unique ||
+                resolvedName != indexedName)
+            {
+                TRACE_E("Unicode disk name changed or became ambiguous (error " << error << ")");
+                return FALSE;
+            }
+        }
+
+        std::wstring unicodeFullPath = unicodeDirectory;
+        if (!unicodeFullPath.empty() && unicodeFullPath.back() != L'\\')
+            unicodeFullPath.push_back(L'\\');
+        unicodeFullPath.append(indexedName);
+
+        // Require the exact W path to still exist before exporting it.
+        // This check never substitutes a colliding ANSI alias.
+        std::wstring extendedPath;
+        if (!Salamander::TryMakeExtendedLengthPath(
+                unicodeFullPath.c_str(), extendedPath, error))
+            return FALSE;
+        const DWORD attributes = GetFileAttributesW(extendedPath.c_str());
+        if (attributes == INVALID_FILE_ATTRIBUTES ||
+            ((attributes & FILE_ATTRIBUTE_DIRECTORY) != 0) !=
+                ((focusedItem->Attr & FILE_ATTRIBUTE_DIRECTORY) != 0))
+            return FALSE;
+
+        if (mode == cfnmShort)
+            return Salamander::TryCopyUnicodeNameToClipboard(
+                MainWindow->HWindow, indexedName) ? TRUE : FALSE;
+
+        if (mode == cfnmFull)
+            return Salamander::TryCopyUnicodeNameToClipboard(
+                MainWindow->HWindow, unicodeFullPath) ? TRUE : FALSE;
+
+        // The existing ANSI UNC translation cannot preserve this name.
+        return FALSE;
+    }
+
     char buff[2 * MAX_PATH];
     buff[0] = 0;
 
@@ -1932,6 +2116,13 @@ BOOL CFilesWindow::CopyFocusedNameToClipboard(CCopyFocusedNameModeEnum mode)
 BOOL CFilesWindow::CopyCurrentPathToClipboard()
 {
     CALL_STACK_MESSAGE1("CFilesWindow::CopyCurrentPathToClipboard()");
+
+    if (HasLongDiskPath())
+    {
+        std::wstring directory;
+        return Salamander::TryGetUnicodePanelDirectory(GetPath(), directory) &&
+               Salamander::TryCopyUnicodeNameToClipboard(MainWindow->HWindow, directory);
+    }
 
     char buff[2 * MAX_PATH];
     buff[0] = 0;

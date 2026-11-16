@@ -3,6 +3,7 @@
 // CommentsTranslationProject: TRANSLATED
 
 #include "precomp.h"
+#include "common/bug_report_path.h"
 
 #include <Tlhelp32.h>
 
@@ -1425,8 +1426,13 @@ void CCallStack::PrintBugReport(EXCEPTION_POINTERS* Exception, DWORD ThreadID, D
                 {
                 case ptDisk:
                 {
-                    sprintf(buf, "Path = %s", panel->GetPath());
-                    PrintLine(param, buf, TRUE);
+                    // Path may be 32K bytes. Never overflow the 1K static
+                    // crash-report buffer while describing a prior failure.
+                    if (Salamander::FormatBugReportPanelPath(
+                            panel->GetPath(), buf, sizeof(buf)))
+                        PrintLine(param, buf, TRUE);
+                    else
+                        PrintLine(param, "Panel path description unavailable", TRUE);
                     sprintf(buf, "PanelType = %d", panel->GetPanelType());
                     PrintLine(param, buf, TRUE);
                     sprintf(buf, "Dirs = %d", panel->Dirs != NULL ? panel->Dirs->Count : -1);

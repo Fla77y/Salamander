@@ -1,0 +1,99 @@
+name: Long path regression foundations
+
+on:
+  pull_request:
+    branches: ["**"]
+    paths:
+      - "src/common/buffer_bounds.h"
+      - "src/common/win32_long_path.h"
+      - "src/common/win32_long_directory.h"
+      - "src/common/utf16_disk_path.h"
+      - "src/common/legacy_disk_name_safety.h"
+      - "src/fileswn5.cpp"
+      - "src/fileswn8.cpp"
+      - "src/common/win32_unicode_file_ops.h"
+      - "src/common/win32_unicode_panel_name.h"
+      - "src/common/win32_unicode_primary_panel.h"
+      - "src/fileswn9.cpp"
+      - "src/fileswnd.h"
+      - "src/fileswn3.cpp"
+      - "src/fileswn4.cpp"
+      - "src/safefile.cpp"
+      - "src/fileswn0.cpp"
+      - "tools/tests/**"
+      - "tools/release/tests/Test-SalamanderGui-LongPaths.ps1"
+      - "tools/release/tests/Test-GuiDriver-Contract.ps1"
+      - "tools/Manage-Salamander.ps1"
+      - ".github/workflows/pr-long-path.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  long-path:
+    runs-on: windows-2025-vs2026
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: GUI driver message-dispatch contract regression
+        shell: pwsh
+        run: ./tools/release/tests/Test-GuiDriver-Contract.ps1
+
+      - name: Windows filesystem long-path and Unicode fixtures
+        shell: pwsh
+        run: ./tools/tests/Test-LongPaths.ps1
+
+      - name: Set up MSVC developer environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: C++ buffer boundary regression test
+        shell: cmd
+        run: |
+          cl /nologo /W4 /WX /std:c++17 /EHsc /Fe:"%RUNNER_TEMP%\quicksearch_bounds.exe" tools\tests\quicksearch_bounds.cpp
+          if errorlevel 1 exit /b 1
+          "%RUNNER_TEMP%\quicksearch_bounds.exe"
+
+      - name: Owned UTF-16 filename and path contract regression test
+        shell: cmd
+        run: |
+          cl /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /Fe:"%RUNNER_TEMP%\\utf16_disk_path.exe" tools\\tests\\utf16_disk_path.cpp
+          if errorlevel 1 exit /b 1
+          "%RUNNER_TEMP%\\utf16_disk_path.exe"
+
+      - name: Fail-closed ANSI disk operation selection regression
+        shell: cmd
+        run: |
+          cl /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /Fe:"%RUNNER_TEMP%\legacy_disk_name_safety.exe" tools\tests\legacy_disk_name_safety.cpp
+          if errorlevel 1 exit /b 1
+          "%RUNNER_TEMP%\legacy_disk_name_safety.exe"
+
+      - name: Primary panel UTF-16 per-row identity regression
+        shell: cmd
+        run: |
+          cl /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /Fe:"%RUNNER_TEMP%\unicode_primary_panel.exe" tools\tests\win32_unicode_primary_panel.cpp
+          if errorlevel 1 exit /b 1
+          "%RUNNER_TEMP%\unicode_primary_panel.exe"
+
+      - name: Native UTF-16 rename dialog compilation and structure regression
+        shell: cmd
+        run: |
+          cl /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /Fe:"%RUNNER_TEMP%\unicode_rename_dialog.exe" tools\tests\win32_unicode_rename_dialog.cpp
+          if errorlevel 1 exit /b 1
+          "%RUNNER_TEMP%\unicode_rename_dialog.exe"
+
+      - name: Unicode shell recycle safety contract
+        shell: cmd
+        run: |
+          cl /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /Fe:"%RUNNER_TEMP%\unicode_recycle.exe" tools\tests\win32_unicode_recycle.cpp ole32.lib shell32.lib uuid.lib
+          if errorlevel 1 exit /b 1
+          "%RUNNER_TEMP%\unicode_recycle.exe"
+
+      - name: Unicode extended path API regression test
+        shell: cmd
+        run: |
+          cl /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /Fe:"%RUNNER_TEMP%\long_path_io.exe" tools\tests\long_path_io.cpp
+          if errorlevel 1 exit /b 1
+          "%RUNNER_TEMP%\long_path_io.exe"

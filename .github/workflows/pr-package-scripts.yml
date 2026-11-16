@@ -18,6 +18,9 @@ jobs:
     runs-on: windows-2025-vs2026
     steps:
       - uses: actions/checkout@v4
+      - name: Open Salamander product version consistency
+        shell: pwsh
+        run: ./tools/release/tests/Test-ProductVersion.ps1
       - name: PowerShell parser and distribution validation regression tests
         shell: pwsh
         run: ./tools/release/tests/Test-Package-Helpers.ps1

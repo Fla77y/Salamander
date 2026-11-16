@@ -187,7 +187,16 @@ void CStatusWindow::BuildHotTrackItems()
             SIZE s;
             GetTextExtentExPoint(dc, Text, TextLen, 0, NULL, AlpDX, &s);
 
-            if (FilesWindow->Is(ptDisk) || FilesWindow->Is(ptZIPArchive))
+            // Long disk paths are displayed but not made into clickable
+            // breadcrumbs. The legacy click/drag handlers still use fixed
+            // MAX_PATH buffers and cannot safely carry these identities.
+            // This also prevents large pixel measurements from being narrowed
+            // for path segment hit testing.
+            if (FilesWindow->Is(ptDisk) && FilesWindow->HasLongDiskPath())
+            {
+                // No hot-track entries; retain AlpDX for clipped rendering.
+            }
+            else if (FilesWindow->Is(ptDisk) || FilesWindow->Is(ptZIPArchive))
             {
                 int chars;
                 if (Text[0] == '\\' && Text[1] == '\\' &&
@@ -215,7 +224,7 @@ void CStatusWindow::BuildHotTrackItems()
                     item.Offset = 0;
                     item.PixelsOffset = 0;
                     item.Chars = chars;
-                    item.Pixels = chars != 0 ? (WORD)AlpDX[chars - 1] : 0;
+                    item.Pixels = chars != 0 ? AlpDX[chars - 1] : 0;
                     HotTrackItems.Add(item);
 
                     if (Text[chars] == '\\')
@@ -251,7 +260,7 @@ void CStatusWindow::BuildHotTrackItems()
                         item.Offset = 0;
                         item.PixelsOffset = 0;
                         item.Chars = chars;
-                        item.Pixels = chars != 0 ? (WORD)AlpDX[chars - 1] : 0;
+                        item.Pixels = chars != 0 ? AlpDX[chars - 1] : 0;
                         HotTrackItems.Add(item);
 
                         if (chars == pathLen)
@@ -273,7 +282,9 @@ void CStatusWindow::BuildHotTrackItems()
             SIZE s;
             GetTextExtentExPoint(dc, Text, TextLen, 0, NULL, AlpDX, &s);
 
-            DWORD len = TextLen;
+            // TextLen and the hot-track offsets are signed ints. Keep the
+            // bounds comparison in one domain (avoids C4018 in x64 builds).
+            const int len = TextLen;
             SIZE sOffset;
             SIZE sSub;
             DWORD i;
@@ -281,15 +292,15 @@ void CStatusWindow::BuildHotTrackItems()
             {
                 WORD charOffset = LOWORD(SubTexts[i]);
                 WORD charLen = HIWORD(SubTexts[i]);
-                if (charOffset + charLen > (WORD)len)
+                if (charOffset + charLen > len)
                 {
                     TRACE_E("charOffset + charLen >= len");
                     continue;
                 }
                 GetTextExtentPoint32(dc, Text, charOffset, &sOffset);
                 GetTextExtentPoint32(dc, Text + charOffset, charLen, &sSub);
-                item.PixelsOffset = (WORD)sOffset.cx;
-                item.Pixels = (WORD)sSub.cx;
+                item.PixelsOffset = sOffset.cx;
+                item.Pixels = sSub.cx;
                 item.Offset = charOffset;
                 item.Chars = charLen;
                 HotTrackItems.Add(item);

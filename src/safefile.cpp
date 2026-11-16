@@ -12,6 +12,35 @@
 #include "cfgdlg.h"
 #include "zip.h"
 #include "spl_file.h"
+#include "common/win32_long_path.h"
+
+// Use the existing handle tracker for the real Win32 API calls. HANDLES_Q
+// accepts tracked Win32 method names, not namespaced helper functions.
+static HANDLE OpenTrackedSafeFile(const char* fileName, DWORD desiredAccess,
+                                  DWORD shareMode, DWORD creationDisposition,
+                                  DWORD flagsAndAttributes)
+{
+    if (fileName == NULL)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
+        return INVALID_HANDLE_VALUE;
+    }
+    if (strlen(fileName) < MAX_PATH)
+    {
+        return HANDLES_Q(CreateFileA(fileName, desiredAccess, shareMode, NULL,
+                                     creationDisposition, flagsAndAttributes, NULL));
+    }
+
+    std::wstring extendedName;
+    DWORD pathError = ERROR_SUCCESS;
+    if (!Salamander::TryMakeExtendedLengthPathFromAnsi(fileName, extendedName, pathError))
+    {
+        SetLastError(pathError);
+        return INVALID_HANDLE_VALUE;
+    }
+    return HANDLES_Q(CreateFileW(extendedName.c_str(), desiredAccess, shareMode, NULL,
+                                 creationDisposition, flagsAndAttributes, NULL));
+}
 
 CSalamanderSafeFile SalSafeFile;
 
@@ -40,10 +69,11 @@ BOOL CSalamanderSafeFile::SafeFileOpen(SAFE_FILE* file,
         *pressedButton = DIALOG_CANCEL;
 
     HANDLE hFile;
-    int fileNameLen = (int)strlen(fileName);
     do
     {
-        hFile = fileNameLen >= MAX_PATH ? INVALID_HANDLE_VALUE : HANDLES_Q(CreateFile(fileName, dwDesiredAccess, dwShareMode, NULL, dwCreationDisposition, dwFlagsAndAttributes, NULL));
+        hFile = OpenTrackedSafeFile(
+            fileName, dwDesiredAccess, dwShareMode, dwCreationDisposition,
+            dwFlagsAndAttributes);
         if (hFile == INVALID_HANDLE_VALUE)
         {
             DWORD dlgRet;
@@ -51,7 +81,7 @@ BOOL CSalamanderSafeFile::SafeFileOpen(SAFE_FILE* file,
                 dlgRet = DIALOG_SKIP;
             else
             {
-                DWORD lastError = fileNameLen >= MAX_PATH ? ERROR_FILENAME_EXCED_RANGE : GetLastError();
+                DWORD lastError = GetLastError();
                 dlgRet = DialogError(hParent, (flags & BUTTONS_MASK), fileName,
                                      GetErrorText(lastError), LoadStr(IDS_ERROROPENINGFILE));
             }
@@ -929,7 +959,7 @@ BOOL CSalamanderSafeFile::SafeFileRead(SAFE_FILE* file, LPVOID lpBuffer,
             DWORD lastError;
             DWORD dlgRet;
             if (silentMask != NULL && (*silentMask & SILENT_SKIP_FILE_READ) && ButtonsContainsSkip(flags))
-                dlgRet |= DIALOG_SKIP;
+                dlgRet = DIALOG_SKIP;
             else
             {
                 lastError = GetLastError();
@@ -947,8 +977,9 @@ BOOL CSalamanderSafeFile::SafeFileRead(SAFE_FILE* file, LPVOID lpBuffer,
                     HANDLES(CloseHandle(file->HFile)); // close the invalid handle because we could not read from it anyway
                 }
 
-                file->HFile = HANDLES_Q(CreateFile(file->FileName, file->dwDesiredAccess, file->dwShareMode, NULL,
-                                                   file->dwCreationDisposition, file->dwFlagsAndAttributes, NULL));
+                file->HFile = OpenTrackedSafeFile(
+                    file->FileName, file->dwDesiredAccess, file->dwShareMode,
+                    OPEN_EXISTING, file->dwFlagsAndAttributes);
                 if (file->HFile != INVALID_HANDLE_VALUE) // opened; now set the offset
                 {
                 SEEK:
@@ -1014,7 +1045,7 @@ BOOL CSalamanderSafeFile::SafeFileWrite(SAFE_FILE* file, LPVOID lpBuffer,
             DWORD lastError = GetLastError();
             DWORD dlgRet;
             if (silentMask != NULL && (*silentMask & SILENT_SKIP_FILE_WRITE) && ButtonsContainsSkip(flags))
-                dlgRet |= DIALOG_SKIP;
+                dlgRet = DIALOG_SKIP;
             else
             {
                 dlgRet = DialogError((hParent == HWND_STORED) ? file->HParentWnd : hParent, (flags & BUTTONS_MASK),
@@ -1031,8 +1062,9 @@ BOOL CSalamanderSafeFile::SafeFileWrite(SAFE_FILE* file, LPVOID lpBuffer,
                     HANDLES(CloseHandle(file->HFile)); // close the invalid handle because we could not read from it anyway
                 }
 
-                file->HFile = HANDLES_Q(CreateFile(file->FileName, file->dwDesiredAccess, file->dwShareMode, NULL,
-                                                   file->dwCreationDisposition, file->dwFlagsAndAttributes, NULL));
+                file->HFile = OpenTrackedSafeFile(
+                    file->FileName, file->dwDesiredAccess, file->dwShareMode,
+                    OPEN_EXISTING, file->dwFlagsAndAttributes);
                 if (file->HFile != INVALID_HANDLE_VALUE) // opened; now set the offset
                 {
                     //SEEK:

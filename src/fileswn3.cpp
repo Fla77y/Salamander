@@ -18,6 +18,8 @@
 #include "zip.h"
 #include "shiconov.h"
 
+#include <vector>
+
 //
 // ****************************************************************************
 // CFilesWindow
@@ -63,6 +65,9 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
 
     CutToClipChanged = FALSE; // forget cut-to-clip flags by this operation
 
+    // Never keep names from a previous panel directory or refresh.
+    UnicodeDiskNames.Clear();
+
     FocusFirstNewItem = FALSE;
     UseSystemIcons = FALSE;
     UseThumbnails = FALSE;
@@ -89,7 +94,11 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
     DeleteColumnsWithoutData();                      // removing columns for which we don't have data (empty values would be shown in them)
     GetPluginIconIndex = InternalGetPluginIconIndex; // setting standard callback (just returns zero)
 
-    char fileName[MAX_PATH + 4];
+    // Leave room for the wildcard on a dynamically sized disk path.
+    const size_t pathLen = strlen(GetPath());
+    // Preserve the former MAX_PATH+4 scratch capacity for extension and icon
+    // processing, while allowing long directory search patterns.
+    std::vector<char> fileName((pathLen > MAX_PATH ? pathLen : MAX_PATH) + 4);
 
     if (Is(ptDisk))
     {
@@ -120,13 +129,15 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
         }
         UseThumbnails = readThumbnails;
 
-        SetCurrentDirectory(GetPath()); // so that it works better
+        if (!HasLongDiskPath())
+            SetCurrentDirectory(GetPath()); // preserve legacy optimization for short paths
 
 #ifndef _WIN64
         BOOL isWindows64BitDir = Windows64Bit && WindowsDirectory[0] != 0 && IsTheSamePath(GetPath(), WindowsDirectory);
 #endif // _WIN64
 
-        RefreshDiskFreeSpace(FALSE);
+        if (!HasLongDiskPath())
+            RefreshDiskFreeSpace(FALSE);
 
         Files->SetDeleteData(TRUE);
         Dirs->SetDeleteData(TRUE);
@@ -140,12 +151,12 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
 
         GetAsyncKeyState(VK_ESCAPE); // init GetAsyncKeyState - see help
 
-        GetRootPath(fileName, GetPath());
-        BOOL isRootPath = (strlen(GetPath()) <= strlen(fileName));
+        GetRootPath(fileName.data(), GetPath());
+        BOOL isRootPath = (strlen(GetPath()) <= strlen(fileName.data()));
 
         //--- getting drive type (we will not bother network drives with getting shares)
         UINT drvType = MyGetDriveType(GetPath());
-        BOOL testShares = drvType != DRIVE_REMOTE;
+        BOOL testShares = !HasLongDiskPath() && drvType != DRIVE_REMOTE;
         if (testShares)
             Shares.PrepareSearch(GetPath());
         switch (drvType)
@@ -183,8 +194,18 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
         }
         }
 
+        if (HasLongDiskPath())
+        {
+            // Legacy icon/thumbnail loaders build MAX_PATH-sized ANSI paths.
+            // Use the built-in icon types until those asynchronous loaders
+            // have a wide long-path contract.
+            UseSystemIcons = FALSE;
+            UseThumbnails = FALSE;
+            readThumbnails = FALSE;
+        }
+
         const char* s = GetPath();
-        char* st = fileName;
+        char* st = fileName.data();
         while (*s != 0)
             *st++ = *s++;
         if (s == GetPath())
@@ -277,7 +298,7 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
 
         // after 2000 ms we will show a window with a cancel prompt
         char buf[2 * MAX_PATH + 100];
-        sprintf(buf, LoadStr(IDS_READINGPATHESC), GetPath());
+        _snprintf_s(buf, _countof(buf), _TRUNCATE, LoadStr(IDS_READINGPATHESC), GetPath());
         CreateSafeWaitWindow(buf, NULL, 2000, TRUE, MainWindow->HWindow);
 
         DWORD lastEscCheckTime;
@@ -291,8 +312,14 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
 
         BOOL isUpDir = FALSE;
         WIN32_FIND_DATA fileData;
+        WIN32_FIND_DATAW wideFileData = {};
         HANDLE search;
-        search = HANDLES_Q(FindFirstFile(fileName, &fileData));
+        // Primary disk listing is W-based. Each emitted CFileData Name
+        // allocation is bound to this exact source record, not its ACP alias.
+        search = Salamander::FindFirstUnicodePanelFile(
+            fileName.data(), fileData, wideFileData);
+        if (search != INVALID_HANDLE_VALUE)
+            HANDLES_ADD(__htFindFile, __hoFindFirstFile, search);
         if (search == INVALID_HANDLE_VALUE)
         {
             DWORD err = GetLastError();
@@ -700,6 +727,12 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
                     }
                 }
 
+                // The allocated Name pointer remains stable through CFileData
+                // array sorting. Never infer row identity from its ANSI alias:
+                // two different Unicode filenames may have identical aliases.
+                if (search != NULL && !isUpDir)
+                    UnicodeDiskNames.RecordRow(file.Name, wideFileData.cFileName);
+
                 // at the file, we will check if it's necessary to load its thumbnail
                 if (readThumbnails &&                              // load thumbnails
                     (file.Attr & FILE_ATTRIBUTE_DIRECTORY) == 0 && // (it is ptDisk, so using FILE_ATTRIBUTE_DIRECTORY is o.k.)
@@ -843,7 +876,8 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
 #endif                     // _WIN64
                     break; // second pass (adding ".." or the Win64-redirected directory)
                 }
-            } while (FindNextFile(search, &fileData));
+            } while (Salamander::FindNextUnicodePanelFile(
+                search, fileData, wideFileData));
             DWORD err = GetLastError();
 
             if (search != NULL) // the first pass
@@ -857,7 +891,8 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
                 SetCurrentDirectoryToSystem();
                 RefreshListBox(0, -1, -1, FALSE, FALSE);
 
-                sprintf(buf, LoadStr(IDS_CANNOTREADDIR), GetPath(), GetErrorText(err));
+                _snprintf_s(buf, _countof(buf), _TRUNCATE,
+                            LoadStr(IDS_CANNOTREADDIR), GetPath(), GetErrorText(err));
                 SalMessageBox(parent, buf, LoadStr(IDS_ERRORTITLE), MB_OK | MB_ICONEXCLAMATION);
             }
         }
@@ -867,7 +902,8 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
             upDir = FALSE;
             *(fileNameEnd - 1) = 0; // it's not logical, but times ".." are from current directory
             if (!UNCRootUpDir)
-                search = HANDLES_Q(FindFirstFile(fileName, &fileData));
+                search = HasLongDiskPath() ? INVALID_HANDLE_VALUE :
+            HANDLES_Q(FindFirstFile(fileName.data(), &fileData));
             else
                 search = INVALID_HANDLE_VALUE;
             if (search == INVALID_HANDLE_VALUE)
@@ -956,6 +992,18 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
 
         // sorting of Files and Dirs according to the current sorting method
         SortDirectory();
+
+        // Every disk entry needs a verifiable UTF-16 identity before ANSI
+        // file operations. Best-fit conversion can turn Unicode characters
+        // into ordinary ASCII without any visible '?' marker, so scanning
+        // only suspicious ANSI names is insufficient.
+        std::wstring unicodeDirectory;
+        if (Salamander::TryGetUnicodePanelDirectory(GetPath(), unicodeDirectory))
+        {
+            DWORD unicodeError = ERROR_SUCCESS;
+            if (!UnicodeDiskNames.Load(unicodeDirectory.c_str(), unicodeError))
+                TRACE_I("Unicode panel identity index unavailable (error " << unicodeError << ")");
+        }
 
         if (UseSystemIcons || UseThumbnails)
         {
@@ -1127,11 +1175,11 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
             {
 */
                         char* s = f->Ext - 1;
-                        char* st = fileName;
+                        char* st = fileName.data();
                         while (*++s != 0)
                             *st++ = LowerCase[*s];
                         *(DWORD*)st = 0; // zeroes to the end
-                        st = fileName;   // lowercase extension
+                        st = fileName.data(); // lowercase extension
 
                         f->Association = Associations.IsAssociatedStatic(st, iconLocation, iconSize);
                         f->Archive = FALSE;
@@ -1388,11 +1436,11 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
               {
 */
                             char* s = f->Ext - 1;
-                            char* st = fileName;
+                            char* st = fileName.data();
                             while (*++s != 0)
                                 *st++ = LowerCase[*s];
                             *(DWORD*)st = 0; // zeroes to the end
-                            st = fileName;   // lowercase extension
+                            st = fileName.data(); // lowercase extension
 
                             f->Association = Associations.IsAssociatedStatic(st, iconLocation, iconSize);
                             f->Archive = FALSE;
@@ -1899,6 +1947,15 @@ BOOL CFilesWindow::ChangeDir(const char* newDir, int suggestedTopIndex, const ch
 {
     CALL_STACK_MESSAGE7("CFilesWindow::ChangeDir(%s, %d, %s, %d, , %d, %d)", newDir, suggestedTopIndex,
                         suggestedFocusName, mode, convertFSPathToInternal, showNewDirPathInErrBoxes);
+
+    // Absolute long paths bypass the legacy ANSI normalization buffers.
+    // When leaving a long folder, use the same wide preflight rather than
+    // passing its current path into bounded legacy path helpers.
+    if (newDir != NULL &&
+        (strlen(newDir) >= MAX_PATH - 2 || HasLongDiskPath()))
+        return ChangeLongPathToDisk(HWindow, newDir, suggestedTopIndex,
+                                    suggestedFocusName, NULL, TRUE, FALSE, FALSE,
+                                    failReason, FSTRYCLOSE_CHANGEPATH);
 
     // backup the string (it could change during execution - e.g. Name from CFileData from panel)
     char backup[MAX_PATH];
