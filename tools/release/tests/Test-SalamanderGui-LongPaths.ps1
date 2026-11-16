@@ -1668,7 +1668,7 @@ function Test-UnicodeFindGui {
 function Test-PluginLoadSmoke {
     $binaryRoot = [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($SalamanderExe))
     $expected = @(
-        '7zip', 'checksum', 'filecomp', 'renamer' | ForEach-Object {
+        @('7zip', 'checksum', 'filecomp', 'renamer') | ForEach-Object {
             $name = $_
             $fullPath = [IO.Path]::GetFullPath(
                 (Join-Path $binaryRoot ("plugins\{0}\{0}.spl" -f $name)))
@@ -1704,14 +1704,13 @@ function Test-PluginLoadSmoke {
     Wait-Until {
         $process.Refresh()
         if ($process.HasExited) { throw 'Salamander exited during plugin initialization.' }
-        $loaded = @($process.Modules | ForEach-Object {
-            [IO.Path]::GetFullPath($_.FileName)
-        })
+        $loadedPaths = [Collections.Generic.HashSet[string]]::new(
+            [StringComparer]::OrdinalIgnoreCase)
+        foreach ($module in $process.Modules) {
+            [void]$loadedPaths.Add([IO.Path]::GetFullPath($module.FileName))
+        }
         $missing.Paths = @($expected | Where-Object {
-            $required = $_
-            -not @($loaded | Where-Object {
-                [string]::Equals($_, $required, [StringComparison]::OrdinalIgnoreCase)
-            }).Count
+            -not $loadedPaths.Contains($_)
         })
         return $missing.Paths.Count -eq 0
     } 'four exact plug-in modules loaded in the Salamander process' -TimeoutSecondsOverride 90
