@@ -99,7 +99,6 @@ function Invoke-CompiledTest {
     $directory = Join-Path $OutputDirectory "$Architecture\$($Spec.Name)"
     [void](New-Item -ItemType Directory -Path $directory -Force)
     $binary = Join-Path $directory ($Spec.Name + '.exe')
-    $objectDir = $directory.TrimEnd('\') + '\'
     $commandFile = Join-Path $directory 'build-and-run.cmd'
 
     $sourceFiles = @($Spec.Sources | ForEach-Object {
@@ -112,13 +111,14 @@ function Invoke-CompiledTest {
 
     $compilerArgs = @(
         'cl /nologo /W4 /WX /std:c++17 /EHsc /utf-8',
-        ('/Fo:' + (Quote-CmdArgument $objectDir)),
         ('/Fe:' + (Quote-CmdArgument $binary))
     ) + $sourceFiles + $Spec.Libraries
 
     $lines = @(
         '@echo off',
         ('call ' + (Quote-CmdArgument $vcvars) + ' ' + $Architecture + ' >nul'),
+        'if errorlevel 1 exit /b 1',
+        ('pushd ' + (Quote-CmdArgument $directory)),
         'if errorlevel 1 exit /b 1',
         ($compilerArgs -join ' '),
         'if errorlevel 1 exit /b 1',
