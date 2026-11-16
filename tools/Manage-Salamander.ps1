@@ -387,23 +387,34 @@ try {
         # This must never run implicitly as part of --test-all.
         if ($requestedSet.Contains('--test-plugin-load')) {
             Write-Host '=== OPT-IN: ECHTE PLUGIN-MANAGER-INITIALISIERUNG ==='
-            # The existing Test All action initializes PictView as well.
-            # Check optional PictView sidecars before launching a GUI that
-            # would otherwise block on a modal "invalid plugin" message.
             . (Join-Path $repository 'tools\release\Plugin-Runtime-Prerequisites.ps1')
             $pluginBuild = Get-VariantDirectory $configuration
-            $missingPictView = @(Get-MissingPictViewRuntimeFiles -BuildDirectory $pluginBuild)
+            $testedExe = Join-Path $pluginBuild 'salamand.exe'
+            $pictviewFile = Join-Path $pluginBuild 'plugins\pictview\pictview.spl'
+            $verifiedWic = $false
+            if (Test-Path -LiteralPath $pictviewFile -PathType Leaf) {
+                # PR #8 previously refused global Test All because the old
+                # PVW32 converter sidecars were absent. The new WIC viewer
+                # needs neither file, but only a *successful real-host smoke*
+                # permits bypassing that conservative legacy prerequisite.
+                $hostGui = Join-Path $repository 'tools\release\tests\Test-PictView-Host.ps1'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $hostGui,
+                                           '-SalamanderExe', $testedExe)
+                $verifiedWic = $true
+            }
+            $missingPictView = @(
+                Get-MissingPictViewRuntimeFiles -BuildDirectory $pluginBuild -WicViewerVerified:$verifiedWic
+            )
             if ($missingPictView.Count -gt 0) {
-                throw ("The optional x64 PictView plug-in is incomplete: " +
+                throw ("The optional PictView runtime is incomplete: " +
                        ($missingPictView -join '; ') +
-                       ". Test All also initializes PictView and is unsafe for the four-target smoke test. " +
-                       "PVW32Cnv is absent from the GPL repository; do not copy unverified binaries. " +
-                       "Use the Plugin Manager's individual Test action for the four target plug-ins until targeted automation is available.")
+                       ". Do not load unknown converter binaries. Test target plugins individually.")
             }
             $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
-            $testedExe = Join-Path $pluginBuild 'salamand.exe'
-            Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
-                                      '-SalamanderExe', $testedExe, '-PluginLoadSmokeOnly')
+            $pluginLoadArgs = @('-Sta', '-NoProfile', '-File', $guiTest,
+                                '-SalamanderExe', $testedExe, '-PluginLoadSmokeOnly')
+            if ($verifiedWic) { $pluginLoadArgs += '-WicViewerVerified' }
+            Invoke-Native 'pwsh.exe' $pluginLoadArgs
         }
         if ($requestedSet.Contains('--test-pictview') -or
             $requestedSet.Contains('--test-pictview-window')) {
