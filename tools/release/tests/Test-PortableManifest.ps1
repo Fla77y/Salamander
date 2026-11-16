@@ -63,7 +63,8 @@ foreach ($line in $lines) {
         throw "Portable package content checksum differs: $name"
     }
 }
-if ($actual.Count -ne ($expected.Count + 1)) {
+if (-not $actual.ContainsKey('SHA256SUMS.txt') -or
+    $actual.Count -ne ($expected.Count + 1)) {
     $extra = @($actual.Keys | Where-Object { $_ -cne 'SHA256SUMS.txt' -and -not $expected.Contains($_) })
     throw "Portable package contains unlisted files: $($extra -join '; ')"
 }
