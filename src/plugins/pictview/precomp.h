@@ -10,6 +10,11 @@
 #include <windowsx.h>
 #include <crtdbg.h>
 #include <ostream>
+#include <algorithm>
+#include <cstdint>
+#include <new>
+#include <string>
+#include <vector>
 #include <commctrl.h>
 #include <limits.h>
 #include <process.h>

@@ -5,6 +5,8 @@
 #include "../../src/plugins/pictview/WicImageDecoder.h"
 
 #include <windows.h>
+#include <wincodec.h>
+#include <wrl/client.h>
 
 #include <algorithm>
 #include <array>
@@ -59,6 +61,60 @@ bool WriteBytes(const std::wstring& path, const unsigned char* data, DWORD size)
     return success;
 }
 
+// Create an actual two-page TIFF via the Windows encoder for frame-navigation
+// regression. No checked-in binaries or external codecs are required.
+bool WriteTwoFrameTiff(const std::wstring& path)
+{
+    using Microsoft::WRL::ComPtr;
+    ComPtr<IWICImagingFactory> factory;
+    HRESULT hr = CoCreateInstance(CLSID_WICImagingFactory, nullptr,
+                                   CLSCTX_INPROC_SERVER,
+                                   IID_PPV_ARGS(factory.GetAddressOf()));
+    if (FAILED(hr))
+        return false;
+    ComPtr<IWICStream> stream;
+    hr = factory->CreateStream(stream.GetAddressOf());
+    if (FAILED(hr))
+        return false;
+    hr = stream->InitializeFromFilename(path.c_str(), GENERIC_WRITE);
+    if (FAILED(hr))
+        return false;
+    ComPtr<IWICBitmapEncoder> encoder;
+    hr = factory->CreateEncoder(GUID_ContainerFormatTiff, nullptr,
+                                encoder.GetAddressOf());
+    if (FAILED(hr))
+        return false;
+    hr = encoder->Initialize(stream.Get(), WICBitmapEncoderNoCache);
+    if (FAILED(hr))
+        return false;
+
+    for (int frame = 0; frame != 2; ++frame)
+    {
+        ComPtr<IWICBitmapFrameEncode> page;
+        ComPtr<IPropertyBag2> properties;
+        hr = encoder->CreateNewFrame(page.GetAddressOf(),
+                                     properties.GetAddressOf());
+        if (FAILED(hr))
+            return false;
+        hr = page->Initialize(properties.Get());
+        if (FAILED(hr))
+            return false;
+        hr = page->SetSize(1, 1);
+        if (FAILED(hr))
+            return false;
+        WICPixelFormatGUID pixelFormat = GUID_WICPixelFormat24bppBGR;
+        hr = page->SetPixelFormat(&pixelFormat);
+        if (FAILED(hr) || pixelFormat != GUID_WICPixelFormat24bppBGR)
+            return false;
+        BYTE pixel[4] = {0, static_cast<BYTE>(frame == 0 ? 0 : 255),
+                               static_cast<BYTE>(frame == 0 ? 255 : 0), 0};
+        hr = page->WritePixels(1, 4, 4, pixel);
+        if (FAILED(hr) || FAILED(page->Commit()))
+            return false;
+    }
+    return SUCCEEDED(encoder->Commit());
+}
+
 bool Tests()
 {
     wchar_t tempPath[MAX_PATH + 1] = {};
@@ -81,6 +137,7 @@ bool Tests()
     const std::wstring imagePath = folder + L"\\Grün-\u6F22\u5B57.bmp";
     const std::wstring alphaPath = folder + L"\\alpha-\u6F22\u5B57.png";
     const std::wstring corruptPath = folder + L"\\corrupt.bmp";
+    const std::wstring multiPath = folder + L"\\multi-\u6F22\u5B57.tif";
     pictview::wic::DecodedImage result;
 
     bool ok = WriteBytes(imagePath, kTwoPixelBmp.data(),
@@ -99,6 +156,40 @@ bool Tests()
              Check(result.bgra.size() == expected.size() &&
                    std::equal(result.bgra.begin(), result.bgra.end(), expected.begin()),
                    "WIC preserves exact BGRA pixels");
+    }
+
+    if (ok)
+    {
+        // A one-page bitmap has exactly one frame. Out-of-range frame requests
+        // must fail without preserving the previously decoded pixel buffer.
+        UINT frames = 0;
+        HRESULT hr = pictview::wic::DecodeFrame(imagePath.c_str(), 0, result, &frames);
+        ok = Check(SUCCEEDED(hr) && frames == 1 && result.width == 2,
+                   "first WIC frame and count available");
+        hr = pictview::wic::DecodeFrame(imagePath.c_str(), 1, result, &frames);
+        ok &= Check(FAILED(hr) && result.bgra.empty() && result.width == 0,
+                    "out-of-range frame refused without stale pixels");
+    }
+
+    if (ok)
+    {
+        ok = Check(WriteTwoFrameTiff(multiPath), "two-frame TIFF fixture created");
+        if (ok)
+        {
+            UINT frames = 0;
+            HRESULT hr = pictview::wic::DecodeFrame(multiPath.c_str(), 0, result, &frames);
+            ok = Check(SUCCEEDED(hr) && frames == 2 && result.width == 1,
+                       "first TIFF frame and count");
+            if (ok)
+            {
+                hr = pictview::wic::DecodeFrame(multiPath.c_str(), 1, result, &frames);
+                const std::array<std::uint8_t, 4> green = {0, 255, 0, 255};
+                ok = Check(SUCCEEDED(hr) && frames == 2 &&
+                           result.bgra.size() == green.size() &&
+                           std::equal(result.bgra.begin(), result.bgra.end(), green.begin()),
+                           "second TIFF frame keeps its own exact pixels");
+            }
+        }
     }
 
     if (ok)
@@ -167,6 +258,7 @@ bool Tests()
     DeleteFileW(imagePath.c_str());
     DeleteFileW(alphaPath.c_str());
     DeleteFileW(corruptPath.c_str());
+    DeleteFileW(multiPath.c_str());
     RemoveDirectoryW(folder.c_str());
     return ok;
 }

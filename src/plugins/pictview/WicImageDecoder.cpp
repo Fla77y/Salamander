@@ -21,7 +21,7 @@ namespace
 constexpr std::uint64_t kBytesPerPixel = 4;
 constexpr std::uint64_t kMaximumDecodedBytes = 256ULL * 1024 * 1024;
 
-HRESULT Decode(const wchar_t* path, DecodedImage& image)
+HRESULT Decode(const wchar_t* path, UINT frameIndex, DecodedImage& image, UINT* frameCount)
 {
     Microsoft::WRL::ComPtr<IWICImagingFactory> factory;
     HRESULT hr = CoCreateInstance(CLSID_WICImagingFactory, nullptr,
@@ -37,8 +37,15 @@ HRESULT Decode(const wchar_t* path, DecodedImage& image)
     if (FAILED(hr))
         return hr;
 
+    UINT count = 0;
+    hr = decoder->GetFrameCount(&count);
+    if (FAILED(hr))
+        return hr;
+    if (frameIndex >= count)
+        return HRESULT_FROM_WIN32(ERROR_INVALID_PARAMETER);
+
     Microsoft::WRL::ComPtr<IWICBitmapFrameDecode> frame;
-    hr = decoder->GetFrame(0, frame.GetAddressOf());
+    hr = decoder->GetFrame(frameIndex, frame.GetAddressOf());
     if (FAILED(hr))
         return hr;
 
@@ -84,19 +91,24 @@ HRESULT Decode(const wchar_t* path, DecodedImage& image)
         return hr;
 
     image = std::move(decoded);
+    if (frameCount)
+        *frameCount = count;
     return S_OK;
 }
 } // namespace
 
-HRESULT DecodeFirstFrame(const wchar_t* path, DecodedImage& output) noexcept
+HRESULT DecodeFrame(const wchar_t* path, UINT frameIndex, DecodedImage& output,
+                    UINT* frameCount) noexcept
 {
     output = {};
+    if (frameCount)
+        *frameCount = 0;
     if (path == nullptr || *path == L'\0')
         return E_INVALIDARG;
 
     try
     {
-        return Decode(path, output);
+        return Decode(path, frameIndex, output, frameCount);
     }
     catch (const std::bad_alloc&)
     {
@@ -108,5 +120,10 @@ HRESULT DecodeFirstFrame(const wchar_t* path, DecodedImage& output) noexcept
         output = {};
         return E_FAIL;
     }
+}
+
+HRESULT DecodeFirstFrame(const wchar_t* path, DecodedImage& output) noexcept
+{
+    return DecodeFrame(path, 0, output);
 }
 } // namespace pictview::wic
