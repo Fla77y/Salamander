@@ -51,10 +51,13 @@ enum
 
 struct CHotTrackItem
 {
-    WORD Offset;       // Offset of the first character in characters
-    WORD Chars;        // Number of characters
-    WORD PixelsOffset; // Offset of the first character in points
-    WORD Pixels;       // Their length in points
+    // Pixel positions can exceed 65535 for a near-maximum Windows path.
+    // Keep the measurements in the Win32 GDI integer type; narrowing to
+    // WORD used to trigger Debug RTC failure #1 and wrap in Release.
+    int Offset;       // Offset of the first character in characters
+    int Chars;        // Number of characters
+    int PixelsOffset; // Offset of the first character in pixels
+    int Pixels;       // Their length in pixels
 };
 
 class CStatusWindow : public CWindow
