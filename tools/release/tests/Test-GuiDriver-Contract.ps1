@@ -559,3 +559,28 @@ if ($foreground -ne [IntPtr]::Zero) {
     }
 }
 Write-Host 'PASS: GUI activation recovery validates HWND ownership, retries and preserves input safety.'
+
+# Unicode Find's modeless search window has different control identities
+# than Salamander's file panels. Check the live GUI test wiring without
+# claiming a successful interactive run from these static assertions.
+$findGui = (Get-FunctionSource 'Test-UnicodeFindGui').Extent.Text
+$findSelection = (Get-FunctionSource 'Select-VerifiedFindResult').Extent.Text
+$findQuery = (Get-FunctionSource 'Start-FindQuery').Extent.Text
+$manager = Get-Content -LiteralPath (Join-Path $PSScriptRoot '..\..\Manage-Salamander.ps1') -Raw
+if ($driverText -notmatch '\[switch\]\$UnicodeFindOnly' -or
+    $driverText -notmatch 'FindUnicodeSearchWindow' -or
+    $driverText -notmatch 'GetWindowThreadProcessId\(child' -or
+    $driverText -notmatch 'SelectSingleFindResult' -or
+    $driverText -notmatch 'WindowFromPoint\(point\) != list' -or
+    $findQuery -notmatch 'Wait-FindCompleted' -or
+    $findSelection -notmatch 'SENTINEL_NOT_A_FIND_PATH' -or
+    $findGui -notmatch 'Restore-FilePanelFocus' -or
+    $findGui -notmatch 'unique-utf16-probe' -or
+    $findGui -notmatch 'Unicode Find refuses destination overwrite' -or
+    $findGui -notmatch 'PostFindButton.*5113' -or
+    $findGui -notmatch 'Closing Unicode Find preserves Salamander process' -or
+    $manager -notmatch "'--test-gui-unicode-find'" -or
+    $manager -notmatch "'-UnicodeFindOnly'") {
+    throw 'Unicode Find real GUI test must preserve HWND ownership, UTF-16 identity, operation safety and CLI/test-all integration.'
+}
+Write-Host 'PASS: Unicode Find modeless GUI test is registered and guards UTF-16 search, result selection and no-overwrite actions.'
