@@ -19,7 +19,7 @@ by PVW32 may have no WIC codec and must not be advertised as working.
 ## Production integration on the stacked branch
 
 - `WicImageDecoder.h/.cpp`: open the original UTF-16 filename, decode the
-  **first frame**, convert to straight-alpha BGRA, bound decoded image to
+  **selected frame**, convert to straight-alpha BGRA, bound decoded image to
   256 MiB and return HRESULTs without leaking COM objects.
 - `WicBitmapPresenter.h/.cpp`: validate pixel layout and destination,
   composite alpha over white, compute aspect-preserving fit, and draw
@@ -29,7 +29,8 @@ by PVW32 may have no WIC codec and must not be advertised as working.
   existing Salamander viewer thread. Creates/destroys HWND and COM objects
   on that thread, posts the ready event once, preserves the viewer lock
   contract and registers/unregisters with `ViewerWindowQueue`. Supports
-  fit-to-window (0), zoom +/- or mouse wheel, and Escape/close.
+  fit-to-window (0), zoom +/- or mouse wheel, PageUp/PageDown for
+  multipage WIC formats, and Escape/close.
 - `pictview.cpp`: `InitViewer` no longer calls `LoadPictViewDll` or
   `PVSetParam`; the existing viewer entry point delegates to
   `RunNativeViewer`. The old PVW32 renderer is **not reached by the
@@ -55,8 +56,8 @@ a separate SDK-compatible design and acceptance tests.
 A functioning basic image viewer is not equivalent to the old PictView
 product. The following old capabilities are **not migrated**:
 
-- Animated GIF playback and multipage TIFF navigation; currently only
-  the first WIC frame is decoded
+- Timed animated GIF playback; multipage WIC images support manual
+  frame navigation (PageUp/PageDown), not animation scheduling
 - Image rotation, mirroring, cropping, pixel editing and image save/export
 - Clipboard/capture, TWAIN/WIA, wallpaper, print and batch operations
 - Legacy format-specific codecs (RAW, CDR, PSP, etc.) not provided by WIC
@@ -94,3 +95,8 @@ Required release gates before claiming a full integration:
 
 Do not merge PR #9/#10 as universal PictView compatibility based only
 on compiler success or decoder/unit regressions.
+
+The subsequent frame decoder regression also creates a two-page TIFF using
+WIC, then checks distinct first- and second-page pixels and rejects invalid
+indices without exposing stale image buffers. Its first real CI execution
+is still required before claiming multi-page behavior verified.
