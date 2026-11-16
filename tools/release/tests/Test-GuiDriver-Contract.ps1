@@ -604,3 +604,26 @@ if (-not $selectInterop.Success -or
     throw 'Unicode Find selection must use a single checked click and a safe keyboard fallback.'
 }
 Write-Host 'PASS: Unicode Find selection is bounded, diagnosed and never retries a potentially opening mouse click.'
+
+
+# The new Find GUI gate covers explicitly unsupported shell and legacy
+# actions without invoking the external association/plug-in boundary.
+# It also exercises stale-result refusal, cancellation and window disposal.
+$findNotice = (Get-FunctionSource 'Assert-FindNotice').Extent.Text
+$findGui = (Get-FunctionSource 'Test-UnicodeFindGui').Extent.Text
+if ($driverText -notmatch 'FindUnicodeNotice' -or
+    $findNotice -notmatch 'DescribeWindow' -or
+    $findNotice -notmatch 'PostFindButton' -or
+    $findGui -notmatch 'Assert-FindNotice -ExpectedText' -or
+    $findGui -notmatch 'Refused shell open preserves long-path file content' -or
+    $findGui -notmatch 'Legacy advanced Find refusal preserves' -or
+    $findGui -notmatch 'Unicode Find refuses long-path recycling' -or
+    $findGui -notmatch 'modified result before file operations' -or
+    $findGui -notmatch '5108' -or
+    $findGui -notmatch 'Search cancelled:' -or
+    $findGui -notmatch 'joins an active search worker' -or
+    $findGui -notmatch 'cancelProbePath' -or
+    $findGui -notmatch '\[IO\.File\]::Delete\(\$cancelProbePath\)') {
+    throw 'Unicode Find GUI integration must preserve safe refusals, stale-hit protection and observable cancellation.'
+}
+Write-Host 'PASS: Unicode Find GUI scenarios cover shell/legacy/recycle refusals, stale hits and active worker cancellation.'
