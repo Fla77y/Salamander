@@ -6,7 +6,15 @@
 # Only a built pictview.spl activates this optional prerequisite check.
 # Empty output means "no missing files", NOT "plug-in initialized".
 function Get-MissingPictViewRuntimeFiles {
-    param([Parameter(Mandatory)][string]$BuildDirectory)
+    param(
+        [Parameter(Mandatory)][string]$BuildDirectory,
+        [switch]$WicViewerVerified
+    )
+
+    # The independently implemented native WIC viewer does not require the
+    # proprietary PVW32Cnv/SalPVEnv sidecars. Only a successful, explicit
+    # in-process Salamander WIC-host smoke may authorize this bypass.
+    if ($WicViewerVerified) { return }
 
     $pluginDir = Join-Path ([IO.Path]::GetFullPath($BuildDirectory)) 'plugins\pictview'
     if (-not [IO.File]::Exists((Join-Path $pluginDir 'pictview.spl'))) {
