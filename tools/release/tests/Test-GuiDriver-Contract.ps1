@@ -613,11 +613,13 @@ $findNotice = (Get-FunctionSource 'Assert-FindNotice').Extent.Text
 $findGui = (Get-FunctionSource 'Test-UnicodeFindGui').Extent.Text
 if ($driverText -notmatch 'FindUnicodeNotice' -or
     $findNotice -notmatch 'DescribeWindow' -or
-    $findNotice -notmatch 'PostVerifiedFindNoticeOk' -or
+    $findNotice -notmatch 'PostVerifiedFindNoticeClose' -or
+    $findNotice -match 'PostVerifiedFindNoticeOk' -or
     $driverText -notmatch 'GetWindow\(notice, 4\) != findWindow' -or
     $driverText -notmatch 'ClassName\(notice\) != "#32770"' -or
     $driverText -notmatch 'noticePid != pid' -or
-    $driverText -notmatch 'PostMessageW\(notice, 0x0111, new UIntPtr\(1\), IntPtr\.Zero\)' -or
+    $driverText -notmatch 'PostMessageW\(notice, 0x0010, UIntPtr\.Zero, IntPtr\.Zero\)' -or
+    $driverText -match 'PostMessageW\(notice, 0x0111, new UIntPtr\(1\)' -or
     $findGui -notmatch 'Assert-FindNotice -ExpectedText' -or
     $findGui -notmatch 'Refused shell open preserves long-path file content' -or
     $findGui -notmatch 'Legacy advanced Find refusal preserves' -or
