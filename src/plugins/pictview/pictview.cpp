@@ -20,6 +20,9 @@
 #include "histwnd.h"
 #include "PVEXEWrapper.h"
 #include "PixelAccess.h"
+#include "WicNativeViewer.h"
+#include "WicImageDecoder.h"
+#include <string>
 
 // plugin interface object; its methods are called from Salamander
 CPluginInterface PluginInterface;
@@ -957,163 +960,11 @@ void CPluginInterface::Configuration(HWND parent)
 
 void CPluginInterface::Connect(HWND parent, CSalamanderConnectAbstract* salamander)
 {
-    CALL_STACK_MESSAGE1("CPluginInterface::Connect(,)");
-
-    // this section should contain all suffixes the viewer can process,
-    // the suffixes are added only when inserting the plugin into Salamander (during
-    // plugin installation or auto-installation at the first Salamander launch),
-    // this entire section is ignored for plugin upgrades
-    salamander->AddViewer("*.psp*;*.dtx;*.dds;*.nef;*.crw;*.eps;*.ept;*.ai;*.raf;*.mov;*.hpi", FALSE);
-    salamander->AddViewer("*.pntg;*.thumb;*.tiff;*.wbmp;*.ani;*.clk;*.mbm;*.thm;*.zno;*.mng", FALSE);
-    salamander->AddViewer("*.st;*.cals;*.itiff;*.jfif;*.jpeg;*.macp;*.mpnt;*.paint;*.pict;*.2bp", FALSE);
-    salamander->AddViewer("*.stw;*.sun;*.tga;*.tif;*.udi;*.web;*.wpg;*.xar;*.zbr;*.zmf;*.bw", FALSE);
-    salamander->AddViewer("*.psd;*.pyx;*.qfx;*.ras;*.rgb;*.rle;*.sam;*.scx;*.sep;*.sgi;*.ska", FALSE);
-    salamander->AddViewer("*.pat;*.pbm;*.pc2;*.pcd;*.pct;*.pcx;*.pgm;*.pic;*.png;*.pnm;*.ppm", FALSE);
-    salamander->AddViewer("*.jff;*.jif;*.jmx;*.jpe;*.jpg;*.lbm;*.mac;*.mil;*.msp;*.ofx;*.pan", FALSE);
-    salamander->AddViewer("*.flc;*.fli;*.gem;*.gif;*.ham;*.hmr;*.hrz;*.icn;*.ico;*.iff;*.img", FALSE);
-    salamander->AddViewer("*.cdt;*.cel;*.clp;*.cit;*.cmx;*.cot;*.cpt;*.cur;*.cut;*.dcx;*.dib", FALSE);
-    salamander->AddViewer("*.82i;*.83i;*.85i;*.86i;*.89i;*.92i;*.awd;*.bmi;*.bmp;*.cal;*.cdr", FALSE);
-    salamander->AddViewer("*.arw;*.blp;*.cr2;*.dng;*.orf;*.pef", FALSE);
-
-    // this section contains all suffixes added in (removed from) version X
-    if (ConfigVersion < 3) // suffixes added in version 3
-    {
-        salamander->AddViewer("*.cal;*.cals;*.cit;*.mil;*.st;*.stw;*.zmf", TRUE);
-    }
-    if (ConfigVersion < 4) // suffixes added in version 4
-    {
-        salamander->AddViewer("*.macp;*.mpnt;*.paint;*.pntg", TRUE);
-    }
-    if (ConfigVersion < 5) // suffixes added in version 5
-    {
-        salamander->AddViewer("*.cot", TRUE);
-    }
-    if (ConfigVersion < 6) // suffixes added in (removed from) version 6
-    {
-        salamander->AddViewer("*.hmr;*.itiff", TRUE);
-    }
-    if (ConfigVersion < 7) // suffixes added in (removed from) version 7
-    {
-        salamander->AddViewer("*.gem;*.awd", TRUE);
-    }
-    if (ConfigVersion < 8) // suffixes added in (removed from) version 8; SS 2.5 Beta 1
-    {
-        // THUMB: PCTV Vision belonging to the Pinnacle Systems Studio PCTV PRO TV tuner
-        salamander->AddViewer("*.82i;*.83i;*.85i;*.86i;*.89i;*.92i;*.ska;*.sun;*.thumb;*.web;*.xar;*.wbmp;*.mbm", TRUE);
-    }
-    if (ConfigVersion < 9) // suffixes added in (removed from) version 9; SS 2.5 Beta 2
-    {
-        salamander->AddViewer("*.ani;*.psp", TRUE);
-    }
-    if (ConfigVersion < 10) // suffixes added in (removed from) version 10; SS 2.5 Beta 3
-    {
-        // added the .2bp suffix (BMP under Pocket PC, comes in handy for the POCKETPC plugin)
-        salamander->AddViewer("*.clk;*.thm;*.zno;*.2bp", TRUE);
-    }
-    if (ConfigVersion < 11) // suffixes added in (removed from) version 11; SS 2.5 Beta 4
-    {
-        salamander->AddViewer("*.mng", TRUE);
-    }
-    if (ConfigVersion < 12) // suffixes added in (removed from) version 12
-    {
-        // PSP8 uses ugly suffixes like pspimage
-        salamander->ForceRemoveViewer("*.psp");
-        salamander->AddViewer("*.dtx;*.psp*", TRUE);
-    }
-    if (ConfigVersion < 13) // suffixes added in (removed from) version 13; SS 2.5 Beta 5
-    {
-        salamander->AddViewer("*.dds", TRUE);
-    }
-    if (ConfigVersion < 15) // initial support for NEF (so far we handle D70 and D100, hopefully people will send more)
-    {
-        salamander->AddViewer("*.nef", TRUE);
-    }
-    if (ConfigVersion < 16) // added the CRW format
-    {
-        salamander->AddViewer("*.crw", TRUE);
-    }
-
-    if (ConfigVersion < 17) // Added EPS/EPT/AI format (Only encapsulated EPS w/ TIFF thumbnail)
-    {
-        salamander->AddViewer("*.eps;*.ept;*.ai", TRUE);
-    }
-
-    if (ConfigVersion < 18) // Added FUJI raw; QuickTime MJPEG PICT video from digital cameras
-    {
-        salamander->AddViewer("*.raf;*.mov", TRUE);
-    }
-
-    if (ConfigVersion < 19) // Added Hemera Photo Objets, see http://www.halley.cc/ed/linux/interop/hemera.html
-    {
-        salamander->AddViewer("*.hpi", TRUE);
-    }
-
-    if (ConfigVersion < 20) // Added Sony, Canon, Adobe Digital Negative, Pentax Digital Camera images
-    {
-        salamander->AddViewer("*.arw;*.cr2;*.dng;*.pef", TRUE);
-    }
-
-    if (ConfigVersion < 21) // Added Olympus Digital Camera images
-    {
-        salamander->AddViewer("*.orf", TRUE);
-    }
-
-    if (ConfigVersion < 22) // Added *.blp textures used by Blizzard Entertainment in World of Warcraft
-    {
-        salamander->AddViewer("*.blp", TRUE);
-    }
-
-    /* used by the export_mnu.py script that generates salmenu.mnu for Translator
-   keep synchronized with the salamander->AddMenuItem() calls below...
-MENU_TEMPLATE_ITEM PluginMenu[] = 
-{
-	{MNTT_PB, 0
-	{MNTT_IT, IDS_VIEW_BMP_IN_CLIPBOARD
-	{MNTT_IT, IDS_PLUGINSMENU_SCREEN_CAPTURE
-	{MNTT_IT, IDS_PLUGINSMENU_REGENERATE_THUMBNAIL
-	{MNTT_IT, IDS_PLUGINSMENU_SCAN
-	{MNTT_IT, IDS_MENU_FILE_SCAN_SOURCE
-	{MNTT_PE, 0
-};
-*/
-    salamander->AddMenuItem(-1, LoadStr(IDS_VIEW_BMP_IN_CLIPBOARD), SALHOTKEY('B', HOTKEYF_CONTROL | HOTKEYF_SHIFT),
-                            CMD_PASTE, TRUE, MENU_EVENT_TRUE, MENU_EVENT_TRUE, MENU_SKILLLEVEL_ALL);
-    salamander->AddMenuItem(-1, LoadStr(IDS_PLUGINSMENU_SCREEN_CAPTURE), 0, CMD_CAPTURE, FALSE,
-                            MENU_EVENT_TRUE, MENU_EVENT_TRUE, MENU_SKILLLEVEL_ALL);
-
-    salamander->AddMenuItem(-1, LoadStr(IDS_PLUGINSMENU_REGENERATE_THUMBNAIL), 0, CMD_REGENERATE_THUMBNAIL, FALSE,
-                            MENU_EVENT_FILE_FOCUSED | MENU_EVENT_FILES_SELECTED, MENU_EVENT_TRUE, MENU_SKILLLEVEL_ALL);
-
-#ifdef ENABLE_TWAIN32
-    salamander->AddMenuItem(-1, NULL, 0, 0, FALSE, 0, 0, MENU_SKILLLEVEL_ALL); // separator
-#endif                                                                         // ENABLE_TWAIN32
-
-    salamander->AddMenuItem(-1, LoadStr(IDS_PLUGINSMENU_SCAN), 0, CMD_SCAN, FALSE,
-                            MENU_EVENT_TRUE, MENU_EVENT_TRUE, MENU_SKILLLEVEL_ALL);
-#ifdef ENABLE_TWAIN32
-    salamander->AddMenuItem(-1, LoadStr(IDS_MENU_FILE_SCAN_SOURCE), 0, CMD_SCAN_SOURCE, FALSE,
-                            MENU_EVENT_TRUE, MENU_EVENT_TRUE, MENU_SKILLLEVEL_ALL);
-#endif // ENABLE_TWAIN32
-
-    HBITMAP hBmp = (HBITMAP)LoadImage(DLLInstance, MAKEINTRESOURCE(IDB_PICTVIEW),
-                                      IMAGE_BITMAP, 16, 16, LR_DEFAULTCOLOR);
-    salamander->SetBitmapWithIcons(hBmp);
-    DeleteObject(hBmp);
-    salamander->SetPluginIcon(0);
-    salamander->SetPluginMenuAndToolbarIcon(0);
-
-    // we can provide thumbnails for these formats:
-    salamander->SetThumbnailLoader("*.mng;*.dtx;*.dds;*.nef;*.crw;*.eps;*.ept;*.ai;*.raf;*.mov;*.hpi;"
-                                   "*.pntg;*.thumb;*.tiff;*.wbmp;*.mbm;*.ani;*.psp*;*.clk;*.thm;*.zno;"
-                                   "*.st;*.cals;*.itiff;*.jfif;*.jpeg;*.macp;*.mpnt;*.paint;*.pict;*.2bp;"
-                                   "*.stw;*.sun;*.tga;*.tif;*.udi;*.web;*.wpg;*.xar;*.zbr;*.zmf;*.bw;"
-                                   "*.psd;*.pyx;*.qfx;*.ras;*.rgb;*.rle;*.sam;*.scx;*.sep;*.sgi;*.ska;"
-                                   "*.pat;*.pbm;*.pc2;*.pcd;*.pct;*.pcx;*.pgm;*.pic;*.png;*.pnm;*.ppm;"
-                                   "*.jff;*.jif;*.jmx;*.jpe;*.jpg;*.lbm;*.mac;*.mil;*.msp;*.ofx;*.pan;"
-                                   "*.flc;*.fli;*.gem;*.gif;*.ham;*.hmr;*.hrz;*.icn;*.ico;*.iff;*.img;"
-                                   "*.cdt;*.cel;*.clp;*.cit;*.cmx;*.cot;*.cpt;*.cur;*.cut;*.dcx;*.dib;"
-                                   "*.82i;*.83i;*.85i;*.86i;*.89i;*.92i;*.awd;*.bmi;*.bmp;*.cal;*.cdr;"
-                                   "*.arw;*.blp;*.cr2;*.dng;*.orf;*.pef");
+    // WIC-backed formats only. The old proprietary decoder advertised far more
+    // extensions; do not claim that unrelated codecs or edit menus still work.
+    (void)parent;
+    salamander->AddViewer("*.bmp;*.dib;*.png;*.jpg;*.jpeg;*.jpe;*.gif;*.tif;*.tiff;*.ico;*.jxr;*.wdp;*.hdp", FALSE);
+    salamander->SetThumbnailLoader("*.bmp;*.dib;*.png;*.jpg;*.jpeg;*.jpe;*.gif;*.tif;*.tiff;*.ico;*.jxr;*.wdp;*.hdp");
 }
 
 void CPluginInterface::ClearHistory(HWND parent)
@@ -1168,7 +1019,8 @@ CPluginInterface::GetInterfaceForViewer()
 CPluginInterfaceForMenuExtAbstract*
 CPluginInterface::GetInterfaceForMenuExt()
 {
-    return &InterfaceForMenuExt;
+    // No menu entries requiring the old PVW32 engine are advertised.
+    return NULL;
 }
 
 CPluginInterfaceForThumbLoaderAbstract*
@@ -1452,16 +1304,9 @@ BOOL InitViewer(HWND hParentWnd)
     InitGlobalGUIParameters();
     InitializeCriticalSection(&G.CS);
 
-    if (!LoadPictViewDll(hParentWnd))
-    {
-        DeleteCriticalSection(&G.CS);
-        return FALSE;
-    }
-    i = PVW32DLL.PVGetDLLVersion();
-
-    sprintf(PVW32DLL.Version, "PVW32Cnv.dll %d.%#02d.%d", i >> 16, i & 255, (i >> 8) & 255);
-
-    PVW32DLL.PVSetParam(GetExtText);
+    // The only active image backend is Windows Imaging Component.
+    // Never initialize the unavailable PVW32Cnv.dll / SalPVEnv.exe runtime.
+    lstrcpynA(PVW32DLL.Version, "WIC", sizeof(PVW32DLL.Version));
 
     G.HAccel = LoadAccelerators(DLLInstance, MAKEINTRESOURCE(IDA_ACCELERATORS));
 
@@ -1543,9 +1388,7 @@ BOOL InitEXIF(HWND hParent, BOOL bSilent)
 
 void ReleaseViewer()
 {
-#ifdef PICTVIEW_DLL_IN_SEPARATE_PROCESS
-    ReleasePVEXEWrapper();
-#endif
+    pictview::wic::UnregisterNativeViewerClass(DLLInstance);
     if (!UnregisterClass(TIP_WINDOW_CLASSNAME, DLLInstance))
         TRACE_E("UnregisterClass(TIP_WINDOW_CLASSNAME) has failed");
     ReleaseWinLib(DLLInstance);
@@ -1594,7 +1437,7 @@ void ReleaseViewer()
 class CViewerThread : public CThread
 {
 protected:
-    TCHAR Name[MAX_PATH];
+    std::basic_string<TCHAR> Name;
     int Left, Top, Width, Height;
     UINT ShowCmd;
     BOOL AlwaysOnTop;
@@ -1615,7 +1458,7 @@ public:
                   BOOL* success, int enumFilesSourceUID,
                   int enumFilesCurrentIndex) : CThread(PLUGIN_NAME_EN)
     {
-        lstrcpyn(Name, name, MAX_PATH);
+        Name = name ? name : _T("");
         Left = left;
         Top = top;
         Width = width;
@@ -1755,152 +1598,24 @@ unsigned __stdcall ViewerThread(void *param)
 }
 */
 
-unsigned
-CViewerThread::Body()
+// Keep native HWND lifetimes attached to Salamander's existing window queue.
+static void RegisterWicViewer(HWND window)
 {
-    CALL_STACK_MESSAGE3(_T("ViewerThreadBody() PictView.spl %s %hs"), VERSINFO_VERSION, PVW32DLL.Version);
+    ViewerWindowQueue.Add(new CWindowQueueItem(window));
+}
+
+static void UnregisterWicViewer(HWND window)
+{
+    ViewerWindowQueue.Remove(window);
+}
+
+unsigned CViewerThread::Body()
+{
     SetThreadNameInVCAndTrace(PLUGIN_NAME_EN);
-    TRACE_I("Begin");
-
-    CViewerWindow* window = new CViewerWindow(EnumFilesSourceUID, EnumFilesCurrentIndex, AlwaysOnTop);
-    if (window != NULL)
-    {
-        if (ReturnLock)
-        {
-            *Lock = window->GetLock();
-            *LockOwner = TRUE;
-        }
-        CALL_STACK_MESSAGE1("ViewerThreadBody::CreateWindowEx");
-        if (!ReturnLock || *Lock != NULL)
-        {
-            // NOTE: on an existing window/dialog the top-most state can be set easily:
-            //   SetWindowPos(HWindow, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
-
-            if (window->CreateEx(AlwaysOnTop ? WS_EX_TOPMOST : 0,
-                                 CWINDOW_CLASSNAME2,
-                                 LoadStr(IDS_PLUGINNAME),
-                                 WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
-                                 Left,
-                                 Top,
-                                 Width,
-                                 Height,
-                                 NULL,
-                                 NULL,
-                                 DLLInstance,
-                                 window) != NULL)
-            {
-                CALL_STACK_MESSAGE1("ViewerThreadBody::ShowWindow");
-
-                // WARNING! icons obtained here must be destroyed in WM_DESTROY
-                SendMessage(window->HWindow, WM_SETICON, ICON_BIG,
-                            (LPARAM)LoadIcon(DLLInstance, MAKEINTRESOURCE(IDI_WINDOW_ICON)));
-                SendMessage(window->HWindow, WM_SETICON, ICON_SMALL,
-                            (LPARAM)LoadImage(DLLInstance, MAKEINTRESOURCE(IDI_WINDOW_ICON),
-                                              IMAGE_ICON, 16, 16, SalamanderGeneral->GetIconLRFlags()));
-
-                //        ShowWindow(window->HWindow, ShowCmd);
-                //        SetForegroundWindow(window->HWindow);
-                //        UpdateWindow(window->HWindow);
-                *Success = TRUE;
-            }
-            else
-            {
-                if (ReturnLock && *Lock != NULL)
-                    CloseHandle(*Lock);
-            }
-        }
-    }
-
-    CALL_STACK_MESSAGE1("ViewerThreadBody::SetEvent");
-    BOOL openFile = *Success;
-    // before letting the main thread continue, optionally take over an image from the scanner to open in the viewer
-    HBITMAP scanExtraImg = _tcscmp(Name, SCANEXTRA) == 0 ? ExtraScanImagesToOpen.GiveNextImage() : NULL;
-    SetEvent(Continue); // let the main thread continue; from this point the following variables are no longer valid:
-    Continue = NULL;    // clearing is unnecessary, just for clarity
-    Lock = NULL;        // clearing is unnecessary, just for clarity
-    LockOwner = NULL;   // clearing is unnecessary, just for clarity
-    Success = NULL;     // clearing is unnecessary, just for clarity
-
-    // if everything succeeded, open the requested file in the window
-    if (openFile)
-    {
-        CALL_STACK_MESSAGE1("ViewerThreadBody::ShowWindow");
-
-        if (_tcscmp(Name, CLIPBOARD) != 0 && _tcscmp(Name, CAPTURE) != 0 &&
-            _tcscmp(Name, SCAN) != 0 && _tcscmp(Name, SCANEXTRA) != 0
-#ifdef ENABLE_TWAIN32
-            && _tcscmp(Name, SCAN_SOURCE) != 0
-#endif // ENABLE_TWAIN32
-        )
-        {
-            window->Renderer.OpenFile(Name, ShowCmd, NULL);
-        }
-        else
-        {
-            if (_tcscmp(Name, CLIPBOARD) == 0)
-            {
-                ShowWindow(window->HWindow, ShowCmd);
-                SetForegroundWindow(window->HWindow);
-                UpdateWindow(window->HWindow);
-                PostMessage(window->HWindow, WM_COMMAND, CMD_PASTE, 0);
-            }
-            if (_tcscmp(Name, CAPTURE) == 0)
-            {
-                PostMessage(window->HWindow, WM_COMMAND, CMD_CAPTURE_INTERNAL, 0);
-            }
-            if (_tcscmp(Name, SCAN) == 0)
-            {
-                ShowWindow(window->HWindow, ShowCmd);
-                SetForegroundWindow(window->HWindow);
-                UpdateWindow(window->HWindow);
-                PostMessage(window->HWindow, WM_COMMAND, CMD_SCAN, 0);
-            }
-#ifdef ENABLE_TWAIN32
-            if (_tcscmp(Name, SCAN_SOURCE) == 0)
-            {
-                ShowWindow(window->HWindow, ShowCmd);
-                SetForegroundWindow(window->HWindow);
-                UpdateWindow(window->HWindow);
-                PostMessage(window->HWindow, WM_COMMAND, CMD_SCAN_SOURCE, 0);
-            }
-#endif // ENABLE_TWAIN32
-            if (_tcscmp(Name, SCANEXTRA) == 0)
-            {
-                ShowWindow(window->HWindow, ShowCmd);
-                SetForegroundWindow(window->HWindow);
-                UpdateWindow(window->HWindow);
-                if (scanExtraImg != NULL)
-                    window->OpenScannedImage(scanExtraImg);
-            }
-        }
-
-        CALL_STACK_MESSAGE1("ViewerThreadBody::message-loop");
-        // message loop
-        MSG msg;
-        while (GetMessage(&msg, NULL, 0, 0))
-        {
-            if (
-#ifdef ENABLE_TWAIN32
-                (window->Twain == NULL || !window->Twain->IsTwainMessage(&msg)) &&
-#endif                                                                       // ENABLE_TWAIN32
-                (GetCapture() != NULL || !window->IsMenuBarMessage(&msg)) && // disable Alt menu access when dragging the cage (captured cursor)
-                (!TranslateAccelerator(window->HWindow, G.HAccel, &msg)))
-            {
-                TranslateMessage(&msg);
-                DispatchMessage(&msg);
-            }
-        }
-    }
-    else
-    {
-        if (scanExtraImg != NULL)
-            DeleteObject(scanExtraImg);
-    }
-    if (window != NULL)
-        delete window;
-
-    TRACE_I("End");
-    return 0;
+    return pictview::wic::RunNativeViewer(
+        Name.c_str(), DLLInstance, Left, Top, Width, Height,
+        ShowCmd, AlwaysOnTop, ReturnLock, Lock, LockOwner,
+        Continue, Success, RegisterWicViewer, UnregisterWicViewer);
 }
 
 BOOL CPluginInterfaceForViewer::ViewFile(LPCTSTR name, int left, int top, int width, int height,
@@ -1948,82 +1663,26 @@ BOOL CPluginInterfaceForViewer::ViewFile(LPCTSTR name, int left, int top, int wi
 
 BOOL CPluginInterfaceForViewer::CanViewFile(LPCTSTR name)
 {
-    // We do quick check for files with suffixes that we now can collided
-    // with other formats supported by other viewers
-    LPCTSTR ext = _tcsrchr(name, '.'); // ".cvspass" is extension in Windows
-    BOOL bTest = FALSE;
+    // The legacy SDK exposes ANSI names. Reject paths which cannot survive
+    // conversion unchanged; never substitute a best-fit or truncated alias.
+    std::wstring path;
+    if (!pictview::wic::ConvertSdkPath(name, path))
+        return FALSE;
 
-    // JR: what does PVW32DLL.PVOpenImageEx do? Does it load the entire image or just some headers?
-    // JP: only headers
-    // JR: is there any reason not to try every file (regardless of the suffix) and if
-    //     it does not look right, pass it to another viewer? If there is no other,
-    //     it ends up in the internal viewer
-    // JP: I would rather not; when the primary format is not recognized it goes
-    //     through detection for a number of formats. Moreover with TIFF, CDR, CMX it scans the entire
-    //     file, with JPEG repeatedly to detect a preview....
-    if (ext && (!_tcsicmp(ext, _T(".SCR")) || !_tcsicmp(ext, _T(".PCT")) || !_tcsicmp(ext, _T(".PIC")) ||
-                !_tcsicmp(ext, _T(".PICT")) || !_tcsicmp(ext, _T(".IMG")) ||
-                !_tcsicmp(ext, _T(".EPS")) || !_tcsicmp(ext, _T(".EPT")) || !_tcsicmp(ext, _T(".AI")) ||
-                !_tcsicmp(ext, _T(".MOV")) || !_tcsicmp(ext, _T(".MSP")) ||
-                !_tcsicmp(ext, _T(".CDR")) || !_tcsicmp(ext, _T(".CDT")) ||
-                !_tcsicmp(ext, _T(".SEP"))))
-    {
-        // SCR: Screen Saver EXE files supported by PEViewer
-        // PCT, PIC, PICT: MacIntosh PICT is supported by Eroiica Viewer as well.
-        //    EV handles vector objects, however, it does not handle HiColor images
-        // IMG: ISO image supported by UnISO plugin
-        // EPS/EPT/AI: Supported only if it contains a thumbnail
-        // MOV: Supported only if MJPEG from a digital camera, not a QuickTime Movie
-        // MSP: Support MS Paint, not MSI.Patch installer packages (Compound files in fact)
-        // CDR: CorelDraw! 14+ is an OpenOffice-like ZIP, handled by EV)
-        // SEP: Accept SEP files being actually TIFFs, refuse DjVu SEP files (what is it?)
-        bTest = TRUE;
-    }
-    if (!bTest)
-    {
-        ext = _tcschr(name, '\\');
-        if (ext)
-        {
-            ext = _tcschr(ext, '.');
-            if (ext && !_tcsnicmp(ext, _T(".PSP"), 4))
-            {
-                // We are associated to wild suffix *.PSP*: always perform test if the suffix starts with .PSP
-                bTest = TRUE;
-            }
-        }
-    }
-    if (bTest)
-    {
-        LPPVHandle PVHandle;
-        PVOpenImageExInfo oiei;
-        PVImageInfo pvii;
-        PVCODE code;
+    const HRESULT init = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+    if (FAILED(init) && init != RPC_E_CHANGED_MODE)
+        return FALSE;
 
-        memset(&oiei, 0, sizeof(oiei));
-        oiei.cbSize = sizeof(oiei);
-#ifdef _UNICODE
-        char nameA[_MAX_PATH];
-
-        WideCharToMultiByte(CP_ACP, 0, name, -1, nameA, sizeof(nameA), NULL, NULL);
-        nameA[sizeof(nameA) - 1] = 0;
-        oiei.FileName = nameA;
-#else
-        oiei.FileName = name;
-#endif
-
-        code = PVW32DLL.PVOpenImageEx(&PVHandle, &oiei, &pvii, sizeof(pvii));
-        if (code != PVC_OK)
-        {
-            return FALSE;
-        }
-        PVW32DLL.PVCloseImage(PVHandle);
-    }
-    return TRUE;
+    pictview::wic::DecodedImage image;
+    const HRESULT decoded = pictview::wic::DecodeFirstFrame(path.c_str(), image);
+    if (SUCCEEDED(init))
+        CoUninitialize();
+    return SUCCEEDED(decoded) ? TRUE : FALSE;
 }
 
-//
 // ****************************************************************************
 // CExtraScanImagesToOpen
+
 //
 
 CExtraScanImagesToOpen::CExtraScanImagesToOpen() : AllExtraScanImages(10, 30)
