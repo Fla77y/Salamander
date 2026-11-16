@@ -107,6 +107,48 @@ int main()
         !PathRejected(u"\\\\?\\C:\\a", Utf16PathError::InvalidInput))
         return Fail("accept valid UNC and reject ambiguous paths");
 
+    // Arrange: the extended Win32 namespace permits at most 32,767 UTF-16
+    // code units INCLUDING the inserted prefix and terminating NUL.
+    // Validate both drive (4-unit prefix) and UNC (6-unit expansion) paths.
+    const auto buildBoundaryPath = [](std::u16string path, std::size_t requestedLength) {
+        while (path.size() < requestedLength)
+        {
+            if (path.back() != u'\\')
+                path.push_back(u'\\');
+            const std::size_t available = requestedLength - path.size();
+            path.append(available < 200 ? available : 200, u'x');
+        }
+        return path;
+    };
+    const auto longestDrive = buildBoundaryPath(u"C:\\", 32762);
+    const auto overlongDrive = buildBoundaryPath(u"C:\\", 32763);
+    const auto longestUnc = buildBoundaryPath(u"\\\\server\\share", 32760);
+    const auto overlongUnc = buildBoundaryPath(u"\\\\server\\share", 32761);
+    Utf16DiskPath boundary;
+    Utf16PathError boundaryError = Utf16PathError::InvalidInput;
+    // Act / Assert: reject excess lengths without truncation or stale output.
+    if (longestDrive.size() != 32762 || longestUnc.size() != 32760 ||
+        !Utf16DiskPath::TryCreateAbsolute(longestDrive, boundary, boundaryError) ||
+        boundaryError != Utf16PathError::None ||
+        boundary.Value() != longestDrive ||
+        !PathRejected(overlongDrive, Utf16PathError::PathTooLong) ||
+        !Utf16DiskPath::TryCreateAbsolute(longestUnc, boundary, boundaryError) ||
+        boundary.Value() != longestUnc ||
+        !PathRejected(overlongUnc, Utf16PathError::PathTooLong))
+        return Fail("32,767-unit extended namespace boundary for drive and UNC paths");
+
+    // An otherwise valid append must fail rather than produce a path that
+    // cannot fit the Win32 prefix and NUL.
+    Utf16DiskPath nearLimit;
+    Utf16DiskPath appended;
+    Utf16FileName suffix;
+    if (!Utf16DiskPath::TryCreateAbsolute(
+            buildBoundaryPath(u"C:\\", 32761), nearLimit, boundaryError) ||
+        !Utf16FileName::TryCreate(u"x", suffix, boundaryError) ||
+        nearLimit.TryAppend(suffix, appended, boundaryError) ||
+        boundaryError != Utf16PathError::PathTooLong || !appended.Value().empty())
+        return Fail("append beyond Win32 total-path boundary must fail closed");
+
     // Arrange: an already validated absolute disk path and a distinct name.
     Utf16DiskPath parent;
     Utf16FileName filename;
