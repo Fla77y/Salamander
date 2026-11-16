@@ -225,6 +225,46 @@ driver should use per-plug-in manager actions, not blanket
 `Test All`, so unrelated installed plug-ins do not make
 verification of the four targets impossible.
 
+## Confirmed PictView missing dependencies and license boundary
+
+User's inspection of the existing `Release_x64` PictView directory:
+
+| Runtime file | Present |
+| --- | --- |
+| `pictview.spl` | Yes |
+| `SalPVEnv.exe` | No |
+| `PVW32Cnv.dll` | No |
+
+The repository itself explains the distribution barrier in
+`src/plugins/pictview/lib/readme.txt` (dated November 2023): the
+`PVW32Cnv.lib` import library was removed because the converter's
+source is unavailable and would violate the GPL. It proposes WIC
+or a replacement image engine. No proprietary DLL is to be downloaded
+from an unverified source, copied into Git, or packaged as a workaround.
+
+The `salpvenv.vcxproj` project is configured for Win32, and
+`salamand.sln` maps it to Win32 for the x64 build but does
+**not** select it with a `Build.0` entry. Forcing the project to
+build is **not** a complete fix: the external import library and
+matching runtime DLL are absent, and the GPL compatibility issue
+still needs resolution.
+
+A pure, fixture-based regression now verifies absence detection for
+the two sidecars, single-sidecar failure, complete file presence and
+the case where PictView is not installed. The existing
+`--test-plugin-load` command **fails before launching its GUI**
+when an installed `pictview.spl` is missing its sidecars, instead
+of initiating `Test All`, showing a modal error and timing out.
+The driver has the same preflight for direct invocations. This
+does not validate helper binary correctness or make PictView work.
+
+**Important remaining design issue:** the current opt-in GUI test
+uses global Plugin Manager `Test All`, which initializes unrelated
+plug-ins. Until a scoped per-plugin test exists, use the individual
+**Test** action in the Plugin Manager to assess 7-Zip, Checksum,
+File Comparator and Batch Renamer. Do not mistake their successful
+PE export checks for an SDK runtime initialization result.
+
 ## Next independently testable development slices
 
 1. **Recycle restoration acceptance:** the first opt-in Unicode round trip
