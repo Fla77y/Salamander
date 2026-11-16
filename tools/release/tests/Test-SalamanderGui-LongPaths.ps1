@@ -362,6 +362,24 @@ public static class SalamanderGuiNative
         return result;
     }
 
+
+    public static IntPtr FindUnicodeNotice(uint pid)
+    {
+        IntPtr result = IntPtr.Zero;
+        foreach (TopLevelWindow top in GetProcessWindows(pid))
+        {
+            if (top.Visible && top.Title == "Unicode Find" &&
+                ClassName(top.Handle) == "#32770")
+            {
+                if (result != IntPtr.Zero)
+                    throw new InvalidOperationException(
+                        "Multiple Unicode Find message boxes in test process");
+                result = top.Handle;
+            }
+        }
+        return result;
+    }
+
     public static IntPtr FindRenameDialog(uint pid)
     {
         foreach (TopLevelWindow top in GetProcessWindows(pid))
@@ -1275,6 +1293,26 @@ function Select-VerifiedFindResult {
     Assert-True ($foundPath -ceq $ExpectedPath) 'Unicode Find copied the exact UTF-16 result path'
 }
 
+
+function Assert-FindNotice {
+    param([string]$ExpectedText)
+    $script:findNotice = [IntPtr]::Zero
+    Wait-Until {
+        $script:findNotice = [SalamanderGuiNative]::FindUnicodeNotice(
+            [uint32]$process.Id)
+        return $script:findNotice -ne [IntPtr]::Zero
+    } 'Unicode Find guarded shell dialog'
+    $message = [SalamanderGuiNative]::DescribeWindow($script:findNotice)
+    Assert-True ($message.Contains($ExpectedText, [StringComparison]::Ordinal)) (
+        "Unicode Find warning identifies unsupported operation: $ExpectedText")
+    [SalamanderGuiNative]::PostFindButton(
+        $script:findNotice, [uint32]$process.Id, 1)
+    Wait-Until {
+        [SalamanderGuiNative]::FindUnicodeNotice(
+            [uint32]$process.Id) -eq [IntPtr]::Zero
+    } 'Unicode Find warning dismissed'
+}
+
 function Test-UnicodeFindGui {
     # Arrange: the GUI root is >MAX_PATH. Only test-owned files are altered.
     Go-ToPath $findRoot
@@ -1292,6 +1330,31 @@ function Test-UnicodeFindGui {
     Start-FindQuery -Mask '*.txt' -Content '' -ExpectedCount 2
     Start-FindQuery -Mask '*.txt' -Content 'unique-utf8-probe' -ExpectedCount 1
     Select-VerifiedFindResult -ExpectedPath $findUtf8Path
+
+    # Act / Assert: shell associations and the ANSI legacy dialog must
+    # refuse a long path before crossing unsupported integration boundaries.
+    # Message boxes are inspected and dismissed using owned HWNDs only.
+    [SalamanderGuiNative]::PostFindButton($script:findWindow, [uint32]$process.Id, 5110)
+    Assert-FindNotice -ExpectedText 'Windows shell associations may not support'
+    Assert-True ([Linq.Enumerable]::SequenceEqual[byte](
+        [IO.File]::ReadAllBytes($findUtf8Path), $findUtf8Bytes)) (
+        'Refused shell open preserves long-path file content')
+
+    [SalamanderGuiNative]::PostFindButton($script:findWindow, [uint32]$process.Id, 5115)
+    Assert-FindNotice -ExpectedText 'legacy advanced Find interface cannot'
+    Assert-True ((Get-UnicodeFindWindow) -eq $script:findWindow) (
+        'Legacy advanced Find refusal preserves the Unicode Find window')
+
+    # Recycle is deliberately unsupported for paths beyond MAX_PATH. Test
+    # the actual GUI command and ensure no permanent deletion occurs.
+    [SalamanderGuiNative]::ClickFindButton($script:findWindow, [uint32]$process.Id, 5114)
+    Assert-True ([SalamanderGuiNative]::ReadFindText(
+        $script:findWindow, [uint32]$process.Id, 5118) -like
+        'Recycle unsupported or refused*') 'Unicode Find refuses long-path recycling'
+    Assert-True ([Linq.Enumerable]::SequenceEqual[byte](
+        [IO.File]::ReadAllBytes($findUtf8Path), $findUtf8Bytes)) (
+        'Recycle refusal preserves the exact original file bytes')
+
     Start-FindQuery -Mask '*.txt' -Content 'unique-utf16-probe' -ExpectedCount 1
     Select-VerifiedFindResult -ExpectedPath $findUtf16Path
     Start-FindQuery -Mask '*.txt|*utf16*' -Content '' -ExpectedCount 1
@@ -1353,6 +1416,29 @@ function Test-UnicodeFindGui {
         [IO.File]::ReadAllBytes($findRenamedPath), $findUtf16Bytes)) 'Unicode Find rename preserves UTF-16LE content'
     Start-FindQuery -Mask $findRenamedName -Content 'unique-utf16-probe' -ExpectedCount 1
     Select-VerifiedFindResult -ExpectedPath $findRenamedPath
+
+
+    # Act / Assert: a hit changed after the search must never be used for
+    # file operations. Change its length to avoid timestamp-resolution races.
+    $staleName = 'stale_result_東京.txt'
+    $stalePath = Join-Path $findRoot $staleName
+    $staleDestination = Join-Path $destination 'must-not-be-created.txt'
+    [IO.File]::WriteAllBytes($stalePath, [Text.Encoding]::UTF8.GetBytes('before'))
+    Start-FindQuery -Mask $staleName -Content '' -ExpectedCount 1
+    Select-VerifiedFindResult -ExpectedPath $stalePath
+    $staleBytes = [Text.Encoding]::UTF8.GetBytes('changed-and-longer-after-search')
+    [IO.File]::WriteAllBytes($stalePath, $staleBytes)
+    [SalamanderGuiNative]::SetFindText(
+        $script:findWindow, [uint32]$process.Id, 5104, $staleDestination)
+    [SalamanderGuiNative]::ClickFindButton($script:findWindow, [uint32]$process.Id, 5111)
+    Assert-True ([SalamanderGuiNative]::ReadFindText(
+        $script:findWindow, [uint32]$process.Id, 5118) -like
+        'The result has changed since the search*') (
+        'Unicode Find rejects a modified result before file operations')
+    Assert-True (-not [IO.File]::Exists($staleDestination) -and
+        [Linq.Enumerable]::SequenceEqual[byte](
+            [IO.File]::ReadAllBytes($stalePath), $staleBytes)) (
+        'Modified-result refusal preserves source and creates no destination')
 
     # Closing the modeless Find window must leave the Salamander owner alive.
     [SalamanderGuiNative]::PostFindButton($script:findWindow, [uint32]$process.Id, 5116)
