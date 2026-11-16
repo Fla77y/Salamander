@@ -41,14 +41,15 @@ bool Check(const char* scenario, ImageTransform transform,
     {
         for (std::size_t i = 0; i < blue.size(); ++i)
         {
-            if (image.bgra[i * 4] != blue[i])
+            if (image.bgra[i * 4] != blue[i] ||
+                image.bgra[i * 4 + 1] != 0 ||
+                image.bgra[i * 4 + 2] != 0 ||
+                image.bgra[i * 4 + 3] != (blue[i] == 6 ? 128 : 255))
             {
                 ok = false;
                 break;
             }
         }
-        ok &= image.bgra[4 * (blue.size() - 1) + 3] ==
-                  (blue.back() == 6 ? 128 : 255);
     }
     if (!ok)
         std::fprintf(stderr, "FAIL: %s\n", scenario);
