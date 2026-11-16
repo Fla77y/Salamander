@@ -655,4 +655,31 @@ if ($copyImpl -notmatch 'CopyFileW\(sourcePath\.c_str\(\), temporary\.c_str\(\),
     $copyImpl -notmatch 'DeleteFileW\(temporary\.c_str\(\)\)') {
     throw 'F6: Unicode copy must use staging and no-replace publication.'
 }
+
+# Test all plug-in menu dispatch variants, including deferred and posted
+# callbacks that bypass the usual CPluginData handler.
+$pluginDispatch = Get-Content -LiteralPath (
+    Join-Path $toolsDir '..\..\src\plugins1.cpp') -Raw
+$pluginDeferred = Get-Content -LiteralPath (
+    Join-Path $toolsDir '..\..\src\salamdr1.cpp') -Raw
+$pluginPosted = Get-Content -LiteralPath (
+    Join-Path $toolsDir '..\..\src\mainwnd3.cpp') -Raw
+$hostPanel = Get-Content -LiteralPath (
+    Join-Path $toolsDir '..\..\src\fileswn8.cpp') -Raw
+if ($pluginDispatch -notmatch 'HasUnsupportedLegacyPluginSelection' -or
+    $pluginDeferred -notmatch 'HasUnsupportedLegacyPluginSelection' -or
+    $pluginPosted -notmatch 'HasUnsupportedLegacyPluginSelection' -or
+    $hostPanel -notmatch 'BOOL CFilesWindow::HasUnsupportedLegacyPluginSelection\(' -or
+    $hostPanel -notmatch 'UnicodeDiskNames\.IsUnsafeAnsiName\(item\.Name\)') {
+    throw 'F3: all legacy plugin menu paths must block unsafe disk identities.'
+}
+
+# Search roots must be transferred from the complete W control value and
+# rejected if the ACP round-trip loses characters or exceeds the buffer.
+if ($findDialog1 -notmatch 'GetWindowTextW\(hLookInWnd' -or
+    $findDialog1 -notmatch 'IsExactAnsiName\(exactInput, wideInput\.c_str\(\)\)' -or
+    $findDialog1 -notmatch 'ti\.ErrorOn\(IDC_FIND_LOOKIN\)') {
+    throw 'F2: search root validation must not silently truncate or best-fit Unicode.'
+}
+Write-Host 'PASS: legacy plugin menu paths and Unicode find-root input fail closed.'
 Write-Host 'PASS: search and plugin fail-closed contracts; wide alias fallback and batch snapshot boundaries.'
