@@ -2,6 +2,13 @@
 
 Status: **not yet approved for public release**. Keep the change set in Draft until every applicable gate below has a dated result. A green GitHub check does **not** substitute for testing on a clean end-user machine.
 
+## RC1 source checkpoint (2026-11-16)
+
+- **Frozen source SHA:** [`ba1a81e893f7b2cf5d54b68ae450af927256891e`](https://github.com/Fla77y/Salamander/commit/ba1a81e893f7b2cf5d54b68ae450af927256891e), branch [`release/v5.2.0-rc.1`](https://github.com/Fla77y/Salamander/tree/release/v5.2.0-rc.1).
+- **Local automated evidence, PASS:** `manage.cmd --test-all --setup` on 2026-11-16, transcript `manage-20261116-232423-042-1617a7.log`. The transcript explicitly records this SHA and a clean tracked working tree; all requested steps finished successfully, including native x86/x64 WIC regressions, both x64 build modes, GUI Unicode/long-path operations and four local package outputs.
+- **Clean-VM report:** the owner states that testing in a clean VM passed. Details sufficient to check each separate portable, setup, uninstall, 5.0 configuration upgrade and plugin/PictView scenario remain to be attached. This does not by itself close section 3.
+- **Approval:** still **NO-GO** pending every applicable gate in this document. RC branch is only a source checkpoint, not a public release or a substitute for an annotated tag. Do not publish Debug packages.
+
 ## 1. Automated checks — exact PR head
 
 - [ ] GitHub Actions **PR Build**: Win32 Debug and x64 Debug using `/warnaserror`.
