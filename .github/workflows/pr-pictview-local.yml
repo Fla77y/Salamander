@@ -5,6 +5,8 @@ on:
     branches: ["**"]
     paths:
       - "src/plugins/shared/spl_vers.h"
+      - "src/mainwnd2.cpp"
+      - "src/consts.h"
       - "tools/release/OpenSalamander.iss"
       - "tools/release/tests/Test-ProductVersion.ps1"
       - "tools/release/tests/Test-PictView-Management.ps1"
