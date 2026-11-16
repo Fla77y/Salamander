@@ -1692,6 +1692,15 @@ function Test-UnicodeFindGui {
 # Confirm target modules by *absolute path*, not by filename alone.
 function Test-PluginLoadSmoke {
     $binaryRoot = [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($SalamanderExe))
+    # Fail closed even when the GUI driver is invoked directly rather than
+    # via manage.cmd. PictView is unrelated to the four target plugins.
+    . (Join-Path $PSScriptRoot '..\Plugin-Runtime-Prerequisites.ps1')
+    $missingPictView = @(Get-MissingPictViewRuntimeFiles -BuildDirectory $binaryRoot)
+    if ($missingPictView.Count -gt 0) {
+        throw ("Refusing global Test All with incomplete PictView runtime: " +
+               ($missingPictView -join '; ') +
+               ". Targeted plugin initialization is required instead.")
+    }
     $expected = @(
         @('7zip', 'checksum', 'filecomp', 'renamer') | ForEach-Object {
             $name = $_
