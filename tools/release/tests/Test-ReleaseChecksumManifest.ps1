@@ -11,7 +11,8 @@
 #>
 [CmdletBinding()]
 param(
-    [Parameter(Mandatory)][string]$DistributionDirectory
+    [Parameter(Mandatory)][string]$DistributionDirectory,
+    [switch]$RequirePublicOnly
 )
 
 Set-StrictMode -Version Latest
@@ -25,6 +26,19 @@ if (-not (Test-Path -LiteralPath $manifest -PathType Leaf)) {
 
 $expected = @('OpenSalamander-Release-x64.7z',
               'OpenSalamander-Release-x64-Setup.exe')
+# The internal build directory may contain Debug packages. Only a downloaded
+# public artifact is constrained to exactly these three top-level files.
+if ($RequirePublicOnly) {
+    $allowed = @($expected) + @('SHA256SUMS-Release.txt')
+    $entries = @(Get-ChildItem -LiteralPath $directory -Force)
+    if ($entries.Count -ne $allowed.Count -or
+        @($entries | Where-Object {
+            -not $_.PSIsContainer -and $_.Name -cnotin $allowed -or $_.PSIsContainer
+        }).Count -gt 0) {
+        throw 'Public artifact contains unexpected, missing, or non-file entries.'
+    }
+}
+
 $lines = @(Get-Content -LiteralPath $manifest)
 if ($lines.Count -ne $expected.Count) {
     throw "Release checksums must list exactly $($expected.Count) public artifacts."
