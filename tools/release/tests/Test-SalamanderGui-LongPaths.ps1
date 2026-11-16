@@ -414,6 +414,31 @@ public static class SalamanderGuiNative
     // This invokes only Salamander's built-in "Test All" control in a
     // verified Plug-in Manager. It can load additional configured plugins;
     // consequently the caller must require explicit opt-in.
+    // Return diagnostic text for any additional modal dialog owned by the
+    // verified Plug-in Manager or its main window. Test All may display
+    // an error for an unrelated installed plugin; do not spin for 90 seconds
+    // while the dialog blocks Salamander's UI thread.
+    public static string GetBlockingPluginDialog(
+        IntPtr dialog, IntPtr mainWindow, uint pid)
+    {
+        if (dialog == IntPtr.Zero ||
+            FindPluginManagerWindow(mainWindow, pid) != dialog)
+            throw new InvalidOperationException(
+                "Plugin Manager identity changed during plug-in initialization");
+
+        foreach (TopLevelWindow top in GetProcessWindows(pid))
+        {
+            if (!top.Visible || top.Handle == dialog ||
+                top.Handle == mainWindow || ClassName(top.Handle) != "#32770")
+                continue;
+
+            IntPtr owner = GetWindow(top.Handle, 4); // GW_OWNER
+            if (owner == dialog || owner == mainWindow)
+                return DescribeWindow(top.Handle);
+        }
+        return null;
+    }
+
     public static void PostVerifiedPluginTestAll(
         IntPtr dialog, IntPtr mainWindow, uint pid)
     {
@@ -1701,19 +1726,42 @@ function Test-PluginLoadSmoke {
     # unloads DLLs that fail entry-point and interface validation. A module
     # with the correct filename in an unrelated directory cannot satisfy it.
     $missing = @{ Paths = @() }
-    Wait-Until {
-        $process.Refresh()
-        if ($process.HasExited) { throw 'Salamander exited during plugin initialization.' }
-        $loadedPaths = [Collections.Generic.HashSet[string]]::new(
-            [StringComparer]::OrdinalIgnoreCase)
-        foreach ($module in $process.Modules) {
-            [void]$loadedPaths.Add([IO.Path]::GetFullPath($module.FileName))
+    try {
+        Wait-Until {
+            $process.Refresh()
+            if ($process.HasExited) { throw 'Salamander exited during plugin initialization.' }
+            $loadedPaths = [Collections.Generic.HashSet[string]]::new(
+                [StringComparer]::OrdinalIgnoreCase)
+            foreach ($module in $process.Modules) {
+                [void]$loadedPaths.Add([IO.Path]::GetFullPath($module.FileName))
+            }
+            $missing.Paths = @($expected | Where-Object {
+                -not $loadedPaths.Contains($_)
+            })
+
+            # Check completion before reporting a modal dialog: Test All may
+            # show an informational success dialog after modules are loaded.
+            if ($missing.Paths.Count -eq 0) { return $true }
+
+            $blocked = [SalamanderGuiNative]::GetBlockingPluginDialog(
+                $manager.Window, $mainWindowHandle, [uint32]$process.Id)
+            if (-not [string]::IsNullOrWhiteSpace($blocked)) {
+                throw ("Blocking plug-in initialization dialog: {0}; " +
+                       "Missing target plug-in modules: {1}") -f
+                       $blocked, ($missing.Paths -join '; ')
+            }
+            return $false
+        } 'four exact plug-in modules loaded in the Salamander process' -TimeoutSecondsOverride 90
+    }
+    catch {
+        $message = $_.Exception.Message
+        if ($message -like 'Timeout waiting*') {
+            throw ("{0}; Missing target plug-in modules: {1}; process windows: {2}" -f
+                   $message, ($missing.Paths -join '; '),
+                   (Get-ProcessWindowSummary -OwnerProcessId ([uint32]$process.Id)))
         }
-        $missing.Paths = @($expected | Where-Object {
-            -not $loadedPaths.Contains($_)
-        })
-        return $missing.Paths.Count -eq 0
-    } 'four exact plug-in modules loaded in the Salamander process' -TimeoutSecondsOverride 90
+        throw
+    }
 
     foreach ($path in $expected) {
         Write-Host "PASS: Salamander loaded and retained plug-in module $path"
