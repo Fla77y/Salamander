@@ -1,7 +1,7 @@
 # Unicode, plug-in and Recycle Bin integration: first acceptance slice
 
-Date: 16 November 2026. Base: \`main\` merge commit
-\`17d1d0e611f31a8370d666a1a7a540210e65ecd8\` (PR #7).
+Date: 16 November 2026. Base: `main` merge commit
+`17d1d0e611f31a8370d666a1a7a540210e65ecd8` (PR #7).
 
 This branch extends verification, not the legacy plug-in ABI or broad
 filesystem behavior. Tests that have not run on an actual Windows desktop
@@ -14,12 +14,12 @@ are **not considered passed**.
   regression runs. This does **not** prove all legacy plug-in operations.
 - **Recycle Bin:** existing GUI F8 test observed removal of an isolated
   Unicode file, but had not established actual Recycle Bin entry identity
-  or file restoration. \`win32_unicode_recycle.h\` deliberately supports
+  or file restoration. `win32_unicode_recycle.h` deliberately supports
   only short absolute regular files on fixed local drives and rejects
   unsupported cases without direct deletion.
-- **Plug-ins:** \`7zip\`, \`checksum\`, \`filecomp\` and \`renamer\` export
-  \`SalamanderPluginEntry\` and \`SalamanderPluginGetReqVer\` from their
-  respective \`.def\` files. The old ANSI plug-in SDK must not be changed
+- **Plug-ins:** `7zip`, `checksum`, `filecomp` and `renamer` export
+  `SalamanderPluginEntry` and `SalamanderPluginGetReqVer` from their
+  respective `.def` files. The old ANSI plug-in SDK must not be changed
   merely to add Unicode names. Actual plug-in load/menu behavior, long
   paths and nonrepresentable Unicode filename handling remain acceptance
   gaps.
@@ -28,23 +28,23 @@ are **not considered passed**.
 
 ### 1. Opt-in F8 Unicode Recycle Bin round trip
 
-\`\`\`powershell
+```powershell
 cd C:\Repositories\Salamander
 .\manage.cmd --update --test-recycle-restore
 # Optional: use --debug to test only the x64 Debug binary
-\`\`\`
+```
 
 This starts a disposable Salamander instance on the unlocked Windows
 desktop (STA) and creates a GUID-scoped temporary directory. It verifies
 the selected exact UTF-16 filename, invokes the existing F8 recycle
 operation, then uses the Windows Shell Recycle Bin folder
-(\`Shell.Application.NameSpace(10)\`) to enumerate items.
+(`Shell.Application.NameSpace(10)`) to enumerate items.
 
 The test checks **both** exact filename and exact original directory
-via \`System.Recycle.DeletedFrom\`. Zero or multiple matches fail; it
+via `System.Recycle.DeletedFrom`. Zero or multiple matches fail; it
 does not select an item by its position or partial name. It refuses
 restoration if the original destination exists. It invokes only the
-verified item's specifically enumerated \`Restore\`/\`Wiederherstellen\`
+verified item's specifically enumerated `Restore`/`Wiederherstellen`
 verb; unknown localizations fail closed instead of executing the default
 shell verb. After restoration, it checks the **exact original file bytes**.
 
@@ -55,38 +55,38 @@ item in the user's Recycle Bin. The test never empties the Recycle Bin,
 deletes an unrelated item or silently substitutes permanent deletion.
 It retains the diagnostic source directory on failure.
 
-This is **intentionally excluded from \`--test-all\`** until one successful
+This is **intentionally excluded from `--test-all`** until one successful
 real Windows restore run is observed. The original
-\`--test-gui-unicode-recycle\` remains unchanged in scope.
+`--test-gui-unicode-recycle` remains unchanged in scope.
 
 ### 2. Read-only built plug-in SDK/PE contract
 
-\`\`\`powershell
+```powershell
 cd C:\Repositories\Salamander
 .\manage.cmd --update --build --test-plugin-exports
 # Optional: --release or --debug selects only one x64 configuration
-\`\`\`
+```
 
-The test locates Visual Studio 2026's \`dumpbin.exe\` and inspects the
-actual Debug and Release x64 \`.spl\` files for the four priority plug-ins.
+The test locates Visual Studio 2026's `dumpbin.exe` and inspects the
+actual Debug and Release x64 `.spl` files for the four priority plug-ins.
 For each plug-in, it requires:
 
-- a corresponding source \`.def\` file and built binary;
-- the x64 COFF machine value \`8664\`;
+- a corresponding source `.def` file and built binary;
+- the x64 COFF machine value `8664`;
 - both precise SDK export names in both the source definition and
   the **real binary export table**.
 
 It does not load or execute any plug-in DLL. Therefore this is an
 **ABI smoke test**, not proof of plug-in startup, GUI integration,
 content processing or full Unicode support. It is likewise excluded
-from \`--test-all\` pending Windows acceptance.
+from `--test-all` pending Windows acceptance.
 
 ### 3. Test wiring safety
 
-\`Test-GuiDriver-Contract.ps1\` statically checks that opt-in restore
+`Test-GuiDriver-Contract.ps1` statically checks that opt-in restore
 identification uses original-path metadata and rejects a pre-existing
 destination. It also checks the plug-in test parses and uses inspection
-rather than \`LoadLibrary\`. Actual behavior still requires the real
+rather than `LoadLibrary`. Actual behavior still requires the real
 Windows acceptance commands above.
 
 ## Next independently testable development slices
@@ -94,7 +94,7 @@ Windows acceptance commands above.
 1. **Recycle restoration acceptance:** run the opt-in test on the
    actual Windows desktop, investigate any locale-specific shell verb
    without guessing, and only then consider the verified path for
-   \`--test-all\`. Test refusal and cancellation separately.
+   `--test-all`. Test refusal and cancellation separately.
 2. **Plug-in activation smoke:** in a disposable short-path GUI fixture,
    exercise normal 7-Zip archive listing, Checksum output, File
    Comparator and Batch Renamer using exact expected bytes/filenames.
@@ -107,7 +107,7 @@ Windows acceptance commands above.
 4. **Shell and path corner cases:** automate short-path Recycle Bin
    source/destination collisions and trailing-dot/space identities
    only after a dedicated, non-destructive acceptance harness exists.
-5. **Release gate:** full \`--update --build --test-all\`, both x64
+5. **Release gate:** full `--update --build --test-all`, both x64
    configurations, GitHub CI and clean-host setup/plug-in acceptance
    before integrating any behavior-changing implementation.
 
