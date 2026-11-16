@@ -76,7 +76,7 @@ int main()
     if (!Salamander::TryConvertUnicodePanelFindData(oversized, legacy, error))
         return std::puts("FAIL: valid W filename disappeared from the panel"), 1;
     if (bytes > static_cast<int>(sizeof(legacy.cFileName)) &&
-        (legacy.cFileName[0] != '?' ||
+        (legacy.cFileName[0] != '\\x01' ||
          std::strlen(legacy.cFileName) >= sizeof(legacy.cFileName)))
         return std::puts("FAIL: unrepresentable ANSI alias was not safely marked"), 1;
     Salamander::UnicodePanelRowIdentities expandedNames;
