@@ -80,7 +80,13 @@ int main()
     // prefix expansion, the NUL terminator and directory search wildcards.
     constexpr std::size_t targetLength = 32700;
     constexpr std::size_t componentLength = 200;
-    const std::wstring filename = L"Größe_東京_😀.bin";
+    // Combine the near-maximum TOTAL path with a maximum-size NAME.
+    // Windows wchar_t is UTF-16, so the emoji occupies two code units.
+    std::wstring filename = L"Größe_東京_😀_";
+    filename.append(255 - filename.size() - 4, L'x');
+    filename += L".bin";
+    if (filename.size() != 255)
+        return Fail("near-limit UTF-16 filename must contain exactly 255 units");
 
     WCHAR tempDirectory[MAX_PATH] = {};
     const DWORD tempLength = GetTempPathW(MAX_PATH, tempDirectory);
@@ -217,6 +223,6 @@ int main()
     if (!fixture.Cleanup())
         return Fail("cleanup near-limit Win32 path fixture");
 
-    std::puts("PASS: actual 32700-unit Win32 Unicode path, enumeration, byte integrity, copy, move, collision refusal and delete");
+    std::puts("PASS: actual 32700-unit Win32 path with 255-unit Unicode name, enumeration, byte integrity, copy, move, collision refusal and delete");
     return 0;
 }
