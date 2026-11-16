@@ -161,11 +161,39 @@ BOOL CFindDialog::ValidateLegacyFindResult(const char* path, const char* name)
 BOOL CFindDialog::ValidateSelectedLegacyFindResults()
 {
     const HWND list = FoundFilesListView->HWindow;
+    std::unordered_map<std::string, Salamander::UnicodePanelNameCache> snapshots;
     int index = -1;
     while ((index = ListView_GetNextItem(list, index, LVNI_SELECTED)) != -1)
     {
         const CFoundFilesData* item = FoundFilesListView->At(index);
-        if (ValidateLegacyFindResult(item->Path, item->Name))
+        bool safe = false;
+        if (item->Path != NULL && item->Name != NULL && *item->Name != 0)
+        {
+            const size_t pathLen = strlen(item->Path);
+            const size_t nameLen = strlen(item->Name);
+            if (pathLen > 0 && pathLen < MAX_PATH &&
+                nameLen < MAX_PATH - pathLen - 1 &&
+                strchr(item->Path, '?') == NULL &&
+                strchr(item->Path, '*') == NULL)
+            {
+                // One complete W directory enumeration per selected parent
+                // avoids repeatedly scanning large directories for each row.
+                auto inserted = snapshots.try_emplace(item->Path);
+                auto& names = inserted.first->second;
+                std::wstring wideDirectory;
+                DWORD error = ERROR_SUCCESS;
+                if (!inserted.second ||
+                    (Salamander::TryGetUnicodePanelDirectory(
+                         item->Path, wideDirectory) &&
+                     names.Load(wideDirectory.c_str(), error)))
+                {
+                    std::wstring original;
+                    safe = names.TryGet(item->Name, original) &&
+                           Salamander::IsExactAnsiName(item->Name, original.c_str());
+                }
+            }
+        }
+        if (safe)
             continue;
         SalMessageBox(HWindow,
                       "This search result cannot be identified safely by the "
