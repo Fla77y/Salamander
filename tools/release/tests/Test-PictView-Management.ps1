@@ -131,16 +131,8 @@ if (-not $externalHint.Contains('X8D_BIN_TOOLS_PATH') -or
     -not $externalHint.Contains('*.bmp') -or
     -not $externalHint.Contains('PictView') -or
     -not $externalHint.Contains('external Viewer') -or
-    -not $externalHint.Contains('Do not create a placeholder') -or
-    [Environment]::GetEnvironmentVariable('X8D_BIN_TOOLS_PATH') -ne $null) {
-    # The environment variable must NOT be fabricated in this test.
-    # A host running with this variable already configured is legitimate;
-    # test only the returned diagnostic in that case.
-    if (-not $externalHint.Contains('X8D_BIN_TOOLS_PATH') -or
-        -not $externalHint.Contains('*.bmp') -or
-        -not $externalHint.Contains('Do not create a placeholder')) {
-        throw 'Missing external viewer variable must produce a precise non-mutating diagnosis.'
-    }
+    -not $externalHint.Contains('Do not create a placeholder')) {
+    throw 'Missing external viewer variable must produce a precise non-mutating diagnosis.'
 }
 $genericHint = Get-PictViewHostFailureHint -DialogText '[Error] [Static] Unable to decode BMP' -PictViewResident $true
 if ($genericHint.Contains('X8D_BIN_TOOLS_PATH') -or
