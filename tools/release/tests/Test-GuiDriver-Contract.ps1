@@ -376,6 +376,28 @@ if ($errorCapture -lt 0 -or $dialogLookup -lt 0 -or
 }
 Write-Host 'PASS: GUI driver captures the original SendMessageTimeout Win32 error.'
 
+# A synchronous CM_CLIPPASTE (775) calls OleGetClipboard and may message the
+# clipboard owner's HWND. The owner must have its OWN STA message loop; a
+# WinForms Control on the dispatching PowerShell STA can deadlock there.
+$ownerClass = [regex]::Match($driverText,
+    '(?s)public sealed class SalamanderGuiClipboardOwner : IDisposable.*?^}', 
+    [Text.RegularExpressions.RegexOptions]::Multiline)
+$navigationClipboard = (Get-FunctionSource 'Set-NativeNavigationClipboard').Extent.Text
+if (-not $ownerClass.Success -or
+    $ownerClass.Value -notmatch 'System.Threading.Thread' -or
+    $ownerClass.Value -notmatch 'SetApartmentState\(System.Threading.ApartmentState.STA\)' -or
+    $ownerClass.Value -notmatch 'Application.Run\(\)' -or
+    $ownerClass.Value -notmatch 'Application.ExitThread\(\)' -or
+    $ownerClass.Value -notmatch 'window.BeginInvoke' -or
+    $ownerClass.Value -notmatch 'Application.DoEvents\(\)' -or
+    $navigationClipboard -notmatch '\[SalamanderGuiClipboardOwner\]::new\(\)' -or
+    $navigationClipboard -notmatch '\$script:clipboardOwner.SetText\(\$Text\)' -or
+    $navigationClipboard -match '\[Windows.Forms.Control\]::new\(\)') {
+    throw 'GUI clipboard owner must pump messages on a separate STA during synchronous CM_CLIPPASTE.'
+}
+Write-Host 'PASS: GUI clipboard owner has an independent pumped STA for OLE navigation callbacks.'
+
+
 # W-based primary enumeration associates each CFileData Name allocation
 # with its original Unicode record. Clipboard identity may now be recovered
 # for two rows with the same ANSI alias; destructive legacy actions remain
@@ -513,6 +535,8 @@ $interopSource = [regex]::Match(
 if (-not $interopSource.Success) {
     throw 'GUI driver C# Win32 interop here-string not found.'
 }
+# The interop includes an independently pumped WinForms clipboard owner.
+Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
 Add-Type -TypeDefinition $interopSource.Groups[1].Value -ErrorAction Stop
 if ([SalamanderGuiNative]::GetLegacyFilenameAliasHex('plain.txt') -cne
     '70-6C-61-69-6E-2E-74-78-74') {

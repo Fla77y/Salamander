@@ -8,7 +8,8 @@
     The GUI driver dispatches WM_COMMAND 775 synchronously. Its clipboard
     payload must not rely on an OLE IDataObject hosted by the sending STA,
     which can otherwise wait for its own blocked apartment. The regression
-    blocks the writer while a second process reads CF_UNICODETEXT.
+    blocks the writer while a second process reads CF_UNICODETEXT and inspects
+    the OLE IDataObject format enumeration.
 #>
 [CmdletBinding()]
 param()
@@ -33,13 +34,14 @@ $root = Join-Path ([IO.Path]::GetTempPath()) ('OpenSal-ClipboardTest-' + [guid]:
 $reader = Join-Path $root 'reader.ps1'
 $result = Join-Path $root 'read.txt'
 $original = $null
-$owner = [Windows.Forms.Control]::new()
+$owner = [SalamanderGuiClipboardOwner]::new()
 try {
     $original = [Windows.Forms.Clipboard]::GetDataObject()
     $text = 'C:\Release-F3_東京_😀\normal'
-    $handle = $owner.Handle
-    if ($handle -eq [IntPtr]::Zero) { throw 'Clipboard owner HWND was not created.' }
-    [SalamanderGuiNative]::SetClipboardUnicodeText($handle, $text)
+    if ($owner.OwnerThreadId -eq [Threading.Thread]::CurrentThread.ManagedThreadId) {
+        throw 'Clipboard owner must have an independent STA message pump.'
+    }
+    $owner.SetText($text)
     if ([Windows.Forms.Clipboard]::GetText() -cne $text) {
         throw 'The global UTF-16 clipboard payload was not preserved.'
     }
@@ -47,7 +49,37 @@ try {
     @'
 param([string]$Output)
 Add-Type -AssemblyName System.Windows.Forms
-[IO.File]::WriteAllText($Output, [Windows.Forms.Clipboard]::GetText())
+$text = [Windows.Forms.Clipboard]::GetText()
+# Salamander invokes OleGetClipboard and enumerates data formats before
+# falling back to text-only path navigation. Reproduce that OLE boundary.
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+using System.Runtime.InteropServices.ComTypes;
+public static class SalamanderClipboardOleProbe
+{
+    [DllImport("ole32.dll")]
+    private static extern int OleGetClipboard(out IDataObject data);
+
+    public static void InspectFormats()
+    {
+        IDataObject data = null;
+        int hr = OleGetClipboard(out data);
+        if (hr != 0 || data == null)
+            throw new InvalidOperationException("OleGetClipboard failed: " + hr);
+        try
+        {
+            IEnumFORMATETC formats = data.EnumFormatEtc(DATADIR.DATADIR_GET);
+            if (formats == null)
+                throw new InvalidOperationException("OLE clipboard has no format enumerator.");
+            Marshal.ReleaseComObject(formats);
+        }
+        finally { Marshal.ReleaseComObject(data); }
+    }
+}
+"@
+[SalamanderClipboardOleProbe]::InspectFormats()
+[IO.File]::WriteAllText($Output, $text)
 '@ | Set-Content -LiteralPath $reader -Encoding utf8
     $process = Start-Process -FilePath (Join-Path $PSHOME 'pwsh.exe') -ArgumentList @(
         '-Sta', '-NoLogo', '-NoProfile', '-NonInteractive', '-File',
@@ -66,7 +98,17 @@ Add-Type -AssemblyName System.Windows.Forms
         }
     }
     finally { $process.Dispose() }
-    Write-Host 'PASS: cross-process CF_UNICODETEXT is independently readable while writer STA is blocked.'
+    Write-Host 'PASS: independently pumped clipboard owner serves CF_UNICODETEXT and OLE format enumeration while management STA is blocked.'
+
+    # The next clipboard owner may be this blocked test STA itself. This
+    # catches WM_DESTROYCLIPBOARD callbacks during a cross-STA replacement.
+    [Windows.Forms.Clipboard]::SetText('OLE previous owner is the management STA')
+    $replacementText = $text + '\owner-switch'
+    $owner.SetText($replacementText)
+    if ([Windows.Forms.Clipboard]::GetText() -cne $replacementText) {
+        throw 'Replacing an OLE clipboard owned by the management STA failed.'
+    }
+    Write-Host 'PASS: STA owner replacement pumps previous-owner clipboard notifications.'
 
     # A second process deliberately owns the clipboard for a short interval.
     # The navigation writer must wait only for OpenClipboard, without clearing
@@ -126,7 +168,7 @@ finally {
     $retryText = $text + '\retry'
     $holder = Start-ClipboardHolder -HoldMilliseconds 500
     try {
-        [SalamanderGuiNative]::SetClipboardUnicodeText($handle, $retryText)
+        $owner.SetText($retryText)
         if ([Windows.Forms.Clipboard]::GetText() -cne $retryText) {
             throw 'Transient clipboard contention did not preserve the exact UTF-16 text.'
         }
@@ -146,7 +188,7 @@ finally {
     try {
         $rejected = $false
         try {
-            [SalamanderGuiNative]::SetClipboardUnicodeText($handle, $text + '\must-not-write')
+            $owner.SetText($text + '\must-not-write')
         }
         catch {
             if ($_.Exception.Message -match 'OpenClipboard.*(busy|failed).*after') {

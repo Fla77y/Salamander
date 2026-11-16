@@ -770,6 +770,98 @@ public static class SalamanderGuiNative
             GetForegroundWindow().ToInt64()));
     }
 }
+
+// A raw CF_UNICODETEXT payload is not enough to guarantee that an OLE
+// clipboard consumer never calls back into its owner HWND. Run that owner
+// on a separate, continuously pumped STA instead of the test dispatch STA.
+public sealed class SalamanderGuiClipboardOwner : IDisposable
+{
+    private readonly System.Threading.Thread thread;
+    private readonly System.Threading.ManualResetEventSlim ready =
+        new System.Threading.ManualResetEventSlim(false);
+    private System.Windows.Forms.Control window;
+    private Exception startupError;
+    private bool disposed;
+
+    public int OwnerThreadId { get { return thread.ManagedThreadId; } }
+
+    public SalamanderGuiClipboardOwner()
+    {
+        thread = new System.Threading.Thread(() =>
+        {
+            try
+            {
+                using (var control = new System.Windows.Forms.Control())
+                {
+                    IntPtr handle = control.Handle;
+                    if (handle == IntPtr.Zero)
+                        throw new InvalidOperationException("Clipboard owner HWND creation failed.");
+                    window = control;
+                    ready.Set();
+                    System.Windows.Forms.Application.Run();
+                }
+            }
+            catch (Exception error)
+            {
+                startupError = error;
+                ready.Set();
+            }
+        });
+        thread.Name = "Salamander GUI test clipboard owner";
+        thread.IsBackground = true;
+        thread.SetApartmentState(System.Threading.ApartmentState.STA);
+        thread.Start();
+        if (!ready.Wait(10000))
+            throw new TimeoutException("Clipboard owner STA did not create its HWND.");
+        if (startupError != null)
+            throw new InvalidOperationException("Clipboard owner STA startup failed.", startupError);
+    }
+
+    public void SetText(string text)
+    {
+        if (disposed || window == null || !thread.IsAlive)
+            throw new ObjectDisposedException("SalamanderGuiClipboardOwner");
+        // The prior clipboard owner can be this caller STA (for example after
+        // Clipboard.SetText in Read-PanelPath). EmptyClipboard may notify that
+        // previous owner. Pump the caller STA while the dedicated owner sets
+        // CF_UNICODETEXT, otherwise a synchronous Control.Invoke could deadlock.
+        Exception failure = null;
+        var completed = new System.Threading.ManualResetEventSlim(false);
+        window.BeginInvoke(new Action(() =>
+        {
+            try { SalamanderGuiNative.SetClipboardUnicodeText(window.Handle, text); }
+            catch (Exception error) { failure = error; }
+            finally { completed.Set(); }
+        }));
+        DateTime deadline = DateTime.UtcNow.AddSeconds(15);
+        while (!completed.Wait(25))
+        {
+            System.Windows.Forms.Application.DoEvents();
+            if (DateTime.UtcNow >= deadline)
+                throw new TimeoutException("Clipboard owner STA did not publish CF_UNICODETEXT.");
+        }
+        completed.Dispose();
+        if (failure != null)
+            throw new InvalidOperationException("Clipboard owner could not publish CF_UNICODETEXT.", failure);
+    }
+
+    public void Dispose()
+    {
+        if (disposed) return;
+        disposed = true;
+        try
+        {
+            if (thread.IsAlive && window != null && window.IsHandleCreated)
+                window.BeginInvoke(new Action(() => System.Windows.Forms.Application.ExitThread()));
+            if (!thread.Join(5000))
+                throw new TimeoutException("Clipboard owner message loop did not stop.");
+        }
+        finally
+        {
+            ready.Dispose();
+        }
+    }
+}
 '@
 
 $script:clipboardOwner = $null
@@ -1121,12 +1213,13 @@ function Invoke-SalamanderCommand {
 function Set-NativeNavigationClipboard {
     param([Parameter(Mandatory)][string]$Text)
 
-    # Create a hidden HWND owned by this STA. Only navigation uses native
-    # CF_UNICODETEXT; other test actions retain the existing text semantics.
+    # An OLE clipboard reader in Salamander may synchronously message its
+    # clipboard owner. Keep that HWND on a separately pumped STA so the
+    # synchronous GUI command never waits for its own blocked test thread.
     if ($null -eq $script:clipboardOwner) {
-        $script:clipboardOwner = [Windows.Forms.Control]::new()
+        $script:clipboardOwner = [SalamanderGuiClipboardOwner]::new()
     }
-    [SalamanderGuiNative]::SetClipboardUnicodeText($script:clipboardOwner.Handle, $Text)
+    $script:clipboardOwner.SetText($Text)
 }
 
 function Set-ClipboardText {
@@ -2953,7 +3046,8 @@ finally {
         catch { Write-Warning 'Original clipboard could not be restored.' }
     }
     if ($null -ne $script:clipboardOwner) {
-        $script:clipboardOwner.Dispose()
+        try { $script:clipboardOwner.Dispose() }
+        catch { Write-Warning "Clipboard owner shutdown failed: $($_.Exception.Message)" }
     }
     if ($passed -and -not $KeepFixture) {
         try { [IO.Directory]::Delete($root, $true) }
