@@ -135,6 +135,7 @@
 // 102 = 4.00b1 (DB177) only to transfer plugin configuration from version 4.00b1 (DB171)
 // 103 = 4.00           only to transfer plugin configuration from version 4.00b1 (DB177)
 // 104 = 5.00           only to transfer plugin configuration from version 4.00, first Open Salamander release
+// 105 = 5.2            only to transfer plugin configuration from version 5.0
 //
 // When increasing the configuration version, add 1 to THIS_CONFIG_VERSION
 //
@@ -142,7 +143,7 @@
 // so that new plugins are auto-installed and the plugins.ver counter is reset.
 //
 
-const DWORD THIS_CONFIG_VERSION = 104;
+const DWORD THIS_CONFIG_VERSION = 105;
 
 // Configuration roots for individual Open Salamander versions.
 // The root of the current (latest) configuration is at index 0.
@@ -154,6 +155,7 @@ const DWORD THIS_CONFIG_VERSION = 104;
 // !!! Keep the corresponding lines in SalamanderConfigurationVersions up to date
 const char* SalamanderConfigurationRoots[SALCFG_ROOTS_COUNT + 1] =
     {
+        "Software\\Open Salamander\\5.2",
         "Software\\Open Salamander\\5.0",
         "Software\\Altap\\Altap Salamander 4.0",
         "Software\\Altap\\Altap Salamander 4.0 beta 1 (DB177)",
@@ -240,6 +242,7 @@ const char* SalamanderConfigurationRoots[SALCFG_ROOTS_COUNT + 1] =
 };
 const char* SalamanderConfigurationVersions[SALCFG_ROOTS_COUNT] =
     {
+        "5.2",
         "5.0",
         "4.0",
         "4.0 beta 1 (DB177)",
