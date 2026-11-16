@@ -137,7 +137,7 @@ bool Tests()
     const std::wstring imagePath = folder + L"\\Grün-\u6F22\u5B57.bmp";
     const std::wstring alphaPath = folder + L"\\alpha-\u6F22\u5B57.png";
     const std::wstring corruptPath = folder + L"\\corrupt.bmp";
-    const std::wstring multiPath = folder + L"\\multi-\\u6F22\\u5B57.tif";
+    const std::wstring multiPath = folder + L"\\multi-\u6F22\u5B57.tif";
     pictview::wic::DecodedImage result;
 
     bool ok = WriteBytes(imagePath, kTwoPixelBmp.data(),
