@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <cwchar>
 #include <limits>
 #include <new>
 #include <vector>
@@ -213,6 +214,50 @@ HRESULT Save(const wchar_t* path, const DecodedImage& image,
     return hr;
 }
 } // namespace
+
+bool PrepareExportPath(std::wstring& path, ImageFileFormat format) noexcept
+{
+    const wchar_t* expected = nullptr;
+    switch (format)
+    {
+    case ImageFileFormat::Png: expected = L".png"; break;
+    case ImageFileFormat::Bmp: expected = L".bmp"; break;
+    case ImageFileFormat::Jpeg: expected = L".jpg"; break;
+    case ImageFileFormat::Tiff: expected = L".tif"; break;
+    default: return false;
+    }
+
+    if (path.empty() || path.size() >= 32767 || path.find(L'\0') != std::wstring::npos)
+        return false;
+    const std::size_t separator = path.find_last_of(L"\\/");
+    const std::size_t start = separator == std::wstring::npos ? 0 : separator + 1;
+    if (start >= path.size())
+        return false;
+    const std::size_t dot = path.find_last_of(L'.');
+    if (dot != std::wstring::npos && dot >= start)
+    {
+        const wchar_t* ext = path.c_str() + dot;
+        bool valid = CompareStringOrdinal(ext, -1, expected, -1, TRUE) == CSTR_EQUAL;
+        if (format == ImageFileFormat::Jpeg)
+            valid = valid || CompareStringOrdinal(ext, -1, L".jpeg", -1, TRUE) == CSTR_EQUAL ||
+                              CompareStringOrdinal(ext, -1, L".jpe", -1, TRUE) == CSTR_EQUAL;
+        if (format == ImageFileFormat::Tiff)
+            valid = valid || CompareStringOrdinal(ext, -1, L".tiff", -1, TRUE) == CSTR_EQUAL;
+        return valid;
+    }
+
+    try
+    {
+        if (path.size() + std::wcslen(expected) >= 32767)
+            return false;
+        path.append(expected);
+        return true;
+    }
+    catch (...)
+    {
+        return false;
+    }
+}
 
 HRESULT SaveNewImage(const wchar_t* path, const DecodedImage& image,
                      ImageFileFormat format) noexcept
