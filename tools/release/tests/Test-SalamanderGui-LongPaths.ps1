@@ -445,16 +445,53 @@ public static class SalamanderGuiNative
         return checked((int)SendChecked(list, 0x1004, UIntPtr.Zero, IntPtr.Zero).ToInt64());
     }
 
-    // Use a real mouse click at the first visible row after the ListView
-    // header. Reject an obscured window or unexpected selection. No file
-    // operation is permitted until the selection and path are verified.
+    // Check actual Win32 ListView selection state. These messages have only
+    // scalar arguments and are safe across processes; no LVITEM pointer is
+    // passed into a different address space.
+    private static int SelectedFindIndex(IntPtr list)
+    {
+        int count = checked((int)SendChecked(
+            list, 0x1032, UIntPtr.Zero, IntPtr.Zero).ToInt64()); // LVM_GETSELECTEDCOUNT
+        if (count != 1) return -1;
+        return checked((int)SendChecked(
+            list, 0x100C, new UIntPtr(ulong.MaxValue),
+            new IntPtr(2)).ToInt64()); // LVM_GETNEXTITEM, LVNI_SELECTED
+    }
+
+    private static bool WaitForFindSelection(IntPtr window, IntPtr list)
+    {
+        for (int attempt = 0; attempt != 25; ++attempt)
+        {
+            if (GetForegroundWindow() != window)
+                throw new InvalidOperationException(
+                    "Unicode Find lost foreground during ListView selection");
+            if (SelectedFindIndex(list) == 0)
+                return true;
+            System.Threading.Thread.Sleep(40);
+        }
+        return false;
+    }
+
+    // A single physical click exercises the real ListView selection. A
+    // fallback uses VK_HOME targeted at the verified result control, never
+    // a second click (which could accidentally cause a double-click/Open).
+    // Every selection is checked before any path is copied or file modified.
     public static int SelectSingleFindResult(IntPtr window, uint pid)
     {
         IntPtr list = VerifiedChild(window, pid, 5117);
         if (FindResultCount(window, pid) != 1 ||
             !TryActivateVerifiedWindow(window, pid, true) ||
             GetForegroundWindow() != window)
-            throw new InvalidOperationException("Find result window is not safely foreground");
+            throw new InvalidOperationException(
+                "Find result window is not safely foreground or count is not one");
+
+        // Ensure that any ListView scroll position left by a previous search
+        // cannot put row zero outside the tested click location.
+        if (SendChecked(list, 0x1013, UIntPtr.Zero, IntPtr.Zero) ==
+            IntPtr.Zero) // LVM_ENSUREVISIBLE
+            throw new InvalidOperationException(
+                "Unicode Find could not make its only result visible");
+
         IntPtr header = SendChecked(list, 0x101F, UIntPtr.Zero, IntPtr.Zero);
         GuiRect listBounds, headerBounds;
         if (header == IntPtr.Zero || !GetWindowRect(list, out listBounds) ||
@@ -463,23 +500,45 @@ public static class SalamanderGuiNative
         NativePoint point = new NativePoint { X = listBounds.Left + 25,
             Y = headerBounds.Bottom + 10 };
         if (point.Y >= listBounds.Bottom || WindowFromPoint(point) != list)
-            throw new InvalidOperationException("Find result row is obscured or outside list");
+            throw new InvalidOperationException(
+                "Find result row is obscured or outside the list");
         if (!SetCursorPos(point.X, point.Y))
             throw new InvalidOperationException("Could not position pointer over Find result");
+
+        // Only one mouse click is ever sent. Its completion is confirmed by
+        // reading the ListView state, not by relying on input queue timing.
         mouse_event(0x0002, 0, 0, 0, UIntPtr.Zero);
         mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero);
-        // Mouse input is queued. Observe the actual ListView selection
-        // instead of assuming it changed synchronously on mouse_event.
-        for (int attempt = 0; attempt != 25; ++attempt)
+        if (WaitForFindSelection(window, list))
+            return 0;
+
+        // VK_HOME is read-only in a ListView with one result. Unlike a second
+        // click, it cannot trigger the result's double-click Open command.
+        // Send only to the verified list HWND; keep the exact-path clipboard
+        // assertion in PowerShell as the final gate before file operations.
+        SendChecked(list, 0x0100, new UIntPtr(0x24), IntPtr.Zero); // WM_KEYDOWN / VK_HOME
+        SendChecked(list, 0x0101, new UIntPtr(0x24), IntPtr.Zero); // WM_KEYUP
+        if (WaitForFindSelection(window, list))
         {
-            if (GetForegroundWindow() != window)
-                throw new InvalidOperationException("Find lost foreground during selection");
-            int selected = checked((int)SendChecked(list, 0x100C,
-                new UIntPtr(ulong.MaxValue), new IntPtr(2)).ToInt64());
-            if (selected == 0) return selected;
-            System.Threading.Thread.Sleep(40);
+            Console.WriteLine(
+                "INFO: Unicode Find selected result via safe ListView keyboard fallback.");
+            return 0;
         }
-        return -1;
+
+        uint owner;
+        uint thread = GetWindowThreadProcessId(window, out owner);
+        GuiThreadInfo info = new GuiThreadInfo();
+        info.cbSize = (uint)Marshal.SizeOf(typeof(GuiThreadInfo));
+        string focus = GetGUIThreadInfo(thread, ref info)
+            ? "0x" + info.hwndFocus.ToInt64().ToString("X")
+            : "unavailable";
+        int selectedCount = checked((int)SendChecked(
+            list, 0x1032, UIntPtr.Zero, IntPtr.Zero).ToInt64());
+        throw new InvalidOperationException(String.Format(
+            "Unicode Find result selection failed: items=1; selected={0}; " +
+            "focus HWND={1}; list HWND=0x{2:X}; foreground HWND=0x{3:X}",
+            selectedCount, focus, list.ToInt64(),
+            GetForegroundWindow().ToInt64()));
     }
 }
 '@
