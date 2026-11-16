@@ -14,7 +14,7 @@ $releaseWorkflow = Get-Content -LiteralPath (
     Join-Path $toolsDir '..\..\.github\workflows\pr-release-package.yml') -Raw
 $packagingScript = Get-Content -LiteralPath (
     Join-Path $toolsDir 'Update-Build-Test-Package.ps1') -Raw
-if (-not $releaseWorkflow.Contains('OpenSal\dist\SHA256SUMS-Release.txt') -or
+if (-not $releaseWorkflow.Contains('OpenSal\public-release\SHA256SUMS-Release.txt') -or
     -not $packagingScript.Contains("'SHA256SUMS-Release.txt'") -or
     -not $packagingScript.Contains('OpenSalamander-Release-x64.7z') -or
     -not $packagingScript.Contains('OpenSalamander-Release-x64-Setup.exe') -or
