@@ -141,8 +141,7 @@ if (-not $internalHint.Contains('internal text viewer') -or
     $internalHint.Contains('X8D_BIN_TOOLS_PATH')) {
     throw 'Internal viewer selection must fail with a specific PictView association diagnosis.'
 }
-if (-not $hostText.Contains("'Salamander''s Viewer Window'") -and
-    -not $hostText.Contains('Salamander\'s Viewer Window')) {
+if (-not $hostText.Contains('Salamander''s Viewer Window')) {
     throw 'Host GUI smoke must detect the actual internal viewer HWND without timeout.'
 }
 $genericHint = Get-PictViewHostFailureHint -DialogText '[Error] [Static] Unable to decode BMP' -PictViewResident $true
