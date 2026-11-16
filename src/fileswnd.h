@@ -553,8 +553,6 @@ public:
 
     const char* GetPath() { return Path.c_str(); }
     BOOL HasLongDiskPath() { return Is(ptDisk) && Path.size() >= MAX_PATH - 2; }
-    // The unchanged ANSI plugin ABI cannot address long paths or lossy rows.
-    BOOL HasUnsupportedLegacyPluginSelection();
     BOOL Is(CPanelType type) { return type == PanelType; }
     CPanelType GetPanelType() { return PanelType; }
     BOOL GetMonitorChanges() { return MonitorChanges; }
@@ -713,6 +711,9 @@ enum CViewModeEnum;
 class CFilesWindow : public CFilesWindowAncestor
 {
 public:
+    // The unchanged ANSI plugin ABI cannot address long paths or lossy rows.
+    BOOL HasUnsupportedLegacyPluginSelection();
+
     // Read-only mapping from legacy disk-panel names to original UTF-16 names.
     // Never put this state into the plug-in-visible CFileData structure.
     Salamander::UnicodePanelNameCache UnicodeDiskNames;
