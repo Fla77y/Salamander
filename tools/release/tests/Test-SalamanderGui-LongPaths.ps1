@@ -1440,7 +1440,56 @@ function Test-UnicodeFindGui {
             [IO.File]::ReadAllBytes($stalePath), $staleBytes)) (
         'Modified-result refusal preserves source and creates no destination')
 
-    # Closing the modeless Find window must leave the Salamander owner alive.
+
+    # Exercise cancellation while the search worker is scanning a large file.
+    # SetLength avoids allocating a 128 MiB managed buffer. The file is
+    # disposable and no untrusted files are searched by this stress case.
+    $cancelProbePath = Join-Path $findRoot 'cancel-probe.bin'
+    $cancelStream = [IO.File]::Open(
+        $cancelProbePath, [IO.FileMode]::CreateNew,
+        [IO.FileAccess]::Write, [IO.FileShare]::None)
+    try { $cancelStream.SetLength(128MB) }
+    finally { $cancelStream.Dispose() }
+    [SalamanderGuiNative]::SetFindText(
+        $script:findWindow, [uint32]$process.Id, 5102, 'cancel-probe.bin')
+    [SalamanderGuiNative]::SetFindText(
+        $script:findWindow, [uint32]$process.Id, 5103, 'missing-cancellation-needle')
+    [SalamanderGuiNative]::ClickFindButton(
+        $script:findWindow, [uint32]$process.Id, 5107)
+    [SalamanderGuiNative]::ClickFindButton(
+        $script:findWindow, [uint32]$process.Id, 5108)
+    Wait-Until {
+        $status = [SalamanderGuiNative]::ReadFindText(
+            $script:findWindow, [uint32]$process.Id, 5118)
+        if ($status -like 'Completed:*') {
+            throw 'Unicode Find completed too quickly to verify GUI cancellation.'
+        }
+        if ($status -like 'Search incomplete*') {
+            throw "Unicode Find cancellation failed: $status"
+        }
+        return $status -like 'Search cancelled:*'
+    } 'Unicode Find cancellation through the real GUI'
+    Assert-True ([SalamanderGuiNative]::FindResultCount(
+        $script:findWindow, [uint32]$process.Id) -eq 0) (
+        'Cancelled Unicode Find does not invent any results')
+
+    # Start another slow scan and close the modeless window while it runs.
+    # Closing is posted because its GUI thread joins the worker; a timed
+    # synchronous command could falsely report a hung window.
+    [SalamanderGuiNative]::ClickFindButton(
+        $script:findWindow, [uint32]$process.Id, 5107)
+    [SalamanderGuiNative]::PostFindButton(
+        $script:findWindow, [uint32]$process.Id, 5116)
+    Wait-Until { (Get-UnicodeFindWindow) -eq [IntPtr]::Zero } (
+        'Unicode Find closes and joins an active search worker')
+    $process.Refresh()
+    Assert-True (-not $process.HasExited) (
+        'Closing an active Unicode Find search leaves Salamander alive')
+    [IO.File]::Delete($cancelProbePath)
+    Assert-True (-not [IO.File]::Exists($cancelProbePath)) (
+        'GUI cancellation fixture cleaned up without modifying other files')
+    Write-Host 'PASS: Unicode Find GUI search, actions, shell refusal, cancellation and worker shutdown.'
+    return
     [SalamanderGuiNative]::PostFindButton($script:findWindow, [uint32]$process.Id, 5116)
     Wait-Until { (Get-UnicodeFindWindow) -eq [IntPtr]::Zero } 'Unicode Find window closure'
     $process.Refresh()
