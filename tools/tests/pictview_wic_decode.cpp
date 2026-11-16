@@ -23,6 +23,21 @@ constexpr std::array<unsigned char, 62> kTwoPixelBmp = {
 };
 static_assert(kTwoPixelBmp.size() == 62, "invalid BMP fixture");
 
+// A complete 1x1 RGBA PNG: R=0x80, G=0x40, B=0x20, A=0x7f.
+// This catches accidental conversion to premultiplied BGRA.
+constexpr std::array<unsigned char, 70> kAlphaPng = {
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+    0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+    0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+    0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+    0x89, 0x00, 0x00, 0x00, 0x0D, 0x49, 0x44, 0x41,
+    0x54, 0x78, 0x9C, 0x63, 0x68, 0x70, 0x50, 0xA8,
+    0x07, 0x00, 0x03, 0x84, 0x01, 0x60, 0xAC, 0x37,
+    0x4B, 0x3A, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45,
+    0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82
+};
+
+
 bool Check(bool condition, const char* scenario)
 {
     if (!condition)
@@ -64,6 +79,7 @@ bool Tests()
 
     // Arrange
     const std::wstring imagePath = folder + L"\\Grün-\u6F22\u5B57.bmp";
+    const std::wstring alphaPath = folder + L"\\alpha-\u6F22\u5B57.png";
     const std::wstring corruptPath = folder + L"\\corrupt.bmp";
     pictview::wic::DecodedImage result;
 
@@ -83,6 +99,27 @@ bool Tests()
              Check(result.bgra.size() == expected.size() &&
                    std::equal(result.bgra.begin(), result.bgra.end(), expected.begin()),
                    "WIC preserves exact BGRA pixels");
+    }
+
+    if (ok)
+    {
+        // Arrange: a PNG with partial transparency and Unicode filename.
+        ok = WriteBytes(alphaPath, kAlphaPng.data(),
+                        static_cast<DWORD>(kAlphaPng.size()));
+        if (ok)
+        {
+            // Act
+            const HRESULT hr = pictview::wic::DecodeFirstFrame(alphaPath.c_str(), result);
+
+            // Assert
+            const std::array<std::uint8_t, 4> expected = {0x20, 0x40, 0x80, 0x7F};
+            ok = Check(SUCCEEDED(hr), "WIC PNG decode succeeds") &&
+                 Check(result.width == 1 && result.height == 1 &&
+                       result.stride == 4, "PNG dimensions and stride correct") &&
+                 Check(result.bgra.size() == expected.size() &&
+                       std::equal(result.bgra.begin(), result.bgra.end(), expected.begin()),
+                       "PNG preserves straight-alpha BGRA");
+        }
     }
 
     if (ok)
@@ -128,6 +165,7 @@ bool Tests()
     }
 
     DeleteFileW(imagePath.c_str());
+    DeleteFileW(alphaPath.c_str());
     DeleteFileW(corruptPath.c_str());
     RemoveDirectoryW(folder.c_str());
     return ok;
