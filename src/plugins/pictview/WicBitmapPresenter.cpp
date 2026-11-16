@@ -71,13 +71,9 @@ bool FitImage(UINT width, UINT height, const RECT& client, RECT& target) noexcep
     return true;
 }
 
-HRESULT PaintImage(HDC dc, const RECT& client, const DecodedImage& image) noexcept
+HRESULT PaintImageAt(HDC dc, const RECT& dest, const DecodedImage& image) noexcept
 {
-    if (!dc)
-        return E_INVALIDARG;
-
-    RECT dest{};
-    if (!FitImage(image.width, image.height, client, dest))
+    if (!dc || dest.right <= dest.left || dest.bottom <= dest.top)
         return E_INVALIDARG;
     std::vector<std::uint8_t> pixels;
     const HRESULT hr = PrepareOpaqueBgra(image, pixels);
@@ -86,10 +82,10 @@ HRESULT PaintImage(HDC dc, const RECT& client, const DecodedImage& image) noexce
 
     BITMAPINFO info{};
     info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    info.bmiHeader.biWidth = static_cast<LONG>(image.width);
     if (image.width > static_cast<UINT>(INT_MAX) ||
         image.height > static_cast<UINT>(INT_MAX))
         return E_INVALIDARG;
+    info.bmiHeader.biWidth = static_cast<LONG>(image.width);
     info.bmiHeader.biHeight = -static_cast<LONG>(image.height);
     info.bmiHeader.biPlanes = 1;
     info.bmiHeader.biBitCount = 32;
@@ -102,7 +98,15 @@ HRESULT PaintImage(HDC dc, const RECT& client, const DecodedImage& image) noexce
                                   0, 0, static_cast<int>(image.width),
                                   static_cast<int>(image.height), pixels.data(),
                                   &info, DIB_RGB_COLORS, SRCCOPY);
+    const DWORD error = ret == GDI_ERROR ? GetLastError() : ERROR_SUCCESS;
     SetStretchBltMode(dc, previousMode);
-    return ret == GDI_ERROR ? HRESULT_FROM_WIN32(GetLastError()) : S_OK;
+    return ret == GDI_ERROR ? HRESULT_FROM_WIN32(error) : S_OK;
+}
+HRESULT PaintImage(HDC dc, const RECT& client, const DecodedImage& image) noexcept
+{
+    RECT dest{};
+    if (!FitImage(image.width, image.height, client, dest))
+        return E_INVALIDARG;
+    return PaintImageAt(dc, dest, image);
 }
 } // namespace pictview::wic
