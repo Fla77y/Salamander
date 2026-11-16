@@ -1755,7 +1755,7 @@ function Test-PluginLoadSmoke {
                     # concrete failure; present files require further
                     # runtime diagnosis rather than being declared valid.
                     $pictViewDirectory = Join-Path $binaryRoot 'plugins\pictview'
-                    $sidecars = @('pictview.spl', 'SalPVEnv.exe', 'PVW32Cnv.dll' |
+                    $sidecars = @(@('pictview.spl', 'SalPVEnv.exe', 'PVW32Cnv.dll') |
                         ForEach-Object {
                             $candidate = Join-Path $pictViewDirectory $_
                             $status = if ([IO.File]::Exists($candidate)) { 'present' } else { 'MISSING' }
