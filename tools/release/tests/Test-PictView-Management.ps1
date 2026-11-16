@@ -74,8 +74,8 @@ foreach ($required in @('PictViewHostWindows', 'GetWindowThreadProcessId',
                        'PictView SPL was not loaded', 'Viewer associations',
                        'Test-owned windows', 'before sending F3',
                        'EnumChildWindows', 'GetDialogDetails',
-                       'Error dialog after F3', 'Copy focused filename',
-                       'GetClipboardSequenceNumber')) {
+                       'Error dialog after F3', 'single BMP fixture',
+                       'GetDialogDetails')) {
     if (-not $hostText.Contains($required)) {
         throw "PictView host smoke is missing safety contract: $required"
     }
