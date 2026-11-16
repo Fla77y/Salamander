@@ -13,7 +13,7 @@ $repository = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Provide
 $buildRoot = 'D:\Build\OpenSal'
 $configuration = 'Release'
 $validOptions = @('--update', '--build', '--test', '--setup', '--run',
-                  '--debug', '--release', '--all', '--test-all', '--test-gui', '--test-gui-max-path', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-recycle-restore', '--test-plugin-exports', '--test-plugin-load', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-unicode-find', '--test-gui-manual', '--test-pictview', '--test-pictview-window', '--test-pictview-host', '--help', '-h', '/?')
+                  '--debug', '--release', '--all', '--test-all', '--test-gui', '--test-gui-max-path', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-recycle-restore', '--test-plugin-exports', '--test-plugin-load', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-unicode-find', '--test-gui-manual', '--test-gui-temp-delete', '--test-pictview', '--test-pictview-window', '--test-pictview-host', '--help', '-h', '/?')
 $requestedSet = [System.Collections.Generic.HashSet[string]]::new(
     [StringComparer]::OrdinalIgnoreCase)
 
@@ -60,6 +60,7 @@ Open Salamander – Verwaltung für Visual Studio 2026
   manage.cmd --test-gui-unicode-directory-rename  F2-Umbenennung eines Unicode-Verzeichnisses prüfen
   manage.cmd --test-gui-unsafe-unicode-operations  F2/F5/F6/F8 mit nicht darstellbaren Unicode-Namen sicher abweisen
   manage.cmd --test-gui-unicode-find  Neues F2-Unicode-Suchfenster: Suche, Pfade, Copy/Move/Rename, Kollisionsschutz
+  manage.cmd --test-gui-temp-delete  Echtes F8-Löschen verschachtelter temporärer Unicode-Langpfade
   manage.cmd --test-gui-manual  Testdaten behalten und Salamander zum manuellen Test starten
   manage.cmd --run          Release-Version starten
   manage.cmd --run --debug  Debug-Version starten
@@ -102,6 +103,7 @@ function Expand-AutomatedTestActions {
     [void]$RequestedSet.Add('--test')
     [void]$RequestedSet.Add('--test-pictview')
     [void]$RequestedSet.Add('--test-pictview-window')
+    [void]$RequestedSet.Add('--test-plugin-exports')
     foreach ($option in $AvailableOptions) {
         if ($option.StartsWith('--test-gui', [StringComparison]::OrdinalIgnoreCase) -and
             $option -ne '--test-gui-manual') {
@@ -236,6 +238,26 @@ function Run-Tests {
 
     $guiDriverContract = Join-Path $repository 'tools\release\tests\Test-GuiDriver-Contract.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $guiDriverContract)
+
+    # Synthetic regression tests: no installer, arbitrary plugin or user file executed.
+    $contractTests = @(
+        'Test-GuiProcessTemp-Isolation.ps1',
+        'Test-PluginExport-Parser.ps1',
+        'Test-PictViewRuntime-Prerequisites.ps1',
+        'Test-PortableManifest-Regression.ps1',
+        'Test-InstalledPayload-Regression.ps1',
+        'Test-ReleasePublicArtifact.ps1',
+        'Test-ReleaseWorkflow-Order.ps1'
+    )
+    foreach ($contractTest in $contractTests) {
+        $testScript = Join-Path $repository ('tools\release\tests\' + $contractTest)
+        if (-not (Test-Path -LiteralPath $testScript -PathType Leaf)) {
+            throw "Required regression missing: $testScript"
+        }
+        Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $testScript)
+    }
+    $clipboardContract = Join-Path $repository 'tools\release\tests\Test-GuiClipboard-Isolation.ps1'
+    Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $clipboardContract)
 
     $regression = Join-Path $repository 'tools\release\tests\Test-Package-Helpers.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $regression)
@@ -465,6 +487,13 @@ try {
         }
         $automatedGuiModes = @(Get-AutomatedGuiModes -RequestedSet $requestedSet)
         foreach ($guiMode in $automatedGuiModes) {
+            if ($requestedSet.Contains('--test-gui-temp-delete')) {
+                Write-Host '=== GUI F8 RECURSIVE UNICODE TEMP DIRECTORY DELETION ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-TemporaryDirectoryDeletionOnly')
+            }
             if ($requestedSet.Contains('--test-gui-baseline')) {
                 Write-Host '=== SALAMANDER-GUI-TESTTREIBER, KURZPFAD-BASIS ==='
                 $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
