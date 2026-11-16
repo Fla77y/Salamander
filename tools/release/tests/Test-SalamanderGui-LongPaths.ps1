@@ -734,6 +734,33 @@ function Wait-ForNativeDebugger {
     throw 'Native debugger was not attached within 5 minutes; long-path navigation was not attempted.'
 }
 
+# A foreground change can happen between verified WM_COMMAND 775 and
+# reading the result. Recover only the original test window once; never
+# dispatch a second navigation merely because another app took focus.
+function Recover-NavigationForeground {
+    param([Parameter(Mandatory)][hashtable]$Diagnostics)
+
+    if ((Get-ActiveProcessId) -eq [uint32]$process.Id) { return }
+
+    $dialog = Get-TestDialog
+    if (-not [string]::IsNullOrEmpty($dialog)) {
+        throw "Navigation focus lost while Salamander displayed a dialog: $dialog"
+    }
+    if ($Diagnostics.FocusRecoveryAttempted) {
+        throw ("Navigation interrupted by repeated external foreground activation; " +
+               "no additional navigation command was dispatched. Foreground: " +
+               (Get-ForegroundWindowSummary))
+    }
+
+    $Diagnostics.FocusRecoveryAttempted = $true
+    $previousForeground = Get-ForegroundWindowSummary
+    Focus-TestProcess
+    if ((Get-ActiveProcessId) -ne [uint32]$process.Id) {
+        throw "Navigation focus recovery did not retain the verified test window."
+    }
+    Write-Host "GUI navigation focus recovered once; previous foreground: $previousForeground"
+}
+
 function Go-ToPath {
     param([string]$Path)
 
@@ -748,6 +775,7 @@ function Go-ToPath {
         ForegroundPid = 0
         PanelPath = '<not read>'
         PanelReadError = '<none>'
+        FocusRecoveryAttempted = $false
     }
 
     for ($attempt = 1; $attempt -le $maxNavigationAttempts; $attempt++) {
@@ -780,9 +808,13 @@ function Go-ToPath {
                     throw "Salamander raised a dialog during navigation to $($pathSummary): $dialogText"
                 }
                 $diagnostics.ForegroundPid = Get-ActiveProcessId
-                if ($diagnostics.ForegroundPid -ne [uint32]$process.Id) { return $false }
-                # Do not steal focus from an error dialog to make a timeout look
-                # like an application path failure.
+                if ($diagnostics.ForegroundPid -ne [uint32]$process.Id) {
+                    # This is an infrastructure focus race, not a path failure.
+                    # Recover the verified test window at most once, after
+                    # checking for modal dialogs and without resending WM_COMMAND.
+                    Recover-NavigationForeground -Diagnostics $diagnostics
+                    $diagnostics.ForegroundPid = Get-ActiveProcessId
+                }
                 try {
                     $diagnostics.PanelPath = Read-PanelPath
                     $diagnostics.PanelReadError = '<none>'
@@ -803,6 +835,7 @@ function Go-ToPath {
             if ($attempt -lt $maxNavigationAttempts -and
                 $failure -like 'Timeout waiting for Salamander navigation*' -and
                 $diagnostics.ForegroundPid -eq [uint32]$process.Id -and
+                -not $diagnostics.FocusRecoveryAttempted -and
                 [string]::IsNullOrEmpty($dialogText)) {
                 Write-Warning ("GUI navigation not confirmed on attempt {0}; last path='{1}'; clipboard read='{2}'. Retrying once." -f
                     $attempt, (Format-GuiDiagnosticPath $diagnostics.PanelPath), $diagnostics.PanelReadError)
