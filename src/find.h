@@ -765,6 +765,9 @@ public:
     void SetZeroOnDestroy(CFindDialog** zeroOnDestroy) { ZeroOnDestroy = zeroOnDestroy; }
 
     BOOL GetFocusedFile(char* buffer, int bufferLen, int* viewedIndex /* can be NULL */);
+    // Refuse ambiguous ANSI search results before invoking any legacy shell action.
+    BOOL ValidateLegacyFindResult(const char* path, const char* name);
+    BOOL ValidateSelectedLegacyFindResults();
     const char* GetName(int index);
     const char* GetPath(int index);
     void UpdateInternalViewerData();
