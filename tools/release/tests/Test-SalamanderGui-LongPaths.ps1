@@ -708,9 +708,10 @@ function Wait-ForNativeDebugger {
         throw 'Cannot attach debugger: test Salamander exited.'
     }
 
-    Write-Host ("DEBUGGER ATTACH: attach Visual Studio native C++ debugger to " +
-                "salamand.exe PID {0} (Debug x64). Navigation will begin " +
-                "after CheckRemoteDebuggerPresent confirms attachment." -f $process.Id)
+    $attachMessage = ("DEBUGGER ATTACH: attach Visual Studio native C++ debugger to " +
+                      "salamand.exe PID {0} (Debug x64). Navigation will begin " +
+                      "after CheckRemoteDebuggerPresent confirms attachment.")
+    Write-Host ($attachMessage -f $process.Id)
     $deadline = [DateTime]::UtcNow.AddMinutes(5)
     while ([DateTime]::UtcNow -lt $deadline) {
         $process.Refresh()
