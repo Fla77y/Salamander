@@ -529,6 +529,28 @@ function Restore-FilePanelFocus {
     Write-Host 'PASS: Verified file-panel keyboard focus restored through Salamander WM_ACTIVATE'
 }
 
+# Only the read-only SHORT baseline may recover foreground focus between
+# an already-sent END key and observing its selected filename. An unrelated
+# window can steal foreground while SendKeys.SendWait is completing. Never
+# replay the key: simply restore the verified test app and assert the result.
+function Recover-BaselineReadFocus {
+    if ((Get-ActiveProcessId) -eq [uint32]$process.Id) { return }
+
+    $dialog = Get-TestDialog
+    if (-not [string]::IsNullOrEmpty($dialog)) {
+        throw "Cannot recover baseline focus while a modal Salamander dialog is open: $dialog"
+    }
+
+    $previousForeground = Get-ForegroundWindowSummary
+    Focus-TestProcess
+    Restore-FilePanelFocus -ExpectedPath $source
+    if ((Get-ActiveProcessId) -ne [uint32]$process.Id) {
+        throw ("Baseline foreground changed again after recovery; no key was repeated. " +
+               "Foreground: $(Get-ForegroundWindowSummary)")
+    }
+    Write-Host "GUI baseline read-only focus recovered once; previous foreground: $previousForeground"
+}
+
 function Send-Keys {
     param([string]$Keys)
 
@@ -1267,6 +1289,7 @@ try {
             $mainWindowHandle, [uint32]$process.Id)
         Send-Keys '{END}'
         try {
+            Recover-BaselineReadFocus
             $focusedName = Read-FocusedFilename
         }
         catch {
