@@ -598,8 +598,9 @@ $selectInterop = [regex]::Match(
 if (-not $selectInterop.Success -or
     [regex]::Matches($selectInterop.Value, 'mouse_event\(').Count -ne 2 -or
     $selectInterop.Value -notmatch 'VerifiedChild\(window, pid, 5117\)' -or
-    $selectInterop.Value -notmatch 'SelectedFindIndex' -and
-    $selectInterop.Value -notmatch 'WaitForFindSelection') {
+    $selectInterop.Value -notmatch 'WaitForFindSelection' -or
+    $selectInterop.Value -notmatch '0x0100' -or
+    $selectInterop.Value -notmatch '0x0101') {
     throw 'Unicode Find selection must use a single checked click and a safe keyboard fallback.'
 }
 Write-Host 'PASS: Unicode Find selection is bounded, diagnosed and never retries a potentially opening mouse click.'
