@@ -10,6 +10,7 @@ on:
       - "tools/release/tests/Test-PictView-Management.ps1"
       - "tools/release/tests/Invoke-PictViewTests.ps1"
       - "tools/release/tests/Test-PictView-Host.ps1"
+      - "tools/release/tests/PictView-HostDiagnostics.ps1"
       - "tools/Manage-Salamander.ps1"
       - "tools/tests/pictview_wic_window.cpp"
       - ".github/workflows/pr-pictview-local.yml"
