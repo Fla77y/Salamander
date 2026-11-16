@@ -80,6 +80,20 @@ to this configuration problem without changing the environment, registry or
 the user's saved Viewer associations. The F3 test must actually open the WIC
 viewer to pass.
 
+A second failure mode is a window with native class
+`Salamander's Viewer Window` and a caption ending in `test-image.bmp - Viewer`.
+This is Salamander's built-in **text/hex viewer**, not PictView. The GUI
+host smoke now recognizes this condition immediately and fails with a
+specific diagnostic instead of waiting for the WIC HWND timeout. The
+presence of `plugins\\pictview\\pictview.spl` beside salamand.exe is
+not sufficient proof that PictView is installed in the user's Plugin
+Manager or chosen ahead of the default internal `*.*` association.
+If PictView is absent, install the SPL via **Plugins > Plugins Manager >
+Add** from the same x64 build; then configure the `*.bmp` rule under
+**Options > Configuration > Viewers** and save configuration. The host
+test must not silently mutate these user preferences.
+
+
 Test outputs are generated beneath the user's temporary
 `OpenSalamander\PictView-Tests` directory unless `-OutputDirectory` is
 specified for `Invoke-PictViewTests.ps1`. No test overwrites user files.
