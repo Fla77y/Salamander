@@ -4,6 +4,9 @@
 #pragma once
 
 #include "win32_unicode_find.h"
+#include "win32_unicode_file_ops.h"
+#include "win32_unicode_rename_dialog.h"
+#include "win32_unicode_recycle.h"
 #include <windows.h>
 #include <commctrl.h>
 #include <shellapi.h>
@@ -30,11 +33,16 @@ class UnicodeFindWindow
         Root = 5101,
         Masks,
         Content,
+        Target,
         Recurse,
         Find,
         Cancel,
         CopyPath,
         OpenFile,
+        CopyResult,
+        MoveResult,
+        RenameResult,
+        RecycleResult,
         Advanced,
         Close,
         Results,
@@ -46,6 +54,7 @@ class UnicodeFindWindow
     HWND root_ = nullptr;
     HWND masks_ = nullptr;
     HWND content_ = nullptr;
+    HWND target_ = nullptr;
     HWND recurse_ = nullptr;
     HWND results_ = nullptr;
     HWND status_ = nullptr;
@@ -101,6 +110,10 @@ class UnicodeFindWindow
         Child(window, L"STATIC", L"Containing (UTF-8/UTF-16LE):", 0, 0);
         content_ = Child(window, L"EDIT", L"",
                          WS_TABSTOP | ES_AUTOHSCROLL, Content, WS_EX_CLIENTEDGE);
+        Child(window, L"STATIC", L"Destination (full path):", 0, 0);
+        target_ = Child(window, L"EDIT", L"", WS_TABSTOP | ES_AUTOHSCROLL,
+                        Target, WS_EX_CLIENTEDGE);
+        SendMessageW(target_, EM_LIMITTEXT, 32766, 0);
         recurse_ = Child(window, L"BUTTON", L"Include subdirectories",
                          BS_AUTOCHECKBOX | WS_TABSTOP, Recurse);
         SendMessageW(recurse_, BM_SETCHECK, BST_CHECKED, 0);
@@ -108,6 +121,12 @@ class UnicodeFindWindow
         Child(window, L"BUTTON", L"Cancel", BS_PUSHBUTTON | WS_TABSTOP, Cancel);
         Child(window, L"BUTTON", L"Copy full path", BS_PUSHBUTTON | WS_TABSTOP, CopyPath);
         Child(window, L"BUTTON", L"Open", BS_PUSHBUTTON | WS_TABSTOP, OpenFile);
+        Child(window, L"BUTTON", L"Copy file to destination",
+              BS_PUSHBUTTON | WS_TABSTOP, CopyResult);
+        Child(window, L"BUTTON", L"Move file to destination",
+              BS_PUSHBUTTON | WS_TABSTOP, MoveResult);
+        Child(window, L"BUTTON", L"Rename", BS_PUSHBUTTON | WS_TABSTOP, RenameResult);
+        Child(window, L"BUTTON", L"Recycle", BS_PUSHBUTTON | WS_TABSTOP, RecycleResult);
         Child(window, L"BUTTON", L"Advanced (legacy)", BS_PUSHBUTTON | WS_TABSTOP, Advanced);
         Child(window, L"BUTTON", L"Close", BS_PUSHBUTTON | WS_TABSTOP, Close);
         results_ = Child(window, WC_LISTVIEWW, L"",
@@ -167,13 +186,15 @@ class UnicodeFindWindow
             int y = 12;
             if (wcscmp(caption, L"Named:") == 0) y = 44;
             else if (wcsncmp(caption, L"Containing", 10) == 0) y = 76;
+            else if (wcsncmp(caption, L"Destination", 11) == 0) y = 108;
             MoveWindow(child, inset, y, labelWidth, 24, TRUE);
         }
         MoveWindow(masks_, editX, 44, editWidth, 24, TRUE);
         MoveWindow(content_, editX, 76, editWidth, 24, TRUE);
-        MoveWindow(recurse_, inset, 109, 195, 26, TRUE);
+        MoveWindow(target_, editX, 108, editWidth, 24, TRUE);
+        MoveWindow(recurse_, inset, 141, 195, 26, TRUE);
 
-        const int yButtons = 140;
+        const int yButtons = 172;
         const struct { int id; int w; } buttons[] = {
             {Find, 92}, {Cancel, 75}, {CopyPath, 112},
             {OpenFile, 72}, {Advanced, 155}, {Close, 72}
@@ -184,7 +205,17 @@ class UnicodeFindWindow
             MoveWindow(GetControl(b.id), x, yButtons, b.w, 27, TRUE);
             x += b.w + 7;
         }
-        const int listTop = 180;
+        const struct { int id; int w; } fileButtons[] = {
+            {CopyResult, 180}, {MoveResult, 180}, {RenameResult, 100},
+            {RecycleResult, 105}
+        };
+        x = inset;
+        for (const auto& b : fileButtons)
+        {
+            MoveWindow(GetControl(b.id), x, 210, b.w, 27, TRUE);
+            x += b.w + 7;
+        }
+        const int listTop = 251;
         const int statusHeight = 27;
         MoveWindow(results_, inset, listTop, contentWidth,
                    height > listTop + statusHeight + inset ?
@@ -328,6 +359,121 @@ class UnicodeFindWindow
         return static_cast<int>(SendMessageW(results_, LVM_GETNEXTITEM, -1, LVNI_SELECTED));
     }
 
+    // Convert the exact result path into the immutable validated W-operation
+    // model, never through a legacy ANSI alias.
+    static bool OwnPath(const std::wstring& text, Utf16DiskPath& owned)
+    {
+        static_assert(sizeof(wchar_t) == sizeof(char16_t),
+                      "Find result operations require Windows UTF-16");
+        Utf16PathError error = Utf16PathError::None;
+        return Utf16DiskPath::TryCreateAbsolute(
+            std::u16string(text.begin(), text.end()), owned, error);
+    }
+
+    bool OriginalResultUnchanged(const UnicodeFindHit& hit)
+    {
+        std::wstring extended;
+        DWORD error = ERROR_SUCCESS;
+        if (!TryMakeExtendedLengthPath(hit.FullPath().c_str(), extended, error))
+            return false;
+        WIN32_FILE_ATTRIBUTE_DATA actual{};
+        if (!GetFileAttributesExW(extended.c_str(), GetFileExInfoStandard, &actual))
+            return false;
+        const std::uint64_t size =
+            (static_cast<std::uint64_t>(actual.nFileSizeHigh) << 32) |
+            actual.nFileSizeLow;
+        return actual.dwFileAttributes == hit.attributes &&
+               ((hit.attributes & FILE_ATTRIBUTE_DIRECTORY) != 0 ||
+                (size == hit.size &&
+                 CompareFileTime(&actual.ftLastWriteTime, &hit.lastWrite) == 0));
+    }
+
+    void RunFileAction(int command)
+    {
+        const int index = SelectedIndex();
+        if (index < 0 || static_cast<std::size_t>(index) >= displayed_.size())
+            return;
+        const UnicodeFindHit hit = displayed_[index];
+        if (!OriginalResultUnchanged(hit))
+        {
+            SetWindowTextW(status_, L"The result has changed since the search. "
+                            L"Search again before performing a file action.");
+            return;
+        }
+
+        const bool isDirectory =
+            (hit.attributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+        Utf16DiskPath source;
+        if (!OwnPath(hit.FullPath(), source))
+        {
+            SetWindowTextW(status_, L"Result path is not valid for a file operation.");
+            return;
+        }
+        if (command == RecycleResult)
+        {
+            // Existing IFileOperation adapter is deliberately limited to
+            // short local files. Never silently turn a recycle into deletion.
+            HRESULT hresult = E_FAIL;
+            if (!isDirectory && TryRecycleUnicodeFile(source, window_, hresult))
+            {
+                SendMessageW(results_, LVM_DELETEITEM, index, 0);
+                displayed_.erase(displayed_.begin() + index);
+                SetWindowTextW(status_, L"File moved to the Recycle Bin.");
+            }
+            else
+                SetWindowTextW(status_, L"Recycle unsupported or refused. "
+                                L"No permanent delete was attempted.");
+            return;
+        }
+
+        std::wstring destination;
+        if (command == RenameResult)
+        {
+            std::wstring newName;
+            if (!TryPromptUnicodeRename(window_, hit.name, isDirectory, false, newName))
+                return;
+            destination = hit.directory +
+                (hit.directory.back() == L'\\' ? L"" : L"\\") + newName;
+        }
+        else
+            destination = ReadText(target_);
+        Utf16DiskPath target;
+        if (!OwnPath(destination, target))
+        {
+            SetWindowTextW(status_, L"Enter a valid absolute Unicode destination path.");
+            return;
+        }
+        if (isDirectory && command == CopyResult)
+        {
+            SetWindowTextW(status_, L"Recursive directory copy is not supported "
+                            L"by this safe single-file operation.");
+            return;
+        }
+        DWORD error = ERROR_SUCCESS;
+        bool succeeded = false;
+        if (command == CopyResult)
+            succeeded = TryCopyUnicodeFileNoOverwrite(source, target, error);
+        else if (isDirectory)
+            succeeded = TryMoveUnicodeDirectoryNoOverwrite(source, target, error);
+        else
+            succeeded = TryMoveUnicodeFileNoOverwrite(source, target, error);
+        if (!succeeded)
+        {
+            wchar_t message[110]{};
+            swprintf_s(message, L"File action rejected (Win32 %lu). "
+                       L"No overwrite fallback was attempted.", error);
+            SetWindowTextW(status_, message);
+            return;
+        }
+        if (command != CopyResult)
+        {
+            SendMessageW(results_, LVM_DELETEITEM, index, 0);
+            displayed_.erase(displayed_.begin() + index);
+        }
+        SetWindowTextW(status_, L"Unicode file action completed. "
+                        L"No existing destination was overwritten.");
+    }
+
     void CopySelectedPath()
     {
         const int index = SelectedIndex();
@@ -436,6 +582,10 @@ class UnicodeFindWindow
                 case Cancel: state->cancellation_.store(true); break;
                 case CopyPath: state->CopySelectedPath(); break;
                 case OpenFile: state->OpenSelected(); break;
+                case CopyResult:
+                case MoveResult:
+                case RenameResult:
+                case RecycleResult: state->RunFileAction(LOWORD(wParam)); break;
                 case Advanced: state->OpenLegacy(); break;
                 case Close: DestroyWindow(window); break;
                 }
@@ -486,7 +636,7 @@ public:
         HWND window = CreateWindowExW(WS_EX_APPWINDOW, cls,
             L"Open Salamander — Unicode Find (UTF-16 / long paths)",
             WS_OVERLAPPEDWINDOW | WS_CLIPCHILDREN,
-            CW_USEDEFAULT, CW_USEDEFAULT, 1000, 690,
+            CW_USEDEFAULT, CW_USEDEFAULT, 1100, 780,
             owner, nullptr, GetModuleHandleW(nullptr), state);
         if (!window)
         {
