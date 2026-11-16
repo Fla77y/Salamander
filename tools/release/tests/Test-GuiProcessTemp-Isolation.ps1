@@ -18,7 +18,7 @@ if (-not $IsWindows) { throw 'GUI TEMP-isolation regression requires Windows.' }
 
 foreach ($name in @('Test-SalamanderGui-LongPaths.ps1', 'Test-PictView-Host.ps1')) {
     $source = Get-Content -LiteralPath (Join-Path $PSScriptRoot $name) -Raw
-    if (-not $source.Contains("Join-Path $root 'process-temp'") -or
+    if (-not $source.Contains('Join-Path $root ''process-temp''') -or
         -not $source.Contains('[IO.Directory]::CreateDirectory($processTemp)') -or
         -not $source.Contains('-Environment @{ TEMP = $processTemp; TMP = $processTemp }')) {
         throw "GUI runner $name must isolate TEMP/TMP for its own Salamander child process."
