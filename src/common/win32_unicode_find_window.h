@@ -643,8 +643,8 @@ public:
         info.cbSize = sizeof(info);
         info.lpfnWndProc = &WindowProcedure;
         info.hInstance = GetModuleHandleW(nullptr);
-        // IDC_ARROW is an ANSI MAKEINTRESOURCE in this non-UNICODE build.
-        info.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(OCR_NORMAL));
+        // Match the cursor resource and API variant in this non-UNICODE build.
+        info.hCursor = LoadCursor(nullptr, IDC_ARROW);
         info.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1);
         info.lpszClassName = cls;
         if (!RegisterClassExW(&info) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
