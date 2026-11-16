@@ -13,6 +13,23 @@ Status: **not yet approved for public release**. Keep the change set in Draft un
 
 All checks must target the **same final commit**. Recheck after every code or packaging change.
 
+### Verified automated results (16 November 2026)
+
+At commit `fd2a94f1a8ccd88d734b6c392cf662a7fd27cafe`, all six GitHub
+Actions workflows completed successfully. The Release workflow rebuilt the
+packages, validated the portable payload, performed silent install/uninstall
+and compared installed files to the portable payload; its downstream job
+downloaded and verified the public GitHub artifact again. The Windows
+clipboard contention regressions passed, including sustained-lock refusal.
+
+**Do not treat that SHA as the final release SHA after later documentation,
+packaging, or manager updates.** The checkboxes above remain open until the
+last source commit has all required checks green. The repository's third-party
+notice source is `doc/third_party.txt`; the staged release file is
+`THIRD_PARTY_LICENSES.txt`. The stage now requires that file to exist.
+
+
+
 ## 2. Interactive GUI and plugin acceptance on Windows x64
 
 Stop running Salamander instances first; use the matching freshly-built Release binaries. These commands are opt-in because they send real input and may load installed third-party plugins.
@@ -28,7 +45,18 @@ Stop running Salamander instances first; use the matching freshly-built Release 
 
 - [x] **2026-11-16 19:02 CET**: local `--test-pictview-host` passed for one BMP through F3; verified the exact PictView SPL and native WIC HWND, clean close and unchanged source bytes.
 - [x] **2026-11-16 19:10 CET**: local `--test-plugin-load` passed, including the WIC prerequisite and actual Plug-in Manager Test All retaining the 7zip, checksum, filecomp and renamer Release x64 modules; Unicode fixture bytes unchanged.
-- [ ] Fresh post-packaging `--test-pictview-window`, complete GUI file operations (F5/F6, rename, delete/recycle restore, Unicode/long-path Find) and `--test-all --release` with logs.
+- [x] **2026-11-16 22:08 CET**: a real local Windows desktop
+  `manage.cmd --test-all` completed successfully for both **Release x64 and
+  Debug x64**, including GUI F2/F5/F6/F8, Unicode Find, clipboard/UNC and
+  32,700-unit UTF-16 boundaries. Evidence:
+  `manage-20261116-220310-109-0bc2c7.log`. The previous clipboard
+  deadlock and Win32 `OpenClipboard` error did not recur.
+  The transcript **did not record the git SHA or binary build provenance**;
+  this is evidence for the observed GUI execution, not an exact-commit
+  attestation.
+- [ ] Fresh `--test-pictview-window` and any required opt-in plug-in ABI,
+  recycle restore and host-initialization checks on the final candidate, with
+  dated evidence. These tests are intentionally not part of `--test-all`.
 - [ ] A selected BMP, PNG, JPEG, GIF, TIFF (including multi-frame), and ICO opens with F3, correct dimensions/pixels and no modal errors. Verify Save As/export, transform and clipboard actions appropriate to the actually implemented WIC scope.
 
 The original PictView/PVW32 engine is **not fully replaced feature-for-feature**. Legacy proprietary codecs, timed GIF playback, print/capture, and parts of the historical UI are outside the verified WIC scope. Do not claim full legacy equivalence. Document these limitations explicitly in the user-facing release notes or defer the public release if parity is a requirement.
@@ -45,7 +73,7 @@ Use two **fresh Windows 11 x64 VM snapshots** without Visual Studio, Windows SDK
 ## 4. Trust, licensing and provenance
 
 - [ ] Decide the **public Authenticode signing policy** before distribution. `tools/codesign/sign_with_retry.cmd` is currently a placeholder; a successful build does not constitute signed software. If releasing unsigned binaries is explicitly accepted, disclose this fact and likely Windows SmartScreen warning behavior. Otherwise provision a trusted signing certificate and verify signatures on the final EXE, DLL/SPL and installer.
-- [ ] Review `LICENSE`, `THIRD_PARTY_LICENSES.txt`, third-party bundled dependencies and their redistributability.
+- [ ] Review `LICENSE`, source notices in `doc/third_party.txt` (staged as `THIRD_PARTY_LICENSES.txt`), third-party bundled dependencies, and their redistributability; presence of notices alone is not approval.
 - [ ] Keep Debug builds and Microsoft Debug CRTs for private developer test machines only; no Debug artifacts in public Actions uploads or GitHub Releases.
 - [ ] Prepare public 5.2 release notes describing the implemented WIC feature subset and known incompatibilities.
 
