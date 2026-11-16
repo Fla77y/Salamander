@@ -1749,6 +1749,20 @@ function Test-PluginLoadSmoke {
                 $diagnostic = ("Blocking plug-in initialization dialog: {0}; " +
                                "Missing target plug-in modules: {1}") -f
                                $blocked, ($missing.Paths -join '; ')
+                if ($blocked -match '(?i)pictview') {
+                    # On x64 PictView launches the 32-bit SalPVEnv helper,
+                    # which depends on PVW32Cnv.dll. Missing files are a
+                    # concrete failure; present files require further
+                    # runtime diagnosis rather than being declared valid.
+                    $pictViewDirectory = Join-Path $binaryRoot 'plugins\pictview'
+                    $sidecars = @('pictview.spl', 'SalPVEnv.exe', 'PVW32Cnv.dll' |
+                        ForEach-Object {
+                            $candidate = Join-Path $pictViewDirectory $_
+                            $status = if ([IO.File]::Exists($candidate)) { 'present' } else { 'MISSING' }
+                            "$candidate ($status)"
+                        })
+                    $diagnostic += '; PictView runtime files: ' + ($sidecars -join '; ')
+                }
                 throw $diagnostic
             }
             return $false
