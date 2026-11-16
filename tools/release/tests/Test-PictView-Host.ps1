@@ -225,7 +225,8 @@ try {
     }
     $expectedHash = [Convert]::ToHexString(
         [Security.Cryptography.SHA256]::HashData([IO.File]::ReadAllBytes($fixture)))
-    $startupArgs = '-a "{0}" -p 2' -f $root
+    # Override both saved panel paths, following Test-SalamanderGui-LongPaths.ps1.
+    $startupArgs = '-l "{0}" -r "{0}" -p 2' -f $root
     $process = Start-Process -FilePath $SalamanderExe -ArgumentList $startupArgs -WorkingDirectory (Split-Path -Parent $SalamanderExe) -PassThru
 
     # Act: open the single BMP fixture through Salamander's normal F3.
@@ -253,7 +254,7 @@ try {
     $expectedDirectoryName = Split-Path -Leaf $root
     $pathObservation = @{ Title = '<not observed>' }
     try {
-        Wait-For -Description 'Salamander active panel path applied' -Condition {
+        Wait-For -Description 'Salamander command-line panel paths applied' -Condition {
             $process.Refresh()
             if ($process.HasExited -or
                 -not [PictViewHostWindows]::IsWindow($main.Handle)) {
@@ -269,7 +270,7 @@ try {
         }
     }
     catch {
-        throw ("Salamander did not apply -a to the test-owned active panel. " +
+        throw ("Salamander did not apply -l/-r to the test-owned panels. " +
                "Expected directory '$root'; last main title '$($pathObservation.Title)'. " +
                "Viewer not invoked. $($_.Exception.Message)")
     }
