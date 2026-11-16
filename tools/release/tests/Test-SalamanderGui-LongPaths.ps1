@@ -332,6 +332,8 @@ public static class SalamanderGuiNative
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool PostMessageW(IntPtr window, uint message, UIntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr GetWindow(IntPtr window, uint command);
+    [DllImport("user32.dll", SetLastError = true)]
     private static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")]
     private static extern void mouse_event(uint flags, uint x, uint y, uint data, UIntPtr extra);
@@ -378,6 +380,35 @@ public static class SalamanderGuiNative
             }
         }
         return result;
+    }
+
+    // MessageBoxW creates an owned top-level #32770 dialog. Its OK
+    // command can be posted to the dialog itself without relying on a
+    // transient IDOK button HWND returned by GetDlgItem().
+    public static void PostVerifiedFindNoticeOk(
+        IntPtr notice, IntPtr findWindow, uint pid)
+    {
+        uint noticePid, findPid;
+        if (notice == IntPtr.Zero || findWindow == IntPtr.Zero ||
+            !IsWindow(notice) || !IsWindow(findWindow) ||
+            GetWindowThreadProcessId(notice, out noticePid) == 0 ||
+            GetWindowThreadProcessId(findWindow, out findPid) == 0 ||
+            noticePid != pid || findPid != pid ||
+            !IsWindowVisible(notice) ||
+            ClassName(notice) != "#32770" ||
+            GetWindowCaption(notice) != "Unicode Find" ||
+            ClassName(findWindow) != "OpenSalUnicodeFindWindow" ||
+            GetWindow(notice, 4) != findWindow) // GW_OWNER
+            throw new InvalidOperationException(
+                "Refusing to acknowledge an unverified Unicode Find message box");
+
+        // BN_CLICKED is zero; IDOK is 1. The dialog's WM_COMMAND handler
+        // handles IDOK even if the button control cannot be queried yet.
+        // Post, then let the PowerShell caller verify that the dialog closed.
+        if (!PostMessageW(notice, 0x0111, new UIntPtr(1), IntPtr.Zero))
+            throw new InvalidOperationException(
+                "Could not queue IDOK for verified Unicode Find dialog: " +
+                Marshal.GetLastWin32Error());
     }
 
     public static IntPtr FindRenameDialog(uint pid)
@@ -1306,8 +1337,8 @@ function Assert-FindNotice {
     $message = [SalamanderGuiNative]::DescribeWindow($script:findNotice)
     Assert-True ($message.Contains($ExpectedText, [StringComparison]::Ordinal)) (
         "Unicode Find warning identifies unsupported operation: $ExpectedText")
-    [SalamanderGuiNative]::PostFindButton(
-        $script:findNotice, [uint32]$process.Id, 1)
+    [SalamanderGuiNative]::PostVerifiedFindNoticeOk(
+        $script:findNotice, $script:findWindow, [uint32]$process.Id)
     Wait-Until {
         [SalamanderGuiNative]::FindUnicodeNotice(
             [uint32]$process.Id) -eq [IntPtr]::Zero
