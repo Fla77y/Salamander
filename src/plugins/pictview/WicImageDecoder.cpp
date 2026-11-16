@@ -6,6 +6,9 @@
 #include <wincodec.h>
 #include <wrl/client.h>
 
+#pragma comment(lib, "windowscodecs.lib")
+#pragma comment(lib, "ole32.lib")
+
 #include <cstdint>
 #include <limits>
 #include <new>
@@ -50,10 +53,11 @@ HRESULT Decode(const wchar_t* path, DecodedImage& image)
     // WIC CopyPixels uses UINT for both stride and byte count. Calculate
     // with 64 bits first; do not trust image dimensions or file metadata.
     const std::uint64_t stride = static_cast<std::uint64_t>(width) * kBytesPerPixel;
-    const std::uint64_t bytes = stride * height;
     if (stride > (std::numeric_limits<UINT>::max)() ||
-        bytes > kMaximumDecodedBytes ||
-        bytes > (std::numeric_limits<UINT>::max)())
+        height > kMaximumDecodedBytes / stride)
+        return HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE);
+    const std::uint64_t bytes = stride * height;
+    if (bytes > (std::numeric_limits<UINT>::max)())
         return HRESULT_FROM_WIN32(ERROR_FILE_TOO_LARGE);
 
     Microsoft::WRL::ComPtr<IWICFormatConverter> converter;
