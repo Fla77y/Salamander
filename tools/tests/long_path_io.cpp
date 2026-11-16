@@ -464,6 +464,19 @@ int main()
     if (Salamander::TryCopyUnicodeFileNoOverwrite(unicodeSource, unicodeCopy, operationError) ||
         operationError != ERROR_FILE_EXISTS)
         return Fail("refuse to overwrite existing Unicode destination");
+    // The staged copy path must never remain visible after either success
+    // or a rejected overwrite. Validate the real destination directory.
+    std::vector<Salamander::LongDirectoryEntry> postCopy;
+    DWORD postCopyError = ERROR_SUCCESS;
+    if (!Salamander::TryEnumerateLongDirectory(current.c_str(), postCopy,
+                                               postCopyError))
+        return Fail("enumerate staged-copy destination");
+    for (const auto& candidate : postCopy)
+    {
+        if (candidate.name.compare(0, 14, L".opensal-copy-") == 0)
+            return Fail("staged Unicode copy left a temporary artifact");
+    }
+
     std::wstring extendedCopy;
     std::wstring extendedMoved;
     if (!Convert(copyPath, extendedCopy) || !Convert(movedPath, extendedMoved))
