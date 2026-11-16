@@ -18,6 +18,11 @@ HRESULT PrepareOpaqueBgra(const DecodedImage& image,
 // Determine centered, aspect-preserving fit. Dimensions are pixel counts.
 bool FitImage(UINT width, UINT height, const RECT& client, RECT& target) noexcept;
 
+// Draw already composited opaque BGRA without allocating in WM_PAINT.
+HRESULT PaintOpaqueBgraAt(HDC dc, const RECT& destination, UINT width,
+                          UINT height, UINT stride,
+                          const std::vector<std::uint8_t>& opaque) noexcept;
+
 // Draw a decoded first frame with GDI. Caller owns the HDC and its lifetime.
 // Neither the input pixels nor the device context state is retained.
 HRESULT PaintImage(HDC dc, const RECT& client, const DecodedImage& image) noexcept;
