@@ -89,3 +89,28 @@ build and real viewer integration are separate gates.
 
 The unrar plug-in is a separate feature with its own archive/codec
 requirements; it is not modified by this image migration.
+
+## Follow-up presentation stage (separate integration branch, pending Windows verification)
+
+The next staged change adds `WicBitmapPresenter.h/.cpp`, a native, stateless
+GDI presentation primitive. It validates decoded BGRA buffer dimensions
+and stride before any pixel access, composites straight alpha against an
+explicit opaque white background, computes a centered aspect-preserving
+rectangle with 64-bit intermediate arithmetic, and uses `StretchDIBits`
+without retaining an HDC or image resource. Ownership remains with
+the caller.
+
+A dedicated native regression covers the exact alpha bytes, malformed
+buffer refusal and fit geometry; the Visual Studio project and x86/x64
+MSVC test workflow now include the presenter. The test and implementation
+are committed, **but the compiled Windows test has not yet been observed
+passing**. The existing decoder tests still need to be rerun at the
+current head.
+
+**Important:** this stage is *not* hooked into the actual Salamander
+viewer HWND or its command routing. The old PVW32 runtime is still
+unconditionally loaded by `InitViewer`. Consequently real PictView
+initialization, viewer rendering, zoom/scroll, metadata, thumbnails,
+animation, save/print, clipboard, plugin menu capabilities and old-engine
+removal remain open. Until these are independently implemented and tested,
+this staged branch must not be merged as a completed PictView migration.
