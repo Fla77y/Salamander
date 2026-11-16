@@ -52,8 +52,13 @@ Add-Type -AssemblyName System.Windows.Forms
     $process = Start-Process -FilePath (Join-Path $PSHOME 'pwsh.exe') -ArgumentList @(
         '-Sta', '-NoLogo', '-NoProfile', '-NonInteractive', '-File',
         ('"' + $reader + '"'), ('"' + $result + '"')
-    ) -Wait -PassThru
+    ) -PassThru
     try {
+        if (-not $process.WaitForExit(10000)) {
+            $process.Kill()
+            [void]$process.WaitForExit(4000)
+            throw 'Cross-process clipboard reader stalled while owner STA was blocked.'
+        }
         if ($process.ExitCode -ne 0 -or
             -not [IO.File]::Exists($result) -or
             [IO.File]::ReadAllText($result) -cne $text) {
