@@ -8,6 +8,20 @@ $PSNativeCommandUseErrorActionPreference = $false
 
 $toolsDir = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).ProviderPath
 
+# Release downloads must carry an externally verifiable manifest for only
+# public Release artifacts, not paths to nonredistributable Debug packages.
+$releaseWorkflow = Get-Content -LiteralPath (
+    Join-Path $toolsDir '..\.github\workflows\pr-release-package.yml') -Raw
+$packagingScript = Get-Content -LiteralPath (
+    Join-Path $toolsDir 'Update-Build-Test-Package.ps1') -Raw
+if (-not $releaseWorkflow.Contains('OpenSal\dist\SHA256SUMS-Release.txt') -or
+    -not $packagingScript.Contains("'SHA256SUMS-Release.txt'") -or
+    -not $packagingScript.Contains('OpenSalamander-Release-x64.7z') -or
+    -not $packagingScript.Contains('OpenSalamander-Release-x64-Setup.exe')) {
+    throw 'Public Release workflow must upload a release-only SHA256SUMS manifest beside the archive and setup.'
+}
+
+
 # Pure PE export parser regression: runs in CI without dumpbin, Windows GUI
 # or plug-in binaries; it also detects malformed public-name matching.
 & (Join-Path $PSScriptRoot 'Test-PluginExport-Parser.ps1')
