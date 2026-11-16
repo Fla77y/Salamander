@@ -87,9 +87,10 @@ inline bool TryCopyUnicodeFileNoOverwrite(const Utf16DiskPath& source,
             error = GetLastError();
             if (error == ERROR_FILE_EXISTS || error == ERROR_ALREADY_EXISTS)
                 continue; // Never delete a candidate we did not create.
-            // CopyFileW may have left an incomplete target on failure.
-            // The staging name was generated for this attempt only.
-            DeleteFileW(temporary.c_str());
+            // A failure does not prove that this process created the
+            // temporary file: another process may have created a protected
+            // entry of the same name immediately before CopyFileW. Never
+            // delete an unowned path. No final destination was published.
             return false;
         }
 
