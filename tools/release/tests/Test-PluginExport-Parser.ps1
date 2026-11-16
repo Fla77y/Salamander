@@ -34,6 +34,25 @@ $decorated = @'
 Assert-Export $decorated 'SalamanderPluginEntry' $true 'C++ decorated internal alias'
 Assert-Export $decorated 'SalamanderPluginGetReqVer' $true 'second C++ decorated alias'
 
+# Arrange: actual VS2026 dumpbin /exports output from the user's
+# 2026-11-16 Release x64 7zip.spl run. The C++ decorated symbol includes
+# a separate human-readable signature containing nested parentheses.
+$real7Zip = @'
+    ordinal hint RVA      name
+          2    1 00008A50 SalamanderPluginEntry = ?SalamanderPluginEntry@@YAPEAVCPluginInterfaceAbstract@@PEAVCSalamanderPluginEntryAbstract@@@Z (class CPluginInterfaceAbstract * __cdecl SalamanderPluginEntry(class CSalamanderPluginEntryAbstract *))
+          3    2 00008A10 SalamanderPluginGetReqVer = ?SalamanderPluginGetReqVer@@YAHXZ (int __cdecl SalamanderPluginGetReqVer(void))
+'@
+Assert-Export $real7Zip 'SalamanderPluginEntry' $true 'actual x64 7zip export with demangled C++ signature'
+Assert-Export $real7Zip 'SalamanderPluginGetReqVer' $true 'actual x64 7zip required-version export'
+Assert-Export $real7Zip 'SalamanderPluginEntryExtra' $false 'avoid partial match in demangled signature'
+
+# A demangled name must not make an unrelated public alias pass.
+$internalOnly = @'
+    ordinal hint RVA      name
+          2    1 00008A50 InternalOnly = ?SalamanderPluginEntry@@YAPEAXXZ (class CPluginInterfaceAbstract * __cdecl SalamanderPluginEntry(void))
+'@
+Assert-Export $internalOnly 'SalamanderPluginEntry' $false 'internal-only decorated/demangled symbol is not an export'
+
 # Arrange: simple C exports appear with no alias.
 $plain = @'
     ordinal hint RVA      name
