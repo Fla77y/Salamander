@@ -643,14 +643,17 @@ public:
         info.cbSize = sizeof(info);
         info.lpfnWndProc = &WindowProcedure;
         info.hInstance = GetModuleHandleW(nullptr);
-        info.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+        // IDC_ARROW is an ANSI MAKEINTRESOURCE in this non-UNICODE build.
+        info.hCursor = LoadCursorW(nullptr, MAKEINTRESOURCEW(OCR_NORMAL));
         info.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_BTNFACE + 1);
         info.lpszClassName = cls;
         if (!RegisterClassExW(&info) && GetLastError() != ERROR_CLASS_ALREADY_EXISTS)
             return false;
 
-        UnicodeFindWindow* state = new (std::nothrow)
-            UnicodeFindWindow(initialRoot, std::move(legacyFind));
+        // The Debug precompiled header instruments ordinary new with CRT
+        // allocation metadata, so placement-new syntax is incompatible.
+        UnicodeFindWindow* state =
+            new UnicodeFindWindow(initialRoot, std::move(legacyFind));
         if (!state)
             return false;
         HWND window = CreateWindowExW(WS_EX_APPWINDOW, cls,
