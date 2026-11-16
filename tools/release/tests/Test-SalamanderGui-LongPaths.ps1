@@ -771,6 +771,100 @@ public static class SalamanderGuiNative
     }
 }
 
+// Diagnose only: read a verified GUI thread's Windows wait chain after a
+// WM_COMMAND timeout. No remote input, process modification or dump files.
+public static class SalamanderGuiWaitChain
+{
+    private const int MaxNodes = 16;
+    private const int UnionBytes = 272; // WCHAR[128], LARGE_INTEGER, BOOL, alignment
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Node
+    {
+        public int Type;
+        public int Status;
+        [MarshalAs(UnmanagedType.ByValArray, SizeConst = UnionBytes)]
+        public byte[] Union;
+    }
+    [DllImport("advapi32.dll", SetLastError = true)]
+    private static extern IntPtr OpenThreadWaitChainSession(
+        uint flags, IntPtr callback);
+    [DllImport("advapi32.dll")]
+    private static extern void CloseThreadWaitChainSession(IntPtr session);
+    [DllImport("advapi32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetThreadWaitChain(
+        IntPtr session, IntPtr context, uint flags, uint threadId,
+        ref uint count, [In, Out] Node[] nodes,
+        [MarshalAs(UnmanagedType.Bool)] out bool cycle);
+
+    public static string Describe(uint threadId)
+    {
+        if (threadId == 0) return "GUI thread ID unavailable";
+        var result = System.Threading.Tasks.Task.Run(() => Query(threadId));
+        if (!result.Wait(4000))
+            return "WCT diagnostic timed out (4 s); GUI failure remains unchanged";
+        return result.Result;
+    }
+
+    private static string Query(uint threadId)
+    {
+        if (Marshal.SizeOf(typeof(Node)) != 280)
+            return "WCT layout mismatch; refusing native call";
+        IntPtr session = OpenThreadWaitChainSession(0, IntPtr.Zero);
+        if (session == IntPtr.Zero)
+            return "OpenThreadWaitChainSession failed: Win32 " +
+                Marshal.GetLastWin32Error();
+        try
+        {
+            Node[] nodes = new Node[MaxNodes];
+            for (int i = 0; i < nodes.Length; ++i)
+                nodes[i].Union = new byte[UnionBytes];
+            uint count = MaxNodes;
+            bool cycle;
+            // COM, cross-process and critical-section tracking. Failure can
+            // indicate insufficient SE_DEBUG_NAME privilege; report the code.
+            if (!GetThreadWaitChain(session, IntPtr.Zero, 0x7, threadId,
+                                    ref count, nodes, out cycle))
+                return "GetThreadWaitChain failed: Win32 " +
+                    Marshal.GetLastWin32Error();
+            if (count > MaxNodes) count = MaxNodes;
+            var detail = new System.Text.StringBuilder();
+            detail.Append("thread=").Append(threadId)
+                .Append("; cycle=").Append(cycle);
+            string[] types = { "invalid", "critical-section", "SendMessage",
+                "mutex", "ALPC", "COM", "thread-wait", "process-wait",
+                "thread", "COM-activation", "unknown", "socket", "SMB" };
+            for (int i = 0; i < count; ++i)
+            {
+                Node node = nodes[i];
+                string type = node.Type > 0 && node.Type < types.Length
+                    ? types[node.Type] : "type-" + node.Type;
+                detail.Append(" -> ").Append(type).Append("(status=")
+                    .Append(node.Status);
+                if (node.Type == 8) // WctThreadType
+                {
+                    detail.Append(",pid=")
+                        .Append(BitConverter.ToUInt32(node.Union, 0))
+                        .Append(",tid=")
+                        .Append(BitConverter.ToUInt32(node.Union, 4))
+                        .Append(",waitMs=")
+                        .Append(BitConverter.ToUInt32(node.Union, 8));
+                }
+                else
+                {
+                    string name = System.Text.Encoding.Unicode.GetString(
+                        node.Union, 0, 256).TrimEnd('\0');
+                    if (name.Length > 0)
+                        detail.Append(",object=").Append(name);
+                }
+                detail.Append(")");
+            }
+            return detail.ToString();
+        }
+        finally { CloseThreadWaitChainSession(session); }
+    }
+}
+
 // CM_CLIPPASTE calls OleGetClipboard synchronously. Its clipboard-owner
 // window must live on another pumping STA, never on the caller STA blocked
 // in SendMessageTimeout. Use only Win32 and core .NET here: Add-Type can then
@@ -1309,6 +1403,31 @@ function Invoke-SalamanderCommand {
         throw "Refusing GUI command: window owner PID $ownerPid does not match test process $($process.Id)."
     }
 
+    # Detect a GUI thread already blocked during startup, independently of
+    # the clipboard-paste command. WM_NULL has no user-visible side effects.
+    if ($CommandId -eq 775) {
+        [IntPtr]$preflightResult = [IntPtr]::Zero
+        $ready = [SalamanderGuiNative]::SendMessageTimeout(
+            $main, [uint32]0, [UIntPtr]::Zero, [IntPtr]::Zero,
+            [uint32]0x0002, [uint32]2500, [ref]$preflightResult)
+        $preflightError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        if ($ready -eq [IntPtr]::Zero) {
+            [uint32]$preflightOwner = 0
+            $preflightThread = [SalamanderGuiNative]::GetWindowThreadProcessId(
+                $main, [ref]$preflightOwner)
+            $preflightWait = '<not collected>'
+            try {
+                $preflightWait = [SalamanderGuiWaitChain]::Describe([uint32]$preflightThread)
+            }
+            catch { $preflightWait = "WCT unavailable: $($_.Exception.Message)" }
+            throw ("Salamander GUI unresponsive BEFORE clipboard command 775; " +
+                   "WM_NULL preflight Win32 error $preflightError. " +
+                   "No clipboard navigation command was sent. " +
+                   "GUI thread=$preflightThread; owner PID=$preflightOwner; wait chain=[$preflightWait]")
+        }
+        Write-Host 'PASS: Salamander GUI responds to WM_NULL immediately before clipboard navigation'
+    }
+
     [IntPtr]$commandResult = [IntPtr]::Zero
     $timer = [Diagnostics.Stopwatch]::StartNew()
     $sent = [SalamanderGuiNative]::SendMessageTimeout(
@@ -1321,9 +1440,21 @@ function Invoke-SalamanderCommand {
     if ($sent -eq [IntPtr]::Zero) {
         $hung = [SalamanderGuiNative]::IsHungAppWindow($main)
         $dialog = Get-TestDialog
+        [uint32]$checkedPid = 0
+        $uiThreadId = [SalamanderGuiNative]::GetWindowThreadProcessId(
+            $main, [ref]$checkedPid)
+        $waitChain = '<not collected>'
+        try {
+            $waitChain = [SalamanderGuiWaitChain]::Describe([uint32]$uiThreadId)
+        }
+        catch {
+            $waitChain = "WCT unavailable: $($_.Exception.Message)"
+        }
         throw (("Salamander command {0} did not complete after {1} ms; " +
-            "SendMessageTimeout Win32 error {2}; IsHungAppWindow={3}; modal dialog='{4}'") -f
-            $CommandId, $timer.ElapsedMilliseconds, $lastError, $hung, $dialog)
+            "SendMessageTimeout Win32 error {2}; IsHungAppWindow={3}; modal dialog='{4}'; " +
+            "GUI thread={5}; owner PID={6}; wait chain=[{7}]") -f
+            $CommandId, $timer.ElapsedMilliseconds, $lastError, $hung, $dialog,
+            $uiThreadId, $checkedPid, $waitChain)
     }
 }
 

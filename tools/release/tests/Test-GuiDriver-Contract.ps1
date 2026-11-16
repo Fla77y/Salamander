@@ -376,6 +376,23 @@ if ($errorCapture -lt 0 -or $dialogLookup -lt 0 -or
 }
 Write-Host 'PASS: GUI driver captures the original SendMessageTimeout Win32 error.'
 
+# A 775 timeout may originate in Salamander's startup state or in its
+# clipboard/file-paste path. Verify a harmless WM_NULL preflight and read-only
+# Windows Wait Chain Traversal diagnostics; do not mutate app state on failure.
+$dispatchSource = $dispatch.Extent.Text
+if ($dispatchSource -notmatch '\$CommandId -eq 775' -or
+    $dispatchSource -notmatch 'Salamander GUI unresponsive BEFORE clipboard command 775' -or
+    $dispatchSource -notmatch 'GUI responds to WM_NULL' -or
+    $dispatchSource -notmatch 'SalamanderGuiWaitChain\]::Describe' -or
+    $dispatchSource -notmatch 'wait chain=\[' -or
+    $driverText -notmatch 'OpenThreadWaitChainSession' -or
+    $driverText -notmatch 'GetThreadWaitChain' -or
+    $driverText -notmatch 'GetWindowThreadProcessId') {
+    throw 'GUI timeout must distinguish pre-existing unresponsiveness and report the UI thread wait chain.'
+}
+Write-Host 'PASS: GUI command 775 preflights UI responsiveness and captures read-only wait chains.'
+
+
 # A synchronous CM_CLIPPASTE (775) calls OleGetClipboard and may message the
 # clipboard owner's HWND. The owner must have its OWN STA message loop; a
 # WinForms Control on the dispatching PowerShell STA can deadlock there.
