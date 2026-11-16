@@ -35,6 +35,7 @@ class UnicodeFindWindow
         Content,
         Target,
         Recurse,
+        IncludeDirs,
         Find,
         Cancel,
         CopyPath,
@@ -56,6 +57,7 @@ class UnicodeFindWindow
     HWND content_ = nullptr;
     HWND target_ = nullptr;
     HWND recurse_ = nullptr;
+    HWND includeDirs_ = nullptr;
     HWND results_ = nullptr;
     HWND status_ = nullptr;
     std::wstring initialRoot_;
@@ -69,6 +71,7 @@ class UnicodeFindWindow
     bool finished_ = false;
     DWORD searchError_ = ERROR_SUCCESS;
     bool searchSucceeded_ = false;
+    bool ownedByWindow_ = false;
 
     static std::wstring ReadText(HWND edit)
     {
@@ -117,6 +120,9 @@ class UnicodeFindWindow
         recurse_ = Child(window, L"BUTTON", L"Include subdirectories",
                          BS_AUTOCHECKBOX | WS_TABSTOP, Recurse);
         SendMessageW(recurse_, BM_SETCHECK, BST_CHECKED, 0);
+        includeDirs_ = Child(window, L"BUTTON", L"Include matching directories",
+                             BS_AUTOCHECKBOX | WS_TABSTOP, IncludeDirs);
+        SendMessageW(includeDirs_, BM_SETCHECK, BST_CHECKED, 0);
         Child(window, L"BUTTON", L"Find now", BS_PUSHBUTTON | WS_TABSTOP, Find);
         Child(window, L"BUTTON", L"Cancel", BS_PUSHBUTTON | WS_TABSTOP, Cancel);
         Child(window, L"BUTTON", L"Copy full path", BS_PUSHBUTTON | WS_TABSTOP, CopyPath);
@@ -193,6 +199,7 @@ class UnicodeFindWindow
         MoveWindow(content_, editX, 76, editWidth, 24, TRUE);
         MoveWindow(target_, editX, 108, editWidth, 24, TRUE);
         MoveWindow(recurse_, inset, 141, 195, 26, TRUE);
+        MoveWindow(includeDirs_, 222, 141, 235, 26, TRUE);
 
         const int yButtons = 172;
         const struct { int id; int w; } buttons[] = {
@@ -303,6 +310,8 @@ class UnicodeFindWindow
         options.content = ReadText(content_);
         options.includeSubdirectories =
             SendMessageW(recurse_, BM_GETCHECK, 0, 0) == BST_CHECKED;
+        options.includeDirectories =
+            SendMessageW(includeDirs_, BM_GETCHECK, 0, 0) == BST_CHECKED;
         options.maximumResults = 25000; // explicit cap, never silent truncation
         std::wstring validated;
         DWORD error = ERROR_SUCCESS;
@@ -599,7 +608,10 @@ class UnicodeFindWindow
             if (state->worker_.joinable())
                 state->worker_.join();
             SetWindowLongPtrW(window, GWLP_USERDATA, 0);
-            delete state;
+            // Failed window creation is still owned by Open(); otherwise
+            // WM_NCDESTROY is the sole owner of the state.
+            if (state->ownedByWindow_)
+                delete state;
             return DefWindowProcW(window, message, wParam, lParam);
         }
         return DefWindowProcW(window, message, wParam, lParam);
@@ -643,6 +655,7 @@ public:
             delete state;
             return false;
         }
+        state->ownedByWindow_ = true;
         ShowWindow(window, SW_SHOW);
         UpdateWindow(window);
         return true;
