@@ -431,7 +431,25 @@ exit /b 0
     Assert-Throws { Test-DistributionStage -Stage $stage -Configuration Release -DumpbinExe $fakeDumpbin } 'Missing CHM must fail'
 
     Set-Content -LiteralPath (Join-Path $stage 'help\english\salamand.chm') -Value 'test fixture' -Encoding ascii
+    $requiredPictViewFiles = @(
+        'plugins\pictview\pictview.spl',
+        'plugins\pictview\lang\english.slg',
+        'plugins\pictview\exif.dll'
+    )
+    foreach ($required in $requiredPictViewFiles) {
+        $fixtureFile = Join-Path $stage $required
+        New-Item -ItemType Directory -Path (Split-Path -Parent $fixtureFile) -Force | Out-Null
+        Set-Content -LiteralPath $fixtureFile -Value 'test fixture' -Encoding ascii
+    }
     Test-DistributionStage -Stage $stage -Configuration Release -DumpbinExe $fakeDumpbin
+    foreach ($required in $requiredPictViewFiles) {
+        $fixtureFile = Join-Path $stage $required
+        Remove-Item -LiteralPath $fixtureFile -Force
+        Assert-Throws {
+            Test-DistributionStage -Stage $stage -Configuration Release -DumpbinExe $fakeDumpbin
+        } "Release stage must require PictView file $required"
+        Set-Content -LiteralPath $fixtureFile -Value 'test fixture' -Encoding ascii
+    }
     if (-not (Test-Path -LiteralPath (Join-Path $stage 'SHA256SUMS.txt'))) {
         throw 'SHA256 manifest is missing.'
     }
