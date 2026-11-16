@@ -225,7 +225,7 @@ function Test-DistributionStage {
     # Version 5.2 promises native WIC PictView. Its plug-in, language
     # resource, and native EXIF sidecar must actually ship in both variants.
     foreach ($required in @('salamand.exe', 'help\english\salamand.chm',
-                            'LICENSE', 'vcruntime140.dll', 'msvcp140.dll',
+                            'LICENSE', 'THIRD_PARTY_LICENSES.txt', 'vcruntime140.dll', 'msvcp140.dll',
                             'plugins\pictview\pictview.spl',
                             'plugins\pictview\lang\english.slg',
                             'plugins\pictview\exif.dll')) {
