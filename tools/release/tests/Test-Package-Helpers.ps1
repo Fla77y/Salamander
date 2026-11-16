@@ -516,3 +516,29 @@ if ($script:focusProbeIndex -ne 1) {
     throw 'Directory focus must skip the synthetic parent row and select the expected folder.'
 }
 Write-Host 'PASS: directory row discovery skips the synthetic parent row before copying names.'
+
+# Arrange: the actual Windows near-limit regression must be compiled/executed
+# by --test, while the GUI path must remain a separate real-app check.
+$maxPathCpp = Join-Path $toolsDir '..\..\tools\tests\win32_max_path.cpp'
+$maxPathSource = Get-Content -LiteralPath $maxPathCpp -Raw
+if ($managerSource -notmatch [regex]::Escape("'tools\tests\win32_max_path.cpp'") -or
+    $maxPathSource -notmatch 'targetLength\s*=\s*32700' -or
+    $maxPathSource -notmatch 'filename\.size\(\) != 255' -or
+    $maxPathSource -notmatch 'TryEnumerateLongDirectory' -or
+    $maxPathSource -notmatch 'TryCopyUnicodeFileNoOverwrite' -or
+    $maxPathSource -notmatch 'TryMoveUnicodeFileNoOverwrite' -or
+    $maxPathSource -notmatch 'TryDeleteUnicodeFile' -or
+    $maxPathSource -notmatch 'DisposableFixture') {
+    throw 'Near-maximum real Win32 path test must cover Unicode 255-unit names, 32700-unit paths, real I/O and cleanup.'
+}
+
+# Act / Assert: --test-all automatically includes the near-limit GUI mode
+# and it must dispatch the real GUI driver, not just the .NET test fixture.
+if ($registeredOptions -notcontains '--test-gui-max-path' -or
+    $guiDriver -notmatch '\[switch\]\$MaximumPathOnly' -or
+    $guiDriver -notmatch '\$requestedLength\s*=\s*32700' -or
+    $guiDriver -notmatch 'Read-FocusedFullname' -or
+    $managerSource -notmatch "'-MaximumPathOnly'") {
+    throw 'Real Salamander maximum-path GUI mode is missing from --test-all.'
+}
+Write-Host 'PASS: near-maximum path regression is wired into the manager and real GUI gate.'
