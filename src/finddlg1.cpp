@@ -352,15 +352,18 @@ void CFoundFilesListView::CheckAndRemoveSelectedItems(BOOL forceRemove, int last
             BOOL remove = forceRemove;
             if (!forceRemove)
             {
-                char fullPath[MAX_PATH];
-                int pathLen = lstrlen(ptr->Path);
-                memmove(fullPath, ptr->Path, pathLen + 1);
-                if (ptr->Path[pathLen - 1] != '\\')
-                {
-                    fullPath[pathLen] = '\\';
-                    fullPath[pathLen + 1] = '\0';
-                }
-                lstrcat(fullPath, ptr->Name);
+                // A result may outlive the original search. Never build a
+                // new path with unchecked concatenation into MAX_PATH.
+                const size_t pathLen = strlen(ptr->Path);
+                const size_t nameLen = strlen(ptr->Name);
+                if (pathLen == 0 || pathLen >= MAX_PATH ||
+                    nameLen >= MAX_PATH - pathLen - 1)
+                    continue;
+                char fullPath[MAX_PATH] = {};
+                strcpy_s(fullPath, ptr->Path);
+                if (fullPath[pathLen - 1] != '\\')
+                    strcat_s(fullPath, "\\");
+                strcat_s(fullPath, ptr->Name);
                 remove = (SalGetFileAttributes(fullPath) == -1);
             }
             if (remove)
@@ -2427,16 +2430,21 @@ BOOL CFindDialog::GetFocusedFile(char* buffer, int bufferLen, int* viewedIndex)
         *viewedIndex = index;
 
     CFoundFilesData* data = FoundFilesListView->At(index);
-    if (data->IsDir || !ValidateLegacyFindResult(data->Path, data->Name))
+    if (data->IsDir || !ValidateLegacyFindResult(data->Path, data->Name) ||
+        buffer == NULL || bufferLen <= 0)
         return FALSE;
-    char longName[MAX_PATH];
-    int len = (int)strlen(data->Path);
-    memmove(longName, data->Path, len);
-    if (data->Path[len - 1] != '\\')
-        longName[len++] = '\\';
-    strcpy(longName + len, data->Name);
-
-    lstrcpyn(buffer, longName, bufferLen);
+    const size_t pathLength = strlen(data->Path);
+    const size_t nameLength = strlen(data->Name);
+    const bool needsSlash = data->Path[pathLength - 1] != '\\';
+    const size_t totalUnits = pathLength + (needsSlash ? 1 : 0) + nameLength + 1;
+    if (totalUnits > MAX_PATH || totalUnits > static_cast<size_t>(bufferLen))
+        return FALSE;
+    char longName[MAX_PATH] = {};
+    strcpy_s(longName, data->Path);
+    if (needsSlash)
+        strcat_s(longName, "\\");
+    strcat_s(longName, data->Name);
+    strcpy_s(buffer, static_cast<size_t>(bufferLen), longName);
     return TRUE;
 }
 
