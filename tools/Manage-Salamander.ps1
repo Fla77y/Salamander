@@ -227,7 +227,8 @@ function Run-Tests {
         'tools\tests\win32_unicode_rename_dialog.cpp',
         'tools\tests\win32_unicode_recycle.cpp',
         'tools\tests\long_path_io.cpp',
-        'tools\tests\win32_max_path.cpp'
+        'tools\tests\win32_max_path.cpp',
+        'tools\tests\bug_report_path.cpp'
     )
     $available = @($cppTests | Where-Object {
         Test-Path -LiteralPath (Join-Path $repository $_) -PathType Leaf
