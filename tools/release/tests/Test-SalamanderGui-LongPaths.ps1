@@ -34,6 +34,7 @@ param(
     [switch]$ShortUnicodeDirectoryRenameOnly,
     [switch]$ShortUnicodeUnsafeOperationsOnly,
     [switch]$ShortOperationsOnly,
+    [switch]$TemporaryDirectoryDeletionOnly,
     [switch]$UnicodeFindOnly
 )
 
@@ -2308,6 +2309,22 @@ try {
         [IO.File]::WriteAllBytes($findUtf8Path, $findUtf8Bytes)
         [IO.File]::WriteAllBytes($findUtf16Path, $findUtf16Bytes)
     }
+    if ($TemporaryDirectoryDeletionOnly) {
+        # Arrange: a uniquely owned temporary directory with a real nested
+        # Unicode file beyond MAX_PATH. This is deliberately not a mock.
+        $temporaryDirectoryName = 'OpenSal-GuiLong-Delete-東京'
+        $temporaryDirectory = Join-Path $source $temporaryDirectoryName
+        $temporaryChild = $temporaryDirectory
+        foreach ($index in 1..4) {
+            $temporaryChild = Join-Path $temporaryChild (
+                'depth-' + $index + '-' + ('x' * 64))
+            [void][IO.Directory]::CreateDirectory($temporaryChild)
+        }
+        $temporaryLeaf = Join-Path $temporaryChild 'Größe_大阪_😀.bin'
+        [IO.File]::WriteAllBytes($temporaryLeaf, $payload)
+        Assert-True ($temporaryLeaf.Length -gt 260) 'Temporary directory fixture exceeds MAX_PATH'
+        Assert-True (Test-Content $temporaryLeaf) 'Nested Unicode temporary payload is intact'
+    }
     if ($BaselineOnly) {
         # The baseline must also demonstrate that the automated keystroke
         # reaches the focused file panel without manual window activation.
@@ -2385,7 +2402,8 @@ try {
         -not $ShortUnicodeDirectoryRenameOnly -and
         -not $ShortUnicodeRecycleOnly -and
         -not $ShortUnicodeUnsafeOperationsOnly -and -not $ShortOperationsOnly -and
-        -not $UnicodeFindOnly -and -not $MaximumPathOnly) {
+        -not $UnicodeFindOnly -and -not $MaximumPathOnly -and
+        -not $TemporaryDirectoryDeletionOnly) {
         [IO.Directory]::CreateDirectory($destination) | Out-Null
         [IO.Directory]::CreateDirectory($moveDir) | Out-Null
         [IO.Directory]::CreateDirectory($maxDir) | Out-Null
@@ -2513,6 +2531,30 @@ try {
     # Go-ToPath already verified the observed panel path. A duplicate
     # WM_COMMAND 711 adds no coverage and can race with GUI processing.
     Write-Host 'PASS: GUI driver can navigate a normal short directory'
+    if ($TemporaryDirectoryDeletionOnly) {
+        # Act: delete the exact test-owned directory through Salamander's F8
+        # command. Merely deleting it with .NET would not test the reported bug.
+        Assert-True ((Read-PanelPath) -ceq $source) 'Disposable parent panel verified before F8 directory delete'
+        Focus-DirectoryRow -Name $temporaryDirectoryName
+        Assert-True ((Read-FocusedFilename) -ceq $temporaryDirectoryName) 'Exact temporary directory selected for F8'
+        Send-Keys '{F8}'
+        Start-Sleep -Milliseconds 350
+        Send-Keys '{ENTER}'
+        # Assert: disappearance on disk (not just a refreshed panel row)
+        # is required, and the adjacent fixture must remain untouched.
+        try {
+            Wait-Until { -not [IO.Directory]::Exists($temporaryDirectory) } 'F8 recursive long-path directory deletion'
+        }
+        catch {
+            throw ("F8 did not delete the long-path directory: {0}; dialog='{1}'" -f
+                $_.Exception.Message, (Get-TestDialog))
+        }
+        Assert-True ([IO.Directory]::Exists($source)) 'Parent fixture survives F8 directory deletion'
+        Assert-True (Test-Content $unicodeShortFile) 'Unrelated Unicode fixture survives F8 directory deletion'
+        $passed = $true
+        Write-Host 'PASS: Salamander F8 recursively deleted the real long-path temporary directory.'
+        return
+    }
     if ($UnicodeFindOnly) {
         Test-UnicodeFindGui
         $passed = $true
@@ -3297,7 +3339,8 @@ finally {
         try { $script:clipboardOwner.Dispose() }
         catch { Write-Warning "Clipboard owner shutdown failed: $($_.Exception.Message)" }
     }
-    if ($passed -and -not $KeepFixture) {
+    # A failed F8 regression must not leave another GUID-owned temp tree.
+    if (($passed -or $TemporaryDirectoryDeletionOnly) -and -not $KeepFixture) {
         try { [IO.Directory]::Delete($root, $true) }
         catch { Write-Warning "Test fixture cleanup failed: $root - $($_.Exception.Message)" }
     }
