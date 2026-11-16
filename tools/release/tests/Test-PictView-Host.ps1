@@ -1,0 +1,215 @@
+#requires -Version 7.4
+# SPDX-FileCopyrightText: 2026 Open Salamander Authors
+# SPDX-License-Identifier: GPL-2.0-or-later
+<#
+.SYNOPSIS
+    Exercises PictView through a real Salamander GUI process.
+.DESCRIPTION
+    Opt-in: requires an unlocked desktop and trusted installed plug-ins.
+    Refuses to interact with an existing Salamander instance.
+    Uses an isolated BMP fixture, normal F3 viewer and exact module/HWND IDs.
+#>
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory)][string]$SalamanderExe,
+    [ValidateRange(5, 120)][int]$TimeoutSeconds = 25
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+if (-not $IsWindows) { throw 'PictView GUI acceptance requires Windows.' }
+if ([Threading.Thread]::CurrentThread.GetApartmentState() -ne 'STA') {
+    throw 'Use PowerShell 7 in STA mode (pwsh -Sta).'
+}
+if (-not (Test-Path -LiteralPath $SalamanderExe -PathType Leaf)) {
+    throw "Salamander executable is missing: $SalamanderExe"
+}
+if (@(Get-Process salamand -ErrorAction SilentlyContinue).Count -gt 0) {
+    throw 'Close other Salamander instances first; test cannot reuse a running process.'
+}
+$SalamanderExe = [IO.Path]::GetFullPath($SalamanderExe)
+$expectedPlugin = Join-Path (Split-Path -Parent $SalamanderExe) 'plugins\pictview\pictview.spl'
+if (-not (Test-Path -LiteralPath $expectedPlugin -PathType Leaf)) {
+    throw "Built PictView plug-in missing: $expectedPlugin"
+}
+
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
+Add-Type -TypeDefinition @'
+using System;
+using System.Collections.Generic;
+using System.Runtime.InteropServices;
+using System.Text;
+
+public static class PictViewHostWindows
+{
+    public sealed class Window
+    {
+        public IntPtr Handle;
+        public string Title;
+        public string ClassName;
+    }
+
+    public delegate bool WindowCallback(IntPtr hwnd, IntPtr arg);
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool EnumWindows(WindowCallback callback, IntPtr arg);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetWindowTextW")]
+    private static extern int GetWindowText(IntPtr hwnd, StringBuilder value, int length);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetClassNameW")]
+    private static extern int GetClassName(IntPtr hwnd, StringBuilder value, int length);
+    [DllImport("user32.dll")]
+    public static extern uint GetWindowThreadProcessId(IntPtr hwnd, out uint processId);
+    [DllImport("user32.dll")]
+    public static extern bool IsWindow(IntPtr hwnd);
+    [DllImport("user32.dll")]
+    public static extern bool IsWindowVisible(IntPtr hwnd);
+    [DllImport("user32.dll")]
+    public static extern bool SetForegroundWindow(IntPtr hwnd);
+    [DllImport("user32.dll")]
+    public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll", EntryPoint = "PostMessageW", SetLastError = true)]
+    public static extern bool PostMessage(IntPtr hwnd, uint msg, IntPtr w, IntPtr l);
+
+    // Always require the PID of our own freshly launched process.
+    public static List<Window> ForProcess(uint processId)
+    {
+        var result = new List<Window>();
+        WindowCallback callback = (hwnd, unused) => {
+            uint pid;
+            GetWindowThreadProcessId(hwnd, out pid);
+            if (pid == processId)
+            {
+                var title = new StringBuilder(512);
+                var cls = new StringBuilder(256);
+                GetWindowText(hwnd, title, title.Capacity);
+                GetClassName(hwnd, cls, cls.Capacity);
+                result.Add(new Window {
+                    Handle = hwnd, Title = title.ToString(), ClassName = cls.ToString()
+                });
+            }
+            return true;
+        };
+        if (!EnumWindows(callback, IntPtr.Zero))
+            throw new InvalidOperationException("Cannot enumerate Windows desktop.");
+        return result;
+    }
+}
+'@
+
+function Wait-For {
+    param([Parameter(Mandatory)][scriptblock]$Condition,
+          [Parameter(Mandatory)][string]$Description)
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    do {
+        if (& $Condition) { return }
+        if ([DateTime]::UtcNow -ge $deadline) {
+            throw "Timed out: $Description"
+        }
+        Start-Sleep -Milliseconds 100
+    } while ($true)
+}
+
+$root = Join-Path ([IO.Path]::GetTempPath()) ('pictview-host-' + [Guid]::NewGuid().ToString('N'))
+[void][IO.Directory]::CreateDirectory($root)
+$fixture = Join-Path $root 'test-image.bmp'
+$process = $null
+$viewerHandle = [IntPtr]::Zero
+try {
+    # Arrange: one disposable image with exact byte identity.
+    $bitmap = [Drawing.Bitmap]::new(2, 1)
+    try {
+        $bitmap.SetPixel(0, 0, [Drawing.Color]::Red)
+        $bitmap.SetPixel(1, 0, [Drawing.Color]::Lime)
+        $bitmap.Save($fixture, [Drawing.Imaging.ImageFormat]::Bmp)
+    }
+    finally {
+        $bitmap.Dispose()
+    }
+    $expectedHash = [Convert]::ToHexString(
+        [Security.Cryptography.SHA256]::HashData([IO.File]::ReadAllBytes($fixture)))
+    $startupArgs = '-l "{0}" -r "{0}" -p 2' -f $root
+    $process = Start-Process -FilePath $SalamanderExe -ArgumentList $startupArgs -WorkingDirectory (Split-Path -Parent $SalamanderExe) -PassThru
+
+    # Act: open the single image through Salamander's normal viewer command.
+    Wait-For -Description 'test Salamander main HWND' -Condition {
+        $process.Refresh()
+        if ($process.HasExited) { throw 'Salamander exited before GUI readiness.' }
+        return @([PictViewHostWindows]::ForProcess([uint32]$process.Id) |
+                 Where-Object { $_.Title -match 'Open Salamander' -and
+                                [PictViewHostWindows]::IsWindowVisible($_.Handle) }).Count -gt 0
+    }
+    if (-not $process.WaitForInputIdle(15000)) {
+        throw 'Salamander did not reach input-idle before GUI interaction.'
+    }
+    $main = @([PictViewHostWindows]::ForProcess([uint32]$process.Id) |
+              Where-Object { $_.Title -match 'Open Salamander' -and
+                             [PictViewHostWindows]::IsWindowVisible($_.Handle) })[0]
+    if (-not [PictViewHostWindows]::SetForegroundWindow($main.Handle) -or
+        [PictViewHostWindows]::GetForegroundWindow() -ne $main.Handle) {
+        throw 'Could not securely focus the test-owned Salamander window.'
+    }
+
+    [Windows.Forms.SendKeys]::SendWait('{END}')
+    if ([PictViewHostWindows]::GetForegroundWindow() -ne $main.Handle) {
+        throw 'Focus changed before F3; no viewer command was sent.'
+    }
+    [Windows.Forms.SendKeys]::SendWait('{F3}')
+    Wait-For -Description 'WIC PictView HWND owned by test Salamander' -Condition {
+        $windows = [PictViewHostWindows]::ForProcess([uint32]$process.Id)
+        $found = @($windows | Where-Object {
+            $_.ClassName -ceq 'OpenSalamander.PictView.WIC'
+        })
+        if ($found.Count -gt 1) {
+            throw 'Multiple WIC viewer windows unexpectedly opened.'
+        }
+        if ($found.Count -eq 1) {
+            $script:viewerHandle = $found[0].Handle
+            return $true
+        }
+        return $false
+    }
+
+    # Assert: the real SPL was loaded, window identity matches, and the BMP
+    # was not modified. Close the viewer without modifying the source.
+    $process.Refresh()
+    $plugins = @($process.Modules | Where-Object {
+        $_.FileName -ieq $expectedPlugin
+    })
+    if ($plugins.Count -ne 1) {
+        throw "WIC viewer exists but expected SPL module is not loaded: $expectedPlugin"
+    }
+    $actualHash = [Convert]::ToHexString(
+        [Security.Cryptography.SHA256]::HashData([IO.File]::ReadAllBytes($fixture)))
+    if ($actualHash -cne $expectedHash) {
+        throw 'Viewing changed the disposable BMP fixture bytes.'
+    }
+    if (-not [PictViewHostWindows]::PostMessage($viewerHandle, 0x0010,
+                                                [IntPtr]::Zero, [IntPtr]::Zero)) {
+        throw 'Could not close the WIC viewer HWND.'
+    }
+    Wait-For -Description 'WIC PictView HWND close' -Condition {
+        return -not [PictViewHostWindows]::IsWindow($viewerHandle)
+    }
+    Write-Host "PASS: owned Salamander PID $($process.Id) loaded PictView SPL, opened/closed WIC viewer without changing the BMP."
+}
+catch {
+    if ($process -and -not $process.HasExited) {
+        $summary = @([PictViewHostWindows]::ForProcess([uint32]$process.Id) |
+                     ForEach-Object { "[$($_.ClassName)] $($_.Title)" })
+        Write-Warning ("Test process windows: " + ($summary -join '; '))
+    }
+    throw
+}
+finally {
+    if ($process) {
+        $process.Refresh()
+        if (-not $process.HasExited) {
+            # Terminate only the child we launched, never an existing instance.
+            Stop-Process -Id $process.Id -Force -ErrorAction SilentlyContinue
+        }
+        $process.Dispose()
+    }
+    if (Test-Path -LiteralPath $root -PathType Container) {
+        Remove-Item -LiteralPath $root -Recurse -Force
+    }
+}
