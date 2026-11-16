@@ -6,6 +6,9 @@ on:
     paths:
       - "src/plugins/pictview/WicImageDecoder.h"
       - "src/plugins/pictview/WicImageDecoder.cpp"
+      - "src/plugins/pictview/WicBitmapPresenter.h"
+      - "src/plugins/pictview/WicBitmapPresenter.cpp"
+      - "tools/tests/pictview_wic_presenter.cpp"
       - "src/plugins/pictview/vcxproj/pictview.vcxproj"
       - "tools/tests/pictview_wic_decode.cpp"
       - ".github/workflows/pr-pictview-wic.yml"
@@ -33,4 +36,11 @@ jobs:
           cl /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /Fe:"%RUNNER_TEMP%\pictview_wic_decode.exe" tools\tests\pictview_wic_decode.cpp src\plugins\pictview\WicImageDecoder.cpp windowscodecs.lib ole32.lib
           if errorlevel 1 exit /b 1
           "%RUNNER_TEMP%\pictview_wic_decode.exe"
+          if errorlevel 1 exit /b 1
+      - name: Compile and execute WIC GDI presentation regressions
+        shell: cmd
+        run: |
+          cl /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /Fe:"%RUNNER_TEMP%\pictview_wic_presenter.exe" tools\tests\pictview_wic_presenter.cpp src\plugins\pictview\WicBitmapPresenter.cpp gdi32.lib
+          if errorlevel 1 exit /b 1
+          "%RUNNER_TEMP%\pictview_wic_presenter.exe"
           if errorlevel 1 exit /b 1
