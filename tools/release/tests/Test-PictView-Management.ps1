@@ -65,6 +65,15 @@ if ($runnerText -notmatch '/W4 /WX' -or
     throw 'Native PictView runner must enforce MSVC warning-free build, both architectures and proper exit codes.'
 }
 $hostText = Get-Content -LiteralPath $hostScriptPath -Raw
+# The host GUI is opt-in, but its embedded Win32 interop code must compile
+# on every ordinary Windows CI invocation. Syntax-only parsing does not
+# validate the C# here-string passed to Add-Type at runtime.
+$hostInterop = [regex]::Match(
+    $hostText, "(?s)Add-Type -TypeDefinition @'\r?\n(?<code>.*?)\r?\n'@")
+if (-not $hostInterop.Success) {
+    throw 'PictView host Win32 interop here-string was not found.'
+}
+Add-Type -TypeDefinition $hostInterop.Groups['code'].Value -ErrorAction Stop
 foreach ($required in @('PictViewHostWindows', 'GetWindowThreadProcessId',
                        'OpenSalamander.PictView.WIC', 'pictview.spl',
                        "SendWait('{F3}')", 'Stop-Process -Id $process.Id',
