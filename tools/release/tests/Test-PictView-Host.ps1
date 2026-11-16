@@ -323,8 +323,9 @@ try {
         }).Count -gt 0
         $dialog = [PictViewHostWindows]::GetDialogDetails([uint32]$process.Id)
         if (-not $loaded) {
-            throw ('PictView SPL was not loaded by F3. Verify that the BMP Viewer associations ' +
-                   'select PictView and that the file-list focus is correct. ' +
+            throw ('PictView SPL is not resident after F3; it may never have been ' +
+                   'selected or may have failed initialization and unloaded. ' +
+                   'Verify the BMP Viewer associations and the exact Error dialog text. ' +
                    "Dialog: '$dialog'. Test-owned windows: $($windows -join '; '). $($_.Exception.Message)")
         }
         throw ('PictView SPL was present, but no native WIC HWND appeared. ' +
