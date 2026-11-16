@@ -73,4 +73,19 @@ foreach ($required in @('PictViewHostWindows', 'GetWindowThreadProcessId',
         throw "PictView host smoke is missing safety contract: $required"
     }
 }
+# The PR #8 'Test All' guard must not require the unavailable PVW32
+# converter after the new WIC viewer passed a real in-host acceptance.
+$runtimePath = Join-Path $root 'tools\release\Plugin-Runtime-Prerequisites.ps1'
+$guiDriverPath = Join-Path $root 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+$runtimeText = Get-Content -LiteralPath $runtimePath -Raw
+$guiText = Get-Content -LiteralPath $guiDriverPath -Raw
+if ($managerText -notmatch "--test-plugin-load" -or
+    $managerText -notmatch "Get-MissingPictViewRuntimeFiles" -or
+    $managerText -notmatch "Test-PictView-Host.ps1" -or
+    $managerText -notmatch "-WicViewerVerified" -or
+    $runtimeText -notmatch "\[switch\]\`$WicViewerVerified" -or
+    $guiText -notmatch "\[switch\]\`$WicViewerVerified" -or
+    $guiText -notmatch "Get-MissingPictViewRuntimeFiles") {
+    throw 'PR8 plugin load gate must first verify the native WIC viewer in Salamander.'
+}
 Write-Host 'PASS: manage and local PictView MSVC test registry/AST contracts.'
