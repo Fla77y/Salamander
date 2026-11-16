@@ -56,6 +56,7 @@ function Invoke-BoundedSetup {
     }
 }
 
+$uninstallAttempted = $false
 try {
     $installLog = Join-Path $root 'setup.log'
     $installArguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART',
@@ -81,6 +82,7 @@ try {
     $uninstallLog = Join-Path $root 'uninstall.log'
     $uninstallArguments = @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART',
                             ('/LOG="' + $uninstallLog + '"'))
+    $uninstallAttempted = $true
     Invoke-BoundedSetup -Executable $uninstallers[0].FullName -Arguments $uninstallArguments -Description 'Release uninstaller'
 
     $installedExe = Join-Path $target 'salamand.exe'
@@ -95,8 +97,22 @@ try {
     Write-Host 'PASS: Release x64 Inno Setup installed required files and removed the executable.'
 }
 finally {
+    # Even when payload assertions fail after setup, Inno's uninstall state
+    # must be removed through its own test-owned uninstaller (not by deleting
+    # only the files). Never target an existing user's application.
+    if (-not $uninstallAttempted -and (Test-Path -LiteralPath $target -PathType Container)) {
+        $cleanupUninstallers = @(Get-ChildItem -LiteralPath $target -File -Filter 'unins*.exe' -ErrorAction SilentlyContinue)
+        if ($cleanupUninstallers.Count -eq 1) {
+            $cleanupUninstaller = $cleanupUninstallers[0]
+            try {
+                Invoke-BoundedSetup -Executable $cleanupUninstaller.FullName -Arguments @('/VERYSILENT', '/SUPPRESSMSGBOXES', '/NORESTART') -Description 'Post-failure cleanup uninstaller'
+            }
+            catch {
+                Write-Warning ("Test-owned uninstall cleanup failed: " + $_.Exception.Message)
+            }
+        }
+    }
     # The GUID-scoped temporary root is exclusively owned by this script.
-    # Do not hide installation errors when cleaning up a failed test.
     if (Test-Path -LiteralPath $root -PathType Container) {
         Remove-Item -LiteralPath $root -Recurse -Force -ErrorAction SilentlyContinue
     }
