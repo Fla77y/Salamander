@@ -47,6 +47,16 @@ inline bool TryCopyUnicodeFileNoOverwrite(const Utf16DiskPath& source,
         !UnicodeFileOperationsDetail::TryGetExtendedPath(destination, destinationPath, error))
         return false;
 
+    // Preserve the existing no-overwrite error contract for callers.
+    if (GetFileAttributesW(destinationPath.c_str()) != INVALID_FILE_ATTRIBUTES)
+    {
+        error = ERROR_FILE_EXISTS;
+        return false;
+    }
+    error = GetLastError();
+    if (error != ERROR_FILE_NOT_FOUND)
+        return false;
+
     // Publish only a fully copied file. CopyFileW directly to the final
     // name can expose incomplete bytes while the copy is still running.
     // Stage in the destination directory, then atomically rename on the
