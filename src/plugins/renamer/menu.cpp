@@ -27,6 +27,16 @@ BOOL CPluginInterfaceForMenuExt::ExecuteMenuItem(CSalamanderForOperationsAbstrac
     {
     case MID_RENAME:
     {
+        // The legacy renamer works on MAX_PATH-sized ANSI paths. Refuse
+        // unsupported panel roots BEFORE creating its worker/dialog thread.
+        char safeRoot[MAX_PATH] = {};
+        if (!SG->GetPanelPath(PANEL_SOURCE, safeRoot, MAX_PATH, NULL, NULL))
+        {
+            SG->ShowMessageBox("The selected panel path cannot be represented by the "
+                               "legacy batch renamer. No files were changed.",
+                               LoadStr(IDS_PLUGINNAME), MSGBOX_INFO);
+            break;
+        }
         SG->GetConfigParameter(SALCFG_ALWAYSONTOP, &AlwaysOnTop, sizeof(AlwaysOnTop), NULL);
         if (SG->GetPanelSelection(PANEL_SOURCE, NULL, NULL))
         {
