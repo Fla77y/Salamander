@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 <#
 .SYNOPSIS
-    Read-only ABI smoke test for four priority x64 plug-in binaries.
+    Read-only ABI smoke test for the priority x64 plug-ins, including PictView.
 .DESCRIPTION
     Inspects PE headers and export tables with Visual Studio dumpbin.
     Never loads or executes a plug-in DLL. Successful checks do NOT prove
@@ -36,7 +36,7 @@ if ([string]::IsNullOrWhiteSpace($dumpbin)) {
 }
 
 $requiredExports = @('SalamanderPluginEntry', 'SalamanderPluginGetReqVer')
-$pluginNames = @('7zip', 'checksum', 'filecomp', 'renamer')
+$pluginNames = @('7zip', 'checksum', 'filecomp', 'renamer', 'pictview')
 foreach ($name in $pluginNames) {
     # Arrange: both the source export declaration and the built plug-in
     # must exist; missing binaries are failures, never optional skips.
@@ -84,4 +84,4 @@ foreach ($name in $pluginNames) {
     }
     Write-Host "PASS: $name x64 plug-in binary exports required Salamander SDK entry points"
 }
-Write-Host 'PASS: four built plug-in binary ABI contracts inspected without loading plug-in code.'
+Write-Host 'PASS: five built plug-in binary ABI contracts inspected without loading plug-in code.'

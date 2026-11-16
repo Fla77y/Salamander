@@ -52,11 +52,32 @@ jobs:
 
       - name: Run parser and package regression tests
         shell: pwsh
-        run: ./tools/release/tests/Test-Package-Helpers.ps1
+        run: |
+          ./tools/release/tests/Test-Package-Helpers.ps1
+          ./tools/release/tests/Test-ReleasePublicArtifact.ps1
 
       - name: Rebuild Debug and Release, compile help and produce packages
         shell: pwsh
         run: ./tools/release/Update-Build-Test-Package.ps1 -SkipUpdate -BuildRoot (Join-Path $env:RUNNER_TEMP 'OpenSal')
+
+      - name: Verify extracted portable Release payload
+        shell: pwsh
+        run: |
+          $dist = Join-Path $env:RUNNER_TEMP 'OpenSal\dist'
+          $target = Join-Path $env:RUNNER_TEMP 'OpenSal\portable-check'
+          New-Item -ItemType Directory -Force -Path $target | Out-Null
+          $sevenZip = (Get-Command 7z.exe -ErrorAction Stop).Source
+          & $sevenZip x '-y' "-o$target" (Join-Path $dist 'OpenSalamander-Release-x64.7z')
+          if ($LASTEXITCODE -ne 0) { throw "Release extraction failed: $LASTEXITCODE" }
+          ./tools/release/tests/Test-PortableManifest.ps1 -ExtractedDirectory $target
+
+      - name: Verify redistributable Release SHA256 manifest
+        shell: pwsh
+        run: ./tools/release/tests/Test-ReleaseChecksumManifest.ps1 -DistributionDirectory (Join-Path $env:RUNNER_TEMP 'OpenSal\dist')
+
+      - name: Smoke-test silent Release installer and uninstaller
+        shell: pwsh
+        run: ./tools/release/tests/Test-ReleaseInstaller.ps1 -InstallerPath (Join-Path $env:RUNNER_TEMP 'OpenSal\dist\OpenSalamander-Release-x64-Setup.exe') -PortableDirectory (Join-Path $env:RUNNER_TEMP 'OpenSal\portable-check')
 
       # Never expose Debug CRT DLLs via public workflow artifacts.
       # GUI automation requires an unlocked interactive desktop. GitHub-hosted
@@ -64,12 +85,42 @@ jobs:
       # separate locally executed acceptance gate, not part of this package job.
       # Invoke .\\manage.cmd --test-gui-baseline, then --test-gui on Windows.
 
+      - name: Stage and verify exact public Release files
+        shell: pwsh
+        run: |
+          $dist = Join-Path $env:RUNNER_TEMP 'OpenSal\dist'
+          $public = Join-Path $env:RUNNER_TEMP 'OpenSal\public-release'
+          New-Item -ItemType Directory -Force -Path $public | Out-Null
+          foreach ($name in @('OpenSalamander-Release-x64.7z',
+                               'OpenSalamander-Release-x64-Setup.exe',
+                               'SHA256SUMS-Release.txt')) {
+            Copy-Item -LiteralPath (Join-Path $dist $name) -Destination $public -ErrorAction Stop
+          }
+          ./tools/release/tests/Test-ReleaseChecksumManifest.ps1 -DistributionDirectory $public -RequirePublicOnly
+
       - name: Upload redistributable Release outputs only
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: OpenSalamander-Release-x64
           path: |
-            ${{ runner.temp }}\OpenSal\dist\OpenSalamander-Release-x64.7z
-            ${{ runner.temp }}\OpenSal\dist\OpenSalamander-Release-x64-Setup.exe
+            ${{ runner.temp }}\OpenSal\public-release\OpenSalamander-Release-x64.7z
+            ${{ runner.temp }}\OpenSal\public-release\OpenSalamander-Release-x64-Setup.exe
+            ${{ runner.temp }}\OpenSal\public-release\SHA256SUMS-Release.txt
           if-no-files-found: error
+
+  verify-public-artifact:
+    name: Download and verify public x64 Release artifact
+    needs: package
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download exactly the package produced by this workflow
+        uses: actions/download-artifact@v4
+        with:
+          name: OpenSalamander-Release-x64
+          path: downloaded-release
+      - name: Reject unexpected files and verify SHA256 of downloaded packages
+        shell: pwsh
+        run: ./tools/release/tests/Test-ReleaseChecksumManifest.ps1 -DistributionDirectory (Join-Path $env:GITHUB_WORKSPACE 'downloaded-release') -RequirePublicOnly

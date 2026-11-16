@@ -326,3 +326,29 @@ claimed yet. Re-run:
 ```powershell
 .\manage.cmd --update --test-plugin-exports
 ```
+
+## Integration with the 5.2 native-WIC development branch
+
+The 2026-11-16 investigation above describes the **old** PictView
+PVW32/SalPVEnv plugin. It is preserved as historical evidence, not a
+requirement to redistribute unavailable proprietary DLLs.
+
+The 5.2 development branch now contains an independent native WIC viewer
+from PRs #9/#10 and the version and local acceptance scripts from PR #11.
+PR #8 is merged into its own staging integration branch by merge commit
+`cf027b4855f1c59c29e797fff73f4a088f82d35d`, keeping all original
+PR #8 commits.
+
+The combined `manage.cmd --test-plugin-load` opt-in path now first runs
+`Test-PictView-Host.ps1` if PictView is installed in the chosen binary.
+Only if that **real Salamander F3/SPL/HWND** check succeeds does it mark
+native WIC as verified for the original PR #8 sidecar guard, then invoke
+the four-plugin global Test All GUI smoke. Without this verification the
+legacy prerequisite checker continues to fail closed when its sidecars
+are missing. Direct invocation of the GUI smoke still requires the
+corresponding explicit `-WicViewerVerified` flag; it is never part of
+unattended `--test-all`.
+
+These are integration and safety gates, **not** proof that PictView has
+full legacy feature parity, that unrelated third-party plug-ins are
+safe, or that the actual interactive tests have passed locally.

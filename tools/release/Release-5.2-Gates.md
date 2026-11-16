@@ -1,0 +1,93 @@
+# Open Salamander 5.2 — release acceptance and merge gates
+
+Status: **not yet approved for public release**. Keep the change set in Draft until every applicable gate below has a dated result. A green GitHub check does **not** substitute for testing on a clean end-user machine.
+
+## 1. Automated checks — exact PR head
+
+- [ ] GitHub Actions **PR Build**: Win32 Debug and x64 Debug using `/warnaserror`.
+- [ ] GitHub Actions **Product 5.2 and local PictView acceptance commands**: product/version/config-migration contracts; native WIC x86/x64 decoder, GDI, transforms, writer and clipboard.
+- [ ] GitHub Actions **Long path regression foundations** and **Package script checks**.
+- [ ] GitHub Actions **Release portability packages (Windows 2026)**: Debug/Release rebuilds, compiled help, recursive PE dependencies, runtime staging, 7z integrity checks, both Inno Setup outputs.
+- [ ] **Public Release artifact gate**: the GitHub artifact contains exactly `OpenSalamander-Release-x64.7z`, `OpenSalamander-Release-x64-Setup.exe` and `SHA256SUMS-Release.txt`. Run `Test-ReleaseChecksumManifest.ps1 -DistributionDirectory <downloaded-directory> -RequirePublicOnly` after extracting the GitHub artifact ZIP. The new `Test-ReleasePublicArtifact.ps1` regression validates strict contents (including hidden entries) with synthetic payloads; the internal `dist` directory remains permitted to contain private Debug artifacts. Reject any staged `.pdb`, `.lib`, `.exp`, Debug CRTs, or missing `pictview.spl`, `lang/english.slg`, `exif.dll`.
+- [ ] The temporary Windows CI runner executes `Test-ReleaseInstaller.ps1` against the just-generated Release installer, installs the executable and required plugin files into a GUID-scoped directory, uninstalls, and confirms removal. **This runner contains development tools and is not a clean VM**.
+
+All checks must target the **same final commit**. Recheck after every code or packaging change.
+
+### Verified automated results (16 November 2026)
+
+At commit `fd2a94f1a8ccd88d734b6c392cf662a7fd27cafe`, all six GitHub
+Actions workflows completed successfully. The Release workflow rebuilt the
+packages, validated the portable payload, performed silent install/uninstall
+and compared installed files to the portable payload; its downstream job
+downloaded and verified the public GitHub artifact again. The Windows
+clipboard contention regressions passed, including sustained-lock refusal.
+
+**Do not treat that SHA as the final release SHA after later documentation,
+packaging, or manager updates.** The checkboxes above remain open until the
+last source commit has all required checks green. The repository's third-party
+notice source is `doc/third_party.txt`; the staged release file is
+`THIRD_PARTY_LICENSES.txt`. The stage now requires that file to exist.
+
+
+
+## 2. Interactive GUI and plugin acceptance on Windows x64
+
+Stop running Salamander instances first; use the matching freshly-built Release binaries. These commands are opt-in because they send real input and may load installed third-party plugins.
+
+```powershell
+.\manage.cmd --test-plugin-exports --release
+.\manage.cmd --test-pictview
+.\manage.cmd --test-pictview-window
+.\manage.cmd --test-pictview-host
+.\manage.cmd --test-plugin-load
+.\manage.cmd --test-all --release
+```
+
+- [x] **2026-11-16 19:02 CET**: local `--test-pictview-host` passed for one BMP through F3; verified the exact PictView SPL and native WIC HWND, clean close and unchanged source bytes.
+- [x] **2026-11-16 19:10 CET**: local `--test-plugin-load` passed, including the WIC prerequisite and actual Plug-in Manager Test All retaining the 7zip, checksum, filecomp and renamer Release x64 modules; Unicode fixture bytes unchanged.
+- [x] **2026-11-16 22:08 CET**: a real local Windows desktop
+  `manage.cmd --test-all` completed successfully for both **Release x64 and
+  Debug x64**, including GUI F2/F5/F6/F8, Unicode Find, clipboard/UNC and
+  32,700-unit UTF-16 boundaries. Evidence:
+  `manage-20261116-220310-109-0bc2c7.log`. The previous clipboard
+  deadlock and Win32 `OpenClipboard` error did not recur.
+  The transcript **did not record the git SHA or binary build provenance**;
+  this is evidence for the observed GUI execution, not an exact-commit
+  attestation.
+- [ ] Fresh `--test-pictview-window` and any required opt-in plug-in ABI,
+  recycle restore and host-initialization checks on the final candidate, with
+  dated evidence. These tests are intentionally not part of `--test-all`.
+- [ ] A selected BMP, PNG, JPEG, GIF, TIFF (including multi-frame), and ICO opens with F3, correct dimensions/pixels and no modal errors. Verify Save As/export, transform and clipboard actions appropriate to the actually implemented WIC scope.
+
+The original PictView/PVW32 engine is **not fully replaced feature-for-feature**. Legacy proprietary codecs, timed GIF playback, print/capture, and parts of the historical UI are outside the verified WIC scope. Do not claim full legacy equivalence. Document these limitations explicitly in the user-facing release notes or defer the public release if parity is a requirement.
+
+## 3. Mandatory clean Windows 11 x64 release test
+
+Use two **fresh Windows 11 x64 VM snapshots** without Visual Studio, Windows SDK, or a separately installed VC++ redistributable. The GitHub-hosted Windows builder is **not** an acceptable substitute.
+
+- [ ] Snapshot A: download the exact final-head artifact ZIP; verify Release-only SHA-256 manifest locally; extract the Release portable 7z to a disposable user folder. Start `salamand.exe` (no SDK/IDE), browse a few directories, open F1 help, check Plugin Manager and launch representative plugins, F3 PictView for BMP/PNG/JPEG/TIFF, close normally. Check Event Viewer and any missing-DLL dialogs.
+- [ ] Snapshot B: run `OpenSalamander-Release-x64-Setup.exe` interactively; verify install path and Start Menu shortcut, launch/F1/F3/plugins, then uninstall and confirm removal of program files and shortcuts. Verify that user data and unrelated installations were not removed.
+- [ ] On a snapshot with an existing 5.0 configuration, launch 5.2 and verify the prompt, migration to `HKCU\Software\Open Salamander\5.2`, plugin auto-discovery, preserved 5.0 registry data, and rollback to 5.0.
+- [ ] Record date, OS build, final commit SHA, test transcript/screenshots and specific pass/fail outcomes.
+
+## 4. Trust, licensing and provenance
+
+- [ ] Decide the **public Authenticode signing policy** before distribution. `tools/codesign/sign_with_retry.cmd` is currently a placeholder; a successful build does not constitute signed software. If releasing unsigned binaries is explicitly accepted, disclose this fact and likely Windows SmartScreen warning behavior. Otherwise provision a trusted signing certificate and verify signatures on the final EXE, DLL/SPL and installer.
+- [ ] Review `LICENSE`, source notices in `doc/third_party.txt` (staged as `THIRD_PARTY_LICENSES.txt`), third-party bundled dependencies, and their redistributability; presence of notices alone is not approval.
+- [ ] Keep Debug builds and Microsoft Debug CRTs for private developer test machines only; no Debug artifacts in public Actions uploads or GitHub Releases.
+- [ ] Prepare public 5.2 release notes describing the implemented WIC feature subset and known incompatibilities.
+
+## 5. PR integration order
+
+The open PRs are stacked; do **not** squash or merge PR #11 to `main` in isolation while its bases are still draft:
+
+1. PR #8 — `feature/unicode-plugin-recycle-integration` → `main`
+2. PR #9 — `feature/pictview-wic-backend` → `main`
+3. PR #10 — `feature/pictview-wic-viewer-integration` → PR #9's branch, then retarget to `main` after PR #9 is integrated
+4. PR #11 — `feature/salamander-5.2-pictview-local-acceptance` → PR #10's branch, then retarget to `main` after PR #10 is integrated
+
+The PR #11 branch contains PR #8 ancestry as well; inspect the final main-versus-head diff and rerun required checks after integration of the predecessor PRs. Do not merge or tag before approval of all gates above.
+
+## Decision record
+
+**GO** is permitted only after the exact release artifacts, all required CI jobs, GUI scenarios, clean-machine portable/install/uninstall acceptance, and a signing/scope decision are evidenced. Otherwise status remains **NO-GO**, even if isolated WIC and plugin-load smoke tests pass.

@@ -2115,7 +2115,7 @@ int GetWMCommandFromSalCmd(int salCmd);
 //******************************************************************************
 
 // number of items in the SalamanderConfigurationRoots array
-#define SALCFG_ROOTS_COUNT 83
+#define SALCFG_ROOTS_COUNT 84
 
 // ID of the main thread (valid only after entering WinMain())
 extern DWORD MainThreadID;

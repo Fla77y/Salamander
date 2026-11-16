@@ -8,17 +8,71 @@ $PSNativeCommandUseErrorActionPreference = $false
 
 $toolsDir = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).ProviderPath
 
+# Release downloads must carry an externally verifiable manifest for only
+# public Release artifacts, not paths to nonredistributable Debug packages.
+$releaseWorkflow = Get-Content -LiteralPath (
+    Join-Path $toolsDir '..\..\.github\workflows\pr-release-package.yml') -Raw
+$packagingScript = Get-Content -LiteralPath (
+    Join-Path $toolsDir 'Update-Build-Test-Package.ps1') -Raw
+
+# All public packages must contain the GPL license and the third-party notices.
+# The source notices live in doc/third_party.txt; the staged copy is renamed.
+$packageHelperSource = Get-Content -LiteralPath (Join-Path $toolsDir 'Package-Helpers.ps1') -Raw
+if (-not $packageHelperSource.Contains('Join-Path $Repository ''doc\third_party.txt''') -or
+    -not $packageHelperSource.Contains('Join-Path $Stage ''THIRD_PARTY_LICENSES.txt''') -or
+    -not $packageHelperSource.Contains("'LICENSE', 'THIRD_PARTY_LICENSES.txt'")) {
+    throw 'Release stage must copy and require both GPL and third-party license notices.'
+}
+$notices = Join-Path $toolsDir '..\..\doc\third_party.txt'
+if (-not (Test-Path -LiteralPath $notices -PathType Leaf) -or
+    (Get-Item -LiteralPath $notices).Length -lt 100) {
+    throw 'Third-party license notices source is absent or empty.'
+}
+
+if (-not $releaseWorkflow.Contains('OpenSal\public-release\SHA256SUMS-Release.txt') -or
+    -not $packagingScript.Contains("'SHA256SUMS-Release.txt'") -or
+    -not $packagingScript.Contains('OpenSalamander-Release-x64.7z') -or
+    -not $packagingScript.Contains('OpenSalamander-Release-x64-Setup.exe') -or
+    -not $releaseWorkflow.Contains('Test-ReleaseInstaller.ps1')) {
+    throw 'Public Release workflow must verify checksums, run a silent setup/uninstall smoke, and upload the release manifest.'
+}
+
+
 # Pure PE export parser regression: runs in CI without dumpbin, Windows GUI
 # or plug-in binaries; it also detects malformed public-name matching.
 & (Join-Path $PSScriptRoot 'Test-PluginExport-Parser.ps1')
 
+# Synthetic exact-public-artifact regression (no installer execution).
+& (Join-Path $PSScriptRoot 'Test-ReleasePublicArtifact.ps1')
+& (Join-Path $PSScriptRoot 'Test-PortableManifest-Regression.ps1')
+& (Join-Path $PSScriptRoot 'Test-ReleaseWorkflow-Order.ps1')
+& (Join-Path $PSScriptRoot 'Test-InstalledPayload-Regression.ps1')
+
+# Verify child-process-only TEMP isolation against the stale SAL*.tmp dialog.
+& (Join-Path $PSScriptRoot 'Test-GuiProcessTemp-Isolation.ps1')
+# Prove that an independent clipboard reader can obtain the navigation text
+# while the writer's STA thread is synchronously waiting on another process.
+& (Join-Path $PSHOME 'pwsh.exe') -Sta -NoLogo -NoProfile -File (Join-Path $PSScriptRoot 'Test-GuiClipboard-Isolation.ps1')
+if ($LASTEXITCODE -ne 0) { throw 'Cross-process GUI clipboard isolation regression failed.' }
+
+
 # Detect a broken optional PictView installation without loading or
 # distributing its unavailable proprietary converter components.
 & (Join-Path $PSScriptRoot 'Test-PictViewRuntime-Prerequisites.ps1')
+# If payload validation fails after installation, the smoke must attempt
+# only its test-owned Inno uninstaller before deleting the temporary directory.
+$installerSmokeSource = Get-Content -LiteralPath (
+    Join-Path $toolsDir 'tests\Test-ReleaseInstaller.ps1') -Raw
+if (-not $installerSmokeSource.Contains('$uninstallAttempted') -or
+    -not $installerSmokeSource.Contains('Invoke-BoundedSetup -Executable $cleanupUninstaller.FullName')) {
+    throw 'Release installer smoke must attempt test-owned uninstall on early validation failures.'
+}
 $scriptFiles = @(
     (Join-Path $toolsDir 'Package-Helpers.ps1'),
     (Join-Path $toolsDir 'Update-Build-Test-Package.ps1'),
     (Join-Path $toolsDir '..\Manage-Salamander.ps1'),
+    (Join-Path $toolsDir 'tests\Test-ReleaseChecksumManifest.ps1'),
+    (Join-Path $toolsDir 'tests\Test-ReleaseInstaller.ps1'),
     (Join-Path $toolsDir 'tests\Test-FilenamesAndPaths.ps1'),
     (Join-Path $toolsDir 'tests\Test-SalamanderGui-LongPaths.ps1')
 )
@@ -54,6 +108,15 @@ foreach ($name in @('Expand-AutomatedTestActions', 'Get-AutomatedGuiModes')) {
 }
 
 $managerSource = Get-Content -LiteralPath $managerPath -Raw
+# Local acceptance logs must capture the actual checkout revision and whether
+# tracked source changes are present; do not mistake a checkout SHA for an
+# attestation of the pre-existing built binaries.
+if (-not $managerSource.Contains('Source checkout git HEAD:') -or
+    -not $managerSource.Contains('Source tracked working tree clean:') -or
+    -not $managerSource.Contains('rev-parse --verify HEAD') -or
+    -not $managerSource.Contains('status --porcelain --untracked-files=no')) {
+    throw 'Management transcript must identify the source checkout revision and tracked changes.'
+}
 $optionDeclaration = [regex]::Match($managerSource, '(?s)\$validOptions\s*=\s*@\((.*?)\)')
 if (-not $optionDeclaration.Success) { throw 'Management CLI option registry is missing.' }
 $registeredOptions = @([regex]::Matches($optionDeclaration.Groups[1].Value, "'([^']+)'") |
@@ -397,6 +460,12 @@ function Assert-Throws {
     if (-not $threw) { throw "Expected failure did not occur: $Description" }
 }
 
+# Reject absent installer before creating a temporary install directory.
+$missingInstaller = Join-Path $env:TEMP ('OpenSal-missing-setup-' + [Guid]::NewGuid().ToString('N') + '.exe')
+Assert-Throws {
+    & (Join-Path $toolsDir 'tests\Test-ReleaseInstaller.ps1') -InstallerPath $missingInstaller
+} 'Installer smoke must fail closed for a nonexistent setup executable'
+
 $root = Join-Path $env:TEMP ('OpenSal-Package-Tests-' + [guid]::NewGuid().ToString('N'))
 $stage = Join-Path $root 'stage'
 New-Item -ItemType Directory -Path (Join-Path $stage 'help\english') -Force | Out-Null
@@ -410,15 +479,55 @@ echo     vcruntime140.dll
 exit /b 0
 '@ | Set-Content -LiteralPath $fakeDumpbin -Encoding ascii
 
-    foreach ($filename in @('salamand.exe', 'LICENSE', 'vcruntime140.dll', 'msvcp140.dll')) {
+    foreach ($filename in @('salamand.exe', 'LICENSE', 'THIRD_PARTY_LICENSES.txt', 'vcruntime140.dll', 'msvcp140.dll')) {
         Set-Content -LiteralPath (Join-Path $stage $filename) -Value 'test fixture' -Encoding ascii
     }
     Assert-Throws { Test-DistributionStage -Stage $stage -Configuration Release -DumpbinExe $fakeDumpbin } 'Missing CHM must fail'
 
     Set-Content -LiteralPath (Join-Path $stage 'help\english\salamand.chm') -Value 'test fixture' -Encoding ascii
+    $requiredPictViewFiles = @(
+        'plugins\pictview\pictview.spl',
+        'plugins\pictview\lang\english.slg',
+        'plugins\pictview\exif.dll'
+    )
+    foreach ($required in $requiredPictViewFiles) {
+        $fixtureFile = Join-Path $stage $required
+        New-Item -ItemType Directory -Path (Split-Path -Parent $fixtureFile) -Force | Out-Null
+        Set-Content -LiteralPath $fixtureFile -Value 'test fixture' -Encoding ascii
+    }
     Test-DistributionStage -Stage $stage -Configuration Release -DumpbinExe $fakeDumpbin
+    # Regression: a Release package without third-party notices must fail
+    # before archiving even when all binaries and other resources are present.
+    $noticesFixture = Join-Path $stage 'THIRD_PARTY_LICENSES.txt'
+    Remove-Item -LiteralPath $noticesFixture -Force
+    Assert-Throws {
+        Test-DistributionStage -Stage $stage -Configuration Release -DumpbinExe $fakeDumpbin
+    } 'Release stage must reject missing third-party license notices'
+    Set-Content -LiteralPath $noticesFixture -Value 'test fixture' -Encoding ascii
+    foreach ($required in $requiredPictViewFiles) {
+        $fixtureFile = Join-Path $stage $required
+        Remove-Item -LiteralPath $fixtureFile -Force
+        Assert-Throws {
+            Test-DistributionStage -Stage $stage -Configuration Release -DumpbinExe $fakeDumpbin
+        } "Release stage must require PictView file $required"
+        Set-Content -LiteralPath $fixtureFile -Value 'test fixture' -Encoding ascii
+    }
     if (-not (Test-Path -LiteralPath (Join-Path $stage 'SHA256SUMS.txt'))) {
         throw 'SHA256 manifest is missing.'
+    }
+
+    # Release output must never publish link intermediates or private
+    # debug symbols. Place each forbidden file in a plug-in subdirectory,
+    # because checking only the stage root misses the real regression.
+    $nestedPlugin = Join-Path $stage 'plugins\pictview'
+    New-Item -ItemType Directory -Path $nestedPlugin -Force | Out-Null
+    foreach ($extension in @('.pdb', '.lib', '.exp')) {
+        $intermediate = Join-Path $nestedPlugin ('pictview' + $extension)
+        Set-Content -LiteralPath $intermediate -Value 'test fixture' -Encoding ascii
+        Assert-Throws {
+            Test-DistributionStage -Stage $stage -Configuration Release -DumpbinExe $fakeDumpbin
+        } "Release package must reject nested $extension build artifacts"
+        Remove-Item -LiteralPath $intermediate -Force
     }
 
     Set-Content -LiteralPath (Join-Path $stage 'vcruntime140d.dll') -Value 'test fixture' -Encoding ascii
@@ -430,6 +539,40 @@ exit /b 0
         Set-Content -LiteralPath (Join-Path $stage $filename) -Value 'test fixture' -Encoding ascii
     }
     Test-DistributionStage -Stage $stage -Configuration Debug -DumpbinExe $fakeDumpbin
+    # Verify the distributable manifest against real fixture bytes, including
+    # malicious or accidental changes after packaging.
+    $public = Join-Path $root 'public'
+    New-Item -ItemType Directory -Path $public -Force | Out-Null
+    $archiveName = 'OpenSalamander-Release-x64.7z'
+    $setupName = 'OpenSalamander-Release-x64-Setup.exe'
+    $archiveFile = Join-Path $public $archiveName
+    $setupFile = Join-Path $public $setupName
+    Set-Content -LiteralPath $archiveFile -Value 'sample portable bytes' -Encoding ascii
+    Set-Content -LiteralPath $setupFile -Value 'sample installer bytes' -Encoding ascii
+    $publicHashes = @(
+        '{0} *{1}' -f (Get-FileHash -LiteralPath $archiveFile -Algorithm SHA256).Hash.ToLowerInvariant(), $archiveName
+        '{0} *{1}' -f (Get-FileHash -LiteralPath $setupFile -Algorithm SHA256).Hash.ToLowerInvariant(), $setupName
+    )
+    $publicManifest = Join-Path $public 'SHA256SUMS-Release.txt'
+    $verifier = Join-Path $toolsDir 'tests\Test-ReleaseChecksumManifest.ps1'
+    $publicHashes | Set-Content -LiteralPath $publicManifest -Encoding ascii
+    & $verifier -DistributionDirectory $public
+
+    # Act/Assert: tampering, duplicates, Debug references and missing files
+    # are rejected rather than reported as verified public downloads.
+    Set-Content -LiteralPath $archiveFile -Value 'tampered content' -Encoding ascii
+    Assert-Throws { & $verifier -DistributionDirectory $public } 'Tampered public Release archive must fail'
+    Set-Content -LiteralPath $archiveFile -Value 'sample portable bytes' -Encoding ascii
+    @($publicHashes[0], $publicHashes[0]) |
+        Set-Content -LiteralPath $publicManifest -Encoding ascii
+    Assert-Throws { & $verifier -DistributionDirectory $public } 'Duplicate Release entry must fail'
+    @($publicHashes[0], ('{0} *OpenSalamander-Debug-x64.7z' -f ('0' * 64))) |
+        Set-Content -LiteralPath $publicManifest -Encoding ascii
+    Assert-Throws { & $verifier -DistributionDirectory $public } 'Debug entry in public checksum file must fail'
+    $publicHashes | Set-Content -LiteralPath $publicManifest -Encoding ascii
+    Remove-Item -LiteralPath $setupFile -Force
+    Assert-Throws { & $verifier -DistributionDirectory $public } 'Missing public installer must fail'
+    Write-Host 'PASS: public artifact checksum validation rejects tampering, duplicates, Debug entries and missing files.'
     Write-Host 'PASS: source parses; required help/runtime checks, release safety and SHA256 manifest work.'
 }
 finally {

@@ -206,7 +206,15 @@ function New-DistributionStage {
     }
     if (Test-Path -LiteralPath $Stage) { Remove-Item -LiteralPath $Stage -Recurse -Force }
     New-Item -ItemType Directory -Path $Stage -Force | Out-Null
-    & robocopy.exe $BuiltDirectory $Stage '/E' '/XD' 'Intermediate' '/XF' '*.obj' '*.pch' '*.idb' '*.ilk' '*.tlog' '*.lastbuildstate' | Out-Null
+    $copyArgs = @($BuiltDirectory, $Stage, '/E', '/XD', 'Intermediate',
+                  '/XF', '*.obj', '*.pch', '*.idb', '*.ilk', '*.tlog', '*.lastbuildstate')
+    if ($Configuration -eq 'Release') {
+        # Keep private debug symbols and linker intermediates in the original
+        # build output, not in end-user archives or installers. Developer-only
+        # Debug packages may retain their symbols for postmortem analysis.
+        $copyArgs += @('*.pdb', '*.lib', '*.exp')
+    }
+    & robocopy.exe @copyArgs | Out-Null
     if ($LASTEXITCODE -ge 8) { throw "Staging copy failed with robocopy exit code $LASTEXITCODE" }
     Add-ApplicationResources -Repository $Repository -Stage $Stage
     Copy-Runtime -Stage $Stage -Configuration $Configuration -CrtFolders $CrtFolders
@@ -214,7 +222,13 @@ function New-DistributionStage {
 
 function Test-DistributionStage {
     param([string]$Stage, [string]$Configuration, [string]$DumpbinExe)
-    foreach ($required in @('salamand.exe', 'help\english\salamand.chm', 'LICENSE', 'vcruntime140.dll', 'msvcp140.dll')) {
+    # Version 5.2 promises native WIC PictView. Its plug-in, language
+    # resource, and native EXIF sidecar must actually ship in both variants.
+    foreach ($required in @('salamand.exe', 'help\english\salamand.chm',
+                            'LICENSE', 'THIRD_PARTY_LICENSES.txt', 'vcruntime140.dll', 'msvcp140.dll',
+                            'plugins\pictview\pictview.spl',
+                            'plugins\pictview\lang\english.slg',
+                            'plugins\pictview\exif.dll')) {
         if (-not (Test-Path -LiteralPath (Join-Path $Stage $required) -PathType Leaf)) {
             throw "Distribution is incomplete. Missing: $required in $Stage"
         }
@@ -226,7 +240,16 @@ function Test-DistributionStage {
             }
         }
     } else {
-        $debugDlls = @(Get-ChildItem -LiteralPath $Stage -File | Where-Object {
+        # Defense in depth: also check nested plug-in directories. The
+        # staging filter alone must not define the Release safety contract.
+        $buildArtifacts = @(Get-ChildItem -LiteralPath $Stage -Recurse -File |
+            Where-Object { $_.Extension -in @('.pdb', '.lib', '.exp') })
+        if ($buildArtifacts.Count -ne 0) {
+            $examples = @($buildArtifacts | Select-Object -First 8 |
+                ForEach-Object { [IO.Path]::GetRelativePath($Stage, $_.FullName) })
+            throw "Release stage contains build-only PDB/LIB/EXP files: $($examples -join '; ')"
+        }
+        $debugDlls = @(Get-ChildItem -LiteralPath $Stage -Recurse -File | Where-Object {
             $_.Name -match '^(?:msvcp\d+(?:_\d+)?|vcruntime\d+(?:_\d+)?|concrt\d*)d\.dll$|^ucrtbased\.dll$'
         })
         if ($debugDlls.Count -ne 0) {

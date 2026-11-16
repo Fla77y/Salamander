@@ -24,7 +24,7 @@
 [Setup]
 AppId={#ApplicationId}
 AppName={#EditionName} {#Architecture}
-AppVersion=5.1
+AppVersion=5.2
 AppPublisher=Open Salamander
 AppPublisherURL=https://github.com/Fla77y/Salamander
 DefaultDirName={localappdata}\Programs\Open Salamander {#Configuration} {#Architecture}

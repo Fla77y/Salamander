@@ -8,6 +8,9 @@ Start from the repository root in a Windows terminal:
 | `.\manage.cmd --update` | Update **current** branch, fast-forward only |
 | `.\manage.cmd --build` | Rebuild x64 Debug and Release and compile all CHM help |
 | `.\manage.cmd --test` | Run PowerShell/package validation and Windows path/name tests, plus standalone C++ tests when present |
+| `.\manage.cmd --test-pictview` | Build and run all native WIC regression tests with MSVC x86 **and** x64 locally |
+| `.\manage.cmd --test-pictview-window` | Same tests plus an opt-in real WIC HWND/close/lock smoke (requires an unlocked desktop) |
+| `.\manage.cmd --test-pictview-host` | Isolated real Salamander F3-to-PictView SPL/HWND smoke with an owned BMP fixture |
 | `.\manage.cmd --test-gui` | Create persistent test paths and launch Salamander for manual F5/F6, rename, delete, search and plugin checks |
 | `.\manage.cmd --setup` | Rebuild as needed, then create two 7z files and two setups |
 | `.\manage.cmd --run` | Start Release, `--run --debug` starts Debug |
@@ -33,6 +36,105 @@ verified separately before calling long-path support complete. Run
 `.\manage.cmd --test-gui` after building; it deliberately leaves the
 unique test fixture on disk and prints a manual acceptance checklist.
 A launched application does not count as a passed GUI test.
+
+## Open Salamander 5.2 / PictView local acceptance
+
+The product and Inno Setup version are 5.2 (build 184). The plug-in SDK
+version remains 103 for binary compatibility. The independent PictView plug-in
+version is not the Salamander product version.
+
+**5.2 configuration migration:** The application now uses
+`HKCU\\Software\\Open Salamander\\5.2` and configuration version **105**,
+instead of reusing the legacy `5.0` registry key and version **104**.
+The older key remains available for rollback. On the **first interactive
+startup** of 5.2, Salamander can offer to import the previous settings;
+review the migration dialog before proceeding and do **not** delete the old
+settings if you still use an older installation. Following the existing
+upgrade path, the new configuration version triggers discovery of the
+installed `plugins` directory, including the new PictView WIC module.
+It does not rewrite viewer rules on an already migrated 5.2 profile,
+nor guarantee that a PictView SPL and its language/dependency files
+initialize successfully. Run the normal application once, confirm the
+new PictView registration and `*.bmp` viewer mask, then execute the
+opt-in F3 host smoke. The smoke itself does not import/delete config.
+
+On your Windows 11 development machine, after checking out this branch:
+
+~~~powershell
+.\manage.cmd --update --build --test-pictview
+.\manage.cmd --test-pictview-window
+.\manage.cmd --test-pictview-host
+.\manage.cmd --test
+~~~
+
+The first command rebuilds x64 Debug/Release, verifies compiled product
+VERSIONINFO, then runs native WIC decode, image presentation, UTF-16 file
+decoding, frame navigation, in-memory transforms, image writer and clipboard
+tests with MSVC x86 and x64. The second command also opens and closes a
+disposable native WIC Win32 viewer and checks its ready/close/lock lifetime.
+The third command starts a fresh disposable Salamander process, invokes F3 on the sole BMP fixture, validates the exact PictView SPL and owned WIC HWND, then closes it and checks the source bytes. It is opt-in and refuses to run alongside existing Salamander processes. Its GUI automation requires a trusted plug-in configuration. The final command runs the ordinary project regressions, including a PowerShell
+syntax and PictView local-runner registry contract.
+
+`--test-all` includes the WIC native suite and the interactive HWND test,
+along with existing Salamander GUI tests. It needs a real unlocked Windows
+desktop. To avoid touching other plug-ins, the PictView HWND test runs the
+standalone viewer, **not** an in-process Salamander plug-in manager test.
+The opt-in real-host F3 smoke covers one BMP on an unlocked desktop; other modes, codecs, actions and saved configurations remain separate release gates.
+
+The F3 host smoke respects the developer's existing Salamander Viewer
+associations; it does not silently overwrite registry preferences. In
+particular, an external Viewer rule for `*.bmp` can intercept F3 before the
+PictView plug-in is loaded. If the dialog reports
+`Environment variable "X8D_BIN_TOOLS_PATH" was not found`, this indicates
+that a configured external Viewer command references an undefined environment
+variable. Do **not** set the variable to a dummy directory: that would test the
+wrong Viewer. In Salamander, open **Options > Configuration > Viewers**, assign
+`*.bmp` to PictView ahead of matching external rules, and confirm PictView is
+installed under **Plugins > Plugins Manager**. The host diagnostic now points
+to this configuration problem without changing the environment, registry or
+the user's saved Viewer associations. The F3 test must actually open the WIC
+viewer to pass.
+
+**Stale plug-in registration:** If **Plugins Manager** reports that
+`C:\\X8D\\Bin\\Salamander_5.1\\plugins\\pictview\\pictview.spl`
+is not a valid plug-in while testing Salamander 5.2, the manager is
+attempting to load a plug-in from the old 5.1-labelled directory, **not**
+the current build output. Do not assume that the missing/invalid file
+proves a defect in the new WIC module. Remove or correct only the stale
+PictView registration and install the PictView SPL from
+`D:\\Build\\OpenSal\\salamander\\Release_x64\\plugins\\pictview\\pictview.spl`
+(alongside the matching 5.2 `salamand.exe` build). The Release x64
+ABI verification `manage.cmd --test-plugin-exports --release` now checks
+five plug-ins including PictView for PE architecture and exact SDK
+entry-point exports. This **does not** execute the plug-in or establish
+that its language/dependency files are present; a real host smoke is
+still required afterward.
+
+A second failure mode is a window with native class
+`Salamander's Viewer Window` and a caption ending in `test-image.bmp - Viewer`.
+This is Salamander's built-in **text/hex viewer**, not PictView. The GUI
+host smoke now recognizes this condition immediately and fails with a
+specific diagnostic instead of waiting for the WIC HWND timeout. The
+presence of `plugins\\pictview\\pictview.spl` beside salamand.exe is
+not sufficient proof that PictView is installed in the user's Plugin
+Manager or chosen ahead of the default internal `*.*` association.
+If PictView is absent, install the SPL via **Plugins > Plugins Manager >
+Add** from the same x64 build; then configure the `*.bmp` rule under
+**Options > Configuration > Viewers** and save configuration. The host
+test must not silently mutate these user preferences.
+
+
+Test outputs are generated beneath the user's temporary
+`OpenSalamander\PictView-Tests` directory unless `-OutputDirectory` is
+specified for `Invoke-PictViewTests.ps1`. No test overwrites user files.
+The GUI fixture uses a temporary BMP file and removes it afterward. A
+non-zero exit code stops the combined management command.
+
+The current PictView WIC migration does **not** implement all proprietary
+PVW32 features. Some old codecs, timed GIF playback, EXIF orientation, print,
+capture, historical file operations and the legacy viewer UI remain
+incomplete. Do not publish this as complete PictView parity without explicit
+feature acceptance and clean-host tests.
 
 **Prerequisites:** PowerShell 7.4+, VS2026 Desktop C++ + v143/ATL, Windows
 SDK; HTML Help Workshop for build; 7-Zip and Inno Setup for packaging.

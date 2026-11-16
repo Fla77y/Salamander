@@ -24,6 +24,7 @@ param(
     [switch]$ShortUnicodeRecycleOnly,
     [switch]$VerifyRecycleRestore,
     [switch]$PluginLoadSmokeOnly,
+    [switch]$WicViewerVerified,
     [switch]$ShortUnicodeTransferOnly,
     [switch]$ShortUnicodeTransferCollisionOnly,
     [switch]$ShortUnicodeBestFitOnly,
@@ -61,6 +62,81 @@ public static class SalamanderGuiNative
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern uint GetClipboardSequenceNumber();
+
+    // A managed OLE clipboard owner in this PowerShell STA can deadlock when
+    // SendMessageTimeout synchronously invokes Salamander's OleGetClipboard.
+    // Publish eager, globally allocated CF_UNICODETEXT instead. The recipient
+    // never needs to call back into the waiting test thread for delayed data.
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool OpenClipboard(IntPtr owner);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool EmptyClipboard();
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool CloseClipboard();
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr SetClipboardData(uint format, IntPtr handle);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr GlobalAlloc(uint flags, UIntPtr bytes);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr GlobalLock(IntPtr handle);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool GlobalUnlock(IntPtr handle);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr GlobalFree(IntPtr handle);
+
+    public static void SetClipboardUnicodeText(IntPtr owner, string value)
+    {
+        if (owner == IntPtr.Zero) throw new ArgumentException("Owner HWND is required.", "owner");
+        if (String.IsNullOrEmpty(value) || value.IndexOf('\0') >= 0)
+            throw new ArgumentException("Expected nonempty UTF-16 text without embedded nulls.", "value");
+        char[] characters = (value + "\0").ToCharArray();
+        int byteCount = checked(characters.Length * sizeof(char));
+        IntPtr memory = GlobalAlloc(0x0002, new UIntPtr((uint)byteCount)); // GMEM_MOVEABLE
+        if (memory == IntPtr.Zero) throw new InvalidOperationException("GlobalAlloc failed for clipboard text.");
+        bool clipboardOpened = false;
+        bool transferred = false;
+        try
+        {
+            IntPtr destination = GlobalLock(memory);
+            if (destination == IntPtr.Zero)
+                throw new InvalidOperationException("GlobalLock failed for clipboard text.");
+            try { Marshal.Copy(characters, 0, destination, characters.Length); }
+            finally { GlobalUnlock(memory); }
+
+            // Another process may briefly hold the clipboard (Windows error 5).
+            // Retry ONLY acquiring it, before EmptyClipboard changes any data.
+            // Never retry the higher-level navigation WM_COMMAND on this error.
+            const int maxOpenAttempts = 16;
+            int openError = 0;
+            for (int attempt = 1; attempt <= maxOpenAttempts; ++attempt)
+            {
+                if (OpenClipboard(owner))
+                {
+                    clipboardOpened = true;
+                    break;
+                }
+                openError = Marshal.GetLastWin32Error();
+                if (openError != 5) // ERROR_ACCESS_DENIED: transient clipboard contention
+                    throw new InvalidOperationException("OpenClipboard failed: " + openError);
+                if (attempt < maxOpenAttempts)
+                    System.Threading.Thread.Sleep(75);
+            }
+            if (!clipboardOpened)
+                throw new InvalidOperationException(
+                    "OpenClipboard busy after " + maxOpenAttempts +
+                    " attempts; last Win32 error " + openError);
+            if (!EmptyClipboard())
+                throw new InvalidOperationException("EmptyClipboard failed: " + Marshal.GetLastWin32Error());
+            if (SetClipboardData(13, memory) == IntPtr.Zero) // CF_UNICODETEXT
+                throw new InvalidOperationException("SetClipboardData(CF_UNICODETEXT) failed: " + Marshal.GetLastWin32Error());
+            transferred = true; // Windows owns the HGLOBAL now.
+        }
+        finally
+        {
+            if (clipboardOpened) CloseClipboard();
+            if (!transferred) GlobalFree(memory);
+        }
+    }
     [DllImport("user32.dll", EntryPoint = "SendMessageTimeoutW", SetLastError = true)]
     public static extern IntPtr SendMessageTimeout(
         IntPtr hWnd, uint msg, UIntPtr wParam, IntPtr lParam,
@@ -696,6 +772,7 @@ public static class SalamanderGuiNative
 }
 '@
 
+$script:clipboardOwner = $null
 $oldClipboard = $null
 try { $oldClipboard = [System.Windows.Forms.Clipboard]::GetDataObject() }
 catch { Write-Warning 'Original clipboard could not be saved.' }
@@ -1041,6 +1118,17 @@ function Invoke-SalamanderCommand {
     }
 }
 
+function Set-NativeNavigationClipboard {
+    param([Parameter(Mandatory)][string]$Text)
+
+    # Create a hidden HWND owned by this STA. Only navigation uses native
+    # CF_UNICODETEXT; other test actions retain the existing text semantics.
+    if ($null -eq $script:clipboardOwner) {
+        $script:clipboardOwner = [Windows.Forms.Control]::new()
+    }
+    [SalamanderGuiNative]::SetClipboardUnicodeText($script:clipboardOwner.Handle, $Text)
+}
+
 function Set-ClipboardText {
     param([string]$Text)
     for ($i=0; $i -lt 10; $i++) {
@@ -1069,7 +1157,7 @@ function Set-VerifiedNavigationClipboard {
     $firstSequence = [SalamanderGuiNative]::GetClipboardSequenceNumber()
     $lastSequence = $firstSequence
     for ($attempt = 1; $attempt -le $maxAttempts; $attempt++) {
-        Set-ClipboardText $Text
+        Set-NativeNavigationClipboard -Text $Text
         $observed = Get-ClipboardText
         if ([string]::Equals($observed, $Text, [StringComparison]::Ordinal)) {
             Write-Host 'PASS: Clipboard contains only the requested text path'
@@ -1695,7 +1783,7 @@ function Test-PluginLoadSmoke {
     # Fail closed even when the GUI driver is invoked directly rather than
     # via manage.cmd. PictView is unrelated to the four target plugins.
     . (Join-Path $PSScriptRoot '..\Plugin-Runtime-Prerequisites.ps1')
-    $missingPictView = @(Get-MissingPictViewRuntimeFiles -BuildDirectory $binaryRoot)
+    $missingPictView = @(Get-MissingPictViewRuntimeFiles -BuildDirectory $binaryRoot -WicViewerVerified:$WicViewerVerified)
     if ($missingPictView.Count -gt 0) {
         throw ("Refusing global Test All with incomplete PictView runtime: " +
                ($missingPictView -join '; ') +
@@ -2016,7 +2104,17 @@ try {
     # subsequently deleted. -p 2 makes the active test panel deterministic.
     # Quotes keep paths with spaces safe for Salamander's command-line parser.
     $startupArgs = '-l "{0}" -r "{0}" -p 2' -f $source
-    $process = Start-Process -FilePath $SalamanderExe -ArgumentList $startupArgs -WorkingDirectory (Split-Path -Parent $SalamanderExe) -PassThru
+    # The first Salamander instance searches %TEMP% for SAL*.tmp left by
+    # previous sessions. A test must neither prompt about nor delete files
+    # belonging to the user or an earlier application run.
+    $processTemp = Join-Path $root 'process-temp'
+    if ($processTemp.Length -ge 240) {
+        throw 'GUI test TEMP path is too long for native Salamander disk-cache paths.'
+    }
+    [void][IO.Directory]::CreateDirectory($processTemp)
+    $process = Start-Process -FilePath $SalamanderExe -ArgumentList $startupArgs `
+        -WorkingDirectory (Split-Path -Parent $SalamanderExe) `
+        -Environment @{ TEMP = $processTemp; TMP = $processTemp } -PassThru
     # Process.MainWindowHandle/MainWindowTitle may select an auxiliary
     # window. The GUI driver must use the HWND found by Win32 enumeration.
     try {
@@ -2853,6 +2951,9 @@ finally {
     if ($oldClipboard) {
         try { [Windows.Forms.Clipboard]::SetDataObject($oldClipboard, $true) }
         catch { Write-Warning 'Original clipboard could not be restored.' }
+    }
+    if ($null -ne $script:clipboardOwner) {
+        $script:clipboardOwner.Dispose()
     }
     if ($passed -and -not $KeepFixture) {
         try { [IO.Directory]::Delete($root, $true) }

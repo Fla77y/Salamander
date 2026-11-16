@@ -1,0 +1,39 @@
+name: Product 5.2 and local PictView acceptance commands
+
+on:
+  pull_request:
+    branches: ["**"]
+    paths:
+      - "src/plugins/shared/spl_vers.h"
+      - "src/mainwnd2.cpp"
+      - "src/consts.h"
+      - "tools/release/OpenSalamander.iss"
+      - "tools/release/tests/Test-ProductVersion.ps1"
+      - "tools/release/tests/Test-PictView-Management.ps1"
+      - "tools/release/tests/Invoke-PictViewTests.ps1"
+      - "tools/release/tests/Test-PictView-Host.ps1"
+      - "tools/release/tests/PictView-HostDiagnostics.ps1"
+      - "tools/Manage-Salamander.ps1"
+      - "tools/tests/pictview_wic_window.cpp"
+      - ".github/workflows/pr-pictview-local.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  local-test-commands:
+    name: Verify version and native PictView runner (x86 and x64)
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - name: Confirm product version and installer/SDK resource contracts
+        shell: pwsh
+        run: ./tools/release/tests/Test-ProductVersion.ps1
+      - name: Validate management syntax and native test registry
+        shell: pwsh
+        run: ./tools/release/tests/Test-PictView-Management.ps1
+      - name: Compile and run local PictView native tests using real MSVC
+        shell: pwsh
+        run: ./tools/release/tests/Invoke-PictViewTests.ps1 -OutputDirectory (Join-Path $env:RUNNER_TEMP 'PictView')
