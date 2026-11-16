@@ -327,6 +327,286 @@ try {
     $transcriptStarted = $true
     Write-Host "Salamander-Verwaltung – $(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')"
     Write-Host "Repository: $repository"
+    # Record the actual source checkout for future release-acceptance audits.
+    # This does not assert that pre-existing built EXEs came from that SHA.
+    $gitExecutable = Get-Command git -CommandType Application -ErrorAction SilentlyContinue
+    if ($null -ne $gitExecutable) {
+        try {
+            $headLines = @(& $gitExecutable.Source -C $repository rev-parse --verify HEAD 2>$null)
+            if ($LASTEXITCODE -eq 0 -and $headLines.Count -eq 1 -and
+                $headLines[0] -match '^[0-9a-fA-F]{40}
+
+    foreach ($option in $requestedActions) {
+        if ($option -notin $validOptions) { throw "Unbekannter Parameter: '$option' (manage.cmd --help)" }
+        [void]$requestedSet.Add($option)
+    }
+    if ($requestedSet.Contains('--debug') -and $requestedSet.Contains('--release')) {
+        throw '--debug und --release dürfen nicht kombiniert werden.'
+    }
+    if ($requestedSet.Contains('--debug')) { $configuration = 'Debug' }
+
+    if ($requestedActions.Count -eq 0 -or $requestedSet.Contains('--help') -or
+        $requestedSet.Contains('-h') -or $requestedSet.Contains('/?')) {
+        Write-Usage
+    }
+    else {
+        if ($requestedSet.Contains('--all')) {
+            foreach ($mode in @('--update', '--build', '--test', '--setup', '--run')) {
+                [void]$requestedSet.Add($mode)
+            }
+        }
+
+        Expand-AutomatedTestActions -RequestedSet $requestedSet -AvailableOptions $validOptions
+
+        . (Join-Path $repository 'tools\release\Package-Helpers.ps1')
+        $buildRoot = [IO.Path]::GetFullPath($buildRoot)
+        New-Item -ItemType Directory -Path $buildRoot -Force | Out-Null
+
+        if ($requestedSet.Contains('--update')) { Update-Branch }
+        if ($requestedSet.Contains('--build')) { Build-Variants }
+        if ($requestedSet.Contains('--test')) { Run-Tests }
+        # Separate acceptance gate: these built plug-ins are inspected but
+        # never loaded, and missing artifacts must fail rather than skip.
+        if ($requestedSet.Contains('--test-plugin-exports')) {
+            $pluginContract = Join-Path $repository 'tools\release\tests\Test-PluginBinary-Contract.ps1'
+            $vs = Get-VisualStudio2026
+            foreach ($pluginMode in @('Release', 'Debug')) {
+                if ($requestedSet.Contains('--release') -and $pluginMode -ne 'Release') { continue }
+                if ($requestedSet.Contains('--debug') -and $pluginMode -ne 'Debug') { continue }
+                Write-Host "=== BUILT PLUGIN ABI CONTRACT: $pluginMode x64 ==="
+                Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $pluginContract,
+                                          '-BuildDirectory', (Get-VariantDirectory $pluginMode),
+                                          '-VisualStudioRoot', $vs)
+            }
+        }
+        # Explicit opt-in: this test executes a shell restore verb on its
+        # uniquely identified GUID-scoped fixture. Never included in --test-all.
+        if ($requestedSet.Contains('--test-recycle-restore')) {
+            Write-Host '=== OPT-IN: UNICODE F8 PAPIERKORB-WIEDERHERSTELLUNG ==='
+            $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+            $testedExe = Join-Path (Get-VariantDirectory $configuration) 'salamand.exe'
+            Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                      '-SalamanderExe', $testedExe,
+                                      '-ShortUnicodeRecycleOnly', '-VerifyRecycleRestore')
+        }
+        # Explicit opt-in: the Salamander plug-in manager's Test All action
+        # initializes every installed plug-in, including third-party modules.
+        # This must never run implicitly as part of --test-all.
+        if ($requestedSet.Contains('--test-plugin-load')) {
+            Write-Host '=== OPT-IN: ECHTE PLUGIN-MANAGER-INITIALISIERUNG ==='
+            . (Join-Path $repository 'tools\release\Plugin-Runtime-Prerequisites.ps1')
+            $pluginBuild = Get-VariantDirectory $configuration
+            $testedExe = Join-Path $pluginBuild 'salamand.exe'
+            $pictviewFile = Join-Path $pluginBuild 'plugins\pictview\pictview.spl'
+            $verifiedWic = $false
+            if (Test-Path -LiteralPath $pictviewFile -PathType Leaf) {
+                # PR #8 previously refused global Test All because the old
+                # PVW32 converter sidecars were absent. The new WIC viewer
+                # needs neither file, but only a *successful real-host smoke*
+                # permits bypassing that conservative legacy prerequisite.
+                $hostGui = Join-Path $repository 'tools\release\tests\Test-PictView-Host.ps1'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $hostGui,
+                                           '-SalamanderExe', $testedExe)
+                $verifiedWic = $true
+            }
+            $missingPictView = @(
+                Get-MissingPictViewRuntimeFiles -BuildDirectory $pluginBuild -WicViewerVerified:$verifiedWic
+            )
+            if ($missingPictView.Count -gt 0) {
+                throw ("The optional PictView runtime is incomplete: " +
+                       ($missingPictView -join '; ') +
+                       ". Do not load unknown converter binaries. Test target plugins individually.")
+            }
+            $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+            $pluginLoadArgs = @('-Sta', '-NoProfile', '-File', $guiTest,
+                                '-SalamanderExe', $testedExe, '-PluginLoadSmokeOnly')
+            if ($verifiedWic) { $pluginLoadArgs += '-WicViewerVerified' }
+            Invoke-Native 'pwsh.exe' $pluginLoadArgs
+        }
+        if ($requestedSet.Contains('--test-pictview') -or
+            $requestedSet.Contains('--test-pictview-window')) {
+            $pictviewRunner = Join-Path $repository 'tools\release\tests\Invoke-PictViewTests.ps1'
+            $pictviewArgs = @('-NoProfile', '-File', $pictviewRunner,
+                              '-Repository', $repository)
+            if ($requestedSet.Contains('--test-pictview-window')) {
+                $pictviewArgs += '-InteractiveWindowTests'
+            }
+            Invoke-Native 'pwsh.exe' $pictviewArgs
+        }
+        if ($requestedSet.Contains('--test-pictview-host')) {
+            $hostGui = Join-Path $repository 'tools\release\tests\Test-PictView-Host.ps1'
+            $targetExe = Join-Path (Get-VariantDirectory $configuration) 'salamand.exe'
+            Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $hostGui,
+                                       '-SalamanderExe', $targetExe)
+        }
+        $automatedGuiModes = @(Get-AutomatedGuiModes -RequestedSet $requestedSet)
+        foreach ($guiMode in $automatedGuiModes) {
+            if ($requestedSet.Contains('--test-gui-baseline')) {
+                Write-Host '=== SALAMANDER-GUI-TESTTREIBER, KURZPFAD-BASIS ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-BaselineOnly')
+            }
+            if ($requestedSet.Contains('--test-gui-operations-baseline')) {
+                Write-Host '=== SALAMANDER-GUI-OPERATIONEN, ASCII-BASIS ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-ShortOperationsOnly')
+            }
+            if ($requestedSet.Contains('--test-gui-unsafe-unicode-operations')) {
+                Write-Host '=== SALAMANDER-GUI-SCHUTZ F2/F5/F6/F8 BEI UNICODE ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-ShortUnicodeUnsafeOperationsOnly')
+            }
+            if ($requestedSet.Contains('--test-gui-unicode-transfer-collision')) {
+                Write-Host '=== SALAMANDER-GUI-UNICODE F5/F6 OVERWRITE PROTECTION ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-ShortUnicodeTransferCollisionOnly')
+            }
+            if ($requestedSet.Contains('--test-gui-unicode-recycle')) {
+                Write-Host '=== SALAMANDER-GUI-UNICODE F8 RECYCLE BIN ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-ShortUnicodeRecycleOnly')
+            }
+            if ($requestedSet.Contains('--test-gui-unicode-transfer')) {
+                Write-Host '=== SALAMANDER-GUI-UNICODE F5/F6 TRANSFER ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-ShortUnicodeTransferOnly')
+            }
+            if ($requestedSet.Contains('--test-gui-unicode-rename')) {
+                Write-Host '=== SALAMANDER-GUI-UNICODE F2 RENAME ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-ShortUnicodeRenameOnly')
+            }
+            if ($requestedSet.Contains('--test-gui-bestfit')) {
+                Write-Host '=== SALAMANDER-GUI-UNICODE-ANSI-BEST-FIT ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-ShortUnicodeBestFitOnly')
+            }
+            if ($requestedSet.Contains('--test-gui-unicode-directory-rename')) {
+                Write-Host '=== SALAMANDER-GUI-UNICODE DIRECTORY F2 ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-ShortUnicodeDirectoryRenameOnly')
+            }
+            if ($requestedSet.Contains('--test-gui-unicode-multiselect')) {
+                Write-Host '=== SALAMANDER-GUI-UNICODE MULTI-SELECTION ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-ShortUnicodeMultiSelectOnly')
+            }
+            if ($requestedSet.Contains('--test-gui-row-identities')) {
+                Write-Host '=== SALAMANDER-GUI-WIDE ROW IDENTITIES ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-ShortUnicodeRowIdentityOnly')
+            }
+            if ($requestedSet.Contains('--test-gui-name-collisions')) {
+                Write-Host '=== SALAMANDER-GUI-UNICODE-NAMENSKOLLISIONEN ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-ShortUnicodeCollisionOnly')
+            }
+            if ($requestedSet.Contains('--test-gui-names')) {
+                Write-Host '=== SALAMANDER-GUI-UNICODE-NAMEN, KURZER PFAD ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-ShortUnicodeOnly')
+            }
+            if ($requestedSet.Contains('--test-gui-unicode-find')) {
+                Write-Host '=== SALAMANDER-GUI-UNICODE FIND F2 ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-UnicodeFindOnly')
+            }
+            if ($requestedSet.Contains('--test-gui-max-path')) {
+                Write-Host '=== SALAMANDER-GUI-GRENZWERTTEST, 32700 UTF-16-PFADE ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-MaximumPathOnly')
+            }
+            if ($requestedSet.Contains('--test-gui')) {
+                Write-Host '=== AUTOMATISIERTER SALAMANDER-GUI-LANGPFADTEST ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe)
+            }
+        }
+        if ($requestedSet.Contains('--test-gui-manual')) {
+            Write-Host '=== MANUELLER SALAMANDER-GUI-LANGPFADTEST ==='
+            $testScript = Join-Path $repository 'tools\release\tests\Test-FilenamesAndPaths.ps1'
+            Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $testScript, '-KeepFixture')
+            Run-Salamander
+            Write-Host 'Prüfe in Salamander: lange Pfade öffnen, 255-Zeichen-Dateinamen,'
+            Write-Host 'Unicode-Namen, F5 Kopieren, F6 Verschieben, Umbenennen, Löschen'
+            Write-Host 'nur in der Teststruktur, Suchen, Viewer und Plugins.'
+            Write-Host 'Die Testdateien werden bewusst NICHT automatisch entfernt.'
+            Write-Warning 'Die GUI-Prüfung ist manuell; diese Ausgabe bescheinigt KEIN Bestehen.'
+        }
+        if ($requestedSet.Contains('--setup')) {
+            Build-Setups -AlreadyBuilt:$requestedSet.Contains('--build')
+        }
+        if ($requestedSet.Contains('--run')) { Run-Salamander }
+
+        Write-Host '=== Alle angeforderten Schritte erfolgreich abgeschlossen. ==='
+    }
+}
+catch {
+    $exitCode = 1
+    Write-Host "FEHLER: $($_.Exception.Message)" -ForegroundColor Red
+}
+finally {
+    if ($transcriptStarted) {
+        Write-Host "Protokoll: $logPath"
+        Write-Host 'Die gesamte protokollierte Ausgabe wird nun in die Zwischenablage kopiert.'
+        Stop-Transcript | Out-Null
+        try {
+            $completeOutput = Get-Content -LiteralPath $logPath -Raw -Encoding UTF8
+            Set-Clipboard -Value $completeOutput -ErrorAction Stop
+        }
+        catch {
+            # Preserve build/test exit codes; the log is still available.
+            [Console]::Error.WriteLine(
+                "WARNUNG: Clipboard-Kopie nicht möglich. Log: $logPath. $($_.Exception.Message)")
+        }
+    }
+}
+exit $exitCode
+) {
+                Write-Host "Source checkout git HEAD: $($headLines[0])"
+                $trackedChanges = @(& $gitExecutable.Source -C $repository status --porcelain --untracked-files=no 2>$null)
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "Source tracked working tree clean: $($trackedChanges.Count -eq 0)"
+                }
+                else { Write-Warning 'Unable to determine source working tree cleanliness.' }
+            }
+            else { Write-Warning 'Source git HEAD unavailable (non-Git source directory?).' }
+        }
+        catch { Write-Warning 'Could not record optional source git revision.' }
+    }
+    else { Write-Warning 'Git not installed; source SHA cannot be recorded.' }
     Write-Host "Log: $logPath"
 
     foreach ($option in $requestedActions) {
