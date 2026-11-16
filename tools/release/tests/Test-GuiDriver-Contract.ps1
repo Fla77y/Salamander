@@ -633,3 +633,62 @@ if ($driverText -notmatch 'FindUnicodeNotice' -or
     throw 'Unicode Find GUI integration must preserve safe refusals, stale-hit protection and observable cancellation.'
 }
 Write-Host 'PASS: Unicode Find GUI scenarios cover shell/legacy/recycle refusals, stale hits and active worker cancellation.'
+
+
+# Explicit acceptance gates must remain separate from --test-all until the
+# native shell-restore and built plug-in checks have passed on real Windows.
+$recycleLookup = (Get-FunctionSource 'Find-VerifiedRecycledFixtureItem').Extent.Text
+$recycleRestore = (Get-FunctionSource 'Restore-VerifiedRecycledFixtureItem').Extent.Text
+$pluginContractPath = Join-Path $PSScriptRoot 'Test-PluginBinary-Contract.ps1'
+$pluginTokens = $null
+$pluginErrors = $null
+$pluginAst = [System.Management.Automation.Language.Parser]::ParseFile(
+    $pluginContractPath, [ref]$pluginTokens, [ref]$pluginErrors)
+if ($null -eq $pluginAst -or @($pluginErrors).Count -gt 0) {
+    throw 'Plug-in PE ABI test script contains PowerShell syntax errors.'
+}
+$pluginText = Get-Content -LiteralPath $pluginContractPath -Raw
+if ($driverText -notmatch '\[switch\]\$VerifyRecycleRestore' -or
+    $recycleLookup -notmatch 'System\.Recycle\.DeletedFrom' -or
+    $recycleLookup -notmatch 'OrdinalIgnoreCase' -or
+    $recycleRestore -notmatch 'destination already exists' -or
+    $recycleRestore -notmatch '\$restoreVerb\.DoIt\(\)' -or
+    $recycleRestore -notmatch "Wiederherstellen" -or
+    $driverText -notmatch 'Unicode Recycle Bin restore preserves exact UTF-8 file bytes' -or
+    $manager -notmatch "'--test-recycle-restore'" -or
+    $manager -notmatch "'-VerifyRecycleRestore'" -or
+    $manager -notmatch "'--test-plugin-exports'" -or
+    $pluginText -notmatch 'SalamanderPluginEntry' -or
+    $pluginText -notmatch 'SalamanderPluginGetReqVer' -or
+    $pluginText -notmatch '8664' -or
+    $pluginText -match 'LoadLibrary|Add-Type') {
+    throw 'Opt-in Unicode Recycle Bin restore or non-executing plug-in ABI acceptance gate has regressed.'
+}
+Write-Host 'PASS: opt-in Recycle Bin restoration checks exact Unicode identity; plug-in ABI audit reads binaries without loading them.'
+
+
+# The opt-in plug-in load test exercises Salamander's own Plugin Manager,
+# not an arbitrary DLL LoadLibrary call or a guessed menu accelerator.
+# It must verify the dialog's HWND/PID/controls before any WM_COMMAND and
+# assert exact paths for all four target modules in the child process.
+$pluginLoadFixture = $driverText
+if ($pluginLoadFixture -notmatch '\[switch\]\$PluginLoadSmokeOnly' -or
+    $pluginLoadFixture -notmatch 'FindPluginManagerWindow' -or
+    $pluginLoadFixture -notmatch 'PostVerifiedPluginManagerOpen' -or
+    $pluginLoadFixture -notmatch 'PostVerifiedPluginTestAll' -or
+    $pluginLoadFixture -notmatch 'GetBlockingPluginDialog' -or
+    $pluginLoadFixture -notmatch 'Blocking plug-in initialization dialog' -or
+    $pluginLoadFixture -notmatch 'Missing target plug-in modules' -or
+    $pluginLoadFixture -notmatch 'Get-MissingPictViewRuntimeFiles' -or
+    $manager -notmatch 'Get-MissingPictViewRuntimeFiles' -or
+    $pluginLoadFixture -notmatch 'GetWindow\(top.Handle, 4\) != mainWindow' -or
+    $pluginLoadFixture -notmatch 'GetDlgItem\(top.Handle, 2601\)' -or
+    $pluginLoadFixture -notmatch 'VerifiedChild\(dialog, pid, 2616\)' -or
+    $pluginLoadFixture -notmatch '\$process\.Modules' -or
+    $pluginLoadFixture -notmatch 'OrdinalIgnoreCase' -or
+    $pluginLoadFixture -notmatch 'Plugin test preserved original Unicode fixture bytes' -or
+    $manager -notmatch "'--test-plugin-load'" -or
+    $manager -notmatch "'-PluginLoadSmokeOnly'") {
+    throw 'Opt-in plug-in load test must verify UI ownership, all four real modules, and unchanged source bytes.'
+}
+Write-Host 'PASS: opt-in plug-in initialization smoke is owned, bounded and excluded from automatic GUI mode selection.'

@@ -7,6 +7,14 @@ $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 
 $toolsDir = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).ProviderPath
+
+# Pure PE export parser regression: runs in CI without dumpbin, Windows GUI
+# or plug-in binaries; it also detects malformed public-name matching.
+& (Join-Path $PSScriptRoot 'Test-PluginExport-Parser.ps1')
+
+# Detect a broken optional PictView installation without loading or
+# distributing its unavailable proprietary converter components.
+& (Join-Path $PSScriptRoot 'Test-PictViewRuntime-Prerequisites.ps1')
 $scriptFiles = @(
     (Join-Path $toolsDir 'Package-Helpers.ps1'),
     (Join-Path $toolsDir 'Update-Build-Test-Package.ps1'),

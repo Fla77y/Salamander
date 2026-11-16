@@ -22,6 +22,8 @@ param(
     [switch]$ShortUnicodeOnly,
     [switch]$ShortUnicodeRenameOnly,
     [switch]$ShortUnicodeRecycleOnly,
+    [switch]$VerifyRecycleRestore,
+    [switch]$PluginLoadSmokeOnly,
     [switch]$ShortUnicodeTransferOnly,
     [switch]$ShortUnicodeTransferCollisionOnly,
     [switch]$ShortUnicodeBestFitOnly,
@@ -42,6 +44,9 @@ if ([Threading.Thread]::CurrentThread.GetApartmentState() -ne 'STA') {
 }
 if (-not (Test-Path -LiteralPath $SalamanderExe -PathType Leaf)) {
     throw "Salamander executable missing: $SalamanderExe"
+}
+if ($VerifyRecycleRestore -and -not $ShortUnicodeRecycleOnly) {
+    throw '-VerifyRecycleRestore requires -ShortUnicodeRecycleOnly.'
 }
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -349,6 +354,105 @@ public static class SalamanderGuiNative
         return name.ToString();
     }
 
+    // Open the application's real plug-in manager without blocking on
+    // its modal message loop. Only the verified test main HWND may receive
+    // the command; no global keyboard accelerators are used.
+    public static void PostVerifiedPluginManagerOpen(IntPtr mainWindow, uint pid)
+    {
+        uint actual;
+        if (mainWindow == IntPtr.Zero ||
+            GetWindowThreadProcessId(mainWindow, out actual) == 0 ||
+            actual != pid || !IsWindowVisible(mainWindow) ||
+            GetWindowCaption(mainWindow).IndexOf(
+                "Open Salamander", StringComparison.OrdinalIgnoreCase) < 0)
+            throw new InvalidOperationException(
+                "Refusing to open plug-in manager on an unverified main window");
+        if (!PostMessageW(mainWindow, 0x0111, new UIntPtr(815), IntPtr.Zero))
+            throw new InvalidOperationException(
+                "Could not post CM_PLUGINS to verified Salamander: " +
+                Marshal.GetLastWin32Error());
+    }
+
+    // The actual CPluginsDlg contains IDL_PLUGINS=2601 and
+    // IDB_PLUGINTESTALL=2616. Reject other #32770 dialogs, even ones
+    // owned by the same process.
+    public static IntPtr FindPluginManagerWindow(IntPtr mainWindow, uint pid)
+    {
+        uint mainPid;
+        if (mainWindow == IntPtr.Zero ||
+            GetWindowThreadProcessId(mainWindow, out mainPid) == 0 ||
+            mainPid != pid)
+            throw new InvalidOperationException("Plug-in manager main HWND was not verified");
+
+        IntPtr found = IntPtr.Zero;
+        foreach (TopLevelWindow top in GetProcessWindows(pid))
+        {
+            if (!top.Visible || top.Handle == mainWindow ||
+                ClassName(top.Handle) != "#32770" ||
+                GetWindow(top.Handle, 4) != mainWindow) // GW_OWNER
+                continue;
+
+            IntPtr list = GetDlgItem(top.Handle, 2601); // IDL_PLUGINS
+            IntPtr testAll = GetDlgItem(top.Handle, 2616); // IDB_PLUGINTESTALL
+            if (list == IntPtr.Zero || testAll == IntPtr.Zero)
+                continue;
+
+            uint listPid, testPid;
+            if (GetWindowThreadProcessId(list, out listPid) == 0 ||
+                GetWindowThreadProcessId(testAll, out testPid) == 0 ||
+                listPid != pid || testPid != pid)
+                throw new InvalidOperationException(
+                    "Plug-in Manager child controls have wrong PID");
+            if (found != IntPtr.Zero)
+                throw new InvalidOperationException(
+                    "Multiple matching Plug-in Manager dialogs in test process");
+            found = top.Handle;
+        }
+        return found;
+    }
+
+    // This invokes only Salamander's built-in "Test All" control in a
+    // verified Plug-in Manager. It can load additional configured plugins;
+    // consequently the caller must require explicit opt-in.
+    // Return diagnostic text for any additional modal dialog owned by the
+    // verified Plug-in Manager or its main window. Test All may display
+    // an error for an unrelated installed plugin; do not spin for 90 seconds
+    // while the dialog blocks Salamander's UI thread.
+    public static string GetBlockingPluginDialog(
+        IntPtr dialog, IntPtr mainWindow, uint pid)
+    {
+        if (dialog == IntPtr.Zero ||
+            FindPluginManagerWindow(mainWindow, pid) != dialog)
+            throw new InvalidOperationException(
+                "Plugin Manager identity changed during plug-in initialization");
+
+        foreach (TopLevelWindow top in GetProcessWindows(pid))
+        {
+            if (!top.Visible || top.Handle == dialog ||
+                top.Handle == mainWindow || ClassName(top.Handle) != "#32770")
+                continue;
+
+            IntPtr owner = GetWindow(top.Handle, 4); // GW_OWNER
+            if (owner == dialog || owner == mainWindow)
+                return DescribeWindow(top.Handle);
+        }
+        return null;
+    }
+
+    public static void PostVerifiedPluginTestAll(
+        IntPtr dialog, IntPtr mainWindow, uint pid)
+    {
+        if (dialog == IntPtr.Zero ||
+            FindPluginManagerWindow(mainWindow, pid) != dialog)
+            throw new InvalidOperationException(
+                "Refusing Test All command for unverified Plug-in Manager");
+        IntPtr button = VerifiedChild(dialog, pid, 2616);
+        if (!PostMessageW(dialog, 0x0111, new UIntPtr(2616), button))
+            throw new InvalidOperationException(
+                "Could not post verified Plug-in Manager Test All command: " +
+                Marshal.GetLastWin32Error());
+    }
+
     public static IntPtr FindUnicodeSearchWindow(uint pid)
     {
         IntPtr result = IntPtr.Zero;
@@ -633,6 +737,64 @@ function Wait-Until {
         Start-Sleep -Milliseconds 200
     } while ([DateTime]::UtcNow -lt $deadline)
     throw "Timeout waiting for $Description"
+}
+
+# The restore test is opt-in: it may modify only the uniquely identified
+# GUID-scoped fixture, never an arbitrary item from the user's Recycle Bin.
+function Find-VerifiedRecycledFixtureItem {
+    param(
+        [Parameter(Mandatory)][object]$RecycleFolder,
+        [Parameter(Mandatory)][string]$OriginalFullPath
+    )
+
+    $expectedDirectory = [IO.Path]::GetDirectoryName($OriginalFullPath).TrimEnd('\')
+    $expectedName = [IO.Path]::GetFileName($OriginalFullPath)
+    $items = $RecycleFolder.Items()
+    if ($null -eq $items) { throw 'Recycle Bin item enumeration is unavailable.' }
+
+    $match = $null
+    for ($index = 0; $index -lt $items.Count; $index++) {
+        $item = $items.Item($index)
+        if ($null -eq $item -or [bool]$item.IsFolder -or
+            -not [string]::Equals([string]$item.Name, $expectedName,
+                [StringComparison]::Ordinal)) { continue }
+        $deletedFrom = [string]$item.ExtendedProperty('System.Recycle.DeletedFrom')
+        if (-not [string]::Equals($deletedFrom.TrimEnd('\'), $expectedDirectory,
+                [StringComparison]::OrdinalIgnoreCase)) { continue }
+        if ($null -ne $match) {
+            throw 'Ambiguous Recycle Bin identity: more than one item has the exact fixture name and original directory.'
+        }
+        $match = $item
+    }
+    return $match
+}
+
+function Restore-VerifiedRecycledFixtureItem {
+    param(
+        [Parameter(Mandatory)][object]$Item,
+        [Parameter(Mandatory)][string]$OriginalFullPath
+    )
+
+    # Do not let Explorer replace an existing destination or choose its own
+    # restore target after the test's original path is reoccupied.
+    if ([IO.File]::Exists($OriginalFullPath) -or
+        [IO.Directory]::Exists($OriginalFullPath)) {
+        throw 'Refusing Recycle Bin restore: fixture destination already exists.'
+    }
+    $restoreVerb = $null
+    $verbs = $Item.Verbs()
+    for ($index = 0; $index -lt $verbs.Count; $index++) {
+        $verb = $verbs.Item($index)
+        $caption = ([string]$verb.Name -replace '&', '').Trim()
+        if ($caption -ceq 'Restore' -or $caption -ceq 'Wiederherstellen') {
+            if ($null -ne $restoreVerb) { throw 'Ambiguous Recycle Bin restore verbs.' }
+            $restoreVerb = $verb
+        }
+    }
+    if ($null -eq $restoreVerb) {
+        throw 'No recognized Restore/Wiederherstellen verb; refusing to invoke an unknown shell action.'
+    }
+    $restoreVerb.DoIt()
 }
 
 function Get-ProcessWindowSummary {
@@ -1525,6 +1687,113 @@ function Test-UnicodeFindGui {
     Write-Host 'PASS: Unicode Find GUI search, actions, shell refusal, cancellation and worker shutdown.'
 }
 
+# Exercise the real CPluginsDlg -> CPlugins::TestAll -> InitDLL path
+# using only Salamander's disposable child process, never an external DLL.
+# Confirm target modules by *absolute path*, not by filename alone.
+function Test-PluginLoadSmoke {
+    $binaryRoot = [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($SalamanderExe))
+    # Fail closed even when the GUI driver is invoked directly rather than
+    # via manage.cmd. PictView is unrelated to the four target plugins.
+    . (Join-Path $PSScriptRoot '..\Plugin-Runtime-Prerequisites.ps1')
+    $missingPictView = @(Get-MissingPictViewRuntimeFiles -BuildDirectory $binaryRoot)
+    if ($missingPictView.Count -gt 0) {
+        throw ("Refusing global Test All with incomplete PictView runtime: " +
+               ($missingPictView -join '; ') +
+               ". Targeted plugin initialization is required instead.")
+    }
+    $expected = @(
+        @('7zip', 'checksum', 'filecomp', 'renamer') | ForEach-Object {
+            $name = $_
+            $fullPath = [IO.Path]::GetFullPath(
+                (Join-Path $binaryRoot ("plugins\{0}\{0}.spl" -f $name)))
+            if (-not [IO.File]::Exists($fullPath)) {
+                throw "Missing built plug-in for GUI integration: $fullPath"
+            }
+            $fullPath
+        }
+    )
+    Assert-True ($expected.Count -eq 4) 'All four built x64 plug-in paths exist'
+
+    # Arrange: use the checked GUID-scoped source and the verified main HWND.
+    Assert-True (Test-Content $unicodeShortFile) 'Plugin smoke source fixture intact before loading'
+    [SalamanderGuiNative]::PostVerifiedPluginManagerOpen(
+        $mainWindowHandle, [uint32]$process.Id)
+    $manager = @{ Window = [IntPtr]::Zero }
+    Wait-Until {
+        $manager.Window = [SalamanderGuiNative]::FindPluginManagerWindow(
+            $mainWindowHandle, [uint32]$process.Id)
+        return $manager.Window -ne [IntPtr]::Zero
+    } 'verified Salamander Plug-in Manager dialog'
+    Write-Host 'PASS: verified Plug-in Manager dialog belongs to launched Salamander PID'
+
+    # Act: the application's actual Test All button invokes each installed
+    # plugin's InitDLL. This is explicit opt-in: third-party plugins can run.
+    [SalamanderGuiNative]::PostVerifiedPluginTestAll(
+        $manager.Window, $mainWindowHandle, [uint32]$process.Id)
+
+    # Assert: the modules must be present in the real child process. InitDLL
+    # unloads DLLs that fail entry-point and interface validation. A module
+    # with the correct filename in an unrelated directory cannot satisfy it.
+    $missing = @{ Paths = @() }
+    try {
+        Wait-Until {
+            $process.Refresh()
+            if ($process.HasExited) { throw 'Salamander exited during plugin initialization.' }
+            $loadedPaths = [Collections.Generic.HashSet[string]]::new(
+                [StringComparer]::OrdinalIgnoreCase)
+            foreach ($module in $process.Modules) {
+                [void]$loadedPaths.Add([IO.Path]::GetFullPath($module.FileName))
+            }
+            $missing.Paths = @($expected | Where-Object {
+                -not $loadedPaths.Contains($_)
+            })
+
+            # Check completion before reporting a modal dialog: Test All may
+            # show an informational success dialog after modules are loaded.
+            if ($missing.Paths.Count -eq 0) { return $true }
+
+            $blocked = [SalamanderGuiNative]::GetBlockingPluginDialog(
+                $manager.Window, $mainWindowHandle, [uint32]$process.Id)
+            if (-not [string]::IsNullOrWhiteSpace($blocked)) {
+                $diagnostic = ("Blocking plug-in initialization dialog: {0}; " +
+                               "Missing target plug-in modules: {1}") -f
+                               $blocked, ($missing.Paths -join '; ')
+                if ($blocked -match '(?i)pictview') {
+                    # On x64 PictView launches the 32-bit SalPVEnv helper,
+                    # which depends on PVW32Cnv.dll. Missing files are a
+                    # concrete failure; present files require further
+                    # runtime diagnosis rather than being declared valid.
+                    $pictViewDirectory = Join-Path $binaryRoot 'plugins\pictview'
+                    $sidecars = @(@('pictview.spl', 'SalPVEnv.exe', 'PVW32Cnv.dll') |
+                        ForEach-Object {
+                            $candidate = Join-Path $pictViewDirectory $_
+                            $status = if ([IO.File]::Exists($candidate)) { 'present' } else { 'MISSING' }
+                            "$candidate ($status)"
+                        })
+                    $diagnostic += '; PictView runtime files: ' + ($sidecars -join '; ')
+                }
+                throw $diagnostic
+            }
+            return $false
+        } 'four exact plug-in modules loaded in the Salamander process' -TimeoutSecondsOverride 90
+    }
+    catch {
+        $message = $_.Exception.Message
+        if ($message -like 'Timeout waiting*') {
+            throw ("{0}; Missing target plug-in modules: {1}; process windows: {2}" -f
+                   $message, ($missing.Paths -join '; '),
+                   (Get-ProcessWindowSummary -OwnerProcessId ([uint32]$process.Id)))
+        }
+        throw
+    }
+
+    foreach ($path in $expected) {
+        Write-Host "PASS: Salamander loaded and retained plug-in module $path"
+    }
+    Assert-True (Test-Content $unicodeShortFile) 'Plugin test preserved original Unicode fixture bytes'
+    Write-Host 'PASS: real Plug-in Manager Test All initialized four built-in x64 plug-in modules.'
+}
+
 function Save-FailureScreenshot {
     try {
         # Save only the app window; other desktop windows may contain private data.
@@ -1679,6 +1948,7 @@ try {
         Assert-True ($collisionFile.Length -lt 260) 'Unicode collision fixture uses a short path'
     }
     if (-not $BaselineOnly -and -not $ShortUnicodeOnly -and
+        -not $PluginLoadSmokeOnly -and
         -not $ShortUnicodeCollisionOnly -and -not $ShortUnicodeRowIdentityOnly -and
         -not $ShortUnicodeBestFitOnly -and -not $ShortUnicodeRenameOnly -and
         -not $ShortUnicodeTransferOnly -and -not $ShortUnicodeTransferCollisionOnly -and
@@ -1806,6 +2076,11 @@ try {
     Write-Host 'PASS: GUI driver can navigate a normal short directory'
     if ($UnicodeFindOnly) {
         Test-UnicodeFindGui
+        $passed = $true
+        return
+    }
+    if ($PluginLoadSmokeOnly) {
+        Test-PluginLoadSmoke
         $passed = $true
         return
     }
@@ -1937,14 +2212,49 @@ try {
         if ($observed.Dialog -match 'legacy ANSI file-operation engine') {
             Send-Keys '{ESC}'
             Assert-True (Test-Content $unicodeShortFile) 'Unicode F8 refusal preserves file bytes'
+            if ($VerifyRecycleRestore) {
+                throw 'Explicit Recycle Bin restore integration cannot run: Salamander refused recycling.'
+            }
             $passed = $true
             Write-Host 'SKIP: Recycle Bin is not enabled or file is not eligible for wide-shell recycling.'
             return
         }
         Send-Keys '{ENTER}'
         Wait-Until { -not [IO.File]::Exists($unicodeShortFile) } 'Unicode F8 moves fixture to Recycle Bin'
+        if ($VerifyRecycleRestore) {
+            # Arrange: resolve only our specific Unicode filename and its
+            # GUID-scoped original directory via shell metadata, never by
+            # a Recycle Bin list index or a partial filename match.
+            $shell = New-Object -ComObject Shell.Application
+            $recycleFolder = $shell.NameSpace(10) # CSIDL_BITBUCKET
+            if ($null -eq $recycleFolder) { throw 'Windows Recycle Bin shell folder is unavailable.' }
+            $found = @{ Item = $null }
+            Wait-Until {
+                $found.Item = Find-VerifiedRecycledFixtureItem -RecycleFolder $recycleFolder -OriginalFullPath $unicodeShortFile
+                return $null -ne $found.Item
+            } 'exact Unicode file and original directory appear in the Recycle Bin'
+            Assert-True ($null -ne $found.Item) 'Recycle Bin retains exact Unicode filename and original directory'
+
+            # Act: execute only the verified item's explicitly named Restore
+            # verb. Refuse any unknown localization or existing destination.
+            Restore-VerifiedRecycledFixtureItem -Item $found.Item -OriginalFullPath $unicodeShortFile
+
+            # Assert: restoration must produce exactly the original file bytes.
+            Wait-Until {
+                try { return (Test-Content $unicodeShortFile) }
+                catch [IO.IOException] { return $false }
+            } 'Unicode Recycle Bin restore completes with identical bytes'
+            Assert-True (Test-Content $unicodeShortFile) 'Unicode Recycle Bin restore preserves exact UTF-8 file bytes'
+            Wait-Until {
+                return $null -eq (Find-VerifiedRecycledFixtureItem -RecycleFolder $recycleFolder -OriginalFullPath $unicodeShortFile)
+            } 'restored fixture disappears from Recycle Bin'
+            Write-Host 'PASS: verified Unicode F8 Recycle Bin round trip and original content.'
+        }
+        else {
+            Write-Host 'PASS: Unicode F8 source removed; restore remains unverified in the regular GUI suite.'
+        }
         $passed = $true
-        Write-Host 'PASS: Unicode F8 shell recycle request removed disposable source; Recycle Bin restoration needs manual verification.'
+
         return
     }
 
