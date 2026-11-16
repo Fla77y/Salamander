@@ -125,27 +125,57 @@ int main()
         return std::puts("FAIL: Unicode include/exclude masks"), 1;
     options.masks = L"*.txt";
 
-    // The grep buffer is 64 KiB. A match crossing that boundary must not
-    // disappear; two overlapping read blocks must preserve the exact bytes.
+    // Cross-buffer UTF-8/UTF-16 search: exercise both encodings independently.
+    // Arrange: the first byte of a multibyte UTF-8 character is the final
+    // byte of the first 64 KiB block; the rest arrives in the second block.
     const std::wstring boundaryName = L"boundary_東京.txt";
     const std::wstring boundaryFile = long3 + L"\\" + boundaryName;
-    std::string boundaryPayload(65532, 'x');
-    boundaryPayload += "unique needle across chunks";
+    std::string boundaryPayload(65535, 'x');
+    boundaryPayload += "\xE6\x9D\xB1\xE4\xBA\xAC"; // UTF-8 for 東京.
     if (!WriteFixture(boundaryFile, boundaryPayload.data(),
                       static_cast<DWORD>(boundaryPayload.size())))
-        return std::puts("FAIL: prepare cross-buffer content fixture"), 1;
+        return std::puts("FAIL: prepare cross-buffer UTF-8 fixture"), 1;
+
+    // Act / Assert: only the boundary file contains the requested Unicode text.
+    options.content = L"東京";
+    hits.clear();
+    if (!Salamander::SearchUnicodeDirectory(options, collect, nullptr, error) ||
+        error != ERROR_SUCCESS || hits.size() != 1 || hits[0].name != boundaryName)
+        return std::puts("FAIL: cross-buffer UTF-8 multibyte search"), 1;
+
+    // Arrange: a UTF-16LE needle starts two bytes before a block boundary.
+    // On Windows wchar_t stores one UTF-16 code unit in two bytes.
+    static_assert(sizeof(wchar_t) == 2, "UTF-16 fixture requires Win32 wchar_t");
+    const std::wstring utf16BoundaryName = L"boundary_utf16_大阪.txt";
+    const std::wstring utf16BoundaryFile = long3 + L"\\" + utf16BoundaryName;
+    const wchar_t utf16BoundaryText[] = L"unique needle across chunks";
+    const auto* utf16Bytes =
+        reinterpret_cast<const unsigned char*>(utf16BoundaryText);
+    std::vector<unsigned char> utf16BoundaryPayload(65534, 'x');
+    utf16BoundaryPayload.insert(utf16BoundaryPayload.end(), utf16Bytes,
+        utf16Bytes + sizeof(utf16BoundaryText) - sizeof(wchar_t));
+    if (!WriteFixture(utf16BoundaryFile, utf16BoundaryPayload.data(),
+                      static_cast<DWORD>(utf16BoundaryPayload.size())))
+        return std::puts("FAIL: prepare cross-buffer UTF-16LE fixture"), 1;
+
+    // Act / Assert: the existing UTF-8 file and the new UTF-16LE file match.
+    // The original UTF-16 file is nested and recursion remains disabled.
     options.content = L"unique needle";
     hits.clear();
     if (!Salamander::SearchUnicodeDirectory(options, collect, nullptr, error) ||
-        hits.size() != 3)
-        return std::puts("FAIL: cross-buffer UTF-8/UTF-16 search"), 1;
-    bool foundBoundary = false;
+        error != ERROR_SUCCESS || hits.size() != 2)
+        return std::puts("FAIL: cross-buffer UTF-16LE result count"), 1;
+    bool foundOriginal = false, foundUtf16Boundary = false;
     for (const auto& hit : hits)
-        foundBoundary |= hit.name == boundaryName;
-    if (!foundBoundary)
-        return std::puts("FAIL: UTF-8 content match across read boundary"), 1;
-    if (!RemoveFixture(boundaryFile, false))
-        return std::puts("FAIL: cleanup cross-buffer fixture"), 1;
+    {
+        foundOriginal |= hit.name == nameA;
+        foundUtf16Boundary |= hit.name == utf16BoundaryName;
+    }
+    if (!foundOriginal || !foundUtf16Boundary)
+        return std::puts("FAIL: cross-buffer UTF-16LE result identity"), 1;
+    if (!RemoveFixture(boundaryFile, false) ||
+        !RemoveFixture(utf16BoundaryFile, false))
+        return std::puts("FAIL: cleanup cross-buffer fixtures"), 1;
 
     options.includeSubdirectories = true;
     options.content = L"unique needle";
