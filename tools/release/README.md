@@ -10,6 +10,7 @@ Start from the repository root in a Windows terminal:
 | `.\manage.cmd --test` | Run PowerShell/package validation and Windows path/name tests, plus standalone C++ tests when present |
 | `.\manage.cmd --test-pictview` | Build and run all native WIC regression tests with MSVC x86 **and** x64 locally |
 | `.\manage.cmd --test-pictview-window` | Same tests plus an opt-in real WIC HWND/close/lock smoke (requires an unlocked desktop) |
+| `.\manage.cmd --test-pictview-host` | Isolated real Salamander F3-to-PictView SPL/HWND smoke with an owned BMP fixture |
 | `.\manage.cmd --test-gui` | Create persistent test paths and launch Salamander for manual F5/F6, rename, delete, search and plugin checks |
 | `.\manage.cmd --setup` | Rebuild as needed, then create two 7z files and two setups |
 | `.\manage.cmd --run` | Start Release, `--run --debug` starts Debug |
@@ -47,6 +48,7 @@ On your Windows 11 development machine, after checking out this branch:
 ~~~powershell
 .\manage.cmd --update --build --test-pictview
 .\manage.cmd --test-pictview-window
+.\manage.cmd --test-pictview-host
 .\manage.cmd --test
 ~~~
 
@@ -55,14 +57,14 @@ VERSIONINFO, then runs native WIC decode, image presentation, UTF-16 file
 decoding, frame navigation, in-memory transforms, image writer and clipboard
 tests with MSVC x86 and x64. The second command also opens and closes a
 disposable native WIC Win32 viewer and checks its ready/close/lock lifetime.
-The third runs the ordinary project regressions, including a PowerShell
+The third command starts a fresh disposable Salamander process, invokes F3 on the sole BMP fixture, validates the exact PictView SPL and owned WIC HWND, then closes it and checks the source bytes. It is opt-in and refuses to run alongside existing Salamander processes. Its GUI automation requires a trusted plug-in configuration. The final command runs the ordinary project regressions, including a PowerShell
 syntax and PictView local-runner registry contract.
 
 `--test-all` includes the WIC native suite and the interactive HWND test,
 along with existing Salamander GUI tests. It needs a real unlocked Windows
 desktop. To avoid touching other plug-ins, the PictView HWND test runs the
 standalone viewer, **not** an in-process Salamander plug-in manager test.
-A separate real-host acceptance remains a release blocker.
+The opt-in real-host F3 smoke covers one BMP on an unlocked desktop; other modes, codecs, actions and saved configurations remain separate release gates.
 
 Test outputs are generated beneath the user's temporary
 `OpenSalamander\PictView-Tests` directory unless `-OutputDirectory` is
