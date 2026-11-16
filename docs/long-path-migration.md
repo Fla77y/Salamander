@@ -622,3 +622,50 @@ automation if the test shell is less privileged than Salamander. The
 test now reports its own elevation and Salamander's window title, and
 fails with a specific diagnostic for that mismatch. Prefer running
 both Salamander and the test shell **without** elevation.
+
+
+## 16 November 2026: search and plug-in safety follow-up
+
+The 16 November local --test-all run passed the existing x64 Debug/Release
+GUI regressions, including a 32700-unit panel path. It did not test the
+pre-existing ANSI Find dialog or every plug-in at that path length.
+
+The review changes are intentionally fail-closed:
+
+- Find-result shell deletion, dragging, context menus and opening require a
+  unique Win32 W original name whose ANSI alias round-trips exactly. A
+  best-fit alias, wildcard substitution, unknown directory or oversized
+  combined path refuses the entire action.
+- Find's initial long root cannot be silently shortened, and the typed
+  search-root control is read in W, capacity checked and converted only if
+  lossless. **Full Unicode and long-path Find support remains outstanding**:
+  search recursion, result storage, filters, content scan and result actions
+  still depend on ANSI MAX_PATH contracts and must migrate together.
+- Normal, deferred and posted plug-in menu dispatch refuses long physical
+  disk paths or unsafe selected ANSI names. Batch Renamer, Checksum, 7-Zip
+  and File Comparator additionally verify path-API results and buffers.
+  The unchanged plug-in ABI does not provide general W path support.
+- The W panel enumeration preserves an overlong ACP expansion using a
+  deliberately invalid, non-wildcard control-byte alias, retaining the W
+  original for row drawing. Sorting/filtering and all DBCS code pages still
+  need manual GUI checks before any broad support claim.
+- Unicode copies stage into the target directory and publish via no-replace
+  rename, so an incomplete copy cannot be published at the final name.
+  Staging cleanup and collisions are covered by native test assertions,
+  but operations are synchronous and not crash-transactional.
+- Multi-file Unicode preflight resolves identities from one source-directory
+  snapshot before confirmation and one after confirmation.
+
+Required verification on the Windows build machine after these changes:
+
+    cd C:\\Repositories\\Salamander
+    .\\manage.cmd --update
+    .\\manage.cmd --build --test-all
+
+Native/PowerShell regression checks are part of the existing --test gate;
+real GUI suites require an unlocked interactive desktop. Existing passing
+transcripts predate these changes and cannot verify this revision. Additional
+manual scenarios should use disposable fixtures for Unicode alias collisions,
+255-unit DBCS names, unsupported plug-in actions and copy interruption.
+Keep PR #6 as Draft until the changed build passes and the remaining Find
+and plug-in migration scope is resolved.
