@@ -540,6 +540,8 @@ Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
 . (Join-Path $PSScriptRoot 'Get-GuiInteropReferences.ps1')
 $guiReferences = @(Get-GuiInteropReferences)
 foreach ($requiredReference in @(
+    'System.Private.CoreLib.dll',
+    'System.Runtime.dll',
     'System.Windows.Forms.dll',
     'System.Windows.Forms.Primitives.dll',
     'System.Private.Windows.Core.dll'

@@ -3,70 +3,82 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 <#
 .SYNOPSIS
-    Resolve C# reference assemblies for the WinForms-based GUI test interop.
+    Resolve complete, compatible .NET C# compiler references for GUI tests.
 .DESCRIPTION
-    In PowerShell 7, Add-Type -ReferencedAssemblies replaces its implicit
-    framework reference set. Include the PowerShell reference assemblies and
-    the complete set of managed Windows Desktop runtime assemblies from
-    the SAME runtime directory as System.Windows.Forms.Control. This avoids
-    recurring CS0012 failures as WinForms types depend on Primitives, Core,
-    and other split assemblies.
+    -ReferencedAssemblies replaces Add-Type's implicit runtime references.
+    PowerShell's PSHOME/ref facades do not include the runtime implementation
+    System.Private.CoreLib, so combining those facades only with WinForms
+    produces CS1069 for System.Threading.Thread. Use the host's trusted
+    platform assemblies (TPA) instead, and merge the managed Windows Desktop
+    assemblies from the same runtime as the loaded WinForms Control type.
 #>
 function Get-GuiInteropReferences {
-    $referenceDirectory = Join-Path $PSHOME 'ref'
-    if (-not (Test-Path -LiteralPath $referenceDirectory -PathType Container)) {
-        throw "PowerShell C# reference directory is unavailable: $referenceDirectory"
-    }
-    $frameworkReferences = @([IO.Directory]::GetFiles($referenceDirectory, '*.dll'))
-    if ($frameworkReferences.Count -eq 0) {
-        throw "PowerShell C# reference directory has no DLLs: $referenceDirectory"
+    $trustedAssemblies = [AppContext]::GetData('TRUSTED_PLATFORM_ASSEMBLIES')
+    if ([string]::IsNullOrWhiteSpace([string]$trustedAssemblies)) {
+        throw 'The .NET host did not expose TRUSTED_PLATFORM_ASSEMBLIES.'
     }
 
     $assemblies = [Collections.Generic.Dictionary[string,string]]::new(
         [StringComparer]::OrdinalIgnoreCase)
-    foreach ($path in $frameworkReferences) {
-        $assemblies[[IO.Path]::GetFileNameWithoutExtension($path)] = $path
+
+    # These are the runtime's own compiler references, including
+    # System.Private.CoreLib.dll, System.Runtime.dll and threading types.
+    # Mixing PSHOME/ref facades and runtime assemblies can cause type identity
+    # conflicts; do not read PSHOME/ref here.
+    foreach ($path in ([string]$trustedAssemblies).Split(
+        [IO.Path]::PathSeparator, [StringSplitOptions]::RemoveEmptyEntries)) {
+        if (-not [IO.File]::Exists($path)) {
+            throw "Trusted .NET reference does not exist: $path"
+        }
+        $name = [IO.Path]::GetFileNameWithoutExtension($path)
+        if (-not [string]::IsNullOrWhiteSpace($name)) {
+            $assemblies[$name] = $path
+        }
     }
 
     $windowsFormsPath = [Windows.Forms.Control].Assembly.Location
     if ([string]::IsNullOrWhiteSpace($windowsFormsPath) -or
-        -not (Test-Path -LiteralPath $windowsFormsPath -PathType Leaf)) {
+        -not [IO.File]::Exists($windowsFormsPath)) {
         throw "Windows Forms compiler reference is unavailable: $windowsFormsPath"
     }
     $desktopDirectory = [IO.Path]::GetDirectoryName($windowsFormsPath)
 
-    # WinForms on .NET 11 exposes transitive interop types from assemblies
-    # such as System.Windows.Forms.Primitives and System.Private.Windows.Core.
-    # Keep the entire SAME WindowsDesktop runtime dependency set together.
-    # Do not pass native DLLs (such as D3DCompiler) to the C# compiler:
-    # they are not valid metadata references and cause CS0009.
+    # WinForms on .NET 11 uses multiple managed WindowsDesktop assemblies,
+    # including System.Windows.Forms.Primitives and System.Private.Windows.Core.
+    # Include the entire managed set from exactly this desktop runtime.
     foreach ($path in [IO.Directory]::GetFiles($desktopDirectory, '*.dll')) {
         try {
             $assemblyName = [Reflection.AssemblyName]::GetAssemblyName($path)
         }
         catch [BadImageFormatException] {
-            continue # Native DLL, not a managed compiler reference.
+            continue # Native DLLs are not valid C# metadata references.
         }
         if ([string]::IsNullOrWhiteSpace($assemblyName.Name)) {
             throw "Windows Desktop assembly has no name: $path"
         }
-        # WindowsDesktop implementations take precedence over similarly
-        # named PowerShell framework references. Every dependency stays on
-        # exactly the same WindowsDesktop runtime version as WinForms.
         $assemblies[$assemblyName.Name] = $path
     }
 
+    foreach ($required in @(
+        'System.Private.CoreLib',
+        'System.Runtime',
+        'System.Windows.Forms',
+        'System.Windows.Forms.Primitives',
+        'System.Private.Windows.Core'
+    )) {
+        if (-not $assemblies.ContainsKey($required)) {
+            throw "Required .NET C# compiler reference is absent: $required"
+        }
+    }
     foreach ($required in @(
         'System.Windows.Forms',
         'System.Windows.Forms.Primitives',
         'System.Private.Windows.Core'
     )) {
-        if (-not $assemblies.ContainsKey($required) -or
-            -not [string]::Equals(
-                [IO.Path]::GetDirectoryName($assemblies[$required]),
-                $desktopDirectory, [StringComparison]::OrdinalIgnoreCase)) {
-            throw ("Required Windows Desktop C# reference '{0}' was not found " +
-                   "alongside {1}." -f $required, $windowsFormsPath)
+        if (-not [string]::Equals(
+            [IO.Path]::GetDirectoryName($assemblies[$required]),
+            $desktopDirectory, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Windows Desktop C# compiler reference has a mismatched runtime: $required"
         }
     }
     return @($assemblies.Values)
