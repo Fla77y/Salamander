@@ -633,3 +633,35 @@ if ($driverText -notmatch 'FindUnicodeNotice' -or
     throw 'Unicode Find GUI integration must preserve safe refusals, stale-hit protection and observable cancellation.'
 }
 Write-Host 'PASS: Unicode Find GUI scenarios cover shell/legacy/recycle refusals, stale hits and active worker cancellation.'
+
+
+# Explicit acceptance gates must remain separate from --test-all until the
+# native shell-restore and built plug-in checks have passed on real Windows.
+$recycleLookup = (Get-FunctionSource 'Find-VerifiedRecycledFixtureItem').Extent.Text
+$recycleRestore = (Get-FunctionSource 'Restore-VerifiedRecycledFixtureItem').Extent.Text
+$pluginContractPath = Join-Path $PSScriptRoot 'Test-PluginBinary-Contract.ps1'
+$pluginTokens = $null
+$pluginErrors = $null
+$pluginAst = [System.Management.Automation.Language.Parser]::ParseFile(
+    $pluginContractPath, [ref]$pluginTokens, [ref]$pluginErrors)
+if ($null -eq $pluginAst -or @($pluginErrors).Count -gt 0) {
+    throw 'Plug-in PE ABI test script contains PowerShell syntax errors.'
+}
+$pluginText = Get-Content -LiteralPath $pluginContractPath -Raw
+if ($driverText -notmatch '\[switch\]\$VerifyRecycleRestore' -or
+    $recycleLookup -notmatch 'System\.Recycle\.DeletedFrom' -or
+    $recycleLookup -notmatch 'OrdinalIgnoreCase' -or
+    $recycleRestore -notmatch 'destination already exists' -or
+    $recycleRestore -notmatch '\$restoreVerb\.DoIt\(\)' -or
+    $recycleRestore -notmatch "Wiederherstellen" -or
+    $driverText -notmatch 'Unicode Recycle Bin restore preserves exact UTF-8 file bytes' -or
+    $manager -notmatch "'--test-recycle-restore'" -or
+    $manager -notmatch "'-VerifyRecycleRestore'" -or
+    $manager -notmatch "'--test-plugin-exports'" -or
+    $pluginText -notmatch 'SalamanderPluginEntry' -or
+    $pluginText -notmatch 'SalamanderPluginGetReqVer' -or
+    $pluginText -notmatch '8664' -or
+    $pluginText -match 'LoadLibrary|Add-Type') {
+    throw 'Opt-in Unicode Recycle Bin restore or non-executing plug-in ABI acceptance gate has regressed.'
+}
+Write-Host 'PASS: opt-in Recycle Bin restoration checks exact Unicode identity; plug-in ABI audit reads binaries without loading them.'
