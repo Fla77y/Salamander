@@ -83,6 +83,11 @@ if (-not $hostInterop.Success) {
     throw 'PictView host Win32 interop here-string was not found.'
 }
 Add-Type -TypeDefinition $hostInterop.Groups['code'].Value -ErrorAction Stop
+# A rejected HWND must never activate or interact with another application.
+if ([PictViewHostWindows]::TryActivateVerifiedWindow(
+        [IntPtr]::Zero, [uint32]0, $true)) {
+    throw 'PictView host foreground helper accepted a zero HWND/PID.'
+}
 foreach ($required in @('PictViewHostWindows', 'GetWindowThreadProcessId',
                        'OpenSalamander.PictView.WIC', 'pictview.spl',
                        "SendWait('{F3}')", 'Stop-Process -Id $process.Id',
@@ -93,7 +98,10 @@ foreach ($required in @('PictViewHostWindows', 'GetWindowThreadProcessId',
                        'Test-owned windows', 'before sending F3',
                        'EnumChildWindows', 'GetDialogDetails',
                        'Error dialog after F3', 'single BMP fixture',
-                       'GetDialogDetails')) {
+                       'TryActivateVerifiedWindow', 'AttachThreadInput',
+                       'BringWindowToTop', 'GetCurrentThreadId',
+                       'Focus-TestOwnedSalamander', 'useSharedInputFallback',
+                       'GetForegroundOwnerSummary')) {
     if (-not $hostText.Contains($required)) {
         throw "PictView host smoke is missing safety contract: $required"
     }
