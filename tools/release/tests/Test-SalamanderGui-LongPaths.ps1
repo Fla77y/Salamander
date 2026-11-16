@@ -468,8 +468,18 @@ public static class SalamanderGuiNative
             throw new InvalidOperationException("Could not position pointer over Find result");
         mouse_event(0x0002, 0, 0, 0, UIntPtr.Zero);
         mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero);
-        return checked((int)SendChecked(list, 0x100C,
-            new UIntPtr(ulong.MaxValue), new IntPtr(2)).ToInt64());
+        // Mouse input is queued. Observe the actual ListView selection
+        // instead of assuming it changed synchronously on mouse_event.
+        for (int attempt = 0; attempt != 25; ++attempt)
+        {
+            if (GetForegroundWindow() != window)
+                throw new InvalidOperationException("Find lost foreground during selection");
+            int selected = checked((int)SendChecked(list, 0x100C,
+                new UIntPtr(ulong.MaxValue), new IntPtr(2)).ToInt64());
+            if (selected == 0) return selected;
+            System.Threading.Thread.Sleep(40);
+        }
+        return -1;
     }
 }
 '@
