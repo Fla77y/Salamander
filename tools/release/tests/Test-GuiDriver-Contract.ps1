@@ -665,3 +665,25 @@ if ($driverText -notmatch '\[switch\]\$VerifyRecycleRestore' -or
     throw 'Opt-in Unicode Recycle Bin restore or non-executing plug-in ABI acceptance gate has regressed.'
 }
 Write-Host 'PASS: opt-in Recycle Bin restoration checks exact Unicode identity; plug-in ABI audit reads binaries without loading them.'
+
+
+# The opt-in plug-in load test exercises Salamander's own Plugin Manager,
+# not an arbitrary DLL LoadLibrary call or a guessed menu accelerator.
+# It must verify the dialog's HWND/PID/controls before any WM_COMMAND and
+# assert exact paths for all four target modules in the child process.
+$pluginLoadFixture = $driverText
+if ($pluginLoadFixture -notmatch '\[switch\]\$PluginLoadSmokeOnly' -or
+    $pluginLoadFixture -notmatch 'FindPluginManagerWindow' -or
+    $pluginLoadFixture -notmatch 'PostVerifiedPluginManagerOpen' -or
+    $pluginLoadFixture -notmatch 'PostVerifiedPluginTestAll' -or
+    $pluginLoadFixture -notmatch 'GetWindow\(top.Handle, 4\) != mainWindow' -or
+    $pluginLoadFixture -notmatch 'GetDlgItem\(top.Handle, 2601\)' -or
+    $pluginLoadFixture -notmatch 'VerifiedChild\(dialog, pid, 2616\)' -or
+    $pluginLoadFixture -notmatch '\$process\.Modules' -or
+    $pluginLoadFixture -notmatch 'OrdinalIgnoreCase' -or
+    $pluginLoadFixture -notmatch 'Plugin test preserved original Unicode fixture bytes' -or
+    $manager -notmatch "'--test-plugin-load'" -or
+    $manager -notmatch "'-PluginLoadSmokeOnly'") {
+    throw 'Opt-in plug-in load test must verify UI ownership, all four real modules, and unchanged source bytes.'
+}
+Write-Host 'PASS: opt-in plug-in initialization smoke is owned, bounded and excluded from automatic GUI mode selection.'
