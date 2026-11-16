@@ -4537,7 +4537,10 @@ FIND_NEW_SLG_FILE:
                                             int id = cmd - 500;
                                             SalamanderBusy = TRUE; // We are about to execute the menu command, so we are busy again.
                                             LastSalamanderIdleTime = GetTickCount();
-                                            if (data != NULL && data->GetLoaded())
+                                            // Deferred menu callbacks bypass the ordinary
+                                            // plugin command path and need the same ABI gate.
+                                            if (data != NULL && data->GetLoaded() &&
+                                                !MainWindow->GetActivePanel()->HasUnsupportedLegacyPluginSelection())
                                             {
                                                 if (data->GetPluginInterfaceForMenuExt()->NotEmpty())
                                                 {
