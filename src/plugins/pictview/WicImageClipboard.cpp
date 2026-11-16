@@ -4,6 +4,8 @@
 #include "WicBitmapPresenter.h"
 
 #include <climits>
+#include <cstdint>
+#include <limits>
 #include <cstring>
 #include <limits>
 #include <new>
@@ -53,6 +55,105 @@ HRESULT PrepareClipboardDib(const DecodedImage& image,
     {
         return E_FAIL;
     }
+}
+
+HRESULT ParseClipboardDib(const void* data, std::size_t size,
+                          DecodedImage& output) noexcept
+{
+    output = {};
+    if (!data || size < sizeof(BITMAPINFOHEADER))
+        return E_INVALIDARG;
+
+    BITMAPINFOHEADER header{};
+    std::memcpy(&header, data, sizeof(header));
+    if (header.biSize < sizeof(BITMAPINFOHEADER) ||
+        header.biSize > size || header.biWidth <= 0 ||
+        header.biHeight == 0 || header.biHeight == INT_MIN ||
+        header.biPlanes != 1 || header.biCompression != BI_RGB ||
+        (header.biBitCount != 24 && header.biBitCount != 32))
+        return E_INVALIDARG;
+
+    const std::uint64_t width = static_cast<UINT>(header.biWidth);
+    const UINT height = static_cast<UINT>(
+        header.biHeight < 0 ? -header.biHeight : header.biHeight);
+    constexpr std::uint64_t kLimit = 256ULL * 1024 * 1024;
+    const std::uint64_t bits = static_cast<std::uint64_t>(header.biBitCount);
+    const std::uint64_t inputStride = ((width * bits + 31) / 32) * 4;
+    const std::uint64_t outputStride = width * 4;
+    const std::uint64_t inputBytes = inputStride * height;
+    const std::uint64_t outputBytes = outputStride * height;
+    if (!width || !height || outputStride > (std::numeric_limits<UINT>::max)() ||
+        inputBytes > kLimit || outputBytes > kLimit ||
+        inputBytes > size - header.biSize)
+        return E_INVALIDARG;
+
+    const auto* pixels = static_cast<const std::uint8_t*>(data) + header.biSize;
+    try
+    {
+        DecodedImage next;
+        next.width = static_cast<UINT>(width);
+        next.height = height;
+        next.stride = static_cast<UINT>(outputStride);
+        next.bgra.resize(static_cast<std::size_t>(outputBytes));
+        for (UINT y = 0; y < height; ++y)
+        {
+            const UINT srcY = header.biHeight < 0 ? y : (height - 1 - y);
+            const std::uint8_t* src = pixels + static_cast<std::size_t>(srcY * inputStride);
+            std::uint8_t* dst = next.bgra.data() +
+                                static_cast<std::size_t>(y * outputStride);
+            for (UINT x = 0; x < next.width; ++x)
+            {
+                const std::size_t in = static_cast<std::size_t>(x) * (bits / 8);
+                const std::size_t out = static_cast<std::size_t>(x) * 4;
+                dst[out + 0] = src[in + 0];
+                dst[out + 1] = src[in + 1];
+                dst[out + 2] = src[in + 2];
+                dst[out + 3] = 255; // BI_RGB does not define meaningful alpha
+            }
+        }
+        output = std::move(next);
+        return S_OK;
+    }
+    catch (const std::bad_alloc&)
+    {
+        return E_OUTOFMEMORY;
+    }
+    catch (...)
+    {
+        return E_FAIL;
+    }
+}
+
+HRESULT PasteImageFromClipboard(HWND owner, DecodedImage& output) noexcept
+{
+    output = {};
+    if (!owner || !IsWindow(owner))
+        return E_INVALIDARG;
+    if (!OpenClipboard(owner))
+    {
+        const DWORD error = GetLastError();
+        return HRESULT_FROM_WIN32(error ? error : ERROR_BUSY);
+    }
+
+    HRESULT result = HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED);
+    HANDLE handle = GetClipboardData(CF_DIB);
+    if (handle)
+    {
+        const SIZE_T size = GlobalSize(handle);
+        const void* data = GlobalLock(handle);
+        if (data)
+        {
+            result = ParseClipboardDib(data, size, output);
+            GlobalUnlock(handle);
+        }
+        else
+        {
+            const DWORD error = GetLastError();
+            result = HRESULT_FROM_WIN32(error ? error : ERROR_INVALID_DATA);
+        }
+    }
+    CloseClipboard();
+    return result;
 }
 
 HRESULT CopyImageToClipboard(HWND owner, const DecodedImage& image) noexcept
