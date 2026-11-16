@@ -452,6 +452,14 @@ class UnicodeFindWindow
             SetWindowTextW(status_, L"Enter a valid absolute Unicode destination path.");
             return;
         }
+        // A rename dialog may have been open while another process changed
+        // the original file. Recheck immediately before the W operation.
+        if (!OriginalResultUnchanged(hit))
+        {
+            SetWindowTextW(status_, L"The selected file changed during confirmation. "
+                            L"No file operation was started.");
+            return;
+        }
         if (isDirectory && command == CopyResult)
         {
             SetWindowTextW(status_, L"Recursive directory copy is not supported "
