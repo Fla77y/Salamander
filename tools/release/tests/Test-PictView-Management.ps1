@@ -64,6 +64,15 @@ if ($runnerText -notmatch '/W4 /WX' -or
     $runnerText -notmatch 'InteractiveWindowTests') {
     throw 'Native PictView runner must enforce MSVC warning-free build, both architectures and proper exit codes.'
 }
+# Ensure the ABI command also checks the production PictView SPL.
+# Previously only four unrelated plug-ins had exact PE export verification.
+$abiScript = Join-Path $root 'tools\release\tests\Test-PluginBinary-Contract.ps1'
+$abiText = Get-Content -LiteralPath $abiScript -Raw
+$pictviewDef = Join-Path $root 'src\plugins\pictview\pictview.def'
+if (-not $abiText.Contains("'pictview'") -or
+    -not (Test-Path -LiteralPath $pictviewDef -PathType Leaf)) {
+    throw 'PictView x64 binary must be checked by the local plugin export ABI gate.'
+}
 $hostText = Get-Content -LiteralPath $hostScriptPath -Raw
 # The host GUI is opt-in, but its embedded Win32 interop code must compile
 # on every ordinary Windows CI invocation. Syntax-only parsing does not
