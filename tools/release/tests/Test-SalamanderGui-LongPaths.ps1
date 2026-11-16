@@ -1746,9 +1746,10 @@ function Test-PluginLoadSmoke {
             $blocked = [SalamanderGuiNative]::GetBlockingPluginDialog(
                 $manager.Window, $mainWindowHandle, [uint32]$process.Id)
             if (-not [string]::IsNullOrWhiteSpace($blocked)) {
-                throw ("Blocking plug-in initialization dialog: {0}; " +
-                       "Missing target plug-in modules: {1}") -f
-                       $blocked, ($missing.Paths -join '; ')
+                $diagnostic = ("Blocking plug-in initialization dialog: {0}; " +
+                               "Missing target plug-in modules: {1}") -f
+                               $blocked, ($missing.Paths -join '; ')
+                throw $diagnostic
             }
             return $false
         } 'four exact plug-in modules loaded in the Salamander process' -TimeoutSecondsOverride 90
