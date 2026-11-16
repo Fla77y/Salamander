@@ -28,7 +28,9 @@ $requiredManager = @(
     "'--test-pictview'",
     "'--test-pictview-window'",
     'Invoke-PictViewTests.ps1',
-    '-InteractiveWindowTests'
+    '-InteractiveWindowTests',
+    "'--test-pictview-host'",
+    'Test-PictView-Host.ps1'
 )
 foreach ($required in $requiredManager) {
     if (-not $managerText.Contains($required)) {
