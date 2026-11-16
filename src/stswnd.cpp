@@ -282,7 +282,9 @@ void CStatusWindow::BuildHotTrackItems()
             SIZE s;
             GetTextExtentExPoint(dc, Text, TextLen, 0, NULL, AlpDX, &s);
 
-            DWORD len = TextLen;
+            // TextLen and the hot-track offsets are signed ints. Keep the
+            // bounds comparison in one domain (avoids C4018 in x64 builds).
+            const int len = TextLen;
             SIZE sOffset;
             SIZE sSub;
             DWORD i;
