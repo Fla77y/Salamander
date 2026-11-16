@@ -175,6 +175,21 @@ $checksums = foreach ($package in $packages) {
 }
 $checksums | Set-Content -LiteralPath $artifactManifest -Encoding utf8
 
+# Publish only hashes of redistributable Release outputs. The full internal
+# manifest above retains Debug hashes for developer-owned test packages.
+$publicNames = @('OpenSalamander-Release-x64.7z')
+if (-not $SkipInstaller) {
+    $publicNames += 'OpenSalamander-Release-x64-Setup.exe'
+}
+$publicHashes = foreach ($name in $publicNames) {
+    $package = Join-Path $artifactDir $name
+    if (-not (Test-Path -LiteralPath $package -PathType Leaf)) {
+        throw "Release artifact missing before checksum generation: $package"
+    }
+    '{0} *{1}' -f (Get-FileHash -LiteralPath $package -Algorithm SHA256).Hash.ToLowerInvariant(), $name
+}
+$publicHashes | Set-Content -LiteralPath (Join-Path $artifactDir 'SHA256SUMS-Release.txt') -Encoding ascii
+
 Write-Host ''
 Write-Host 'Package generation complete. Artifacts:'
 Get-ChildItem -LiteralPath $artifactDir -File |
