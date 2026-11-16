@@ -108,6 +108,15 @@ foreach ($name in @('Expand-AutomatedTestActions', 'Get-AutomatedGuiModes')) {
 }
 
 $managerSource = Get-Content -LiteralPath $managerPath -Raw
+# Local acceptance logs must capture the actual checkout revision and whether
+# tracked source changes are present; do not mistake a checkout SHA for an
+# attestation of the pre-existing built binaries.
+if (-not $managerSource.Contains('Source checkout git HEAD:') -or
+    -not $managerSource.Contains('Source tracked working tree clean:') -or
+    -not $managerSource.Contains('rev-parse --verify HEAD') -or
+    -not $managerSource.Contains('status --porcelain --untracked-files=no')) {
+    throw 'Management transcript must identify the source checkout revision and tracked changes.'
+}
 $optionDeclaration = [regex]::Match($managerSource, '(?s)\$validOptions\s*=\s*@\((.*?)\)')
 if (-not $optionDeclaration.Success) { throw 'Management CLI option registry is missing.' }
 $registeredOptions = @([regex]::Matches($optionDeclaration.Groups[1].Value, "'([^']+)'") |
