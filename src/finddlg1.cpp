@@ -2372,7 +2372,7 @@ BOOL CFindDialog::GetFocusedFile(char* buffer, int bufferLen, int* viewedIndex)
         *viewedIndex = index;
 
     CFoundFilesData* data = FoundFilesListView->At(index);
-    if (data->IsDir)
+    if (data->IsDir || !ValidateLegacyFindResult(data->Path, data->Name))
         return FALSE;
     char longName[MAX_PATH];
     int len = (int)strlen(data->Path);
