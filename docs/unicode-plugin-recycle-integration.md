@@ -182,6 +182,49 @@ operations, or Unicode/long-path input work.
 committed; live Windows execution pending. The original 8/8
 binary export ABI checks remain separately passed.
 
+## Real Plugin Manager test: PictView failure — 16 November 2026
+
+**FAIL on Windows, 16:42:09–16:43:42 CET** for the opt-in
+`manage.cmd --test-plugin-load` command. The user-provided
+PowerShell 7.7 transcript confirms the isolated x64 GUI launch,
+verified Plugin Manager dialog and the four target built binary
+paths. After the real `Test All` action, the test timed out
+waiting for four target modules. The captured screenshot shows a
+blocking **Error** dialog:
+
+> PictView plugin (…\\Release_x64\\plugins\\pictview\\pictview.spl)
+> has not been loaded. Plugin is not valid Open Salamander Plugin or
+> some plugin internal error has occurred.
+
+This is **not evidence that 7-Zip, Checksum, File Comparator or
+Batch Renamer failed initialization**. The test's use of
+`CPlugins::TestAll` initializes *every installed plug-in* and
+therefore reaches unrelated PictView; the modal error prevents
+the target module assertion from completing.
+
+The PictView x64 code path in `pictview.cpp` selects
+`InitPVEXEWrapper` via `PICTVIEW_DLL_IN_SEPARATE_PROCESS`.
+That helper starts the 32-bit `SalPVEnv.exe` envelope which
+uses `PVW32Cnv.dll`. An unavailable helper, converter or
+failed helper initialization is a **plausible** explanation,
+not yet a proven root cause; `LoadLanguageModule` and
+other initialization failures are alternative paths.
+
+A new test regression now inspects visible owned modal dialogs
+during plugin initialization, throws immediately with their
+full visible text and the still-missing target modules, and,
+for a PictView message, reports whether the three PictView
+runtime files are present. It never automatically dismisses
+an error dialog or claims the four targets succeeded.
+This removes the misleading 90-second wait; it does **not**
+repair PictView or change any production plug-in ABI.
+
+**Unverified:** the updated failure diagnostics require a
+new Windows run. A future **targeted** plug-in initialization
+driver should use per-plug-in manager actions, not blanket
+`Test All`, so unrelated installed plug-ins do not make
+verification of the four targets impossible.
+
 ## Next independently testable development slices
 
 1. **Recycle restoration acceptance:** the first opt-in Unicode round trip
