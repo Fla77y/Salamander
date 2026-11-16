@@ -77,8 +77,9 @@ foreach ($name in $pluginNames) {
             if ($nearby.Count -eq 0) {
                 $nearby = @($dump | Select-Object -Last 12)
             }
-            throw "No exact public PE export '$symbol' in $binary. dumpbin excerpt:" +
-                  [Environment]::NewLine + ($nearby -join [Environment]::NewLine)
+            $diagnostic = "No exact public PE export '$symbol' in $binary. dumpbin excerpt:" +
+                          [Environment]::NewLine + ($nearby -join [Environment]::NewLine)
+            throw $diagnostic
         }
     }
     Write-Host "PASS: $name x64 plug-in binary exports required Salamander SDK entry points"
