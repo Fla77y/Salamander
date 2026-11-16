@@ -239,26 +239,9 @@ function Run-Tests {
     $guiDriverContract = Join-Path $repository 'tools\release\tests\Test-GuiDriver-Contract.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $guiDriverContract)
 
-    # Synthetic regression tests: no installer, arbitrary plugin or user file executed.
-    $contractTests = @(
-        'Test-GuiProcessTemp-Isolation.ps1',
-        'Test-PluginExport-Parser.ps1',
-        'Test-PictViewRuntime-Prerequisites.ps1',
-        'Test-PortableManifest-Regression.ps1',
-        'Test-InstalledPayload-Regression.ps1',
-        'Test-ReleasePublicArtifact.ps1',
-        'Test-ReleaseWorkflow-Order.ps1'
-    )
-    foreach ($contractTest in $contractTests) {
-        $testScript = Join-Path $repository ('tools\release\tests\' + $contractTest)
-        if (-not (Test-Path -LiteralPath $testScript -PathType Leaf)) {
-            throw "Required regression missing: $testScript"
-        }
-        Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $testScript)
-    }
-    $clipboardContract = Join-Path $repository 'tools\release\tests\Test-GuiClipboard-Isolation.ps1'
-    Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $clipboardContract)
-
+    # Test-Package-Helpers.ps1 invokes the independent release/GUI contract
+    # regressions, including the cross-process clipboard test in STA.
+    # Running them separately here duplicates work and test side effects.
     $regression = Join-Path $repository 'tools\release\tests\Test-Package-Helpers.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $regression)
 
