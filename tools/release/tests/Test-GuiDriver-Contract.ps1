@@ -572,6 +572,11 @@ if ($driverText -notmatch '\[switch\]\$UnicodeFindOnly' -or
     $driverText -notmatch 'GetWindowThreadProcessId\(child' -or
     $driverText -notmatch 'SelectSingleFindResult' -or
     $driverText -notmatch 'WindowFromPoint\(point\) != list' -or
+    $driverText -notmatch 'LVM_GETSELECTEDCOUNT' -or
+    $driverText -notmatch 'LVM_ENSUREVISIBLE' -or
+    $driverText -notmatch 'WaitForFindSelection' -or
+    $driverText -notmatch 'WM_KEYDOWN / VK_HOME' -or
+    $driverText -notmatch 'Unicode Find selected result via safe ListView keyboard fallback' -or
     $findQuery -notmatch 'Wait-FindCompleted' -or
     $findSelection -notmatch 'SENTINEL_NOT_A_FIND_PATH' -or
     $findGui -notmatch 'Restore-FilePanelFocus' -or
@@ -584,3 +589,17 @@ if ($driverText -notmatch '\[switch\]\$UnicodeFindOnly' -or
     throw 'Unicode Find real GUI test must preserve HWND ownership, UTF-16 identity, operation safety and CLI/test-all integration.'
 }
 Write-Host 'PASS: Unicode Find modeless GUI test is registered and guards UTF-16 search, result selection and no-overwrite actions.'
+
+# Only one mouse click is allowed: repeating a physical click on the same
+# row could be interpreted as a double-click and open the selected file.
+# The fallback is a non-destructive Home key sent to the verified ListView.
+$selectInterop = [regex]::Match(
+    $driverText, '(?s)public static int SelectSingleFindResult\(.*?\r?\n    \}')
+if (-not $selectInterop.Success -or
+    [regex]::Matches($selectInterop.Value, 'mouse_event\(').Count -ne 2 -or
+    $selectInterop.Value -notmatch 'VerifiedChild\(window, pid, 5117\)' -or
+    $selectInterop.Value -notmatch 'SelectedFindIndex' -and
+    $selectInterop.Value -notmatch 'WaitForFindSelection') {
+    throw 'Unicode Find selection must use a single checked click and a safe keyboard fallback.'
+}
+Write-Host 'PASS: Unicode Find selection is bounded, diagnosed and never retries a potentially opening mouse click.'
