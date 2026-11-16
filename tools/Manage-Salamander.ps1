@@ -13,7 +13,7 @@ $repository = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Provide
 $buildRoot = 'D:\Build\OpenSal'
 $configuration = 'Release'
 $validOptions = @('--update', '--build', '--test', '--setup', '--run',
-                  '--debug', '--release', '--all', '--test-all', '--test-gui', '--test-gui-max-path', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-unicode-find', '--test-gui-manual', '--test-pictview', '--test-pictview-window', '--test-pictview-host', '--help', '-h', '/?')
+                  '--debug', '--release', '--all', '--test-all', '--test-gui', '--test-gui-max-path', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-recycle-restore', '--test-plugin-exports', '--test-plugin-load', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-unicode-find', '--test-gui-manual', '--help', '-h', '/?')
 $requestedSet = [System.Collections.Generic.HashSet[string]]::new(
     [StringComparer]::OrdinalIgnoreCase)
 
@@ -36,11 +36,6 @@ Open Salamander – Verwaltung für Visual Studio 2026
   manage.cmd --test-all     Alle automatisierten Tests: --test und sämtliche GUI-Modi
                             (Release und Debug x64; --release/--debug begrenzt die GUI-Modi)
   manage.cmd --setup        Debug- und Release-7z plus Inno-Setup-Pakete erzeugen
-  manage.cmd --test-pictview  WIC-Decoder, GDI, Frames, Export, Clipboard, Transforms: MSVC x86/x64
-  manage.cmd --test-pictview-window  Zusätzlich echten WIC-Viewer-HWND testen
-                                 (unverriegelter Windows-Desktop erforderlich)
-  manage.cmd --test-pictview-host  Plugin im echten Salamander mit F3 laden und Viewer öffnen
-                                 (opt-in, vorher andere Salamander-Instanzen schließen)
   manage.cmd --test-gui     Automatisierter GUI-Test: lange Pfade, Unicode-Dateien, F5
   manage.cmd --test-gui-max-path  Reale GUI-Prüfung nahe 32767: 32700 Gesamt- und 255 UTF-16-Namenseinheiten
   manage.cmd --test-gui-baseline  GUI-Automation zunächst mit kurzen ASCII-Pfaden prüfen
@@ -48,6 +43,9 @@ Open Salamander – Verwaltung für Visual Studio 2026
   manage.cmd --test-gui-names  Unicode-Dateinamen in der GUI bei kurzen Pfaden prüfen
   manage.cmd --test-gui-unicode-rename  Echte UTF-16-F2-Umbenennung im Dateipanel prüfen
   manage.cmd --test-gui-unicode-recycle  F8-Dateioperation mit UTF-16 und Windows-Papierkorb prüfen
+  manage.cmd --test-recycle-restore  Opt-in: echten Unicode-F8-Papierkorb und verlustfreie Wiederherstellung prüfen
+  manage.cmd --test-plugin-exports  x64-Debug/Release-Plugins auf PE-Exports und SDK-ABI prüfen (nur lesen)
+  manage.cmd --test-plugin-load  Opt-in: reale Plugin-Manager-Initialisierung für vier Plugins (lädt alle installierten)
   manage.cmd --test-gui-unicode-transfer  UTF-16-F5/F6 mit einem Dateieintrag prüfen
   manage.cmd --test-gui-unicode-transfer-collision  UTF-16-F5/F6-Zielkollision ohne Überschreiben prüfen
   manage.cmd --test-gui-bestfit  Best-Fit-ANSI-Namensverfälschung ohne Fragezeichen prüfen
@@ -67,9 +65,6 @@ Mehrere Aktionen kombinieren:
   manage.cmd --update --build --test --setup
   manage.cmd --build --test --run
   manage.cmd --build --test-all  Vollständige Suite auf beiden x64-Binaries
-  manage.cmd --test-pictview  WIC-Tests lokal mit x86 und x64 kompilieren und ausführen
-  manage.cmd --test-pictview-window  Zusätzlich einen echten WIC-Viewer öffnen/schließen
-  manage.cmd --test-pictview-host  PictView im echten Salamander über F3 testen
 
 Voraussetzungen:
   Windows 11, PowerShell 7.4+, VS 2026 mit MSVC v143/ATL, Windows SDK.
@@ -97,8 +92,6 @@ function Expand-AutomatedTestActions {
     if (-not $RequestedSet.Contains('--test-all')) { return }
 
     [void]$RequestedSet.Add('--test')
-    [void]$RequestedSet.Add('--test-pictview')
-    [void]$RequestedSet.Add('--test-pictview-window')
     foreach ($option in $AvailableOptions) {
         if ($option.StartsWith('--test-gui', [StringComparison]::OrdinalIgnoreCase) -and
             $option -ne '--test-gui-manual') {
@@ -216,9 +209,6 @@ function Run-Tests {
 
     $productVersionTest = Join-Path $repository 'tools\release\tests\Test-ProductVersion.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $productVersionTest)
-
-    $pictviewContract = Join-Path $repository 'tools\release\tests\Test-PictView-Management.ps1'
-    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $pictviewContract)
 
     $guiDriverContract = Join-Path $repository 'tools\release\tests\Test-GuiDriver-Contract.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $guiDriverContract)
@@ -355,21 +345,52 @@ try {
         if ($requestedSet.Contains('--update')) { Update-Branch }
         if ($requestedSet.Contains('--build')) { Build-Variants }
         if ($requestedSet.Contains('--test')) { Run-Tests }
-        if ($requestedSet.Contains('--test-pictview') -or
-            $requestedSet.Contains('--test-pictview-window')) {
-            $pictviewRunner = Join-Path $repository 'tools\release\tests\Invoke-PictViewTests.ps1'
-            $pictviewArgs = @('-NoProfile', '-File', $pictviewRunner,
-                              '-Repository', $repository)
-            if ($requestedSet.Contains('--test-pictview-window')) {
-                $pictviewArgs += '-InteractiveWindowTests'
+        # Separate acceptance gate: these built plug-ins are inspected but
+        # never loaded, and missing artifacts must fail rather than skip.
+        if ($requestedSet.Contains('--test-plugin-exports')) {
+            $pluginContract = Join-Path $repository 'tools\release\tests\Test-PluginBinary-Contract.ps1'
+            $vs = Get-VisualStudio2026
+            foreach ($pluginMode in @('Release', 'Debug')) {
+                if ($requestedSet.Contains('--release') -and $pluginMode -ne 'Release') { continue }
+                if ($requestedSet.Contains('--debug') -and $pluginMode -ne 'Debug') { continue }
+                Write-Host "=== BUILT PLUGIN ABI CONTRACT: $pluginMode x64 ==="
+                Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $pluginContract,
+                                          '-BuildDirectory', (Get-VariantDirectory $pluginMode),
+                                          '-VisualStudioRoot', $vs)
             }
-            Invoke-Native 'pwsh.exe' $pictviewArgs
         }
-        if ($requestedSet.Contains('--test-pictview-host')) {
-            $hostGui = Join-Path $repository 'tools\release\tests\Test-PictView-Host.ps1'
-            $targetExe = Join-Path (Get-VariantDirectory $configuration) 'salamand.exe'
-            Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $hostGui,
-                                       '-SalamanderExe', $targetExe)
+        # Explicit opt-in: this test executes a shell restore verb on its
+        # uniquely identified GUID-scoped fixture. Never included in --test-all.
+        if ($requestedSet.Contains('--test-recycle-restore')) {
+            Write-Host '=== OPT-IN: UNICODE F8 PAPIERKORB-WIEDERHERSTELLUNG ==='
+            $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+            $testedExe = Join-Path (Get-VariantDirectory $configuration) 'salamand.exe'
+            Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                      '-SalamanderExe', $testedExe,
+                                      '-ShortUnicodeRecycleOnly', '-VerifyRecycleRestore')
+        }
+        # Explicit opt-in: the Salamander plug-in manager's Test All action
+        # initializes every installed plug-in, including third-party modules.
+        # This must never run implicitly as part of --test-all.
+        if ($requestedSet.Contains('--test-plugin-load')) {
+            Write-Host '=== OPT-IN: ECHTE PLUGIN-MANAGER-INITIALISIERUNG ==='
+            # The existing Test All action initializes PictView as well.
+            # Check optional PictView sidecars before launching a GUI that
+            # would otherwise block on a modal "invalid plugin" message.
+            . (Join-Path $repository 'tools\release\Plugin-Runtime-Prerequisites.ps1')
+            $pluginBuild = Get-VariantDirectory $configuration
+            $missingPictView = @(Get-MissingPictViewRuntimeFiles -BuildDirectory $pluginBuild)
+            if ($missingPictView.Count -gt 0) {
+                throw ("The optional x64 PictView plug-in is incomplete: " +
+                       ($missingPictView -join '; ') +
+                       ". Test All also initializes PictView and is unsafe for the four-target smoke test. " +
+                       "PVW32Cnv is absent from the GPL repository; do not copy unverified binaries. " +
+                       "Use the Plugin Manager's individual Test action for the four target plug-ins until targeted automation is available.")
+            }
+            $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+            $testedExe = Join-Path $pluginBuild 'salamand.exe'
+            Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                      '-SalamanderExe', $testedExe, '-PluginLoadSmokeOnly')
         }
         $automatedGuiModes = @(Get-AutomatedGuiModes -RequestedSet $requestedSet)
         foreach ($guiMode in $automatedGuiModes) {
