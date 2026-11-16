@@ -466,12 +466,19 @@ int main()
         return Fail("refuse to overwrite existing Unicode destination");
     // A missing source must not publish any destination or leave a
     // staging artifact in the parent directory.
-    Salamander::Utf16DiskPath missingCopySource;
+    Salamander::Utf16DiskPath missingCopySource, missingCopyTarget;
     const std::wstring missingCopyName = current + L"\\missing-copy-source-東京.txt";
+    const std::wstring missingTargetName = current + L"\\missing-copy-target-東京.txt";
     if (!OwnPath(missingCopyName, missingCopySource) ||
+        !OwnPath(missingTargetName, missingCopyTarget) ||
         Salamander::TryCopyUnicodeFileNoOverwrite(
-            missingCopySource, unicodeCopy, operationError))
+            missingCopySource, missingCopyTarget, operationError))
         return Fail("refuse staged copy from missing source");
+    std::wstring extendedMissingTarget;
+    if (!Convert(missingTargetName, extendedMissingTarget) ||
+        GetFileAttributesW(extendedMissingTarget.c_str()) != INVALID_FILE_ATTRIBUTES ||
+        GetLastError() != ERROR_FILE_NOT_FOUND)
+        return Fail("missing-source copy must not publish a target");
 
     // The staged copy path must never remain visible after either success
     // or a rejected overwrite. Validate the real destination directory.
