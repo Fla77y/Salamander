@@ -671,3 +671,45 @@ manual scenarios should use disposable fixtures for Unicode alias collisions,
 255-unit DBCS names, unsupported plug-in actions and copy interruption.
 Keep PR #6 as Draft until the changed build passes and the remaining Find
 and plug-in migration scope is resolved.
+
+
+## F2: native UTF-16 Find mode for physical disk panels (16 November 2026)
+
+Disk-panel Find now opens a modeless W-native results window rather than
+passing arbitrary disk paths through the old ANSI/MAX_PATH result model.
+The original advanced Find dialog remains available via the
+"Advanced (legacy)" button when its root fits and round-trips through CP_ACP.
+
+The new implementation includes a W enumeration and dynamically owned
+directory/name paths, recursive name masks with optional exclusions, W list
+results, literal content scanning in UTF-8 and UTF-16LE (including across
+64-KiB blocks), cancellation, and no-overwrite W copy/move/rename actions.
+The selected result is rechecked before file actions. Clipboard paths use
+CF_UNICODETEXT; recycle is supported only for short fixed-local-drive files
+by the existing IFileOperation adapter and never silently becomes permanent
+deletion. File-open shell verbs are refused for long paths pending a reliable
+W-only association handler.
+
+Tests: tools/tests/unicode_find.cpp is registered in manage.cmd --test.
+The existing real 32700-unit native fixture additionally exercises W Find
+at the path limit. The tests cover Unicode identity, names with 255 UTF-16
+units, recursion, mask exclusions, UTF-8/UTF-16LE search, matches across
+64-KiB read blocks, cancellation, and rejection of relative paths.
+
+IMPORTANT: Full legacy feature parity is still incomplete. Advanced
+date/size/attribute filters, duplicate grouping, regular-expression grep,
+result refinement, shell context menu and drag-and-drop, and additional
+content encodings are not yet implemented in the new W search. The legacy
+dialog keeps them for short exact-ACP paths. Do not advertise these advanced
+features as supported at 32K paths until migrated.
+
+Run on the Windows host:
+
+    cd C:\Repositories\Salamander
+    .\manage.cmd --update
+    .\manage.cmd --build --test-all
+
+Then manually open Find from a disposable >260-unit disk directory and
+verify W results, UTF-8 and UTF-16LE content, selected-path clipboard,
+copy/move/rename no-overwrite behavior and cancellation in the real GUI.
+Current commits are NOT yet verified by a new interactive GUI run.
