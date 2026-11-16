@@ -1,11 +1,25 @@
 # Long path and Unicode filename migration (Windows)
 
-## Current status
+## Current status (16 November 2026)
 
-**Not yet implemented:** Open Salamander does not have end-to-end support for
-filesystem paths longer than `MAX_PATH` (260), or all Unicode filenames.
+**Partial, automated and locally verified:** The x64 Debug/Release Windows
+desktop tests on commit `bccf89d` passed disk-panel navigation to 32700 UTF-16
+units, Unicode filenames, a bounded set of F2/F5/F6/F8 operations and the
+native Unicode Find GUI. The native, packaging and GUI tests cover distinct
+contracts; they do not establish full compatibility with every legacy plug-in,
+shell integration or advanced Find feature.
 
-The current core stores panel and work paths in fixed ANSI buffers:
+**Not yet fully implemented:** The wider application does not have universal
+Unicode/long-path compatibility. ANSI and fixed-capacity code still exists in
+legacy paths and plug-in ABI boundaries. Unsupported paths must fail closed
+rather than silently truncate, overwrite or delete data.
+
+Historical design constraints below describe the initial migration baseline;
+many of its core call sites have since been incrementally adapted. Before
+removing an older limitation, inspect the current implementation, not only
+the earlier milestones recorded here.
+
+The original core stored panel and work paths in fixed ANSI buffers:
 - `src/fileswnd.h`: `Path[MAX_PATH]`, `WorkPath[MAX_PATH]`, `ZIPArchive[MAX_PATH]`.
 - `src/salamdr1.cpp`, `BuildName()`: reports names as too long at `MAX_PATH`.
 - `src/safefile.cpp`, `SafeFileOpen()` / `SafeFileCreate()`: explicitly reject
@@ -752,3 +766,52 @@ not a substitute for the interactive test. This scenario does not yet
 cover a reliably forced mid-search cancellation, Recycle Bin restoration,
 shell associations, advanced legacy search criteria, or every plug-in.
 PR #6 must remain Draft until the real run and outstanding coverage pass.
+
+
+## Follow-up GUI safety integration gates (16 November 2026)
+
+The existing `--test-gui-unicode-find` scenario was extended in PR #6 with
+tests that exercise the real application boundary on disposable files:
+
+- Opening a result with a path beyond MAX_PATH must refuse the unsafe shell
+  association and leave the file unchanged.
+- Invoking the old advanced Find dialog with that long root must warn and
+  preserve the Unicode search window, without handing the truncated root
+  to the ANSI dialog.
+- Recycling a long-path result must explicitly refuse and preserve source
+  bytes; no permanent-delete fallback is acceptable.
+- A search result changed on disk after enumeration (different file size)
+  must be refused before copying; the destination must remain nonexistent.
+- Cancellation must be observed as `Search cancelled` while an isolated
+  large file is scanned; a completed fast search does not count as evidence
+  of cancellation. Closing a second active search must join its worker,
+  leave Salamander alive, and clean the disposable stress fixture.
+
+The test exercises a bounded 128 MiB temporary file for the cancellation
+case. The fixture is automatically deleted after a successful test; a failure
+retains the test directory for diagnosis as in the existing GUI driver.
+The extra tests are registered via the existing `--test-gui-unicode-find`
+mode, so `--test-all` invokes them in x64 Debug and Release.
+
+**Status:** These added scenarios were committed after the successful local
+`bccf89d` run, and have not yet been verified by an interactive Windows run.
+Do not conflate green static parser/contract checks with passed GUI scenarios.
+
+Remaining separate work is not disguised as a passing test:
+- Verify actual short-path Recycle Bin restoration without touching any
+  unrelated user item; shell state and policy vary across machines.
+- Test short-root legacy advanced-search feature behavior and shell
+  associations independently, with dedicated test-safe data and clean
+  teardown of all external windows/processes.
+- Exercise plug-in and shell callback boundaries with each supported
+  plug-in, including 7-Zip, Checksum, File Comparator and Batch Renamer.
+  Existing static source gates and ABI checks are not real GUI integration.
+- Evaluate advanced search feature parity (date/size filters, duplicates,
+  regex, refine, additional content encodings) as a separate migration
+  rather than claiming that the native W search already implements them.
+- Verify local release/setup packages on a clean Windows host and check
+  behavior with long-path opt-in enabled and disabled, if required for the
+  intended support contract.
+
+PR #6 remains Draft; no automatic merge or release is authorized by these
+tests alone.
