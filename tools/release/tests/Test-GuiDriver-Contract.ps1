@@ -64,9 +64,10 @@ $readiness = Get-FunctionSource 'Wait-ForGuiResponsive'
 $readinessText = $readiness.Extent.Text
 $startupStart = $driverText.IndexOf(
     '    # A visible top-level window is not evidence', [StringComparison]::Ordinal)
+if ($startupStart -lt 0) { throw 'GUI startup acceptance block is missing.' }
 $navigationStart = $driverText.IndexOf(
     '    Go-ToPath $source', $startupStart, [StringComparison]::Ordinal)
-if ($startupStart -lt 0 -or $navigationStart -le $startupStart) {
+if ($navigationStart -le $startupStart) {
     throw 'GUI startup acceptance block is missing.'
 }
 $startupText = $driverText.Substring($startupStart, $navigationStart - $startupStart)
@@ -83,7 +84,7 @@ if ($startupText -notmatch '(?s)WaitForInputIdle\(10000\).*?Wait-ForGuiResponsiv
 # A failure screenshot is diagnostic evidence. The new temp-directory test
 # removes its fixture after failure, so evidence must be stored outside it.
 $screenshot = (Get-FunctionSource 'Save-FailureScreenshot').Extent.Text
-if ($screenshot -match "Join-Path \$root 'gui-failure.png'" -or
+if ($screenshot.Contains('Join-Path $root ''gui-failure.png''') -or
     $screenshot -notmatch 'GetTempPath' -or
     $screenshot -notmatch 'gui-failure') {
     throw 'Failed GUI test must retain a screenshot outside its deleted disposable fixture.'
