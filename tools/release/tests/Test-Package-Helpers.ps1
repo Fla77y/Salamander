@@ -622,7 +622,7 @@ if ($panelWideNames -notmatch 'MakeUnrepresentableAnsiPanelAlias' -or
 }
 
 # F5: short-path Unicode aliases must not enter the ANSI association handler.
-if ($panelExecute -notmatch 'UnicodeDiskNames\.IsUnsafeAnsiName\(.*?->Name\)') {
+if ($panelExecute -notmatch 'UnicodeDiskNames\.IsUnsafeAnsiName\(selectedFile\.Name\)') {
     throw 'F5: opening a lossy file through the legacy association path must be refused.'
 }
 
@@ -635,5 +635,24 @@ if ($multiTransfer -notmatch 'UnicodePanelNameCache' -or
     $multiTransfer -notmatch '\.Load\(sourceDirectory\.c_str\(\)' -or
     $multiTransfer -match 'ResolveUnicodePanelFileName\(') {
     throw 'F7: Unicode batch transfers must resolve alias uniqueness from bounded phase snapshots.'
+}
+# F2: until search results themselves own W identities, the legacy dialog
+# must reject a too-long starting directory rather than silently searching
+# a different truncated prefix.
+if ($findDialog1 -notmatch 'InitRootTooLong\s*=\s*TRUE' -or
+    $findDialog1 -notmatch 'if \(InitRootTooLong\)' -or
+    $findSearch -notmatch 'void SearchDirectory\(char \(&path\)\[MAX_PATH\]') {
+    throw 'F2: the legacy search-root limitation must fail explicitly.'
+}
+
+# F6: copied files must be fully staged before atomic, no-replace publication.
+$fileOps = Get-Content -LiteralPath (
+    Join-Path $toolsDir '..\..\src\common\win32_unicode_file_ops.h') -Raw
+$copyImpl = [regex]::Match($fileOps,
+    '(?s)inline bool TryCopyUnicodeFileNoOverwrite\(.*?inline bool TryMoveUnicodeFileNoOverwrite\(').Value
+if ($copyImpl -notmatch 'CopyFileW\(sourcePath\.c_str\(\), temporary\.c_str\(\), TRUE\)' -or
+    $copyImpl -notmatch 'MoveFileExW\(temporary\.c_str\(\), destinationPath\.c_str\(\), 0\)' -or
+    $copyImpl -notmatch 'DeleteFileW\(temporary\.c_str\(\)\)') {
+    throw 'F6: Unicode copy must use staging and no-replace publication.'
 }
 Write-Host 'PASS: search and plugin fail-closed contracts; wide alias fallback and batch snapshot boundaries.'
