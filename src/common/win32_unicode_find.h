@@ -26,6 +26,9 @@ struct UnicodeFindOptions
     bool includeDirectories = false;
     bool caseSensitiveNames = false;
     std::size_t maximumResults = 100000;
+    // Bound memory used by retained W identities in addition to hit count.
+    // In a 32K directory, each result may otherwise repeat 64 KiB of text.
+    std::size_t maximumResultUtf16Units = 8 * 1024 * 1024;
 };
 
 struct UnicodeFindHit
@@ -268,6 +271,7 @@ inline bool SearchUnicodeDirectory(const UnicodeFindOptions& options,
     std::vector<std::wstring> remaining;
     remaining.push_back(options.root);
     std::size_t found = 0;
+    std::size_t resultUnits = 0;
     while (!remaining.empty())
     {
         if (cancel && cancel->load())
@@ -324,6 +328,14 @@ inline bool SearchUnicodeDirectory(const UnicodeFindOptions& options,
             hit.attributes = entry.attributes;
             hit.size = entry.size;
             hit.lastWrite = entry.lastWrite;
+            const std::size_t nextUnits = hit.directory.size() + hit.name.size();
+            if (nextUnits > options.maximumResultUtf16Units ||
+                resultUnits > options.maximumResultUtf16Units - nextUnits)
+            {
+                error = ERROR_MORE_DATA;
+                return false;
+            }
+            resultUnits += nextUnits;
             if (!sink(hit))
             {
                 error = ERROR_CANCELLED;
