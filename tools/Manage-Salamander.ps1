@@ -13,7 +13,7 @@ $repository = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Provide
 $buildRoot = 'D:\Build\OpenSal'
 $configuration = 'Release'
 $validOptions = @('--update', '--build', '--test', '--setup', '--run',
-                  '--debug', '--release', '--all', '--test-all', '--test-gui', '--test-gui-max-path', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-unicode-find', '--test-gui-manual', '--help', '-h', '/?')
+                  '--debug', '--release', '--all', '--test-all', '--test-gui', '--test-gui-max-path', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-recycle-restore', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-unicode-find', '--test-gui-manual', '--help', '-h', '/?')
 $requestedSet = [System.Collections.Generic.HashSet[string]]::new(
     [StringComparer]::OrdinalIgnoreCase)
 
@@ -43,6 +43,7 @@ Open Salamander – Verwaltung für Visual Studio 2026
   manage.cmd --test-gui-names  Unicode-Dateinamen in der GUI bei kurzen Pfaden prüfen
   manage.cmd --test-gui-unicode-rename  Echte UTF-16-F2-Umbenennung im Dateipanel prüfen
   manage.cmd --test-gui-unicode-recycle  F8-Dateioperation mit UTF-16 und Windows-Papierkorb prüfen
+  manage.cmd --test-recycle-restore  Opt-in: echten Unicode-F8-Papierkorb und verlustfreie Wiederherstellung prüfen
   manage.cmd --test-gui-unicode-transfer  UTF-16-F5/F6 mit einem Dateieintrag prüfen
   manage.cmd --test-gui-unicode-transfer-collision  UTF-16-F5/F6-Zielkollision ohne Überschreiben prüfen
   manage.cmd --test-gui-bestfit  Best-Fit-ANSI-Namensverfälschung ohne Fragezeichen prüfen
@@ -456,6 +457,16 @@ try {
                 Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
                                           '-SalamanderExe', $testedExe)
             }
+        }
+        # Explicit opt-in: this test executes a shell restore verb on its
+        # uniquely identified GUID-scoped fixture. Never included in --test-all.
+        if ($requestedSet.Contains('--test-recycle-restore')) {
+            Write-Host '=== OPT-IN: UNICODE F8 PAPIERKORB-WIEDERHERSTELLUNG ==='
+            $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+            $testedExe = Join-Path (Get-VariantDirectory $configuration) 'salamand.exe'
+            Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                      '-SalamanderExe', $testedExe,
+                                      '-ShortUnicodeRecycleOnly', '-VerifyRecycleRestore')
         }
         if ($requestedSet.Contains('--test-gui-manual')) {
             Write-Host '=== MANUELLER SALAMANDER-GUI-LANGPFADTEST ==='
