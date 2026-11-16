@@ -29,8 +29,8 @@ if (-not $major.Success -or -not $minor.Success -or
     [int]$minor.Groups[1].Value -ne $expectedMinor) {
     throw 'Core product version must be 5.2.'
 }
-if (-not $installerVersion.Success -or $installerVersion.Groups[1].Value.Trim() -cne '5.1') {
-    throw 'Inno Setup AppVersion must be 5.1.'
+if (-not $installerVersion.Success -or $installerVersion.Groups[1].Value.Trim() -cne '5.2') {
+    throw 'Inno Setup AppVersion must be 5.2.'
 }
 if ($shellResource -notmatch '(?m)^#define\s+FILE_SALVER\s+VERSINFO_xstr\(VERSINFO_SALAMANDER_MAJOR\)\s+"\."\s+VERSINFO_xstr\(VERSINFO_SALAMANDER_MINORA\)' -or
     $shellResource -match '(?m)^#define\s+FILE_SALVER\s+"5\.0"') {
@@ -39,30 +39,7 @@ if ($shellResource -notmatch '(?m)^#define\s+FILE_SALVER\s+VERSINFO_xstr\(VERSIN
 if ($sharedResource -notmatch '(?m)^\s*PRODUCTVERSION\s+VERSINFO_SALAMANDER_MAJOR,VERSINFO_SALAMANDER_MINORA,VERSINFO_SALAMANDER_MINORB,VERSINFO_BUILDNUMBER') {
     throw 'Win32 VERSIONINFO product metadata must continue to use shared product macros.'
 }
-$buildNumber = [regex]::Match($versionHeader, '(?m)^#define\s+VERSINFO_BUILDNUMBER\s+(\d+)\s*
-if ($versionHeader -notmatch '(?m)^#define\s+LAST_VERSION_OF_SALAMANDER\s+103\s*$' -or
-    $versionHeader -notmatch 'This plugin requires Open Salamander 5\.0') {
-    throw 'Do not raise the minimum compatible plug-in SDK version for a product-label-only change.'
-}
-Write-Host 'PASS: Open Salamander 5.1 product, installer, shell extension and preserved plugin SDK compatibility.'
-
-if (-not [string]::IsNullOrWhiteSpace($BinaryPath)) {
-    # Arrange: inspect the *built* Win32 VERSIONINFO, not only preprocessor source.
-    if (-not (Test-Path -LiteralPath $BinaryPath -PathType Leaf)) {
-        throw "Missing product executable for version assertion: $BinaryPath"
-    }
-    # Act
-    $binaryVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo(
-        [IO.Path]::GetFullPath($BinaryPath))
-    # Assert
-    if ($binaryVersion.ProductMajorPart -ne $expectedMajor -or
-        $binaryVersion.ProductMinorPart -ne $expectedMinor -or
-        -not $binaryVersion.ProductVersion.StartsWith('5.1', [StringComparison]::Ordinal)) {
-        throw "Built binary has inconsistent product version: $BinaryPath : $($binaryVersion.ProductVersion)"
-    }
-    Write-Host "PASS: built executable has 5.1 VERSIONINFO: $BinaryPath"
-}
-)
+$buildNumber = [regex]::Match($versionHeader, '(?m)^#define\s+VERSINFO_BUILDNUMBER\s+(\d+)\s*$')
 if (-not $buildNumber.Success -or [int]$buildNumber.Groups[1].Value -ne 184) {
     throw 'Open Salamander 5.2 must have its own build number (184).'
 }
@@ -71,7 +48,7 @@ if ($versionHeader -notmatch '(?m)^#define\s+LAST_VERSION_OF_SALAMANDER\s+103\s*
     $versionHeader -notmatch 'This plugin requires Open Salamander 5\.0') {
     throw 'Do not raise the minimum compatible plug-in SDK version for a product-label-only change.'
 }
-Write-Host 'PASS: Open Salamander 5.1 product, installer, shell extension and preserved plugin SDK compatibility.'
+Write-Host 'PASS: Open Salamander 5.2 product, installer, shell extension and preserved plugin SDK compatibility.'
 
 if (-not [string]::IsNullOrWhiteSpace($BinaryPath)) {
     # Arrange: inspect the *built* Win32 VERSIONINFO, not only preprocessor source.
@@ -84,8 +61,8 @@ if (-not [string]::IsNullOrWhiteSpace($BinaryPath)) {
     # Assert
     if ($binaryVersion.ProductMajorPart -ne $expectedMajor -or
         $binaryVersion.ProductMinorPart -ne $expectedMinor -or
-        -not $binaryVersion.ProductVersion.StartsWith('5.1', [StringComparison]::Ordinal)) {
+        -not $binaryVersion.ProductVersion.StartsWith('5.2', [StringComparison]::Ordinal)) {
         throw "Built binary has inconsistent product version: $BinaryPath : $($binaryVersion.ProductVersion)"
     }
-    Write-Host "PASS: built executable has 5.1 VERSIONINFO: $BinaryPath"
+    Write-Host "PASS: built executable has 5.2 VERSIONINFO: $BinaryPath"
 }
