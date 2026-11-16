@@ -1,0 +1,139 @@
+// SPDX-FileCopyrightText: 2026 Open Salamander Authors
+// SPDX-License-Identifier: GPL-2.0-or-later
+// RED regression suite for the Unicode Find core (F2).
+// Requires a Windows x64 build host; uses only private disposable fixtures.
+
+#include "../../src/common/win32_unicode_find.h"
+
+#include <windows.h>
+#include <atomic>
+#include <cstdio>
+#include <string>
+#include <vector>
+
+static bool MakeDirectory(const std::wstring& fullPath)
+{
+    std::wstring extended;
+    DWORD error = ERROR_SUCCESS;
+    return Salamander::TryMakeExtendedLengthPath(fullPath.c_str(), extended, error) &&
+           CreateDirectoryW(extended.c_str(), nullptr) != 0;
+}
+
+static bool WriteFixture(const std::wstring& fullPath, const void* bytes, DWORD length)
+{
+    std::wstring extended;
+    DWORD error = ERROR_SUCCESS;
+    if (!Salamander::TryMakeExtendedLengthPath(fullPath.c_str(), extended, error))
+        return false;
+    HANDLE file = CreateFileW(extended.c_str(), GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+                              FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (file == INVALID_HANDLE_VALUE)
+        return false;
+    DWORD written = 0;
+    const bool ok = WriteFile(file, bytes, length, &written, nullptr) && written == length;
+    CloseHandle(file);
+    return ok;
+}
+
+static bool RemoveFixture(const std::wstring& fullPath, bool directory)
+{
+    std::wstring extended;
+    DWORD error = ERROR_SUCCESS;
+    return Salamander::TryMakeExtendedLengthPath(fullPath.c_str(), extended, error) &&
+           (directory ? RemoveDirectoryW(extended.c_str()) : DeleteFileW(extended.c_str())) != 0;
+}
+
+int main()
+{
+    wchar_t temp[MAX_PATH] = {};
+    const DWORD count = GetTempPathW(MAX_PATH, temp);
+    if (count == 0 || count >= MAX_PATH)
+        return std::puts("FAIL: temporary path"), 1;
+
+    const std::wstring root = std::wstring(temp) + L"OpenSal-Find-" +
+        std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount64());
+    const std::wstring long1 = root + L"\\" + std::wstring(105, L'a');
+    const std::wstring long2 = long1 + L"\\" + std::wstring(105, L'b');
+    const std::wstring long3 = long2 + L"\\" + std::wstring(105, L'c');
+    const std::wstring nested = long3 + L"\\subfolder";
+    if (!MakeDirectory(root) || !MakeDirectory(long1) ||
+        !MakeDirectory(long2) || !MakeDirectory(long3) || !MakeDirectory(nested))
+        return std::puts("FAIL: create long Find fixture"), 1;
+
+    const std::wstring nameA = L"東京_😀.txt";
+    const std::wstring nameB = L"大阪_😀.txt";
+    const std::wstring nameC = std::wstring(251, L'z') + L".txt";
+    const char utf8[] = "unique needle in UTF-8";
+    const wchar_t utf16[] = L"unique needle in UTF-16";
+    const std::wstring fileA = long3 + L"\\" + nameA;
+    const std::wstring fileB = nested + L"\\" + nameB;
+    const std::wstring fileC = long3 + L"\\" + nameC;
+    if (!WriteFixture(fileA, utf8, sizeof(utf8) - 1) ||
+        !WriteFixture(fileB, utf16, sizeof(utf16) - sizeof(wchar_t)) ||
+        !WriteFixture(fileC, "other", 5))
+        return std::puts("FAIL: write Unicode Find fixtures"), 1;
+
+    // Arrange: source root is beyond MAX_PATH, with UTF-16 names that may
+    // collapse to a single CP_ACP alias; no ANSI conversion is allowed.
+    Salamander::UnicodeFindOptions options;
+    options.root = long3;
+    options.masks = L"*.txt";
+    options.includeSubdirectories = true;
+    std::vector<Salamander::UnicodeFindHit> hits;
+    DWORD error = ERROR_SUCCESS;
+    const auto collect = [&](const Salamander::UnicodeFindHit& hit) {
+        hits.push_back(hit);
+        return true;
+    };
+
+    // Act / Assert: preserve both exact original W identities and a 255-unit
+    // component, including a nested directory under a long parent.
+    if (!Salamander::SearchUnicodeDirectory(options, collect, nullptr, error) ||
+        hits.size() != 3 || error != ERROR_SUCCESS)
+        return std::puts("FAIL: full Unicode long-path search"), 1;
+    bool foundA = false, foundB = false, foundC = false;
+    for (const auto& hit : hits)
+    {
+        foundA |= hit.name == nameA && hit.directory == long3;
+        foundB |= hit.name == nameB && hit.directory == nested;
+        foundC |= hit.name == nameC && hit.name.size() == 255;
+    }
+    if (!foundA || !foundB || !foundC)
+        return std::puts("FAIL: Unicode result identity or 255-unit name"), 1;
+
+    options.includeSubdirectories = false;
+    hits.clear();
+    if (!Salamander::SearchUnicodeDirectory(options, collect, nullptr, error) ||
+        hits.size() != 2)
+        return std::puts("FAIL: non-recursive Unicode search"), 1;
+
+    options.includeSubdirectories = true;
+    options.content = L"unique needle";
+    hits.clear();
+    if (!Salamander::SearchUnicodeDirectory(options, collect, nullptr, error) ||
+        hits.size() != 2 || (hits[0].name != nameA && hits[1].name != nameA) ||
+        (hits[0].name != nameB && hits[1].name != nameB))
+        return std::puts("FAIL: streamed UTF-8/UTF-16 search"), 1;
+
+    // A cancelled walk must not proceed into any directory or mutate files.
+    std::atomic<bool> cancelled{true};
+    hits.clear();
+    if (Salamander::SearchUnicodeDirectory(options, collect, &cancelled, error) ||
+        error != ERROR_CANCELLED || !hits.empty())
+        return std::puts("FAIL: cancellation"), 1;
+
+    options.root = L"relative\\unexpected";
+    cancelled.store(false);
+    hits.clear();
+    if (Salamander::SearchUnicodeDirectory(options, collect, &cancelled, error) ||
+        error == ERROR_SUCCESS || !hits.empty())
+        return std::puts("FAIL: relative path must be rejected"), 1;
+
+    if (!RemoveFixture(fileA, false) || !RemoveFixture(fileB, false) ||
+        !RemoveFixture(fileC, false) ||
+        !RemoveFixture(nested, true) || !RemoveFixture(long3, true) ||
+        !RemoveFixture(long2, true) || !RemoveFixture(long1, true) ||
+        !RemoveFixture(root, true))
+        return std::puts("FAIL: fixture cleanup"), 1;
+    return std::puts("PASS: Unicode Find long-path, UTF-8/UTF-16 content, identities, recursion, cancellation"), 0;
+}
