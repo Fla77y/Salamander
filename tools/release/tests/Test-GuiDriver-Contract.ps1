@@ -266,6 +266,59 @@ if (-not $baselineProbe.Success -or
 }
 Write-Host 'PASS: short GUI focus baseline captures keyboard target and never retries input blindly.'
 
+# The foreground may be stolen after SendKeys.SendWait('{END}') but before
+# the read-only focused filename query. Recover the verified app once without
+# replaying END or sending any other keyboard/file-action command.
+$baselineRecovery = (Get-FunctionSource 'Recover-BaselineReadFocus').Extent.Text
+$baselineBody = [regex]::Match(
+    $driverText,
+    '(?s)if \(\$BaselineOnly\) \{\s*\$focusBeforeEnd.*?\$passed = \$true').Value
+if ($baselineRecovery -notmatch 'Get-TestDialog' -or
+    $baselineRecovery -notmatch 'Focus-TestProcess' -or
+    $baselineRecovery -notmatch 'Restore-FilePanelFocus -ExpectedPath \$source' -or
+    $baselineRecovery -match 'Send-Keys|Invoke-SalamanderCommand|Set-ClipboardText' -or
+    $baselineBody -notmatch "Send-Keys '\{END\}'\s+try\s*\{\s*Recover-BaselineReadFocus\s+\`$focusedName = Read-FocusedFilename" -or
+    ([regex]::Matches($baselineBody, "Send-Keys '\{END\}'")).Count -ne 1) {
+    throw 'Short GUI baseline must recover verified focus read-only, without replaying END.'
+}
+
+& {
+    $process = [pscustomobject]@{ Id = 42 }
+    $source = 'C:\fixture'
+    $probe = @{ Foreground = 99; Dialog = $null; ActivationCount = 0; PanelChecks = 0 }
+    function Get-ActiveProcessId { return [uint32]$probe.Foreground }
+    function Get-TestDialog { return $probe.Dialog }
+    function Get-ForegroundWindowSummary { return "PID=$($probe.Foreground)" }
+    function Focus-TestProcess { $probe.ActivationCount++; $probe.Foreground = 42 }
+    function Restore-FilePanelFocus {
+        param([string]$ExpectedPath)
+        if ($ExpectedPath -cne $source) { throw 'Wrong panel path.' }
+        $probe.PanelChecks++
+    }
+    . ([scriptblock]::Create($baselineRecovery))
+
+    Recover-BaselineReadFocus
+    if ($probe.ActivationCount -ne 1 -or $probe.PanelChecks -ne 1) {
+        throw 'External foreground should trigger exactly one verified read-only focus recovery.'
+    }
+
+    Recover-BaselineReadFocus
+    if ($probe.ActivationCount -ne 1 -or $probe.PanelChecks -ne 1) {
+        throw 'Already-focused baseline must not repeat recovery.'
+    }
+
+    $probe.Foreground = 99
+    $probe.Dialog = 'Error Changing Directory'
+    $refused = $false
+    try { Recover-BaselineReadFocus }
+    catch { $refused = $_.Exception.Message -match 'modal' }
+    if (-not $refused -or $probe.ActivationCount -ne 1) {
+        throw 'A modal Salamander dialog must block baseline focus recovery.'
+    }
+}
+Write-Host 'PASS: baseline observation tolerates one external focus interruption without replaying input.'
+
+
 # Every GUI mode shares the initial short-path navigation. WM_ACTIVATE
 # restores focus using Salamander's own FocusPanel(GetActivePanel()) path;
 # it is permitted only for the verified foreground HWND, never a guessed
