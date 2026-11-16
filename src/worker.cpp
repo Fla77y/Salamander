@@ -6,6 +6,7 @@
 
 #include "cfgdlg.h"
 #include "worker.h"
+#include "common/shellfileopnames.h"
 
 #include <Aclapi.h>
 #include <Ntsecapi.h>
@@ -6207,10 +6208,13 @@ BOOL DoDeleteFile(HWND hProgressDlg, char* name, const CQuadWord& size, COperati
             if (useRecycleBin)
             {
                 char nameList[MAX_PATH + 1];
-                int l = (int)strlen(name) + 1;
-                memmove(nameList, name, l);
-                nameList[l] = 0;
-                if (!PathContainsValidComponents(nameList, FALSE))
+                // Shell requires a double-NUL list; reject a long path
+                // before writing the fixed-size legacy ANSI buffer.
+                if (!BuildShellFileOperationNameList(name, nameList, sizeof(nameList)))
+                {
+                    err = ERROR_FILENAME_EXCED_RANGE;
+                }
+                else if (!PathContainsValidComponents(nameList, FALSE))
                 {
                     err = ERROR_INVALID_NAME;
                 }
@@ -6825,10 +6829,13 @@ BOOL DoDeleteDir(HWND hProgressDlg, char* name, const CQuadWord& size, COperatio
             IsDirectoryEmpty(name)) // subdirectory must not contain any files!!!
         {
             char nameList[MAX_PATH + 1];
-            int l = (int)strlen(name) + 1;
-            memmove(nameList, name, l);
-            nameList[l] = 0;
-            if (!PathContainsValidComponents(nameList, FALSE))
+            // A path plus both NUL terminators must fit before invoking
+            // SHFileOperationA. Never fall back to a permanent delete.
+            if (!BuildShellFileOperationNameList(name, nameList, sizeof(nameList)))
+            {
+                err = ERROR_FILENAME_EXCED_RANGE;
+            }
+            else if (!PathContainsValidComponents(nameList, FALSE))
             {
                 err = ERROR_INVALID_NAME;
             }

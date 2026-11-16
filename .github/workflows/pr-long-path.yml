@@ -5,6 +5,8 @@ on:
     branches: ["**"]
     paths:
       - "src/common/buffer_bounds.h"
+      - "src/common/shellfileopnames.h"
+      - "src/worker.cpp"
       - "src/common/win32_long_path.h"
       - "src/common/win32_long_directory.h"
       - "src/common/utf16_disk_path.h"
@@ -90,6 +92,13 @@ jobs:
           cl /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /Fe:"%RUNNER_TEMP%\unicode_recycle.exe" tools\tests\win32_unicode_recycle.cpp ole32.lib shell32.lib uuid.lib
           if errorlevel 1 exit /b 1
           "%RUNNER_TEMP%\unicode_recycle.exe"
+
+      - name: Legacy shell recycle name-list bounds regression
+        shell: cmd
+        run: |
+          cl /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /Fe:"%RUNNER_TEMP%\shell_file_operation_name_list.exe" tools\tests\shell_file_operation_name_list.cpp
+          if errorlevel 1 exit /b 1
+          "%RUNNER_TEMP%\shell_file_operation_name_list.exe"
 
       - name: Unicode extended path API regression test
         shell: cmd
