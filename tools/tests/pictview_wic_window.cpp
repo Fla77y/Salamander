@@ -40,12 +40,12 @@ bool CreateBmpFixture(std::string& path)
     path = std::string(temporary) + ".bmp";
 
     constexpr std::array<unsigned char, 62> data = {
-        0x42,0x4D,62,0,0,0,0,0,0,0,54,0,0,0,
-        40,0,0,0,2,0,0,0,1,0,0,0,1,0,24,0,
-        0,0,0,0,8,0,0,0,0,0,0,0,0,0,
-        0,0,0,0,0,0,0,0,
-        0,0,255,0,255,0,0,0
-    };
+    0x42, 0x4D, 62, 0, 0, 0, 0, 0, 0, 0, 54, 0, 0, 0, // BITMAPFILEHEADER
+    40, 0, 0, 0, 2, 0, 0, 0, 1, 0, 0, 0, 1, 0, 24, 0, // BITMAPINFOHEADER
+    0, 0, 0, 0, 8, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 0, 0, 0, 0, 0, 0,
+    0, 0, 255, 0, 255, 0, 0, 0 // red and green BGR; 2-byte row padding
+};
     static_assert(data.size() == 62);
     HANDLE file = CreateFileA(path.c_str(), GENERIC_WRITE, 0, nullptr,
                               CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
