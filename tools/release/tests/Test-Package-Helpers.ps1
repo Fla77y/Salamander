@@ -11,7 +11,7 @@ $toolsDir = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).ProviderP
 # Release downloads must carry an externally verifiable manifest for only
 # public Release artifacts, not paths to nonredistributable Debug packages.
 $releaseWorkflow = Get-Content -LiteralPath (
-    Join-Path $toolsDir '..\.github\workflows\pr-release-package.yml') -Raw
+    Join-Path $toolsDir '..\..\.github\workflows\pr-release-package.yml') -Raw
 $packagingScript = Get-Content -LiteralPath (
     Join-Path $toolsDir 'Update-Build-Test-Package.ps1') -Raw
 if (-not $releaseWorkflow.Contains('OpenSal\dist\SHA256SUMS-Release.txt') -or
