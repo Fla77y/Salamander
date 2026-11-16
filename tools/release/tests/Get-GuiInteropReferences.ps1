@@ -6,10 +6,10 @@
     Resolve C# reference assemblies for the WinForms-based GUI test interop.
 .DESCRIPTION
     In PowerShell 7, Add-Type -ReferencedAssemblies replaces its implicit
-    framework reference set. Include the current PowerShell reference
-    assemblies and the two Windows Forms assemblies needed by the dedicated
-    clipboard owner. Loading Forms with Add-Type -AssemblyName is not enough
-    to make it available to the C# compiler.
+    framework reference set. Include the PowerShell reference assemblies and
+    all relevant Windows Desktop assemblies from the SAME runtime directory
+    as System.Windows.Forms.Control. In .NET 11 the control class also needs
+    System.Windows.Forms.Primitives (CS0012), not just System.Windows.Forms.
 #>
 function Get-GuiInteropReferences {
     $referenceDirectory = Join-Path $PSHOME 'ref'
@@ -26,17 +26,38 @@ function Get-GuiInteropReferences {
     foreach ($path in $frameworkReferences) {
         $assemblies[[IO.Path]::GetFileNameWithoutExtension($path)] = $path
     }
-    foreach ($path in @(
-        [Windows.Forms.Control].Assembly.Location,
-        [Windows.Forms.Keys].Assembly.Location
+
+    $windowsFormsPath = [Windows.Forms.Control].Assembly.Location
+    if ([string]::IsNullOrWhiteSpace($windowsFormsPath) -or
+        -not (Test-Path -LiteralPath $windowsFormsPath -PathType Leaf)) {
+        throw "Windows Forms compiler reference is unavailable: $windowsFormsPath"
+    }
+    $desktopDirectory = [IO.Path]::GetDirectoryName($windowsFormsPath)
+
+    # The desktop shared framework splits WinForms into multiple assemblies.
+    # Include the complete Forms/Drawing families plus their Windows Desktop
+    # helpers; deduplicate by assembly name, with desktop versions taking
+    # precedence over any identically named PowerShell reference assembly.
+    foreach ($pattern in @(
+        'System.Windows.Forms*.dll',
+        'System.Drawing*.dll',
+        'Accessibility.dll',
+        'Microsoft.Win32.SystemEvents.dll',
+        'System.Windows.Extensions.dll'
     )) {
-        if ([string]::IsNullOrWhiteSpace($path) -or
-            -not (Test-Path -LiteralPath $path -PathType Leaf)) {
-            throw "Windows Forms compiler reference is unavailable: $path"
+        foreach ($path in [IO.Directory]::GetFiles($desktopDirectory, $pattern)) {
+            $assemblies[[IO.Path]::GetFileNameWithoutExtension($path)] = $path
         }
-        # Prefer the loaded Windows Forms runtime version if a platform
-        # reference with the same assembly identity is already present.
-        $assemblies[[IO.Path]::GetFileNameWithoutExtension($path)] = $path
+    }
+
+    foreach ($required in @('System.Windows.Forms', 'System.Windows.Forms.Primitives')) {
+        if (-not $assemblies.ContainsKey($required) -or
+            -not [string]::Equals(
+                [IO.Path]::GetDirectoryName($assemblies[$required]),
+                $desktopDirectory, [StringComparison]::OrdinalIgnoreCase)) {
+            throw ("Required Windows Desktop C# reference '{0}' was not found " +
+                   "alongside {1}." -f $required, $windowsFormsPath)
+        }
     }
     return @($assemblies.Values)
 }

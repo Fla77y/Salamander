@@ -538,8 +538,14 @@ if (-not $interopSource.Success) {
 # The interop includes an independently pumped WinForms clipboard owner.
 Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
 . (Join-Path $PSScriptRoot 'Get-GuiInteropReferences.ps1')
+$guiReferences = @(Get-GuiInteropReferences)
+if (@($guiReferences | Where-Object {
+    [IO.Path]::GetFileName($_) -ieq 'System.Windows.Forms.Primitives.dll'
+}).Count -ne 1) {
+    throw 'GUI C# compiler references must contain System.Windows.Forms.Primitives.dll exactly once.'
+}
 Add-Type -TypeDefinition $interopSource.Groups[1].Value `
-    -ReferencedAssemblies @(Get-GuiInteropReferences) -ErrorAction Stop
+    -ReferencedAssemblies $guiReferences -ErrorAction Stop
 if ($driverText -notmatch 'Add-Type -TypeDefinition \$guiInteropSource\s+-ReferencedAssemblies \$guiInteropReferences') {
     throw 'GUI driver must compile its WinForms C# interop with explicit framework and WinForms references.'
 }
