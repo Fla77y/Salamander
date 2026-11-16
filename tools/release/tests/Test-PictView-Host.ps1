@@ -17,6 +17,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'PictView-HostDiagnostics.ps1')
 if (-not $IsWindows) { throw 'PictView GUI acceptance requires Windows.' }
 if ([Threading.Thread]::CurrentThread.GetApartmentState() -ne 'STA') {
     throw 'Use PowerShell 7 in STA mode (pwsh -Sta).'
@@ -351,16 +352,10 @@ try {
             $_.FileName -ieq $expectedPlugin
         }).Count -gt 0
         $dialog = [PictViewHostWindows]::GetDialogDetails([uint32]$process.Id)
-        if (-not $loaded) {
-            throw ('PictView SPL is not resident after F3; it may never have been ' +
-                   'selected or may have failed initialization and unloaded. ' +
-                   'Verify the BMP Viewer associations and the exact Error dialog text. ' +
-                   "Dialog: '$dialog'. Test-owned windows: $($windows -join '; '). $($_.Exception.Message)")
-        }
-        throw ('PictView SPL was present, but no native WIC HWND appeared. ' +
-               'F3 may still use a different configured Viewer association; ' +
-               'also check plugin CanViewFile, decoder and viewer thread startup. ' +
-               "Test-owned windows: $($windows -join '; '). $($_.Exception.Message)")
+        $hint = Get-PictViewHostFailureHint -DialogText $dialog -PictViewResident $loaded
+        throw ("PictView host smoke failed: $hint " +
+               "Dialog: '$dialog'. Test-owned windows: $($windows -join '; '). " +
+               "Original failure: $($_.Exception.Message)")
     }
 
     # Assert: the real SPL was loaded, window identity matches, and the BMP
