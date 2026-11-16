@@ -251,7 +251,7 @@ try {
     # panel navigation are completed after the main HWND appears.
     # Observe the live title rather than a one-time Window.Title snapshot.
     $expectedDirectoryName = Split-Path -Leaf $root
-    $observedTitle = '<not observed>'
+    $pathObservation = @{ Title = '<not observed>' }
     try {
         Wait-For -Description 'Salamander active panel path applied' -Condition {
             $process.Refresh()
@@ -263,14 +263,14 @@ try {
             if (-not [string]::IsNullOrEmpty($startupDialog)) {
                 throw "Salamander displayed a modal dialog before F3: $startupDialog"
             }
-            $observedTitle = [PictViewHostWindows]::GetWindowCaption($main.Handle)
-            return $observedTitle.Contains($expectedDirectoryName,
+            $pathObservation.Title = [PictViewHostWindows]::GetWindowCaption($main.Handle)
+            return $pathObservation.Title.Contains($expectedDirectoryName,
                                             [StringComparison]::OrdinalIgnoreCase)
         }
     }
     catch {
         throw ("Salamander did not apply -a to the test-owned active panel. " +
-               "Expected directory '$root'; last main title '$observedTitle'. " +
+               "Expected directory '$root'; last main title '$($pathObservation.Title)'. " +
                "Viewer not invoked. $($_.Exception.Message)")
     }
     if (-not [PictViewHostWindows]::SetForegroundWindow($main.Handle) -or
