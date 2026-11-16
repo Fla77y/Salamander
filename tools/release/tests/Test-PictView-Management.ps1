@@ -68,7 +68,11 @@ $hostText = Get-Content -LiteralPath $hostScriptPath -Raw
 foreach ($required in @('PictViewHostWindows', 'GetWindowThreadProcessId',
                        'OpenSalamander.PictView.WIC', 'pictview.spl',
                        "SendWait('{F3}')", 'Stop-Process -Id $process.Id',
-                       '[IO.File]::ReadAllBytes($fixture)')) {
+                       '[IO.File]::ReadAllBytes($fixture)',
+                       'GetGUIThreadInfo', 'GetDlgCtrlID', 'IsFileListFocused',
+                       'GetInputFocusSummary', 'WM_ACTIVATE', 'Administrator',
+                       'PictView SPL was not loaded', 'Viewer associations',
+                       'Test-owned windows', 'before sending F3')) {
     if (-not $hostText.Contains($required)) {
         throw "PictView host smoke is missing safety contract: $required"
     }
