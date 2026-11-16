@@ -343,7 +343,16 @@ try {
         [Security.Cryptography.SHA256]::HashData([IO.File]::ReadAllBytes($fixture)))
     # Override both saved panel paths, following Test-SalamanderGui-LongPaths.ps1.
     $startupArgs = '-l "{0}" -r "{0}" -p 2' -f $root
-    $process = Start-Process -FilePath $SalamanderExe -ArgumentList $startupArgs -WorkingDirectory (Split-Path -Parent $SalamanderExe) -PassThru
+    # Isolate the child's cache so stale SAL*.tmp directories in the user's
+    # real TEMP cannot trigger a destructive cleanup question during F3.
+    $processTemp = Join-Path $root 'process-temp'
+    if ($processTemp.Length -ge 240) {
+        throw 'PictView host TEMP path is too long for native disk-cache paths.'
+    }
+    [void][IO.Directory]::CreateDirectory($processTemp)
+    $process = Start-Process -FilePath $SalamanderExe -ArgumentList $startupArgs `
+        -WorkingDirectory (Split-Path -Parent $SalamanderExe) `
+        -Environment @{ TEMP = $processTemp; TMP = $processTemp } -PassThru
 
     # Act: open the single BMP fixture through Salamander's normal F3.
     # Do not modify the user's clipboard or viewer associations.
