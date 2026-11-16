@@ -105,12 +105,12 @@ if ($managerText -notmatch "--test-plugin-load" -or
     throw 'PR8 plugin load gate must first verify the native WIC viewer in Salamander.'
 }
 # Regression: WaitForInputIdle only proves that a window can process input.
-# The asynchronous startup/configuration phase applies -a panel paths later.
+# The asynchronous startup/configuration phase applies -l/-r panel paths later.
 # Never read a one-time title snapshot as proof of final navigation.
-if (-not $hostText.Contains("'-a ""{0}"" -p 2'") -or
-    -not $hostText.Contains("Wait-For -Description 'Salamander active panel path applied'") -or
+if (-not $hostText.Contains("'-l ""{0}"" -r ""{0}"" -p 2'") -or
+    -not $hostText.Contains("Wait-For -Description 'Salamander command-line panel paths applied'") -or
     -not $hostText.Contains("[PictViewHostWindows]::GetWindowCaption(") -or
     $hostText.Contains('if ($main.Title -notmatch [regex]::Escape((Split-Path -Leaf $root)))')) {
-    throw 'Host GUI test must wait for the -a active-panel path to be applied before F3.'
+    throw 'Host GUI test must wait for the configured active-panel path to be applied before F3.'
 }
 Write-Host 'PASS: manage and local PictView MSVC test registry/AST contracts.'
