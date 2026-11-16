@@ -1329,6 +1329,7 @@ CFindDialog::CFindDialog(HWND hCenterAgainst, const char* initPath)
 
     // additional data
     DlgFailed = FALSE;
+    InitRootTooLong = FALSE;
     MainMenu = NULL;
     TBHeader = NULL;
     MenuBar = NULL;
@@ -1374,7 +1375,14 @@ CFindDialog::CFindDialog(HWND hCenterAgainst, const char* initPath)
         lstrcpy(Data.NamedText, "*.*");
     if (Data.LookInText[0] == 0)
     {
-        const char* s = initPath;
+        // The legacy Find dialog cannot represent this root. Never
+        // silently search the existing prefix of a truncated input.
+        if (initPath == NULL || strlen(initPath) >= LOOKIN_TEXT_LEN)
+        {
+            InitRootTooLong = TRUE;
+            Data.LookInText[0] = 0;
+        }
+        const char* s = InitRootTooLong ? "" : initPath;
         char* d = Data.LookInText;
         char* end = Data.LookInText + LOOKIN_TEXT_LEN - 1; // -1 leaves room for the null terminator at the end of the string
         while (*s != 0 && d < end)
@@ -1907,6 +1915,18 @@ void CFindDialog::StartSearch(WORD command)
     CALL_STACK_MESSAGE1("CFindDialog::StartSearch()");
     if (FoundFilesListView == NULL || GrepThread != NULL)
         return;
+
+    if (InitRootTooLong)
+    {
+        InitRootTooLong = FALSE;
+        SalMessageBox(HWindow,
+                      "The initial directory exceeds the legacy Find dialog's "
+                      "path capacity. It was not truncated to another location. "
+                      "Choose a shorter search root; Unicode long-path search "
+                      "is not yet available.",
+                      LoadStr(IDS_ERRORTITLE), MB_OK | MB_ICONWARNING);
+        return;
+    }
 
     // if we are searching for duplicates, ask for additional options
     CFindDuplicatesDialog findDupDlg(HWindow);
