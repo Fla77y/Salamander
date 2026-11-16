@@ -14,6 +14,21 @@ $releaseWorkflow = Get-Content -LiteralPath (
     Join-Path $toolsDir '..\..\.github\workflows\pr-release-package.yml') -Raw
 $packagingScript = Get-Content -LiteralPath (
     Join-Path $toolsDir 'Update-Build-Test-Package.ps1') -Raw
+
+# All public packages must contain the GPL license and the third-party notices.
+# The source notices live in doc/third_party.txt; the staged copy is renamed.
+$packageHelperSource = Get-Content -LiteralPath (Join-Path $toolsDir 'Package-Helpers.ps1') -Raw
+if (-not $packageHelperSource.Contains("Join-Path $Repository 'doc\third_party.txt'") -or
+    -not $packageHelperSource.Contains("Join-Path $Stage 'THIRD_PARTY_LICENSES.txt'") -or
+    -not $packageHelperSource.Contains("'LICENSE', 'THIRD_PARTY_LICENSES.txt'")) {
+    throw 'Release stage must copy and require both GPL and third-party license notices.'
+}
+$notices = Join-Path $toolsDir '..\..\doc\third_party.txt'
+if (-not (Test-Path -LiteralPath $notices -PathType Leaf) -or
+    (Get-Item -LiteralPath $notices).Length -lt 100) {
+    throw 'Third-party license notices source is absent or empty.'
+}
+
 if (-not $releaseWorkflow.Contains('OpenSal\public-release\SHA256SUMS-Release.txt') -or
     -not $packagingScript.Contains("'SHA256SUMS-Release.txt'") -or
     -not $packagingScript.Contains('OpenSalamander-Release-x64.7z') -or
