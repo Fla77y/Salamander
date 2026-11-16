@@ -103,9 +103,28 @@ public static class SalamanderGuiNative
             try { Marshal.Copy(characters, 0, destination, characters.Length); }
             finally { GlobalUnlock(memory); }
 
-            if (!OpenClipboard(owner))
-                throw new InvalidOperationException("OpenClipboard failed: " + Marshal.GetLastWin32Error());
-            clipboardOpened = true;
+            // Another process may briefly hold the clipboard (Windows error 5).
+            // Retry ONLY acquiring it, before EmptyClipboard changes any data.
+            // Never retry the higher-level navigation WM_COMMAND on this error.
+            const int maxOpenAttempts = 16;
+            int openError = 0;
+            for (int attempt = 1; attempt <= maxOpenAttempts; ++attempt)
+            {
+                if (OpenClipboard(owner))
+                {
+                    clipboardOpened = true;
+                    break;
+                }
+                openError = Marshal.GetLastWin32Error();
+                if (openError != 5) // ERROR_ACCESS_DENIED: transient clipboard contention
+                    throw new InvalidOperationException("OpenClipboard failed: " + openError);
+                if (attempt < maxOpenAttempts)
+                    System.Threading.Thread.Sleep(75);
+            }
+            if (!clipboardOpened)
+                throw new InvalidOperationException(
+                    "OpenClipboard busy after " + maxOpenAttempts +
+                    " attempts; last Win32 error " + openError);
             if (!EmptyClipboard())
                 throw new InvalidOperationException("EmptyClipboard failed: " + Marshal.GetLastWin32Error());
             if (SetClipboardData(13, memory) == IntPtr.Zero) // CF_UNICODETEXT
