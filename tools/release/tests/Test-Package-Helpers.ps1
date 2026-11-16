@@ -225,8 +225,8 @@ if ($guiDriver -notmatch 'SendMessageTimeout' -or
 # fixture, not merely a .NET cleanup check after test completion.
 if ($guiDriver -notmatch '\[switch\]\$TemporaryDirectoryDeletionOnly' -or
     $guiDispatch -notmatch "'-TemporaryDirectoryDeletionOnly'" -or
-    $guiDriver -notmatch "if \(\$TemporaryDirectoryDeletionOnly\)" -or
-    $guiDriver -notmatch "Wait-Until \{ -not \[IO\.Directory\]::Exists\(\$temporaryDirectory\) \}" -or
+    $guiDriver -notmatch 'if \(\$TemporaryDirectoryDeletionOnly\)' -or
+    $guiDriver -notmatch 'Wait-Until \{ -not \[IO\.Directory\]::Exists\(\$temporaryDirectory\) \}' -or
     $guiDriver -notmatch "Send-Keys '\{F8\}'") {
     throw 'GUI temporary long-path directory deletion regression is not correctly registered or asserted.'
 }
