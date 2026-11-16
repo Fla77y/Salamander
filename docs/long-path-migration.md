@@ -723,10 +723,10 @@ Run on the Windows host:
     .\manage.cmd --update
     .\manage.cmd --build --test-all
 
-Then manually open Find from a disposable >260-unit disk directory and
-verify W results, UTF-8 and UTF-16LE content, selected-path clipboard,
-copy/move/rename no-overwrite behavior and cancellation in the real GUI.
-Current commits are NOT yet verified by a new interactive GUI run.
+Those native Unicode Find GUI behaviors are now exercised by the interactive
+`--test-gui-unicode-find` automation. The tests on `63b6806` passed locally
+on 16 November 2026 at 13:59:30–13:59:51 CET. This does not establish
+advanced legacy search or arbitrary plug-in compatibility.
 
 
 ## Automated desktop GUI regression for native Unicode Find (16 November 2026)
@@ -759,13 +759,13 @@ ListView click; no unsafe cross-process LVM_GETITEM pointer is passed.
 All writes target disposable fixtures. A failure retains diagnostic
 fixtures and captures a screenshot of the application's window.
 
-**Verification status:** This change is only source-reviewed and
-statically wired so far. A new unlocked Windows desktop run is required
-to prove the new GUI behavior. The CI parser/interop contract tests are
-not a substitute for the interactive test. This scenario does not yet
-cover a reliably forced mid-search cancellation, Recycle Bin restoration,
-shell associations, advanced legacy search criteria, or every plug-in.
-PR #6 must remain Draft until the real run and outstanding coverage pass.
+**Verification status:** The original GUI scenario passed in both x64
+Release and Debug during the local `--test-all` run at commit `bccf89d`.
+The extended safety and cancellation scenario passed locally on commit
+`63b6806` (the single `--test-gui-unicode-find` invocation, not yet a new
+complete `--test-all` run). Real Recycle Bin restoration, positive shell
+association/legacy advanced Find behavior and plug-in compatibility remain
+outside this verified scope. PR #6 remains Draft.
 
 
 ## Follow-up GUI safety integration gates (16 November 2026)
@@ -793,9 +793,15 @@ retains the test directory for diagnosis as in the existing GUI driver.
 The extra tests are registered via the existing `--test-gui-unicode-find`
 mode, so `--test-all` invokes them in x64 Debug and Release.
 
-**Status:** These added scenarios were committed after the successful local
-`bccf89d` run, and have not yet been verified by an interactive Windows run.
-Do not conflate green static parser/contract checks with passed GUI scenarios.
+**Status:** All new safety and cancellation scenarios passed the real
+interactive x64 GUI test on 16 November 2026 at 13:59:30–13:59:51 CET,
+commit `63b6806392af649cef6b45727b671261d004fcb2`.
+This includes refusing unsafe shell/legacy/recycle actions without data
+loss, rejecting a stale result, observing cancellation, closing the active
+worker and cleaning the large fixture. The complete `--test-all` suite was
+last demonstrated on the earlier commit `bccf89d`; run it again at the new
+head before changing merge readiness. GitHub CI must likewise complete on
+that exact head SHA.
 
 Remaining separate work is not disguised as a passing test:
 - Verify actual short-path Recycle Bin restoration without touching any
