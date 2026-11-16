@@ -172,8 +172,10 @@ Expand-AutomatedTestActions -RequestedSet $withoutAll -AvailableOptions $registe
 if ($withoutAll.Count -ne 1 -or -not $withoutAll.Contains('--test-gui-baseline')) {
     throw 'Existing individual GUI test switches must not be expanded.'
 }
+# Include the entire automated GUI dispatch loop. Starting at a specific
+# test mode would silently omit any mode registered before that mode.
 $guiSectionStart = $managerSource.IndexOf(
-    'if ($requestedSet.Contains(''--test-gui-baseline''))',
+    'foreach ($guiMode in $automatedGuiModes) {',
     [StringComparison]::Ordinal)
 $manualStart = $managerSource.IndexOf(
     'if ($requestedSet.Contains(''--test-gui-manual''))',
