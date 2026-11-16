@@ -1140,7 +1140,14 @@ void CRenamerDialog::LoadSelection()
     int files = 0, dirs = 0;
     SG->GetPanelSelection(PANEL_SOURCE, &files, &dirs);
 
-    SG->GetPanelPath(PANEL_SOURCE, Root, MAX_PATH, NULL, NULL);
+    Root[0] = 0;
+    if (!SG->GetPanelPath(PANEL_SOURCE, Root, MAX_PATH, NULL, NULL))
+    {
+        // Do not create source entries from a truncated or uninitialized root.
+        RootLen = 0;
+        SourceFilesValid = FALSE;
+        return;
+    }
     RootLen = (int)strlen(Root);
 
     // load the selection from the panel
