@@ -651,8 +651,10 @@ The review changes are intentionally fail-closed:
   need manual GUI checks before any broad support claim.
 - Unicode copies stage into the target directory and publish via no-replace
   rename, so an incomplete copy cannot be published at the final name.
-  Staging cleanup and collisions are covered by native test assertions,
-  but operations are synchronous and not crash-transactional.
+  Success and existing-destination collision paths are covered by native
+  tests. An exceptional failed copy may leave a private staging artifact;
+  an unowned candidate is never deleted merely because CopyFileW failed.
+  Operations are synchronous and not crash-transactional.
 - Multi-file Unicode preflight resolves identities from one source-directory
   snapshot before confirmation and one after confirmation.
 
