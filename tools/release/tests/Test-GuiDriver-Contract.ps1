@@ -386,16 +386,17 @@ $navigationClipboard = (Get-FunctionSource 'Set-NativeNavigationClipboard').Exte
 if (-not $ownerClass.Success -or
     $ownerClass.Value -notmatch 'System.Threading.Thread' -or
     $ownerClass.Value -notmatch 'SetApartmentState\(System.Threading.ApartmentState.STA\)' -or
-    $ownerClass.Value -notmatch 'Application.Run\(\)' -or
-    $ownerClass.Value -notmatch 'Application.ExitThread\(\)' -or
-    $ownerClass.Value -notmatch 'window.BeginInvoke' -or
-    $ownerClass.Value -notmatch 'Application.DoEvents\(\)' -or
+    $ownerClass.Value -notmatch 'GetMessage\(' -or
+    $ownerClass.Value -notmatch 'PostThreadMessage\(' -or
+    $ownerClass.Value -notmatch 'PumpCallerMessages' -or
+    $ownerClass.Value -notmatch 'CreateWindowEx\(' -or
+    $ownerClass.Value -match 'System.Windows.Forms\.' -or
     $navigationClipboard -notmatch '\[SalamanderGuiClipboardOwner\]::new\(\)' -or
     $navigationClipboard -notmatch '\$script:clipboardOwner.SetText\(\$Text\)' -or
     $navigationClipboard -match '\[Windows.Forms.Control\]::new\(\)') {
-    throw 'GUI clipboard owner must pump messages on a separate STA during synchronous CM_CLIPPASTE.'
+    throw 'GUI clipboard owner must pump Win32 messages on a separate STA without WinForms compiler dependencies.'
 }
-Write-Host 'PASS: GUI clipboard owner has an independent pumped STA for OLE navigation callbacks.'
+Write-Host 'PASS: GUI clipboard owner pumps native Win32 messages on a dedicated STA.'
 
 
 # W-based primary enumeration associates each CFileData Name allocation
@@ -531,31 +532,18 @@ Write-Host 'PASS: F6 directory GUI assertions use the valid byte-comparison help
 # Compile the embedded C# Win32 interop in the headless Windows test process.
 # PowerShell's AST check alone would not catch invalid P/Invoke signatures.
 $interopSource = [regex]::Match(
-    $driverText, '(?s)\$guiInteropSource\s*=\s*@''\r?\n(.*?)\r?\n''@')
+    $driverText, '(?s)Add-Type -TypeDefinition @''\r?\n(.*?)\r?\n''@')
 if (-not $interopSource.Success) {
     throw 'GUI driver C# Win32 interop here-string not found.'
 }
-# The interop includes an independently pumped WinForms clipboard owner.
-Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
-. (Join-Path $PSScriptRoot 'Get-GuiInteropReferences.ps1')
-$guiReferences = @(Get-GuiInteropReferences)
-foreach ($requiredReference in @(
-    'System.Private.CoreLib.dll',
-    'System.Runtime.dll',
-    'System.Windows.Forms.dll',
-    'System.Windows.Forms.Primitives.dll',
-    'System.Private.Windows.Core.dll'
-)) {
-    if (@($guiReferences | Where-Object {
-        [IO.Path]::GetFileName($_) -ieq $requiredReference
-    }).Count -ne 1) {
-        throw "GUI C# compiler references must contain $requiredReference exactly once."
-    }
+# The C# Win32 interop deliberately has no static WinForms dependency.
+# Keep PowerShell's complete default .NET reference set for its BCL types.
+if ($interopSource.Groups[1].Value -match 'System.Windows.Forms\.') {
+    throw 'GUI C# interop must not depend on WinForms compiler assemblies.'
 }
-Add-Type -TypeDefinition $interopSource.Groups[1].Value `
-    -ReferencedAssemblies $guiReferences -ErrorAction Stop
-if ($driverText -notmatch 'Add-Type -TypeDefinition \$guiInteropSource\s+-ReferencedAssemblies \$guiInteropReferences') {
-    throw 'GUI driver must compile its WinForms C# interop with explicit framework and WinForms references.'
+Add-Type -TypeDefinition $interopSource.Groups[1].Value -ErrorAction Stop
+if ($driverText -match 'Get-GuiInteropReferences|guiInteropReferences|ReferencedAssemblies') {
+    throw 'GUI driver must retain the default Add-Type framework references.'
 }
 if ([SalamanderGuiNative]::GetLegacyFilenameAliasHex('plain.txt') -cne
     '70-6C-61-69-6E-2E-74-78-74') {

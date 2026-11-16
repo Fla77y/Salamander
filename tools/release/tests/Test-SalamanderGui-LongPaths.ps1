@@ -51,9 +51,7 @@ if ($VerifyRecycleRestore -and -not $ShortUnicodeRecycleOnly) {
 }
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
-. (Join-Path $PSScriptRoot 'Get-GuiInteropReferences.ps1')
-$guiInteropReferences = @(Get-GuiInteropReferences)
-$guiInteropSource = @'
+Add-Type -TypeDefinition @'
 using System;
 using System.Runtime.InteropServices;
 using System.Collections.Generic;
@@ -773,42 +771,72 @@ public static class SalamanderGuiNative
     }
 }
 
-// A raw CF_UNICODETEXT payload is not enough to guarantee that an OLE
-// clipboard consumer never calls back into its owner HWND. Run that owner
-// on a separate, continuously pumped STA instead of the test dispatch STA.
+// CM_CLIPPASTE calls OleGetClipboard synchronously. Its clipboard-owner
+// window must live on another pumping STA, never on the caller STA blocked
+// in SendMessageTimeout. Use only Win32 and core .NET here: Add-Type can then
+// use PowerShell's standard compiler references without custom DLL lists.
 public sealed class SalamanderGuiClipboardOwner : IDisposable
 {
+    private const uint WM_QUIT = 0x0012;
+    private const uint WM_SET_CLIPBOARD = 0x8001; // WM_APP + 1, thread message
     private readonly System.Threading.Thread thread;
     private readonly System.Threading.ManualResetEventSlim ready =
         new System.Threading.ManualResetEventSlim(false);
-    private System.Windows.Forms.Control window;
+    private readonly System.Threading.ManualResetEventSlim completed =
+        new System.Threading.ManualResetEventSlim(false);
+    private readonly object gate = new object();
+    private IntPtr window = IntPtr.Zero;
+    private uint nativeThreadId;
+    private string pendingText;
+    private Exception pendingError;
     private Exception startupError;
     private bool disposed;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeMessage
+    {
+        public IntPtr hwnd;
+        public uint message;
+        public UIntPtr wParam;
+        public IntPtr lParam;
+        public uint time;
+        public int x;
+        public int y;
+        public uint lPrivate;
+    }
+
+    [DllImport("user32.dll", EntryPoint = "CreateWindowExW",
+        CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr CreateWindowEx(
+        uint exStyle, string className, string title, uint style,
+        int x, int y, int width, int height, IntPtr parent, IntPtr menu,
+        IntPtr instance, IntPtr parameter);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool DestroyWindow(IntPtr window);
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+    [DllImport("user32.dll", EntryPoint = "PeekMessageW", SetLastError = true)]
+    private static extern bool PeekMessage(
+        out NativeMessage message, IntPtr window, uint first, uint last,
+        uint remove);
+    [DllImport("user32.dll", EntryPoint = "GetMessageW", SetLastError = true)]
+    private static extern int GetMessage(
+        out NativeMessage message, IntPtr window, uint first, uint last);
+    [DllImport("user32.dll", EntryPoint = "PostThreadMessageW", SetLastError = true)]
+    private static extern bool PostThreadMessage(
+        uint threadId, uint message, UIntPtr wParam, IntPtr lParam);
+    [DllImport("user32.dll")]
+    private static extern bool TranslateMessage(ref NativeMessage message);
+    [DllImport("user32.dll", EntryPoint = "DispatchMessageW")]
+    private static extern IntPtr DispatchMessage(ref NativeMessage message);
+    [DllImport("user32.dll")]
+    private static extern void PostQuitMessage(int exitCode);
 
     public int OwnerThreadId { get { return thread.ManagedThreadId; } }
 
     public SalamanderGuiClipboardOwner()
     {
-        thread = new System.Threading.Thread(() =>
-        {
-            try
-            {
-                using (var control = new System.Windows.Forms.Control())
-                {
-                    IntPtr handle = control.Handle;
-                    if (handle == IntPtr.Zero)
-                        throw new InvalidOperationException("Clipboard owner HWND creation failed.");
-                    window = control;
-                    ready.Set();
-                    System.Windows.Forms.Application.Run();
-                }
-            }
-            catch (Exception error)
-            {
-                startupError = error;
-                ready.Set();
-            }
-        });
+        thread = new System.Threading.Thread(RunClipboardOwner);
         thread.Name = "Salamander GUI test clipboard owner";
         thread.IsBackground = true;
         thread.SetApartmentState(System.Threading.ApartmentState.STA);
@@ -816,56 +844,142 @@ public sealed class SalamanderGuiClipboardOwner : IDisposable
         if (!ready.Wait(10000))
             throw new TimeoutException("Clipboard owner STA did not create its HWND.");
         if (startupError != null)
-            throw new InvalidOperationException("Clipboard owner STA startup failed.", startupError);
+            throw new InvalidOperationException(
+                "Clipboard owner STA startup failed.", startupError);
+    }
+
+    private void RunClipboardOwner()
+    {
+        try
+        {
+            // Built-in STATIC class provides a valid HWND without introducing
+            // WinForms or a custom WindowProc. Keep the window hidden.
+            window = CreateWindowEx(0, "STATIC", "", 0, 0, 0, 0, 0,
+                                    IntPtr.Zero, IntPtr.Zero,
+                                    IntPtr.Zero, IntPtr.Zero);
+            if (window == IntPtr.Zero)
+                throw new InvalidOperationException(
+                    "CreateWindowEx clipboard owner failed: " +
+                    Marshal.GetLastWin32Error());
+            nativeThreadId = GetCurrentThreadId();
+            NativeMessage unused;
+            PeekMessage(out unused, IntPtr.Zero, 0, 0, 0); // ensure queue exists
+            ready.Set();
+
+            NativeMessage message;
+            int result;
+            while ((result = GetMessage(out message, IntPtr.Zero, 0, 0)) > 0)
+            {
+                if (message.hwnd == IntPtr.Zero &&
+                    message.message == WM_SET_CLIPBOARD)
+                {
+                    try
+                    {
+                        SalamanderGuiNative.SetClipboardUnicodeText(
+                            window, pendingText);
+                    }
+                    catch (Exception error) { pendingError = error; }
+                    finally { completed.Set(); }
+                    continue;
+                }
+                TranslateMessage(ref message);
+                DispatchMessage(ref message);
+            }
+            if (result < 0)
+                throw new InvalidOperationException(
+                    "GetMessage clipboard owner failed: " +
+                    Marshal.GetLastWin32Error());
+        }
+        catch (Exception error)
+        {
+            startupError = error;
+            pendingError = error;
+            ready.Set();
+            completed.Set();
+        }
+        finally
+        {
+            if (window != IntPtr.Zero)
+                DestroyWindow(window);
+        }
+    }
+
+    private static void PumpCallerMessages()
+    {
+        // The caller STA can itself own the previous clipboard data.
+        // Pump WM_DESTROYCLIPBOARD and OLE callbacks while the other STA
+        // replaces it, preserving WM_QUIT for the caller's outer loop.
+        NativeMessage message;
+        for (int n = 0; n < 64 &&
+            PeekMessage(out message, IntPtr.Zero, 0, 0, 1); ++n)
+        {
+            if (message.message == WM_QUIT)
+            {
+                PostQuitMessage(unchecked((int)message.wParam.ToUInt64()));
+                break;
+            }
+            TranslateMessage(ref message);
+            DispatchMessage(ref message);
+        }
     }
 
     public void SetText(string text)
     {
-        if (disposed || window == null || !thread.IsAlive)
-            throw new ObjectDisposedException("SalamanderGuiClipboardOwner");
-        // The prior clipboard owner can be this caller STA (for example after
-        // Clipboard.SetText in Read-PanelPath). EmptyClipboard may notify that
-        // previous owner. Pump the caller STA while the dedicated owner sets
-        // CF_UNICODETEXT, otherwise a synchronous Control.Invoke could deadlock.
-        Exception failure = null;
-        var completed = new System.Threading.ManualResetEventSlim(false);
-        window.BeginInvoke(new Action(() =>
+        if (String.IsNullOrEmpty(text))
+            throw new ArgumentException("Expected nonempty clipboard text.", "text");
+        lock (gate)
         {
-            try { SalamanderGuiNative.SetClipboardUnicodeText(window.Handle, text); }
-            catch (Exception error) { failure = error; }
-            finally { completed.Set(); }
-        }));
-        DateTime deadline = DateTime.UtcNow.AddSeconds(15);
-        while (!completed.Wait(25))
-        {
-            System.Windows.Forms.Application.DoEvents();
-            if (DateTime.UtcNow >= deadline)
-                throw new TimeoutException("Clipboard owner STA did not publish CF_UNICODETEXT.");
+            if (disposed || !thread.IsAlive || window == IntPtr.Zero)
+                throw new ObjectDisposedException("SalamanderGuiClipboardOwner");
+            pendingText = text;
+            pendingError = null;
+            completed.Reset();
+            if (!PostThreadMessage(nativeThreadId, WM_SET_CLIPBOARD,
+                                   UIntPtr.Zero, IntPtr.Zero))
+                throw new InvalidOperationException(
+                    "PostThreadMessage clipboard write failed: " +
+                    Marshal.GetLastWin32Error());
+
+            DateTime deadline = DateTime.UtcNow.AddSeconds(15);
+            while (!completed.Wait(25))
+            {
+                PumpCallerMessages();
+                if (!thread.IsAlive)
+                    throw new InvalidOperationException(
+                        "Clipboard owner STA exited unexpectedly.", pendingError);
+                if (DateTime.UtcNow >= deadline)
+                    throw new TimeoutException(
+                        "Clipboard owner STA did not publish CF_UNICODETEXT.");
+            }
+            if (pendingError != null)
+                throw new InvalidOperationException(
+                    "Clipboard owner could not publish CF_UNICODETEXT.",
+                    pendingError);
         }
-        completed.Dispose();
-        if (failure != null)
-            throw new InvalidOperationException("Clipboard owner could not publish CF_UNICODETEXT.", failure);
     }
 
     public void Dispose()
     {
-        if (disposed) return;
-        disposed = true;
-        try
+        lock (gate)
         {
-            if (thread.IsAlive && window != null && window.IsHandleCreated)
-                window.BeginInvoke(new Action(() => System.Windows.Forms.Application.ExitThread()));
+            if (disposed) return;
+            disposed = true;
+            if (thread.IsAlive &&
+                !PostThreadMessage(nativeThreadId, WM_QUIT,
+                                   UIntPtr.Zero, IntPtr.Zero))
+                throw new InvalidOperationException(
+                    "Could not stop clipboard owner STA: " +
+                    Marshal.GetLastWin32Error());
             if (!thread.Join(5000))
-                throw new TimeoutException("Clipboard owner message loop did not stop.");
-        }
-        finally
-        {
+                throw new TimeoutException(
+                    "Clipboard owner STA did not stop within five seconds.");
             ready.Dispose();
+            completed.Dispose();
         }
     }
 }
+
 '@
-Add-Type -TypeDefinition $guiInteropSource -ReferencedAssemblies $guiInteropReferences -ErrorAction Stop
 
 $script:clipboardOwner = $null
 $oldClipboard = $null
