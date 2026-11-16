@@ -106,9 +106,9 @@ bool WriteTwoFrameTiff(const std::wstring& path)
         hr = page->SetPixelFormat(&pixelFormat);
         if (FAILED(hr) || pixelFormat != GUID_WICPixelFormat24bppBGR)
             return false;
-        const BYTE pixel[4] = {0, static_cast<BYTE>(frame == 0 ? 0 : 255),
+        BYTE pixel[4] = {0, static_cast<BYTE>(frame == 0 ? 0 : 255),
                                static_cast<BYTE>(frame == 0 ? 255 : 0), 0};
-        hr = page->WritePixels(1, 4, 4, const_cast<BYTE*>(pixel));
+        hr = page->WritePixels(1, 4, 4, pixel);
         if (FAILED(hr) || FAILED(page->Commit()))
             return false;
     }
