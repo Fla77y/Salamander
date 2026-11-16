@@ -56,15 +56,18 @@ successful no-ops.
 
 ## Acceptance tests
 
-`tools/tests/pictview_wic_decode.cpp` creates an isolated Unicode BMP
-fixture on Windows, verifies the decoded BGRA pixels and dimensions,
-then rejects missing files, truncated image data, null and empty paths.
+`tools/tests/pictview_wic_decode.cpp` creates isolated BMP and PNG
+fixtures with Unicode filenames on Windows, verifies exact BGRA pixels
+and PNG straight-alpha preservation, then rejects missing files,
+truncated image data, null and empty paths.
 Its temporary resources are removed after completion.
 
 A dedicated `pr-pictview-wic.yml` workflow uses the actual MSVC
 compiler and OS WIC codecs on **x64 and x86**, with warning-as-error.
-No successful Windows build or GUI integration test is claimed unless
-the real CI results confirm it.
+The first standalone x64 and x86 WIC decoder tests passed with MSVC
+on the initial BMP-only commit. A follow-up PNG straight-alpha fixture
+has been added and requires a fresh run. The legacy PictView project
+build and real viewer integration are separate gates.
 
 ## Next tasks (not implemented by this slice)
 
