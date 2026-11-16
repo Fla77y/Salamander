@@ -278,8 +278,9 @@ try {
                    'select PictView and that the file-list focus is correct. ' +
                    "Test-owned windows: $($windows -join '; '). $($_.Exception.Message)")
         }
-        throw ('PictView SPL was loaded, but no native WIC HWND appeared. ' +
-               'Check plugin CanViewFile, decoder and viewer thread startup. ' +
+        throw ('PictView SPL was present, but no native WIC HWND appeared. ' +
+               'F3 may still use a different configured Viewer association; ' +
+               'also check plugin CanViewFile, decoder and viewer thread startup. ' +
                "Test-owned windows: $($windows -join '; '). $($_.Exception.Message)")
     }
 
