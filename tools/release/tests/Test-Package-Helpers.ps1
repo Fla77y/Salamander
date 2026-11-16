@@ -479,7 +479,7 @@ echo     vcruntime140.dll
 exit /b 0
 '@ | Set-Content -LiteralPath $fakeDumpbin -Encoding ascii
 
-    foreach ($filename in @('salamand.exe', 'LICENSE', 'vcruntime140.dll', 'msvcp140.dll')) {
+    foreach ($filename in @('salamand.exe', 'LICENSE', 'THIRD_PARTY_LICENSES.txt', 'vcruntime140.dll', 'msvcp140.dll')) {
         Set-Content -LiteralPath (Join-Path $stage $filename) -Value 'test fixture' -Encoding ascii
     }
     Assert-Throws { Test-DistributionStage -Stage $stage -Configuration Release -DumpbinExe $fakeDumpbin } 'Missing CHM must fail'
@@ -496,6 +496,14 @@ exit /b 0
         Set-Content -LiteralPath $fixtureFile -Value 'test fixture' -Encoding ascii
     }
     Test-DistributionStage -Stage $stage -Configuration Release -DumpbinExe $fakeDumpbin
+    # Regression: a Release package without third-party notices must fail
+    # before archiving even when all binaries and other resources are present.
+    $noticesFixture = Join-Path $stage 'THIRD_PARTY_LICENSES.txt'
+    Remove-Item -LiteralPath $noticesFixture -Force
+    Assert-Throws {
+        Test-DistributionStage -Stage $stage -Configuration Release -DumpbinExe $fakeDumpbin
+    } 'Release stage must reject missing third-party license notices'
+    Set-Content -LiteralPath $noticesFixture -Value 'test fixture' -Encoding ascii
     foreach ($required in $requiredPictViewFiles) {
         $fixtureFile = Join-Path $stage $required
         Remove-Item -LiteralPath $fixtureFile -Force
