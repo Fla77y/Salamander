@@ -63,7 +63,7 @@ inline void MakeUnrepresentableAnsiPanelAlias(
     }
     // An ASCII '?' is a Win32 wildcard, not a safe sentinel. SOH is
     // forbidden in Win32 filenames and cannot address a real disk item.
-    destination[0] = '\\x01';
+    destination[0] = '\x01';
     sprintf_s(destination + 1, sizeof(destination) - 1, "UNICODE_%016llX",
               static_cast<unsigned long long>(hash));
 }
