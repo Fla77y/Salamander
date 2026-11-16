@@ -29,6 +29,7 @@ if (-not $releaseWorkflow.Contains('OpenSal\dist\SHA256SUMS-Release.txt') -or
 
 # Synthetic exact-public-artifact regression (no installer execution).
 & (Join-Path $PSScriptRoot 'Test-ReleasePublicArtifact.ps1')
+& (Join-Path $PSScriptRoot 'Test-PortableManifest-Regression.ps1')
 
 # Detect a broken optional PictView installation without loading or
 # distributing its unavailable proprietary converter components.
