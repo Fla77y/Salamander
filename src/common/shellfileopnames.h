@@ -20,7 +20,9 @@ inline bool BuildShellFileOperationNameList(
     if (length > capacity - 2)
         return false;
 
-    std::memcpy(destination, path, length + 1);
+    // The Salamander precompiled header may redefine memcpy to its global
+    // checked wrapper; qualifying it with std:: breaks that macro.
+    memcpy(destination, path, length + 1);
     destination[length + 1] = '\0';
     return true;
 }
