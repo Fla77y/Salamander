@@ -1,9 +1,12 @@
 # PictView replacement with Windows Imaging Component (WIC)
 
-Status: **integrated native WIC viewer, manual multi-frame viewing, in-memory
-transformations, export, clipboard copy and thumbnails; legacy feature parity
-and real Windows GUI acceptance remain outstanding.** Work is stacked as PR #10
-on PR #9. This branch must remain Draft.
+Status (16 November 2026): **native WIC viewer, manual multi-frame viewing,
+in-memory transformations, safe export, clipboard copy and thumbnails are
+implemented. One real Salamander x64 F3-to-WIC one-BMP host smoke has passed.**
+Multi-format interactive acceptance, full legacy feature parity and clean-VM
+release tests remain outstanding. Work is stacked as PR #10 on PR #9 and
+integrated into the 5.2 acceptance branch in PR #11. Keep release PRs Draft
+until the release gates are satisfied.
 
 ## Licensing and rationale
 
@@ -93,8 +96,13 @@ previously passed on PR #9. PR #10 adds the presenter, ABI path conversion,
 and Win32 viewer, image transforms, safe writer and clipboard components,
 with native MSVC x86/x64 test jobs. Earlier
 runs detected Windows `min/max` macro and ANSI cursor type compiler errors;
-follow-up code fixes were committed. **No end-to-end Salamander GUI acceptance
-of the new native viewer has been established as of this document update.**
+follow-up code fixes were committed. **The earlier absence of end-to-end GUI acceptance was resolved for
+one BMP on 16 November 2026 at 19:02 CET:** the user-provided x64 Salamander
+host test loaded the exact PictView SPL, opened/closed the owned native WIC
+window and preserved the source BMP byte-for-byte. The separate 19:10 CET
+`--test-plugin-load` run also passed its WIC prerequisite and initialized
+four built-in x64 plug-ins. Neither result is evidence of full file-format
+or legacy-feature parity.
 
 Required release gates before claiming a full integration:
 
@@ -125,3 +133,19 @@ acceptance of the in-process PictView plug-in.
 The clipboard test now checks strict CF_DIB parsing, bottom-up 24-bit
 row reordering, source alpha compositing and malformed-header rejection.
 The changed source requires fresh Windows CI and real desktop acceptance.
+
+## 5.2 release readiness
+
+The successful one-BMP F3 and four-plug-in host tests establish basic
+integration. The exact Release package now excludes private PDB/LIB/EXP files,
+but full publication additionally needs the current final-SHA CI checks,
+public SHA-256 manifest, real installer/uninstall test, format/UI acceptance
+on an unlocked desktop, and clean Windows 11 portable/install/uninstall
+verification. See `tools/release/Release-5.2-Gates.md`.
+
+**Scope limitation:** WIC recognizes only Windows-supported codecs. The
+implemented viewer permits manual multipage navigation, transforms, WIC
+PNG/BMP/JPEG/TIFF copy-export, and supported CF_DIB clipboard operations.
+It does not replace the old proprietary codec ecosystem or timed GIF playback,
+print/capture, metadata/color management and historical editing/menu UI.
+Do not advertise full legacy PictView compatibility.
