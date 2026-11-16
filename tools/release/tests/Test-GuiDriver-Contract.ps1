@@ -583,7 +583,7 @@ if ($driverText -notmatch '\[switch\]\$UnicodeFindOnly' -or
     $findGui -notmatch 'unique-utf16-probe' -or
     $findGui -notmatch 'Unicode Find refuses destination overwrite' -or
     $findGui -notmatch 'PostFindButton.*5113' -or
-    $findGui -notmatch 'Closing Unicode Find preserves Salamander process' -or
+    $findGui -notmatch 'Closing an active Unicode Find search leaves Salamander alive' -or
     $manager -notmatch "'--test-gui-unicode-find'" -or
     $manager -notmatch "'-UnicodeFindOnly'") {
     throw 'Unicode Find real GUI test must preserve HWND ownership, UTF-16 identity, operation safety and CLI/test-all integration.'
