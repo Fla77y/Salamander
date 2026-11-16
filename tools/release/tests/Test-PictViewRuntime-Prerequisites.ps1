@@ -24,6 +24,14 @@ try {
         throw "FAIL: missing PictView sidecars not detected exactly: $($missing -join '; ')"
     }
     Write-Host 'PASS: incomplete x64 PictView runtime is detected before Test All.'
+    # Arrange: WIC mode is explicitly approved only after a successful
+    # real-host smoke. It must not require the unavailable proprietary DLLs.
+    $wicMissing = @(Get-MissingPictViewRuntimeFiles -BuildDirectory $root -WicViewerVerified)
+    if ($wicMissing.Count -ne 0) {
+        throw 'Verified native WIC PictView must not require legacy PVW32 sidecars.'
+    }
+    Write-Host 'PASS: verified WIC backend bypasses only the obsolete sidecar check.'
+
 
     # Arrange: the helper executable exists but the closed-source engine does not.
     [IO.File]::WriteAllBytes((Join-Path $pictView 'SalPVEnv.exe'), [byte[]]@(0))
