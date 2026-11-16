@@ -80,6 +80,21 @@ to this configuration problem without changing the environment, registry or
 the user's saved Viewer associations. The F3 test must actually open the WIC
 viewer to pass.
 
+**Stale plug-in registration:** If **Plugins Manager** reports that
+`C:\\X8D\\Bin\\Salamander_5.1\\plugins\\pictview\\pictview.spl`
+is not a valid plug-in while testing Salamander 5.2, the manager is
+attempting to load a plug-in from the old 5.1-labelled directory, **not**
+the current build output. Do not assume that the missing/invalid file
+proves a defect in the new WIC module. Remove or correct only the stale
+PictView registration and install the PictView SPL from
+`D:\\Build\\OpenSal\\salamander\\Release_x64\\plugins\\pictview\\pictview.spl`
+(alongside the matching 5.2 `salamand.exe` build). The Release x64
+ABI verification `manage.cmd --test-plugin-exports --release` now checks
+five plug-ins including PictView for PE architecture and exact SDK
+entry-point exports. This **does not** execute the plug-in or establish
+that its language/dependency files are present; a real host smoke is
+still required afterward.
+
 A second failure mode is a window with native class
 `Salamander's Viewer Window` and a caption ending in `test-image.bmp - Viewer`.
 This is Salamander's built-in **text/hex viewer**, not PictView. The GUI
