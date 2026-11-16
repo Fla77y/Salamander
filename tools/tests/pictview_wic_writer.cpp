@@ -64,6 +64,28 @@ bool Tests()
                     preserved.bgra[0] == 0x11,
                     "conflicting export preserves original bytes");
     }
+    // The selected encoder and the displayed suffix must never disagree.
+    std::wstring path = L"C:\\Images\\photo";
+    ok &= Check(pictview::wic::PrepareExportPath(
+                    path, pictview::wic::ImageFileFormat::Jpeg) &&
+                path == L"C:\\Images\\photo.jpg",
+                "JPEG selection appends JPEG suffix");
+    path = L"C:\\Images\\photo.png";
+    ok &= Check(!pictview::wic::PrepareExportPath(
+                    path, pictview::wic::ImageFileFormat::Jpeg) &&
+                path == L"C:\\Images\\photo.png",
+                "JPEG selection refuses existing PNG suffix");
+    path = L"C:\\Images.with.dot\\photo";
+    ok &= Check(pictview::wic::PrepareExportPath(
+                    path, pictview::wic::ImageFileFormat::Tiff) &&
+                path == L"C:\\Images.with.dot\\photo.tif",
+                "directory dots are not treated as file extensions");
+    path = L"C:\\Images\\photo.JPEG";
+    ok &= Check(pictview::wic::PrepareExportPath(
+                    path, pictview::wic::ImageFileFormat::Jpeg) &&
+                path == L"C:\\Images\\photo.JPEG",
+                "case-insensitive matching preserves explicit suffix");
+
     pictview::wic::DecodedImage invalid = source;
     invalid.stride = 7;
     const std::wstring rejected = std::wstring(unique) + L"\\invalid.png";
