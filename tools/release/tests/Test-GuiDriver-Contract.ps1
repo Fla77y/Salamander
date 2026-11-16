@@ -121,6 +121,24 @@ if ($navigationSource -cmatch $legacyTimeoutPattern -or
 }
 Write-Host 'PASS: extreme GUI navigation failures preserve crash/focus diagnostics without dumping 32k-unit paths.'
 
+# Native debugger attachment is opt-in. This allows Visual Studio to catch
+# the original exception before Salamander handles it and exits with code 1.
+$attachFunction = Get-FunctionSource 'Wait-ForNativeDebugger'
+$attachSource = $attachFunction.Extent.Text
+if ($driverText -notmatch 'CheckRemoteDebuggerPresent' -or
+    $attachSource -notmatch 'SALAMANDER_GUI_ATTACH_DEBUGGER' -or
+    $attachSource -notmatch 'CheckRemoteDebuggerPresent' -or
+    $attachSource -notmatch '\$process\.HasExited' -or
+    $attachSource -notmatch 'DateTime\]::UtcNow\.AddMinutes\(5\)' -or
+    $driverText -notmatch 'Wait-ForNativeDebugger\s+Go-ToPath\s+\$maximumDirectory') {
+    throw 'Maximum-path GUI test must support bounded, opt-in native debugger attachment before risky navigation.'
+}
+if ($attachSource -match 'Invoke-SalamanderCommand|Send-Keys|Set-ClipboardText') {
+    throw 'Native debugger attach gate must not mutate GUI input.'
+}
+Write-Host 'PASS: native debugger can attach before maximum-path navigation without changing ordinary test runs.'
+
+
 
 # Long-directory Enter navigation needs a read-only GUI focus snapshot and
 # the exact last observed path. Retrying Enter after a timeout could execute
