@@ -13,7 +13,7 @@ $repository = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Provide
 $buildRoot = 'D:\Build\OpenSal'
 $configuration = 'Release'
 $validOptions = @('--update', '--build', '--test', '--setup', '--run',
-                  '--debug', '--release', '--all', '--test-all', '--test-gui', '--test-gui-max-path', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-manual', '--help', '-h', '/?')
+                  '--debug', '--release', '--all', '--test-all', '--test-gui', '--test-gui-max-path', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-unicode-find', '--test-gui-manual', '--help', '-h', '/?')
 $requestedSet = [System.Collections.Generic.HashSet[string]]::new(
     [StringComparer]::OrdinalIgnoreCase)
 
@@ -51,6 +51,7 @@ Open Salamander – Verwaltung für Visual Studio 2026
   manage.cmd --test-gui-unicode-multiselect  F5/F6 für zwei markierte Unicode-/ASCII-Dateien prüfen
   manage.cmd --test-gui-unicode-directory-rename  F2-Umbenennung eines Unicode-Verzeichnisses prüfen
   manage.cmd --test-gui-unsafe-unicode-operations  F2/F5/F6/F8 mit nicht darstellbaren Unicode-Namen sicher abweisen
+  manage.cmd --test-gui-unicode-find  Neues F2-Unicode-Suchfenster: Suche, Pfade, Copy/Move/Rename, Kollisionsschutz
   manage.cmd --test-gui-manual  Testdaten behalten und Salamander zum manuellen Test starten
   manage.cmd --run          Release-Version starten
   manage.cmd --run --debug  Debug-Version starten
@@ -432,6 +433,13 @@ try {
                 $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
                 Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
                                           '-SalamanderExe', $testedExe, '-ShortUnicodeOnly')
+            }
+            if ($requestedSet.Contains('--test-gui-unicode-find')) {
+                Write-Host '=== SALAMANDER-GUI-UNICODE FIND F2 ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-UnicodeFindOnly')
             }
             if ($requestedSet.Contains('--test-gui-max-path')) {
                 Write-Host '=== SALAMANDER-GUI-GRENZWERTTEST, 32700 UTF-16-PFADE ==='
