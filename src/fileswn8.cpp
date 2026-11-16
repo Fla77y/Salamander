@@ -311,6 +311,13 @@ BOOL CFilesWindow::TryUnicodeMultiFileTransfer(CActionType type, CFilesWindow* t
     transfers.reserve(static_cast<std::size_t>(selectedCount));
     ULONGLONG totalBytes = 0;
 
+    // A single directory identity snapshot resolves all selected aliases.
+    // Rebuild it once after the modal confirmation rather than repeatedly
+    // enumerating the entire source directory for each selected row.
+    Salamander::UnicodePanelNameCache sourceNames;
+    if (!sourceNames.Load(sourceDirectory.c_str(), error))
+        return FALSE;
+
     for (const int index : indexes)
     {
         if (index < Dirs->Count || index >= Dirs->Count + Files->Count)
@@ -349,10 +356,7 @@ BOOL CFilesWindow::TryUnicodeMultiFileTransfer(CActionType type, CFilesWindow* t
             return FALSE;
 
         std::wstring resolvedName;
-        if (Salamander::ResolveUnicodePanelFileName(
-                sourceDirectory.c_str(), item.alias.c_str(),
-                resolvedName, error) !=
-                Salamander::UnicodePanelNameResult::Unique ||
+        if (!sourceNames.TryGet(item.alias.c_str(), resolvedName) ||
             resolvedName != item.original)
             return FALSE;
 
@@ -405,16 +409,23 @@ BOOL CFilesWindow::TryUnicodeMultiFileTransfer(CActionType type, CFilesWindow* t
         return TRUE;
     }
 
+    // Re-enumerate once after confirmation. If the directory changed,
+    // reject the entire batch without performing a partial preflight.
+    if (!sourceNames.Load(sourceDirectory.c_str(), error))
+    {
+        MessageBoxW(HWindow, L"Source identities are no longer available. "
+                    L"No files were transferred.", L"Unicode batch transfer",
+                    MB_OK | MB_ICONWARNING);
+        return TRUE;
+    }
+
     // All entries are checked again after the modal confirmation. A failed
     // preflight never starts any transfer and never falls through to ANSI.
     ULONGLONG recheckedTotalBytes = 0;
     for (const Transfer& item : transfers)
     {
         std::wstring resolvedName;
-        if (Salamander::ResolveUnicodePanelFileName(
-                sourceDirectory.c_str(), item.alias.c_str(),
-                resolvedName, error) !=
-                Salamander::UnicodePanelNameResult::Unique ||
+        if (!sourceNames.TryGet(item.alias.c_str(), resolvedName) ||
             resolvedName != item.original)
         {
             MessageBoxW(HWindow, L"A selected Unicode identity changed. "
