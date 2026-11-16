@@ -711,6 +711,7 @@ protected:
 
     // additional data
     BOOL DlgFailed;
+    BOOL InitRootTooLong; // original search root cannot fit the ANSI dialog model
     CMenuPopup* MainMenu;
     CMenuBar* MenuBar;
     HWND HStatusBar;
