@@ -970,6 +970,11 @@ BOOL CPluginInterfaceForArchiver::PackToArchive(CSalamanderForOperationsAbstract
     CALL_STACK_MESSAGE5("CPluginInterfaceForArchiver::PackToArchive(, %s, %s, %d, %s, ,)", fileName,
                         archiveRoot, move, sourcePath);
 
+    // A move deletes originals only after packing. Reject unsupported source
+    // paths BEFORE creating/updating the archive or deleting any source file.
+    if (sourcePath == NULL || (move && strlen(sourcePath) >= MAX_PATH - 1))
+        return FALSE;
+
     // test whether the archive exists (we need to distinguish between updating and creating a new archive)
     BOOL isNewArchive = FALSE;
     HANDLE hArchive = ::CreateFile(fileName, GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
@@ -1172,14 +1177,7 @@ BOOL CPluginInterfaceForArchiver::PackToArchive(CSalamanderForOperationsAbstract
             {
                 // prepare the buffer for names
                 char sourceName[MAX_PATH + 1]; // buffer for the full name on disk
-                // The source path arrives through a legacy plug-in ABI.
-                // Never trust its length before copying to local MAX_PATH storage.
-                if (sourcePath == NULL || strlen(sourcePath) >= _countof(sourceName))
-                {
-                    TRACE_E("7-Zip source directory exceeds legacy path capacity");
-                    ret = FALSE;
-                    break;
-                }
+                // sourcePath was checked before the archive was modified.
                 strcpy_s(sourceName, sourcePath);
                 char* endSource = sourceName + strlen(sourceName); // space for the names from the 'next' enumeration
                 if (endSource > sourceName && *(endSource - 1) != '\\')
