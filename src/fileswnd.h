@@ -553,6 +553,8 @@ public:
 
     const char* GetPath() { return Path.c_str(); }
     BOOL HasLongDiskPath() { return Is(ptDisk) && Path.size() >= MAX_PATH - 2; }
+    // The unchanged ANSI plugin ABI cannot address long paths or lossy rows.
+    BOOL HasUnsupportedLegacyPluginSelection();
     BOOL Is(CPanelType type) { return type == PanelType; }
     CPanelType GetPanelType() { return PanelType; }
     BOOL GetMonitorChanges() { return MonitorChanges; }
