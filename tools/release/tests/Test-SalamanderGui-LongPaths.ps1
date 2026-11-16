@@ -1523,12 +1523,6 @@ function Test-UnicodeFindGui {
     Assert-True (-not [IO.File]::Exists($cancelProbePath)) (
         'GUI cancellation fixture cleaned up without modifying other files')
     Write-Host 'PASS: Unicode Find GUI search, actions, shell refusal, cancellation and worker shutdown.'
-    return
-    [SalamanderGuiNative]::PostFindButton($script:findWindow, [uint32]$process.Id, 5116)
-    Wait-Until { (Get-UnicodeFindWindow) -eq [IntPtr]::Zero } 'Unicode Find window closure'
-    $process.Refresh()
-    Assert-True (-not $process.HasExited) 'Closing Unicode Find preserves Salamander process'
-    Write-Host 'PASS: Unicode Find GUI search, Unicode path, copy, collision, move, rename and close.'
 }
 
 function Save-FailureScreenshot {
