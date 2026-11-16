@@ -2094,7 +2094,18 @@ BOOL OpenCalculateDialog(HWND parent)
         const CFileData* fd;
         BOOL isDir;
 
-        SalamanderGeneral->GetPanelPath(PANEL_SOURCE, sourcePath, SizeOf(sourcePath), NULL, NULL);
+        // A failed GetPanelPath leaves the fixed ANSI buffer unusable.
+        // Never enqueue an asynchronous checksum job with that state.
+        if (!SalamanderGeneral->GetPanelPath(PANEL_SOURCE, sourcePath,
+                                             SizeOf(sourcePath), NULL, NULL))
+        {
+            delete pFileList;
+            SalamanderGeneral->SalMessageBox(parent,
+                "This Unicode or long panel path is not supported by the "
+                "legacy checksum plug-in. No operation was started.",
+                LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONWARNING);
+            return FALSE;
+        }
 
         while (((nFiles || nDirs) ? (fd = SalamanderGeneral->GetPanelSelectedItem(PANEL_SOURCE, &index, &isDir)) != NULL : (fd = SalamanderGeneral->GetPanelFocusedItem(PANEL_SOURCE, &isDir)) != NULL))
         {
@@ -2195,7 +2206,15 @@ BOOL OpenVerifyDialog(HWND parent)
     if (t != NULL)
     {
         // hand over data to the thread
-        SalamanderGeneral->GetPanelPath(PANEL_SOURCE, t->sourcePath, MAX_PATH, NULL, NULL);
+        if (!SalamanderGeneral->GetPanelPath(PANEL_SOURCE, t->sourcePath,
+                                             MAX_PATH, NULL, NULL))
+        {
+            SalamanderGeneral->SalMessageBox(parent,
+                "The panel path cannot be represented by this checksum plug-in.",
+                LoadStr(IDS_VERIFYTITLE), MB_OK | MB_ICONWARNING);
+            delete t;
+            return FALSE;
+        }
         strcpy(t->sourceFile, t->sourcePath);
         if (SalamanderGeneral->SalPathAppend(t->sourceFile, fd->Name, MAX_PATH))
         {
