@@ -827,6 +827,38 @@ BOOL CFilesWindow::TryUnicodeSingleDirectoryMove(CActionType type, CFilesWindow*
     return TRUE;
 }
 
+// A plug-in invoked through the unchanged ANSI ABI must not receive a
+// lossy panel filename or a path beyond MAX_PATH. This includes arbitrary
+// menu plug-ins that do not use the standard FilesAction dispatch.
+BOOL CFilesWindow::HasUnsupportedLegacyPluginSelection()
+{
+    if (!Is(ptDisk))
+        return FALSE;
+    if (HasLongDiskPath())
+        return TRUE;
+
+    const int directoryCount = Dirs->Count;
+    const int count = directoryCount + Files->Count;
+    const int selectedCount = GetSelCount();
+    if (selectedCount == 0)
+    {
+        const int index = GetCaretIndex();
+        if (index < 0 || index >= count)
+            return FALSE;
+        const CFileData& item = index < directoryCount
+            ? Dirs->At(index) : Files->At(index - directoryCount);
+        return UnicodeDiskNames.IsUnsafeAnsiName(item.Name);
+    }
+    for (int index = 0; index < count; ++index)
+    {
+        const CFileData& item = index < directoryCount
+            ? Dirs->At(index) : Files->At(index - directoryCount);
+        if (item.Selected && UnicodeDiskNames.IsUnsafeAnsiName(item.Name))
+            return TRUE;
+    }
+    return FALSE;
+}
+
 // countSizeMode - 0 normal calculation, 1 calculation for the selected item,
 // 2 calculation for all subdirectories
 void CFilesWindow::FilesAction(CActionType type, CFilesWindow* target, int countSizeMode)
