@@ -79,6 +79,78 @@ public static class PictViewHostWindows
     public static extern bool SetForegroundWindow(IntPtr hwnd);
     [DllImport("user32.dll")]
     public static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr window, int showCommand);
+    [DllImport("user32.dll")] private static extern bool BringWindowToTop(IntPtr window);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool AttachThreadInput(uint threadId, uint attachToId, bool attach);
+    [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
+
+    // Foreground activation is restricted by Windows even for a process we
+    // just launched. Require the exact PID and live visible HWND at every
+    // attempt. Only the bounded fallback shares the foreground input queue;
+    // it must always detach, and the caller must recheck foreground before F3.
+    public static bool TryActivateVerifiedWindow(IntPtr window, uint expectedPid, bool useSharedInputFallback)
+    {
+        if (window == IntPtr.Zero || expectedPid == 0 ||
+            !IsWindow(window) || !IsWindowVisible(window))
+            return false;
+
+        uint ownerPid;
+        if (GetWindowThreadProcessId(window, out ownerPid) == 0 || ownerPid != expectedPid)
+            return false;
+        if (GetForegroundWindow() == window)
+            return true;
+
+        ShowWindow(window, 9); // SW_RESTORE
+        SetForegroundWindow(window);
+        if (GetForegroundWindow() == window)
+            return true;
+        if (!useSharedInputFallback)
+            return false;
+
+        IntPtr previous = GetForegroundWindow();
+        uint foregroundPid;
+        uint foregroundThread = GetWindowThreadProcessId(previous, out foregroundPid);
+        uint currentThread = GetCurrentThreadId();
+        if (foregroundThread == 0 || foregroundThread == currentThread)
+            return false;
+        if (!AttachThreadInput(currentThread, foregroundThread, true))
+            return false;
+
+        try
+        {
+            // Never act if the user changed the foreground in the meantime,
+            // or our test-owned window disappeared or changed its owner PID.
+            uint latestOwner;
+            if (GetForegroundWindow() != previous ||
+                !IsWindow(window) ||
+                GetWindowThreadProcessId(window, out latestOwner) == 0 ||
+                latestOwner != expectedPid)
+                return false;
+
+            BringWindowToTop(window);
+            SetForegroundWindow(window);
+        }
+        finally
+        {
+            AttachThreadInput(currentThread, foregroundThread, false);
+        }
+        return GetForegroundWindow() == window;
+    }
+
+    public static string GetForegroundOwnerSummary()
+    {
+        IntPtr window = GetForegroundWindow();
+        uint pid;
+        GetWindowThreadProcessId(window, out pid);
+        var cls = new StringBuilder(256);
+        if (window != IntPtr.Zero)
+            GetClassName(window, cls, cls.Capacity);
+        // Do not log another application's window title.
+        return String.Format("HWND=0x{0:X}; PID={1}; class={2}",
+                             window.ToInt64(), pid, cls.ToString());
+    }
+
     [DllImport("user32.dll", EntryPoint = "PostMessageW", SetLastError = true)]
     public static extern bool PostMessage(IntPtr hwnd, uint msg, IntPtr w, IntPtr l);
     [DllImport("user32.dll")]
@@ -208,6 +280,49 @@ function Wait-For {
     } while ($true)
 }
 
+function Focus-TestOwnedSalamander {
+    param(
+        [Parameter(Mandatory)][Diagnostics.Process]$TargetProcess,
+        [Parameter(Mandatory)][IntPtr]$MainHandle,
+        [Parameter(Mandatory)][int]$FocusTimeoutSeconds
+    )
+
+    $deadline = [DateTime]::UtcNow.AddSeconds($FocusTimeoutSeconds)
+    $attempts = 0
+    do {
+        $TargetProcess.Refresh()
+        if ($TargetProcess.HasExited) {
+            throw 'Salamander exited before foreground activation.'
+        }
+
+        [uint32]$ownerPid = 0
+        [void][PictViewHostWindows]::GetWindowThreadProcessId($MainHandle, [ref]$ownerPid)
+        if ($ownerPid -ne [uint32]$TargetProcess.Id) {
+            throw 'The intended Salamander main HWND no longer belongs to the test process.'
+        }
+
+        $dialog = [PictViewHostWindows]::GetDialogDetails([uint32]$TargetProcess.Id)
+        if (-not [string]::IsNullOrEmpty($dialog)) {
+            throw "Salamander showed a dialog before foreground activation: $dialog"
+        }
+
+        $attempts++
+        # Match the existing long-path GUI driver's bounded activation
+        # strategy. Most attempts do not join the foreground input queue.
+        $useFallback = $attempts -eq 3 -or $attempts -eq 10
+        if ([PictViewHostWindows]::TryActivateVerifiedWindow(
+                $MainHandle, [uint32]$TargetProcess.Id, $useFallback) -and
+            [PictViewHostWindows]::GetForegroundWindow() -eq $MainHandle) {
+            return
+        }
+        Start-Sleep -Milliseconds 350
+    } while ([DateTime]::UtcNow -lt $deadline)
+
+    $foreground = [PictViewHostWindows]::GetForegroundOwnerSummary()
+    throw ("Could not activate test-owned Salamander HWND after $attempts attempts. " +
+           "Foreground: $foreground. Windows may deny SetForegroundWindow; no keys were sent.")
+}
+
 $root = Join-Path ([IO.Path]::GetTempPath()) ('pictview-host-' + [Guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($root)
 $fixture = Join-Path $root 'test-image.bmp'
@@ -275,10 +390,7 @@ try {
                "Expected directory '$root'; last main title '$($pathObservation.Title)'. " +
                "Viewer not invoked. $($_.Exception.Message)")
     }
-    if (-not [PictViewHostWindows]::SetForegroundWindow($main.Handle) -or
-        [PictViewHostWindows]::GetForegroundWindow() -ne $main.Handle) {
-        throw 'Could not securely focus the test-owned Salamander window.'
-    }
+    Focus-TestOwnedSalamander -TargetProcess $process -MainHandle $main.Handle -FocusTimeoutSeconds $TimeoutSeconds
 
     # Do not guess where End/F3 will be delivered. The main HWND may be
     # foreground while its command line or a toolbar child has input focus.
