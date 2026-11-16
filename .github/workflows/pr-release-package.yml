@@ -77,7 +77,7 @@ jobs:
 
       - name: Smoke-test silent Release installer and uninstaller
         shell: pwsh
-        run: ./tools/release/tests/Test-ReleaseInstaller.ps1 -InstallerPath (Join-Path $env:RUNNER_TEMP 'OpenSal\dist\OpenSalamander-Release-x64-Setup.exe')
+        run: ./tools/release/tests/Test-ReleaseInstaller.ps1 -InstallerPath (Join-Path $env:RUNNER_TEMP 'OpenSal\public-release\OpenSalamander-Release-x64-Setup.exe')
 
       # Never expose Debug CRT DLLs via public workflow artifacts.
       # GUI automation requires an unlocked interactive desktop. GitHub-hosted
@@ -85,13 +85,26 @@ jobs:
       # separate locally executed acceptance gate, not part of this package job.
       # Invoke .\\manage.cmd --test-gui-baseline, then --test-gui on Windows.
 
+      - name: Stage and verify exact public Release files
+        shell: pwsh
+        run: |
+          $dist = Join-Path $env:RUNNER_TEMP 'OpenSal\dist'
+          $public = Join-Path $env:RUNNER_TEMP 'OpenSal\public-release'
+          New-Item -ItemType Directory -Force -Path $public | Out-Null
+          foreach ($name in @('OpenSalamander-Release-x64.7z',
+                               'OpenSalamander-Release-x64-Setup.exe',
+                               'SHA256SUMS-Release.txt')) {
+            Copy-Item -LiteralPath (Join-Path $dist $name) -Destination $public -ErrorAction Stop
+          }
+          ./tools/release/tests/Test-ReleaseChecksumManifest.ps1 -DistributionDirectory $public -RequirePublicOnly
+
       - name: Upload redistributable Release outputs only
         if: success()
         uses: actions/upload-artifact@v4
         with:
           name: OpenSalamander-Release-x64
           path: |
-            ${{ runner.temp }}\OpenSal\dist\OpenSalamander-Release-x64.7z
-            ${{ runner.temp }}\OpenSal\dist\OpenSalamander-Release-x64-Setup.exe
-            ${{ runner.temp }}\OpenSal\dist\SHA256SUMS-Release.txt
+            ${{ runner.temp }}\OpenSal\public-release\OpenSalamander-Release-x64.7z
+            ${{ runner.temp }}\OpenSal\public-release\OpenSalamander-Release-x64-Setup.exe
+            ${{ runner.temp }}\OpenSal\public-release\SHA256SUMS-Release.txt
           if-no-files-found: error
