@@ -256,23 +256,33 @@ LRESULT CALLBACK ViewerProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
             case 'V':
                 if (GetKeyState(VK_CONTROL) < 0)
                 {
-                    DecodedImage image;
-                    if (SUCCEEDED(PasteImageFromClipboard(hwnd, image)))
+                    try
                     {
-                        std::vector<std::uint8_t> opaque;
-                        if (SUCCEEDED(PrepareOpaqueBgra(image, opaque)))
+                        DecodedImage image;
+                        if (SUCCEEDED(PasteImageFromClipboard(hwnd, image)))
                         {
-                            state->image = std::move(image);
-                            state->opaque = std::move(opaque);
-                            state->frame = 0;
-                            state->frameCount = 1;
-                            state->fit = true;
-                            state->zoom = 100;
-                            state->path = L"Clipboard";
-                            SetWindowTextW(hwnd, L"PictView - Clipboard (unsaved)");
-                            InvalidateRect(hwnd, nullptr, FALSE);
-                            return 0;
+                            std::vector<std::uint8_t> opaque;
+                            if (SUCCEEDED(PrepareOpaqueBgra(image, opaque)))
+                            {
+                                // Allocate the title/path before replacing either
+                                // pixel buffer, keeping allocation failures atomic.
+                                std::wstring clipboardPath(L"Clipboard");
+                                state->path = std::move(clipboardPath);
+                                state->image = std::move(image);
+                                state->opaque = std::move(opaque);
+                                state->frame = 0;
+                                state->frameCount = 1;
+                                state->fit = true;
+                                state->zoom = 100;
+                                SetWindowTextW(hwnd, L"PictView - Clipboard (unsaved)");
+                                InvalidateRect(hwnd, nullptr, FALSE);
+                                return 0;
+                            }
                         }
+                    }
+                    catch (...)
+                    {
+                        // Never propagate C++ exceptions through the HWND callback.
                     }
                     MessageBoxW(hwnd,
                         L"Clipboard does not contain a supported 24/32-bit bitmap.",
