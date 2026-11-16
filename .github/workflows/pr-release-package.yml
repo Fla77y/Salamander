@@ -108,3 +108,19 @@ jobs:
             ${{ runner.temp }}\OpenSal\public-release\OpenSalamander-Release-x64-Setup.exe
             ${{ runner.temp }}\OpenSal\public-release\SHA256SUMS-Release.txt
           if-no-files-found: error
+
+  verify-public-artifact:
+    name: Download and verify public x64 Release artifact
+    needs: package
+    runs-on: windows-2025-vs2026
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download exactly the package produced by this workflow
+        uses: actions/download-artifact@v4
+        with:
+          name: OpenSalamander-Release-x64
+          path: downloaded-release
+      - name: Reject unexpected files and verify SHA256 of downloaded packages
+        shell: pwsh
+        run: ./tools/release/tests/Test-ReleaseChecksumManifest.ps1 -DistributionDirectory (Join-Path $env:GITHUB_WORKSPACE 'downloaded-release') -RequirePublicOnly
