@@ -2027,8 +2027,14 @@ try {
             Restore-VerifiedRecycledFixtureItem -Item $found.Item -OriginalFullPath $unicodeShortFile
 
             # Assert: restoration must produce exactly the original file bytes.
-            Wait-Until { [IO.File]::Exists($unicodeShortFile) } 'Unicode Recycle Bin restore completes'
+            Wait-Until {
+                try { return (Test-Content $unicodeShortFile) }
+                catch [IO.IOException] { return $false }
+            } 'Unicode Recycle Bin restore completes with identical bytes'
             Assert-True (Test-Content $unicodeShortFile) 'Unicode Recycle Bin restore preserves exact UTF-8 file bytes'
+            Wait-Until {
+                return $null -eq (Find-VerifiedRecycledFixtureItem -RecycleFolder $recycleFolder -OriginalFullPath $unicodeShortFile)
+            } 'restored fixture disappears from Recycle Bin'
             Write-Host 'PASS: verified Unicode F8 Recycle Bin round trip and original content.'
         }
         else {
