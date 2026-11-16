@@ -18,8 +18,8 @@ $packagingScript = Get-Content -LiteralPath (
 # All public packages must contain the GPL license and the third-party notices.
 # The source notices live in doc/third_party.txt; the staged copy is renamed.
 $packageHelperSource = Get-Content -LiteralPath (Join-Path $toolsDir 'Package-Helpers.ps1') -Raw
-if (-not $packageHelperSource.Contains("Join-Path $Repository 'doc\third_party.txt'") -or
-    -not $packageHelperSource.Contains("Join-Path $Stage 'THIRD_PARTY_LICENSES.txt'") -or
+if (-not $packageHelperSource.Contains('Join-Path $Repository ''doc\third_party.txt''') -or
+    -not $packageHelperSource.Contains('Join-Path $Stage ''THIRD_PARTY_LICENSES.txt''') -or
     -not $packageHelperSource.Contains("'LICENSE', 'THIRD_PARTY_LICENSES.txt'")) {
     throw 'Release stage must copy and require both GPL and third-party license notices.'
 }
