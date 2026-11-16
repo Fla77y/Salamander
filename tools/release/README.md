@@ -43,6 +43,21 @@ The product and Inno Setup version are 5.2 (build 184). The plug-in SDK
 version remains 103 for binary compatibility. The independent PictView plug-in
 version is not the Salamander product version.
 
+**5.2 configuration migration:** The application now uses
+`HKCU\\Software\\Open Salamander\\5.2` and configuration version **105**,
+instead of reusing the legacy `5.0` registry key and version **104**.
+The older key remains available for rollback. On the **first interactive
+startup** of 5.2, Salamander can offer to import the previous settings;
+review the migration dialog before proceeding and do **not** delete the old
+settings if you still use an older installation. Following the existing
+upgrade path, the new configuration version triggers discovery of the
+installed `plugins` directory, including the new PictView WIC module.
+It does not rewrite viewer rules on an already migrated 5.2 profile,
+nor guarantee that a PictView SPL and its language/dependency files
+initialize successfully. Run the normal application once, confirm the
+new PictView registration and `*.bmp` viewer mask, then execute the
+opt-in F3 host smoke. The smoke itself does not import/delete config.
+
 On your Windows 11 development machine, after checking out this branch:
 
 ~~~powershell
