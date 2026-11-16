@@ -140,7 +140,8 @@ $allModes = @(Get-AutomatedGuiModes -RequestedSet $selected)
 
 # Assert: all registered and future automated tests, but no manual/setup/run
 # actions, are selected; full suite covers both binary configurations.
-foreach ($required in @('--test', $futureOption) + $guiModes) {
+foreach ($required in @('--test', '--test-pictview', '--test-pictview-window',
+                       '--test-plugin-exports', $futureOption) + $guiModes) {
     if (-not $selected.Contains($required)) {
         throw "--test-all failed to include automated test '$required'."
     }
@@ -218,6 +219,16 @@ foreach ($command in @(
 if ($guiDriver -notmatch 'SendMessageTimeout' -or
     $guiDriver -notmatch 'Invoke-SalamanderCommand') {
     throw 'GUI test must synchronize clipboard commands with the main window.'
+}
+
+# The F8 deletion test must be a real GUI operation on a nested long Unicode
+# fixture, not merely a .NET cleanup check after test completion.
+if ($guiDriver -notmatch '\[switch\]\$TemporaryDirectoryDeletionOnly' -or
+    $guiDispatch -notmatch "'-TemporaryDirectoryDeletionOnly'" -or
+    $guiDriver -notmatch "if \(\$TemporaryDirectoryDeletionOnly\)" -or
+    $guiDriver -notmatch "Wait-Until \{ -not \[IO\.Directory\]::Exists\(\$temporaryDirectory\) \}" -or
+    $guiDriver -notmatch "Send-Keys '\{F8\}'") {
+    throw 'GUI temporary long-path directory deletion regression is not correctly registered or asserted.'
 }
 
 
