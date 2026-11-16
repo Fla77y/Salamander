@@ -25,12 +25,31 @@ struct WindowState
     DecodedImage image;
     std::vector<std::uint8_t> opaque;
     std::wstring path;
+    UINT frame = 0;
+    UINT frameCount = 0;
     bool fit = true;
     int zoom = 100;
     HANDLE closedEvent = nullptr; // caller owns this handle
     void (*onClose)(HWND) = nullptr;
     bool registeredWithHost = false;
 };
+
+// Decode a frame transactionally. On failure the displayed frame is retained.
+bool LoadFrame(WindowState& state, UINT index)
+{
+    DecodedImage next;
+    UINT frameCount = 0;
+    if (FAILED(DecodeFrame(state.path.c_str(), index, next, &frameCount)))
+        return false;
+    std::vector<std::uint8_t> opaque;
+    if (FAILED(PrepareOpaqueBgra(next, opaque)))
+        return false;
+    state.image = std::move(next);
+    state.opaque = std::move(opaque);
+    state.frame = index;
+    state.frameCount = frameCount;
+    return true;
+}
 
 // Draws a decoded image without retaining any GDI resources between paints.
 void Paint(WindowState& state, HWND hwnd)
@@ -131,6 +150,18 @@ LRESULT CALLBACK ViewerProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
                 state->zoom = (std::max)(kMinimumZoom, state->zoom - 25);
                 InvalidateRect(hwnd, nullptr, FALSE);
                 return 0;
+            case VK_NEXT:
+            case VK_PRIOR:
+            {
+                const UINT next = wParam == VK_NEXT ? state->frame + 1 :
+                                  (state->frame > 0 ? state->frame - 1 : state->frame);
+                if (next < state->frameCount && next != state->frame &&
+                    LoadFrame(*state, next))
+                {
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                }
+                return 0;
+            }
             case '0':
                 state->fit = true;
                 InvalidateRect(hwnd, nullptr, FALSE);
@@ -269,9 +300,7 @@ unsigned RunNativeViewer(const char* path, HINSTANCE instance,
             return 1;
         }
 
-        const HRESULT decoded = DecodeFirstFrame(state.path.c_str(), state.image);
-        if (FAILED(decoded) || FAILED(PrepareOpaqueBgra(state.image, state.opaque)) ||
-            !RegisterViewer(instance))
+        if (!LoadFrame(state, 0) || !RegisterViewer(instance))
         {
             if (SUCCEEDED(com))
                 CoUninitialize();
