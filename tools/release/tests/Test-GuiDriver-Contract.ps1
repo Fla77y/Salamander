@@ -80,6 +80,37 @@ if ($verifyPosition -lt 0 -or $dispatchPosition -lt 0 -or
 }
 Write-Host 'PASS: GUI navigation verifies exact clipboard content and retries only safe clipboard writes.'
 
+# The former generic timeout concealed a release-only disappearance of the
+# verified main window. Poll for a terminated process or lost HWND BEFORE
+# treating a foreign foreground PID as a transient focus issue.
+$processState = (Get-FunctionSource 'Get-TestProcessState').Extent.Text
+if ($navigationSource -notmatch '\$process\.HasExited' -or
+    $navigationSource -notmatch '\$currentMainOwner\s+-ne\s+\[uint32\]\$process\.Id' -or
+    $navigationSource -notmatch 'Get-TestProcessState' -or
+    $navigationSource -notmatch 'Get-ForegroundWindowSummary' -or
+    $processState -notmatch 'exitCodeHex' -or
+    $processState -notmatch 'Get-ProcessWindowSummary') {
+    throw 'Navigation failure must distinguish process exit, destroyed HWND, and foreground loss.'
+}
+
+# Huge (32k-unit) paths must not flood error logs or hide the exit status.
+$pathFormatter = Get-FunctionSource 'Format-GuiDiagnosticPath'
+. ([scriptblock]::Create($pathFormatter.Extent.Text))
+$hugePath = 'C:\fixture\' + ('x' * 32680) + '\end'
+$compact = Format-GuiDiagnosticPath $hugePath
+if ($compact.Length -ge 250 -or
+    $compact -notmatch [regex]::Escape("length=$($hugePath.Length) UTF-16 units") -or
+    $compact -notmatch 'omitted=' -or
+    $compact -notmatch "suffix='") {
+    throw 'Navigation diagnostics must summarize extreme paths without losing their length.'
+}
+if ($navigationSource -match 'Salamander navigation to \$Path' -or
+    $navigationSource -notmatch 'Salamander navigation to \$pathSummary') {
+    throw 'Navigation timeout must use compact path diagnostics.'
+}
+Write-Host 'PASS: extreme GUI navigation failures preserve crash/focus diagnostics without dumping 32k-unit paths.'
+
+
 # Long-directory Enter navigation needs a read-only GUI focus snapshot and
 # the exact last observed path. Retrying Enter after a timeout could execute
 # an unrelated focused row, so retries must remain forbidden.
