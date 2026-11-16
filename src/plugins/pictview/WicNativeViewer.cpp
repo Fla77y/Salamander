@@ -6,6 +6,7 @@
 #include "WicImageDecoder.h"
 #include "WicImageTransforms.h"
 #include "WicImageWriter.h"
+#include "WicImageClipboard.h"
 
 #include <commdlg.h>
 #pragma comment(lib, "comdlg32.lib")
@@ -244,6 +245,15 @@ LRESULT CALLBACK ViewerProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
                 }
                 return 0;
             }
+            case 'C':
+                if (GetKeyState(VK_CONTROL) < 0)
+                {
+                    if (FAILED(CopyImageToClipboard(hwnd, state->image)))
+                        MessageBoxW(hwnd, L"Could not copy image to clipboard.",
+                                    L"PictView", MB_OK | MB_ICONERROR);
+                    return 0;
+                }
+                break;
             case 'S':
                 if (GetKeyState(VK_CONTROL) < 0 && GetKeyState(VK_SHIFT) < 0)
                 {
