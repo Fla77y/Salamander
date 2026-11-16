@@ -6,6 +6,7 @@
 
 #include <windows.h>
 
+#include <algorithm>
 #include <array>
 #include <cstdio>
 #include <cstdint>
