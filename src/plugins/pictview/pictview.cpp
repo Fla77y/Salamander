@@ -1268,6 +1268,7 @@ BOOL LoadPictViewDll(HWND hParentWnd)
 
 BOOL InitViewer(HWND hParentWnd)
 {
+    (void)hParentWnd;
     int i;
 
     // initialize global variables
