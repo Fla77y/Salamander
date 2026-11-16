@@ -61,7 +61,10 @@ inline void MakeUnrepresentableAnsiPanelAlias(
         hash ^= static_cast<std::uint16_t>(*cursor);
         hash *= 1099511628211ULL;
     }
-    sprintf_s(destination, sizeof(destination), "?UNICODE_%016llX",
+    // An ASCII '?' is a Win32 wildcard, not a safe sentinel. SOH is
+    // forbidden in Win32 filenames and cannot address a real disk item.
+    destination[0] = '\\x01';
+    sprintf_s(destination + 1, sizeof(destination) - 1, "UNICODE_%016llX",
               static_cast<unsigned long long>(hash));
 }
 
