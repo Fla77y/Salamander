@@ -71,37 +71,51 @@ bool FitImage(UINT width, UINT height, const RECT& client, RECT& target) noexcep
     return true;
 }
 
-HRESULT PaintImageAt(HDC dc, const RECT& dest, const DecodedImage& image) noexcept
+HRESULT PaintOpaqueBgraAt(HDC dc, const RECT& dest, UINT width, UINT height,
+                          UINT stride, const std::vector<std::uint8_t>& pixels) noexcept
 {
-    if (!dc || dest.right <= dest.left || dest.bottom <= dest.top)
+    const std::uint64_t bytes = static_cast<std::uint64_t>(width) * height * 4;
+    if (!dc || !width || !height || width > INT_MAX || height > INT_MAX ||
+        stride != static_cast<std::uint64_t>(width) * 4 ||
+        bytes > 256ULL * 1024 * 1024 || pixels.size() != bytes ||
+        dest.right <= dest.left || dest.bottom <= dest.top)
         return E_INVALIDARG;
-    std::vector<std::uint8_t> pixels;
-    const HRESULT hr = PrepareOpaqueBgra(image, pixels);
-    if (FAILED(hr))
-        return hr;
 
     BITMAPINFO info{};
     info.bmiHeader.biSize = sizeof(BITMAPINFOHEADER);
-    if (image.width > static_cast<UINT>(INT_MAX) ||
-        image.height > static_cast<UINT>(INT_MAX))
-        return E_INVALIDARG;
-    info.bmiHeader.biWidth = static_cast<LONG>(image.width);
-    info.bmiHeader.biHeight = -static_cast<LONG>(image.height);
+    info.bmiHeader.biWidth = static_cast<LONG>(width);
+    info.bmiHeader.biHeight = -static_cast<LONG>(height);
     info.bmiHeader.biPlanes = 1;
     info.bmiHeader.biBitCount = 32;
     info.bmiHeader.biCompression = BI_RGB;
     const int previousMode = SetStretchBltMode(dc, HALFTONE);
     if (!previousMode)
-        return HRESULT_FROM_WIN32(GetLastError());
+    {
+        const DWORD error = GetLastError();
+        return error ? HRESULT_FROM_WIN32(error) : E_FAIL;
+    }
     const int ret = StretchDIBits(dc, dest.left, dest.top,
                                   dest.right - dest.left, dest.bottom - dest.top,
-                                  0, 0, static_cast<int>(image.width),
-                                  static_cast<int>(image.height), pixels.data(),
+                                  0, 0, static_cast<int>(width),
+                                  static_cast<int>(height), pixels.data(),
                                   &info, DIB_RGB_COLORS, SRCCOPY);
     const DWORD error = ret == GDI_ERROR ? GetLastError() : ERROR_SUCCESS;
     SetStretchBltMode(dc, previousMode);
-    return ret == GDI_ERROR ? HRESULT_FROM_WIN32(error) : S_OK;
+    if (ret == GDI_ERROR)
+        return error ? HRESULT_FROM_WIN32(error) : E_FAIL;
+    return S_OK;
 }
+
+HRESULT PaintImageAt(HDC dc, const RECT& dest, const DecodedImage& image) noexcept
+{
+    std::vector<std::uint8_t> pixels;
+    const HRESULT hr = PrepareOpaqueBgra(image, pixels);
+    if (FAILED(hr))
+        return hr;
+    return PaintOpaqueBgraAt(dc, dest, image.width, image.height,
+                             image.stride, pixels);
+}
+
 HRESULT PaintImage(HDC dc, const RECT& client, const DecodedImage& image) noexcept
 {
     RECT dest{};
