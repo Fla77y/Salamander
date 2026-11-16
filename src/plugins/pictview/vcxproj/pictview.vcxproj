@@ -167,6 +167,9 @@
     </ClCompile>
     <ClCompile Include="..\utils.cpp">
     </ClCompile>
+    <ClCompile Include="..\WicImageClipboard.cpp">
+      <PrecompiledHeader>NotUsing</PrecompiledHeader>
+    </ClCompile>
     <ClCompile Include="..\WicImageWriter.cpp">
       <PrecompiledHeader>NotUsing</PrecompiledHeader>
     </ClCompile>
@@ -223,6 +226,8 @@
     <ClInclude Include="..\pictview.h">
     </ClInclude>
     <ClInclude Include="..\PixelAccess.h">
+    </ClInclude>
+    <ClInclude Include="..\WicImageClipboard.h">
     </ClInclude>
     <ClInclude Include="..\WicImageWriter.h">
     </ClInclude>
