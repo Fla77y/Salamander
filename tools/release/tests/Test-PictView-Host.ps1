@@ -328,6 +328,13 @@ try {
             throw "Error dialog after F3: $dialog"
         }
         $windows = [PictViewHostWindows]::ForProcess([uint32]$process.Id)
+        # This is the actual Win32 class in src/viewer.cpp, not an
+        # inferred caption. Once F3 opens it, WIC will not appear later.
+        if (@($windows | Where-Object {
+                $_.ClassName -ceq "Salamander's Viewer Window"
+            }).Count -gt 0) {
+            throw 'F3 opened the internal viewer instead of PictView.'
+        }
         $found = @($windows | Where-Object {
             $_.ClassName -ceq 'OpenSalamander.PictView.WIC'
         })
@@ -346,13 +353,17 @@ try {
         }
     }
     catch {
-        $windows = @([PictViewHostWindows]::ForProcess([uint32]$process.Id) |
-                     ForEach-Object { "[$($_.ClassName)] $($_.Title)" })
+        $ownedWindows = @([PictViewHostWindows]::ForProcess([uint32]$process.Id))
+        $windows = @($ownedWindows | ForEach-Object { "[$($_.ClassName)] $($_.Title)" })
+        $internalViewer = @($ownedWindows | Where-Object {
+            $_.ClassName -ceq "Salamander's Viewer Window"
+        }).Count -gt 0
+        $actualViewerClass = if ($internalViewer) { "Salamander's Viewer Window" } else { '' }
         $loaded = @($process.Modules | Where-Object {
             $_.FileName -ieq $expectedPlugin
         }).Count -gt 0
         $dialog = [PictViewHostWindows]::GetDialogDetails([uint32]$process.Id)
-        $hint = Get-PictViewHostFailureHint -DialogText $dialog -PictViewResident $loaded
+        $hint = Get-PictViewHostFailureHint -DialogText $dialog -PictViewResident $loaded -ActualViewerClass $actualViewerClass
         throw ("PictView host smoke failed: $hint " +
                "Dialog: '$dialog'. Test-owned windows: $($windows -join '; '). " +
                "Original failure: $($_.Exception.Message)")
