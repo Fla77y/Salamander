@@ -33,6 +33,9 @@ if (-not $releaseWorkflow.Contains('OpenSal\public-release\SHA256SUMS-Release.tx
 & (Join-Path $PSScriptRoot 'Test-ReleaseWorkflow-Order.ps1')
 & (Join-Path $PSScriptRoot 'Test-InstalledPayload-Regression.ps1')
 
+# Verify child-process-only TEMP isolation against the stale SAL*.tmp dialog.
+& (Join-Path $PSScriptRoot 'Test-GuiProcessTemp-Isolation.ps1')
+
 # Detect a broken optional PictView installation without loading or
 # distributing its unavailable proprietary converter components.
 & (Join-Path $PSScriptRoot 'Test-PictViewRuntime-Prerequisites.ps1')
