@@ -27,6 +27,9 @@ if (-not $releaseWorkflow.Contains('OpenSal\dist\SHA256SUMS-Release.txt') -or
 # or plug-in binaries; it also detects malformed public-name matching.
 & (Join-Path $PSScriptRoot 'Test-PluginExport-Parser.ps1')
 
+# Synthetic exact-public-artifact regression (no installer execution).
+& (Join-Path $PSScriptRoot 'Test-ReleasePublicArtifact.ps1')
+
 # Detect a broken optional PictView installation without loading or
 # distributing its unavailable proprietary converter components.
 & (Join-Path $PSScriptRoot 'Test-PictViewRuntime-Prerequisites.ps1')
