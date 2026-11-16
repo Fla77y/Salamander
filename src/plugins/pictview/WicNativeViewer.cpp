@@ -23,6 +23,7 @@ constexpr int kMaximumZoom = 400;
 struct WindowState
 {
     DecodedImage image;
+    std::vector<std::uint8_t> opaque;
     std::wstring path;
     bool fit = true;
     int zoom = 100;
@@ -68,7 +69,8 @@ void Paint(WindowState& state, HWND hwnd)
     else
         FitImage(state.image.width, state.image.height, client, destination);
 
-    PaintImageAt(dc, destination, state.image);
+    PaintOpaqueBgraAt(dc, destination, state.image.width,
+                      state.image.height, state.image.stride, state.opaque);
     EndPaint(hwnd, &paint);
 }
 
@@ -268,7 +270,8 @@ unsigned RunNativeViewer(const char* path, HINSTANCE instance,
         }
 
         const HRESULT decoded = DecodeFirstFrame(state.path.c_str(), state.image);
-        if (FAILED(decoded) || !RegisterViewer(instance))
+        if (FAILED(decoded) || FAILED(PrepareOpaqueBgra(state.image, state.opaque)) ||
+            !RegisterViewer(instance))
         {
             if (SUCCEEDED(com))
                 CoUninitialize();
