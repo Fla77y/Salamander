@@ -719,9 +719,10 @@ if ($managerSource -notmatch [regex]::Escape("'tools\tests\unicode_find.cpp'") -
     $searchNative -notmatch 'cross-buffer UTF-8/UTF-16 search') {
     throw 'F2: native Unicode Find search and GUI integration must preserve W paths and run the regression suite.'
 }
-# The non-UNICODE Salamander build defines IDC_ARROW as an ANSI resource
-# and instruments ordinary new in Debug (precomp.h). Validate both source
-# contracts to catch the original C2664/C2061 compiler regressions.
+# In this non-UNICODE build, IDC_ARROW is an ANSI resource identifier.
+# The generic LoadCursor macro selects the matching API variant; using
+# LoadCursorW with IDC_ARROW fails C2664, while OCR_NORMAL is not defined
+# unless OEMRESOURCE is enabled (C2065). Debug also instruments ordinary new.
 $precompiledHeader = Get-Content -LiteralPath (
     Join-Path $toolsDir '..\..\src\precomp.h') -Raw
 if ($precompiledHeader -match '(?m)^#define new new \(_NORMAL_BLOCK' -and
@@ -729,9 +730,9 @@ if ($precompiledHeader -match '(?m)^#define new new \(_NORMAL_BLOCK' -and
      $wideFindWindow -match 'new\s*\(\s*std::nothrow\s*\)')) {
     throw 'F2: Unicode Find window must avoid ANSI cursor resource and Debug CRT new-macro incompatibilities.'
 }
-if ($wideFindWindow -notmatch 'LoadCursorW\(nullptr,\s*MAKEINTRESOURCEW\(OCR_NORMAL\)\)' -or
+if ($wideFindWindow -notmatch 'LoadCursor\(nullptr,\s*IDC_ARROW\)' -or
     $wideFindWindow -notmatch 'new UnicodeFindWindow\(') {
-    throw 'F2: Unicode Find window requires wide cursor ID and project-compatible allocation.'
+    throw 'F2: Unicode Find window requires matching Win32 cursor resource/API macros and project-compatible allocation.'
 }
 Write-Host 'PASS: F2 Unicode Find window respects non-UNICODE Win32 resources and Debug CRT allocator.'
 Write-Host 'PASS: F2 Win32 W search, result actions, native tests and disk-panel GUI routing are wired.'
