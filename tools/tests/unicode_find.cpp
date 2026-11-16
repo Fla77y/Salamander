@@ -101,6 +101,15 @@ int main()
     if (!foundA || !foundB || !foundC)
         return std::puts("FAIL: Unicode result identity or 255-unit name"), 1;
 
+    // A single 32K parent may otherwise be duplicated into thousands of
+    // result allocations. Refuse an undersized identity budget explicitly.
+    options.maximumResultUtf16Units = 1;
+    hits.clear();
+    if (Salamander::SearchUnicodeDirectory(options, collect, nullptr, error) ||
+        error != ERROR_MORE_DATA || !hits.empty())
+        return std::puts("FAIL: W result memory cap"), 1;
+    options.maximumResultUtf16Units = 8 * 1024 * 1024;
+
     options.includeSubdirectories = false;
     hits.clear();
     if (!Salamander::SearchUnicodeDirectory(options, collect, nullptr, error) ||
