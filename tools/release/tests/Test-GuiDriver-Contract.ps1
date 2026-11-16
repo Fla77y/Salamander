@@ -80,6 +80,57 @@ if ($verifyPosition -lt 0 -or $dispatchPosition -lt 0 -or
 }
 Write-Host 'PASS: GUI navigation verifies exact clipboard content and retries only safe clipboard writes.'
 
+# A live Salamander can lose foreground focus to a browser while a
+# synchronous navigation completes. Recover its verified HWND once, then
+# verify the actual panel path without resending an unconfirmed WM_COMMAND.
+$recoverFocus = (Get-FunctionSource 'Recover-NavigationForeground').Extent.Text
+if ($recoverFocus -notmatch 'Get-TestDialog' -or
+    $recoverFocus -notmatch 'Focus-TestProcess' -or
+    $recoverFocus -notmatch 'FocusRecoveryAttempted' -or
+    $recoverFocus -match 'Invoke-SalamanderCommand|Send-Keys|Set-ClipboardText' -or
+    $navigationSource -notmatch 'Recover-NavigationForeground -Diagnostics \$diagnostics' -or
+    $navigationSource -notmatch '-not \$diagnostics\.FocusRecoveryAttempted') {
+    throw 'Navigation must recover verified foreground once, without re-dispatching on focus loss.'
+}
+
+# Exercise the recovery policy without a desktop or invoking Salamander.
+& {
+    $probe = @{ Foreground = 99; RecoveryCalls = 0; Dialog = $null }
+    $process = [pscustomobject]@{ Id = 42 }
+    function Get-ActiveProcessId { return [uint32]$probe.Foreground }
+    function Get-TestDialog { return $probe.Dialog }
+    function Get-ForegroundWindowSummary { return ('PID={0}' -f $probe.Foreground) }
+    function Focus-TestProcess {
+        $probe.RecoveryCalls++
+        $probe.Foreground = 42
+    }
+    . ([scriptblock]::Create($recoverFocus))
+    $state = @{ FocusRecoveryAttempted = $false }
+    Recover-NavigationForeground -Diagnostics $state
+    if ($probe.RecoveryCalls -ne 1 -or
+        -not $state.FocusRecoveryAttempted -or
+        $probe.Foreground -ne 42) {
+        throw 'First foreground loss must recover the known test window once.'
+    }
+    $probe.Foreground = 99
+    $refused = $false
+    try { Recover-NavigationForeground -Diagnostics $state }
+    catch { $refused = $_.Exception.Message -match 'repeated external foreground' }
+    if (-not $refused -or $probe.RecoveryCalls -ne 1) {
+        throw 'A second foreground loss must abort without repeating focus recovery.'
+    }
+    $state.FocusRecoveryAttempted = $false
+    $probe.Dialog = 'Error Changing Directory'
+    $refused = $false
+    try { Recover-NavigationForeground -Diagnostics $state }
+    catch { $refused = $_.Exception.Message -match 'displayed a dialog' }
+    if (-not $refused -or $probe.RecoveryCalls -ne 1) {
+        throw 'A modal dialog must prevent GUI navigation focus recovery.'
+    }
+}
+Write-Host 'PASS: navigation focus recovers only the verified process once; repeat loss or modal dialog aborts safely.'
+
+
 # The former generic timeout concealed a disappearing main window during
 # the second (Debug x64) maximum-length GUI test. Poll for a terminated process or lost HWND BEFORE
 # treating a foreign foreground PID as a transient focus issue.
