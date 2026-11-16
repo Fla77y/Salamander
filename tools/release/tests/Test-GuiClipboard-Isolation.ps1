@@ -246,6 +246,40 @@ finally {
         $holder.Dispose()
     }
 
+    # PowerShell wraps C# method failures in MethodInvocationException.
+    # The clipboard owner STA adds its own exception around the native
+    # OpenClipboard failure; inspect the complete cause chain, not just
+    # the outer exception message.
+    function Test-ExpectedClipboardLockFailure {
+        param([Parameter(Mandatory)][Exception]$Exception)
+        $cause = $Exception
+        for ($depth = 0; $null -ne $cause -and $depth -lt 16; $depth++) {
+            if ($cause -is [InvalidOperationException] -and
+                $cause.Message -ceq 'OpenClipboard busy after 16 attempts; last Win32 error 5') {
+                return $true
+            }
+            $cause = $cause.InnerException
+        }
+        return $false
+    }
+
+    # Verify that nested error 5 is recognized but unrelated errors and
+    # owner thread timeouts cannot make the negative test pass.
+    $busy = [InvalidOperationException]::new(
+        'OpenClipboard busy after 16 attempts; last Win32 error 5')
+    $wrappedBusy = [InvalidOperationException]::new(
+        'Clipboard owner could not publish CF_UNICODETEXT.', $busy)
+    $invocationBusy = [Reflection.TargetInvocationException]::new($wrappedBusy)
+    $wrongError = [InvalidOperationException]::new('OpenClipboard failed: 6')
+    $timeoutError = [TimeoutException]::new(
+        'Clipboard owner STA did not publish CF_UNICODETEXT.')
+    if (-not (Test-ExpectedClipboardLockFailure -Exception $invocationBusy) -or
+        (Test-ExpectedClipboardLockFailure -Exception $wrongError) -or
+        (Test-ExpectedClipboardLockFailure -Exception $timeoutError)) {
+        throw 'Clipboard lock classifier accepted a failure other than native Win32 error 5.'
+    }
+    Write-Host 'PASS: nested clipboard error 5 is recognized; unrelated failures remain fatal.'
+
     $holder = Start-ClipboardHolder -HoldMilliseconds 2600
     try {
         $rejected = $false
@@ -253,11 +287,18 @@ finally {
             $owner.SetText($text + '\must-not-write')
         }
         catch {
-            if ($_.Exception.Message -match 'OpenClipboard.*(busy|failed).*after') {
+            if (Test-ExpectedClipboardLockFailure -Exception $_.Exception) {
                 $rejected = $true
             }
             else {
-                throw
+                $chain = [Collections.Generic.List[string]]::new()
+                $cause = $_.Exception
+                for ($depth = 0; $null -ne $cause -and $depth -lt 16; $depth++) {
+                    [void]$chain.Add(
+                        ('{0}: {1}' -f $cause.GetType().FullName, $cause.Message))
+                    $cause = $cause.InnerException
+                }
+                throw ('Unexpected clipboard lock failure: ' + ($chain -join ' -> '))
             }
         }
         if (-not $rejected) {
