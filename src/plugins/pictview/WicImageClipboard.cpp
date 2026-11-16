@@ -103,7 +103,8 @@ HRESULT ParseClipboardDib(const void* data, std::size_t size,
                                 static_cast<std::size_t>(y * outputStride);
             for (UINT x = 0; x < next.width; ++x)
             {
-                const std::size_t in = static_cast<std::size_t>(x) * (bits / 8);
+                const std::size_t in = static_cast<std::size_t>(x) *
+                                       static_cast<std::size_t>(header.biBitCount / 8);
                 const std::size_t out = static_cast<std::size_t>(x) * 4;
                 dst[out + 0] = src[in + 0];
                 dst[out + 1] = src[in + 1];
