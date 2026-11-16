@@ -107,6 +107,37 @@ int main()
         hits.size() != 2)
         return std::puts("FAIL: non-recursive Unicode search"), 1;
 
+    // Arrange / Act / Assert: masks are case-insensitive by default and
+    // exclusion masks must not accidentally enumerate colliding aliases.
+    options.masks = L"*.TXT|*😀*";
+    hits.clear();
+    if (!Salamander::SearchUnicodeDirectory(options, collect, nullptr, error) ||
+        hits.size() != 1 || hits[0].name != nameC)
+        return std::puts("FAIL: Unicode include/exclude masks"), 1;
+    options.masks = L"*.txt";
+
+    // The grep buffer is 64 KiB. A match crossing that boundary must not
+    // disappear; two overlapping read blocks must preserve the exact bytes.
+    const std::wstring boundaryName = L"boundary_東京.txt";
+    const std::wstring boundaryFile = long3 + L"\\" + boundaryName;
+    std::string boundaryPayload(65532, 'x');
+    boundaryPayload += "unique needle across chunks";
+    if (!WriteFixture(boundaryFile, boundaryPayload.data(),
+                      static_cast<DWORD>(boundaryPayload.size())))
+        return std::puts("FAIL: prepare cross-buffer content fixture"), 1;
+    options.content = L"unique needle";
+    hits.clear();
+    if (!Salamander::SearchUnicodeDirectory(options, collect, nullptr, error) ||
+        hits.size() != 3)
+        return std::puts("FAIL: cross-buffer UTF-8/UTF-16 search"), 1;
+    bool foundBoundary = false;
+    for (const auto& hit : hits)
+        foundBoundary |= hit.name == boundaryName;
+    if (!foundBoundary)
+        return std::puts("FAIL: UTF-8 content match across read boundary"), 1;
+    if (!RemoveFixture(boundaryFile, false))
+        return std::puts("FAIL: cleanup cross-buffer fixture"), 1;
+
     options.includeSubdirectories = true;
     options.content = L"unique needle";
     hits.clear();
