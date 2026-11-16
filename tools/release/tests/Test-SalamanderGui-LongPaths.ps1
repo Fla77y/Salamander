@@ -1258,11 +1258,17 @@ function Test-UnicodeFindGui {
         [IO.File]::ReadAllBytes($findCopyPath), $findUtf8Bytes) -and
         [Linq.Enumerable]::SequenceEqual[byte](
         [IO.File]::ReadAllBytes($findUtf8Path), $findUtf8Bytes)) 'Unicode Find copy preserves source and destination bytes'
+    # Make the existing destination observably different from the source:
+    # blindly copying the same payload would otherwise pass a byte check.
+    $protectedFindBytes = [Text.Encoding]::UTF8.GetBytes('PROTECTED-UNICODE-FIND-DESTINATION')
+    [IO.File]::WriteAllBytes($findCopyPath, $protectedFindBytes)
     [SalamanderGuiNative]::ClickFindButton($script:findWindow, [uint32]$process.Id, 5111)
     Assert-True ([SalamanderGuiNative]::ReadFindText(
         $script:findWindow, [uint32]$process.Id, 5118) -like 'File action rejected*') 'Unicode Find refuses destination overwrite'
     Assert-True ([Linq.Enumerable]::SequenceEqual[byte](
-        [IO.File]::ReadAllBytes($findCopyPath), $findUtf8Bytes)) 'Unicode Find collision preserves destination bytes'
+        [IO.File]::ReadAllBytes($findCopyPath), $protectedFindBytes) -and
+        [Linq.Enumerable]::SequenceEqual[byte](
+        [IO.File]::ReadAllBytes($findUtf8Path), $findUtf8Bytes)) 'Unicode Find collision preserves independent source and destination bytes'
 
     # Move uses the selected original long Unicode name, not a best-fit alias.
     [SalamanderGuiNative]::SetFindText($script:findWindow, [uint32]$process.Id, 5104, $findMovePath)
