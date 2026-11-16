@@ -44,11 +44,10 @@ if ($verifiedArtifactJob -le $uploadStart) {
     throw 'Missing downstream public artifact download-and-verify job.'
 }
 $downloadedArtifact = $source.Substring($verifiedArtifactJob)
-if ($downloadedArtifact -notmatch '(?m)^    needs: package\\s*
- -or
-    $downloadedArtifact -notmatch 'actions/download-artifact@v4' -or
-    $downloadedArtifact -notmatch '\\-RequirePublicOnly' -or
-    $downloadedArtifact -notmatch 'Test-ReleaseChecksumManifest\\.ps1') {
+if (-not $downloadedArtifact.Contains('    needs: package') -or
+    -not $downloadedArtifact.Contains('uses: actions/download-artifact@v4') -or
+    -not $downloadedArtifact.Contains('-RequirePublicOnly') -or
+    -not $downloadedArtifact.Contains('Test-ReleaseChecksumManifest.ps1')) {
     throw 'Downloaded GitHub Release artifact must be independently verified.'
 }
 
