@@ -555,3 +555,28 @@ if ($bugReportSource -notmatch 'FormatBugReportPanelPath\(' -or
     throw 'Crash-report path must be bounded and its 32444-byte regression executed by --test.'
 }
 Write-Host 'PASS: crash-report panel-path formatting is bounded and registered for real C++ regression.'
+
+# The Debug x64 RTC #1 regression: the directory caption previously
+# truncated a potentially >65,535-pixel width to WORD, while its clickable
+# breadcrumbs could copy >MAX_PATH bytes into a fixed stack buffer.
+# Long disk paths must retain text measurements without unsafe hit targets.
+$statusHeader = Get-Content -LiteralPath (
+    Join-Path $toolsDir '..\..\src\stswnd.h') -Raw
+$statusImpl = Get-Content -LiteralPath (
+    Join-Path $toolsDir '..\..\src\stswnd.cpp') -Raw
+$statusHotTrack = [regex]::Match($statusHeader,
+    '(?s)struct CHotTrackItem\s*\{(.*?)\};').Groups[1].Value
+$buildHotTrack = [regex]::Match($statusImpl,
+    '(?s)void CStatusWindow::BuildHotTrackItems\(\)\s*\{(.*?)void CStatusWindow::DestroyWindow\(').Groups[1].Value
+$longPathGuard = 'if\s*\(FilesWindow->Is\(ptDisk\)\s*&&\s*FilesWindow->HasLongDiskPath\(\)\)'
+if ([string]::IsNullOrEmpty($statusHotTrack) -or
+    [string]::IsNullOrEmpty($buildHotTrack) -or
+    $statusHotTrack -notmatch 'int\s+PixelsOffset\s*;' -or
+    $statusHotTrack -notmatch 'int\s+Pixels\s*;' -or
+    $statusHotTrack -notmatch 'int\s+Chars\s*;' -or
+    $buildHotTrack -notmatch $longPathGuard -or
+    $buildHotTrack -match '\(WORD\)\s*(AlpDX|sOffset\.cx|sSub\.cx)' -or
+    $buildHotTrack -notmatch 'else if\s*\(FilesWindow->Is\(ptDisk\)\s*\|\|\s*FilesWindow->Is\(ptZIPArchive\)\)') {
+    throw 'Status hot-track geometry must retain full pixel widths and disable unsafe clickable long-disk paths.'
+}
+Write-Host 'PASS: 32700-unit GUI paths avoid 16-bit hot-track loss and unsafe MAX_PATH breadcrumbs.'
