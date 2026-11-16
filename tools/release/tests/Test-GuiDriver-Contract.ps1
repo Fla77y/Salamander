@@ -104,8 +104,19 @@ if ($compact.Length -ge 250 -or
     $compact -notmatch "suffix='") {
     throw 'Navigation diagnostics must summarize extreme paths without losing their length.'
 }
-if ($navigationSource -match 'Salamander navigation to \$Path' -or
-    $navigationSource -notmatch 'Salamander navigation to \$pathSummary') {
+# PowerShell's -match is case-insensitive, and a pattern ending at
+# '$Path' also matches the prefix of '$pathSummary'. Assert whole variable
+# tokens with case-sensitive matching to avoid this false positive.
+$legacyTimeoutPattern = 'Salamander navigation to \$Path\b'
+$compactTimeoutPattern = 'Salamander navigation to \$pathSummary\b'
+if ('Salamander navigation to $pathSummary' -cmatch $legacyTimeoutPattern -or
+    'Salamander navigation to $Path' -cnotmatch $legacyTimeoutPattern -or
+    'Salamander navigation to $pathSummary' -cnotmatch $compactTimeoutPattern -or
+    'Salamander navigation to $Path' -cmatch $compactTimeoutPattern) {
+    throw 'GUI timeout variable matching must distinguish $Path from $pathSummary.'
+}
+if ($navigationSource -cmatch $legacyTimeoutPattern -or
+    $navigationSource -cnotmatch $compactTimeoutPattern) {
     throw 'Navigation timeout must use compact path diagnostics.'
 }
 Write-Host 'PASS: extreme GUI navigation failures preserve crash/focus diagnostics without dumping 32k-unit paths.'
