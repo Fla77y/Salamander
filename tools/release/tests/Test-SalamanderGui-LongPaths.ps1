@@ -51,7 +51,9 @@ if ($VerifyRecycleRestore -and -not $ShortUnicodeRecycleOnly) {
 }
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
-Add-Type -TypeDefinition @'
+. (Join-Path $PSScriptRoot 'Get-GuiInteropReferences.ps1')
+$guiInteropReferences = @(Get-GuiInteropReferences)
+$guiInteropSource = @'
 using System;
 using System.Runtime.InteropServices;
 using System.Collections.Generic;
@@ -863,6 +865,7 @@ public sealed class SalamanderGuiClipboardOwner : IDisposable
     }
 }
 '@
+Add-Type -TypeDefinition $guiInteropSource -ReferencedAssemblies $guiInteropReferences -ErrorAction Stop
 
 $script:clipboardOwner = $null
 $oldClipboard = $null

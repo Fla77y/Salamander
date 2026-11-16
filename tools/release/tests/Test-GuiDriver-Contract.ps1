@@ -531,13 +531,18 @@ Write-Host 'PASS: F6 directory GUI assertions use the valid byte-comparison help
 # Compile the embedded C# Win32 interop in the headless Windows test process.
 # PowerShell's AST check alone would not catch invalid P/Invoke signatures.
 $interopSource = [regex]::Match(
-    $driverText, '(?s)Add-Type -TypeDefinition @''\r?\n(.*?)\r?\n''@')
+    $driverText, '(?s)\$guiInteropSource\s*=\s*@''\r?\n(.*?)\r?\n''@')
 if (-not $interopSource.Success) {
     throw 'GUI driver C# Win32 interop here-string not found.'
 }
 # The interop includes an independently pumped WinForms clipboard owner.
 Add-Type -AssemblyName System.Windows.Forms -ErrorAction Stop
-Add-Type -TypeDefinition $interopSource.Groups[1].Value -ErrorAction Stop
+. (Join-Path $PSScriptRoot 'Get-GuiInteropReferences.ps1')
+Add-Type -TypeDefinition $interopSource.Groups[1].Value `
+    -ReferencedAssemblies @(Get-GuiInteropReferences) -ErrorAction Stop
+if ($driverText -notmatch 'Add-Type -TypeDefinition \$guiInteropSource\s+-ReferencedAssemblies \$guiInteropReferences') {
+    throw 'GUI driver must compile its WinForms C# interop with explicit framework and WinForms references.'
+}
 if ([SalamanderGuiNative]::GetLegacyFilenameAliasHex('plain.txt') -cne
     '70-6C-61-69-6E-2E-74-78-74') {
     throw 'Win32 ACP alias encoder did not preserve a simple ASCII filename.'

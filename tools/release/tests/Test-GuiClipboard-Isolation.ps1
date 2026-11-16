@@ -22,12 +22,14 @@ if ([Threading.Thread]::CurrentThread.GetApartmentState() -ne 'STA') {
 Add-Type -AssemblyName System.Windows.Forms
 $driverPath = Join-Path $PSScriptRoot 'Test-SalamanderGui-LongPaths.ps1'
 $source = [IO.File]::ReadAllText($driverPath)
-$match = [regex]::Match($source, "(?s)Add-Type -TypeDefinition @'\r?\n(.*?)\r?\n'@")
+$match = [regex]::Match($source, "(?s)\`$guiInteropSource\s*=\s*@'\r?\n(.*?)\r?\n'@")
 if (-not $match.Success) { throw 'GUI Win32 interop definition not found.' }
 if ($source -notmatch '(?s)function Set-VerifiedNavigationClipboard.*?Set-NativeNavigationClipboard') {
     throw 'Navigation must use non-OLE global UTF-16 clipboard memory.'
 }
-Add-Type -TypeDefinition $match.Groups[1].Value
+. (Join-Path $PSScriptRoot 'Get-GuiInteropReferences.ps1')
+Add-Type -TypeDefinition $match.Groups[1].Value `
+    -ReferencedAssemblies @(Get-GuiInteropReferences) -ErrorAction Stop
 
 $root = Join-Path ([IO.Path]::GetTempPath()) ('OpenSal-ClipboardTest-' + [guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($root)
