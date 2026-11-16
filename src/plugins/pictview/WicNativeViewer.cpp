@@ -122,13 +122,13 @@ LRESULT CALLBACK ViewerProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
             case VK_ADD:
             case VK_OEM_PLUS:
                 state->fit = false;
-                state->zoom = std::min(kMaximumZoom, state->zoom + 25);
+                state->zoom = (std::min)(kMaximumZoom, state->zoom + 25);
                 InvalidateRect(hwnd, nullptr, FALSE);
                 return 0;
             case VK_SUBTRACT:
             case VK_OEM_MINUS:
                 state->fit = false;
-                state->zoom = std::max(kMinimumZoom, state->zoom - 25);
+                state->zoom = (std::max)(kMinimumZoom, state->zoom - 25);
                 InvalidateRect(hwnd, nullptr, FALSE);
                 return 0;
             case '0':
