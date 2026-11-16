@@ -666,6 +666,17 @@ $pluginPosted = Get-Content -LiteralPath (
     Join-Path $toolsDir '..\..\src\mainwnd3.cpp') -Raw
 $hostPanel = Get-Content -LiteralPath (
     Join-Path $toolsDir '..\..\src\fileswn8.cpp') -Raw
+# C++ method implementation is CFilesWindow::..., not its ancestor:
+# keep its declaration in the derived class (C2509 regression, 2026-11-16).
+$filesHeader = Get-Content -LiteralPath (
+    Join-Path $toolsDir '..\..\src\fileswnd.h') -Raw
+$derivedDeclaration = [regex]::Match($filesHeader,
+    '(?s)class CFilesWindow\s*:\s*public CFilesWindowAncestor\s*\{(.*?)\bCViewTemplate\* ViewTemplate;').Groups[1].Value
+if ([string]::IsNullOrEmpty($derivedDeclaration) -or
+    $derivedDeclaration -notmatch '\bBOOL\s+HasUnsupportedLegacyPluginSelection\s*\(\s*\)\s*;' -or
+    $filesHeader -match '(?s)BOOL HasLongDiskPath\(\).*?BOOL HasUnsupportedLegacyPluginSelection\(\).*?class CFilesWindow\s*:') {
+    throw 'C2509 regression: legacy plug-in selection method must be declared in CFilesWindow, not its ancestor.'
+}
 if ($pluginDispatch -notmatch 'HasUnsupportedLegacyPluginSelection' -or
     $pluginDeferred -notmatch 'HasUnsupportedLegacyPluginSelection' -or
     $pluginPosted -notmatch 'HasUnsupportedLegacyPluginSelection' -or
