@@ -374,8 +374,21 @@ try {
         # This must never run implicitly as part of --test-all.
         if ($requestedSet.Contains('--test-plugin-load')) {
             Write-Host '=== OPT-IN: ECHTE PLUGIN-MANAGER-INITIALISIERUNG ==='
+            # The existing Test All action initializes PictView as well.
+            # Check optional PictView sidecars before launching a GUI that
+            # would otherwise block on a modal "invalid plugin" message.
+            . (Join-Path $repository 'tools\release\Plugin-Runtime-Prerequisites.ps1')
+            $pluginBuild = Get-VariantDirectory $configuration
+            $missingPictView = @(Get-MissingPictViewRuntimeFiles -BuildDirectory $pluginBuild)
+            if ($missingPictView.Count -gt 0) {
+                throw ("The optional x64 PictView plug-in is incomplete: " +
+                       ($missingPictView -join '; ') +
+                       ". Test All also initializes PictView and is unsafe for the four-target smoke test. " +
+                       "PVW32Cnv is absent from the GPL repository; do not copy unverified binaries. " +
+                       "Use the Plugin Manager's individual Test action for the four target plug-ins until targeted automation is available.")
+            }
             $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
-            $testedExe = Join-Path (Get-VariantDirectory $configuration) 'salamand.exe'
+            $testedExe = Join-Path $pluginBuild 'salamand.exe'
             Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
                                       '-SalamanderExe', $testedExe, '-PluginLoadSmokeOnly')
         }
