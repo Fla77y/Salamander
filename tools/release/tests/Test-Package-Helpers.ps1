@@ -580,3 +580,60 @@ if ([string]::IsNullOrEmpty($statusHotTrack) -or
     throw 'Status hot-track geometry must retain full pixel widths and disable unsafe clickable long-disk paths.'
 }
 Write-Host 'PASS: 32700-unit GUI paths avoid 16-bit hot-track loss and unsafe MAX_PATH breadcrumbs.'
+
+
+# Regression contracts for the search and plugin safety review (F1–F8).
+# These are source-level safety gates; behavioral Win32 tests are separate.
+$findDialog1 = Get-Content -LiteralPath (Join-Path $toolsDir '..\..\src\finddlg1.cpp') -Raw
+$findDialog2 = Get-Content -LiteralPath (Join-Path $toolsDir '..\..\src\finddlg2.cpp') -Raw
+$findSearch = Get-Content -LiteralPath (Join-Path $toolsDir '..\..\src\find.cpp') -Raw
+$renameMenu = Get-Content -LiteralPath (Join-Path $toolsDir '..\..\src\plugins\renamer\menu.cpp') -Raw
+$renameDialog = Get-Content -LiteralPath (Join-Path $toolsDir '..\..\src\plugins\renamer\rendlg.cpp') -Raw
+$checksumDialogs = Get-Content -LiteralPath (Join-Path $toolsDir '..\..\src\plugins\checksum\dialogs.cpp') -Raw
+$sevenZip = Get-Content -LiteralPath (Join-Path $toolsDir '..\..\src\plugins\7zip\7zip.cpp') -Raw
+$panelExecute = Get-Content -LiteralPath (Join-Path $toolsDir '..\..\src\fileswn2.cpp') -Raw
+$panelWideNames = Get-Content -LiteralPath (Join-Path $toolsDir '..\..\src\common\win32_unicode_primary_panel.h') -Raw
+$panelTransfers = Get-Content -LiteralPath (Join-Path $toolsDir '..\..\src\fileswn8.cpp') -Raw
+
+# F1/F8: selected search actions must reject non-unique ACP identities
+# before invoking the shell, drag/drop or destructive operations.
+if ($findDialog2 -notmatch 'ValidateSelectedLegacyFindResults\(' -or
+    $findDialog2 -notmatch 'ResolveUnicodePanelFileName' -or
+    $findDialog2 -notmatch 'IsExactAnsiName' -or
+    $findDialog2 -notmatch 'void CFindDialog::OnDelete\(BOOL toRecycle\)(?s:.*?)ValidateSelectedLegacyFindResults\(' -or
+    $findDialog1 -notmatch 'BOOL CFindDialog::GetFocusedFile\((?s:.*?)MAX_PATH') {
+    throw 'F1/F8: search results must validate exact W identities before legacy actions.'
+}
+
+# F3: do not start plugins with an uninitialized root when GetPanelPath fails.
+if ($renameMenu -notmatch 'GetPanelPath\(PANEL_SOURCE' -or
+    $renameDialog -notmatch 'if \(!SG->GetPanelPath\(' -or
+    $checksumDialogs -notmatch 'if \(!SalamanderGeneral->GetPanelPath\(' -or
+    $sevenZip -notmatch 'if \(!SalamanderGeneral->GetPanelPath\(PANEL_SOURCE') {
+    throw 'F3: ANSI plugin boundaries must fail closed for unsupported panel paths.'
+}
+
+# F4: oversize DBCS names must remain visible with a deliberately invalid
+# ANSI placeholder; their true UTF-16 row identity stays separate.
+if ($panelWideNames -notmatch 'MakeUnrepresentableAnsiPanelAlias' -or
+    $panelWideNames -notmatch 'ERROR_INSUFFICIENT_BUFFER' -or
+    $panelWideNames -notmatch 'Record\(') {
+    throw 'F4: wide panel enumeration must retain too-long ACP names without truncating.'
+}
+
+# F5: short-path Unicode aliases must not enter the ANSI association handler.
+if ($panelExecute -notmatch 'UnicodeDiskNames\.IsUnsafeAnsiName\(.*?->Name\)') {
+    throw 'F5: opening a lossy file through the legacy association path must be refused.'
+}
+
+# F7: batch preflight should use one directory identity snapshot per phase,
+# not an O(selected files * directory entries) enumeration.
+$multiTransfer = [regex]::Match(
+    $panelTransfers,
+    '(?s)BOOL CFilesWindow::TryUnicodeMultiFileTransfer\(.*?BOOL CFilesWindow::TryUnicodeSingleFileTransfer\(').Value
+if ($multiTransfer -notmatch 'UnicodePanelNameCache' -or
+    $multiTransfer -notmatch '\.Load\(sourceDirectory\.c_str\(\)' -or
+    $multiTransfer -match 'ResolveUnicodePanelFileName\(') {
+    throw 'F7: Unicode batch transfers must resolve alias uniqueness from bounded phase snapshots.'
+}
+Write-Host 'PASS: search and plugin fail-closed contracts; wide alias fallback and batch snapshot boundaries.'
