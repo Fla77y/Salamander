@@ -16,6 +16,8 @@ bool ConvertSdkPath(const char* path, std::wstring& output) noexcept;
 // local COM, HWND, and decoded pixels. Caller owns the synchronization HANDLEs.
 // Always signals 'ready' once and never accesses 'created' or 'lockOwner' after
 // signaling it. 'onOpen'/'onClose' attach to Salamander's viewer window queue.
+void UnregisterNativeViewerClass(HINSTANCE instance) noexcept;
+
 unsigned RunNativeViewer(const char* path, HINSTANCE instance,
                          int left, int top, int width, int height,
                          UINT showCommand, BOOL alwaysOnTop,
