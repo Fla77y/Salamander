@@ -4,6 +4,7 @@
 
 #include "../../src/plugins/pictview/WicBitmapPresenter.h"
 
+#include <algorithm>
 #include <array>
 #include <cstdio>
 #include <vector>
