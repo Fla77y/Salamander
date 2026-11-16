@@ -4,6 +4,7 @@
 #include "WicNativeViewer.h"
 #include "WicBitmapPresenter.h"
 #include "WicImageDecoder.h"
+#include "WicImageTransforms.h"
 
 #include <algorithm>
 #include <climits>
@@ -49,6 +50,28 @@ bool LoadFrame(WindowState& state, UINT index)
     state.frame = index;
     state.frameCount = frameCount;
     return true;
+}
+
+// Changes only the current in-memory frame. On failure, the displayed image
+// and compositor pixels remain unchanged; the source file is never modified.
+bool TransformFrame(WindowState& state, ImageTransform operation) noexcept
+{
+    try
+    {
+        DecodedImage transformed = state.image;
+        if (FAILED(TransformImage(transformed, operation)))
+            return false;
+        std::vector<std::uint8_t> opaque;
+        if (FAILED(PrepareOpaqueBgra(transformed, opaque)))
+            return false;
+        state.image = std::move(transformed);
+        state.opaque = std::move(opaque);
+        return true;
+    }
+    catch (...)
+    {
+        return false;
+    }
 }
 
 // Draws a decoded image without retaining any GDI resources between paints.
@@ -162,6 +185,21 @@ LRESULT CALLBACK ViewerProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
                 }
                 return 0;
             }
+            case 'R':
+                if (TransformFrame(*state,
+                                   GetKeyState(VK_SHIFT) < 0 ?
+                                       ImageTransform::RotateCounterclockwise :
+                                       ImageTransform::RotateClockwise))
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                return 0;
+            case 'H':
+                if (TransformFrame(*state, ImageTransform::FlipHorizontal))
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                return 0;
+            case 'V':
+                if (TransformFrame(*state, ImageTransform::FlipVertical))
+                    InvalidateRect(hwnd, nullptr, FALSE);
+                return 0;
             case '0':
                 state->fit = true;
                 InvalidateRect(hwnd, nullptr, FALSE);
