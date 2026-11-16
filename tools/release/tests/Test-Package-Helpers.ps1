@@ -692,5 +692,33 @@ if ($findDialog1 -notmatch 'GetWindowTextW\(hLookInWnd' -or
     $findDialog1 -notmatch 'ti\.ErrorOn\(IDC_FIND_LOOKIN\)') {
     throw 'F2: search root validation must not silently truncate or best-fit Unicode.'
 }
+
+# F2: real disk searches must reach the new W-owned result model, and the
+# native 32700-unit fixture must exercise the same search implementation.
+$wideFind = Get-Content -LiteralPath (
+    Join-Path $toolsDir '..\..\src\common\win32_unicode_find.h') -Raw
+$wideFindWindow = Get-Content -LiteralPath (
+    Join-Path $toolsDir '..\..\src\common\win32_unicode_find_window.h') -Raw
+$findCaller = Get-Content -LiteralPath (
+    Join-Path $toolsDir '..\..\src\fileswn5.cpp') -Raw
+$maxPathNative = Get-Content -LiteralPath (
+    Join-Path $toolsDir '..\..\tools\tests\win32_max_path.cpp') -Raw
+$searchNative = Get-Content -LiteralPath (
+    Join-Path $toolsDir '..\..\tools\tests\unicode_find.cpp') -Raw
+if ($managerSource -notmatch [regex]::Escape("'tools\tests\unicode_find.cpp'") -or
+    $wideFind -notmatch 'SearchUnicodeDirectory\(' -or
+    $wideFind -notmatch 'TryEnumerateLongDirectory\(' -or
+    $wideFind -notmatch 'UnicodeFindFileContains\(' -or
+    $wideFind -notmatch 'CreateFileW\(' -or
+    $wideFind -notmatch 'FindNextFileW|TryEnumerateLongDirectory' -or
+    $wideFindWindow -notmatch 'LVM_INSERTITEMW' -or
+    $wideFindWindow -notmatch 'CF_UNICODETEXT' -or
+    $wideFindWindow -notmatch 'TryMoveUnicodeFileNoOverwrite' -or
+    $findCaller -notmatch 'UnicodeFindWindow::Open\(owner, wideRoot' -or
+    $maxPathNative -notmatch 'F2 search preserves full 32700-unit Unicode result' -or
+    $searchNative -notmatch 'cross-buffer UTF-8/UTF-16 search') {
+    throw 'F2: native Unicode Find search and GUI integration must preserve W paths and run the regression suite.'
+}
+Write-Host 'PASS: F2 Win32 W search, result actions, native tests and disk-panel GUI routing are wired.'
 Write-Host 'PASS: legacy plugin menu paths and Unicode find-root input fail closed.'
 Write-Host 'PASS: search and plugin fail-closed contracts; wide alias fallback and batch snapshot boundaries.'
