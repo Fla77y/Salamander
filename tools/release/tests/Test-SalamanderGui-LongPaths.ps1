@@ -2017,7 +2017,17 @@ try {
     # subsequently deleted. -p 2 makes the active test panel deterministic.
     # Quotes keep paths with spaces safe for Salamander's command-line parser.
     $startupArgs = '-l "{0}" -r "{0}" -p 2' -f $source
-    $process = Start-Process -FilePath $SalamanderExe -ArgumentList $startupArgs -WorkingDirectory (Split-Path -Parent $SalamanderExe) -PassThru
+    # The first Salamander instance searches %TEMP% for SAL*.tmp left by
+    # previous sessions. A test must neither prompt about nor delete files
+    # belonging to the user or an earlier application run.
+    $processTemp = Join-Path $root 'process-temp'
+    if ($processTemp.Length -ge 240) {
+        throw 'GUI test TEMP path is too long for native Salamander disk-cache paths.'
+    }
+    [void][IO.Directory]::CreateDirectory($processTemp)
+    $process = Start-Process -FilePath $SalamanderExe -ArgumentList $startupArgs `
+        -WorkingDirectory (Split-Path -Parent $SalamanderExe) `
+        -Environment @{ TEMP = $processTemp; TMP = $processTemp } -PassThru
     # Process.MainWindowHandle/MainWindowTitle may select an auxiliary
     # window. The GUI driver must use the HWND found by Win32 enumeration.
     try {
