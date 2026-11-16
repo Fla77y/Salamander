@@ -17,8 +17,9 @@ $packagingScript = Get-Content -LiteralPath (
 if (-not $releaseWorkflow.Contains('OpenSal\dist\SHA256SUMS-Release.txt') -or
     -not $packagingScript.Contains("'SHA256SUMS-Release.txt'") -or
     -not $packagingScript.Contains('OpenSalamander-Release-x64.7z') -or
-    -not $packagingScript.Contains('OpenSalamander-Release-x64-Setup.exe')) {
-    throw 'Public Release workflow must upload a release-only SHA256SUMS manifest beside the archive and setup.'
+    -not $packagingScript.Contains('OpenSalamander-Release-x64-Setup.exe') -or
+    -not $releaseWorkflow.Contains('Test-ReleaseInstaller.ps1')) {
+    throw 'Public Release workflow must verify checksums, run a silent setup/uninstall smoke, and upload the release manifest.'
 }
 
 
