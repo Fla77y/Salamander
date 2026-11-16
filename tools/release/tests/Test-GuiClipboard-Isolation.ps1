@@ -67,6 +67,114 @@ Add-Type -AssemblyName System.Windows.Forms
     }
     finally { $process.Dispose() }
     Write-Host 'PASS: cross-process CF_UNICODETEXT is independently readable while writer STA is blocked.'
+
+    # A second process deliberately owns the clipboard for a short interval.
+    # The navigation writer must wait only for OpenClipboard, without clearing
+    # or dispatching any GUI command during the contention.
+    $holderPath = Join-Path $root 'clipboard-holder.ps1'
+    $readyPath = Join-Path $root 'clipboard-held.txt'
+    @'
+param([Parameter(Mandatory)][string]$Ready, [Parameter(Mandatory)][int]$HoldMilliseconds)
+$ErrorActionPreference = 'Stop'
+Add-Type -TypeDefinition @"
+using System;
+using System.Runtime.InteropServices;
+public static class ClipboardHoldNative {
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool OpenClipboard(IntPtr window);
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool CloseClipboard();
+}
+"@
+$opened = $false
+try {
+    for ($attempt = 0; $attempt -lt 40; ++$attempt) {
+        if ([ClipboardHoldNative]::OpenClipboard([IntPtr]::Zero)) {
+            $opened = $true
+            break
+        }
+        Start-Sleep -Milliseconds 50
+    }
+    if (-not $opened) { throw 'Clipboard fixture could not obtain its exclusive lock.' }
+    [IO.File]::WriteAllText($Ready, 'locked')
+    Start-Sleep -Milliseconds $HoldMilliseconds
+}
+finally {
+    if ($opened) { [void][ClipboardHoldNative]::CloseClipboard() }
+}
+'@ | Set-Content -LiteralPath $holderPath -Encoding utf8
+
+    function Start-ClipboardHolder {
+        param([int]$HoldMilliseconds)
+        Remove-Item -LiteralPath $readyPath -ErrorAction SilentlyContinue
+        $args = @('-NoLogo', '-NoProfile', '-NonInteractive', '-File',
+                  ('"' + $holderPath + '"'), '-Ready', ('"' + $readyPath + '"'),
+                  '-HoldMilliseconds', [string]$HoldMilliseconds)
+        $child = Start-Process -FilePath (Join-Path $PSHOME 'pwsh.exe') -ArgumentList $args -PassThru
+        $deadline = [DateTime]::UtcNow.AddSeconds(5)
+        while (-not [IO.File]::Exists($readyPath)) {
+            if ($child.HasExited -or [DateTime]::UtcNow -ge $deadline) {
+                try { if (-not $child.HasExited) { $child.Kill() } }
+                finally { $child.Dispose() }
+                throw 'Exclusive clipboard holder failed to start in time.'
+            }
+            Start-Sleep -Milliseconds 20
+        }
+        return $child
+    }
+
+    $retryText = $text + '\retry'
+    $holder = Start-ClipboardHolder -HoldMilliseconds 500
+    try {
+        [SalamanderGuiNative]::SetClipboardUnicodeText($handle, $retryText)
+        if ([Windows.Forms.Clipboard]::GetText() -cne $retryText) {
+            throw 'Transient clipboard contention did not preserve the exact UTF-16 text.'
+        }
+        if (-not $holder.WaitForExit(5000) -or $holder.ExitCode -ne 0) {
+            throw 'Transient clipboard holder did not exit cleanly.'
+        }
+    }
+    finally {
+        if (-not $holder.HasExited) {
+            $holder.Kill()
+            [void]$holder.WaitForExit(4000)
+        }
+        $holder.Dispose()
+    }
+
+    $holder = Start-ClipboardHolder -HoldMilliseconds 2600
+    try {
+        $rejected = $false
+        try {
+            [SalamanderGuiNative]::SetClipboardUnicodeText($handle, $text + '\must-not-write')
+        }
+        catch {
+            if ($_.Exception.Message -match 'OpenClipboard.*(busy|failed).*after') {
+                $rejected = $true
+            }
+            else {
+                throw
+            }
+        }
+        if (-not $rejected) {
+            throw 'Persistent clipboard lock must be rejected within the retry bound.'
+        }
+        if (-not $holder.WaitForExit(5000) -or $holder.ExitCode -ne 0) {
+            throw 'Persistent clipboard holder did not exit cleanly.'
+        }
+        if ([Windows.Forms.Clipboard]::GetText() -cne $retryText) {
+            throw 'Failed clipboard acquisition must not replace the existing clipboard.'
+        }
+    }
+    finally {
+        if (-not $holder.HasExited) {
+            $holder.Kill()
+            [void]$holder.WaitForExit(4000)
+        }
+        $holder.Dispose()
+    }
+    Write-Host 'PASS: transient clipboard lock retries safely; persistent lock fails without mutation.'
+
 }
 finally {
     try {
