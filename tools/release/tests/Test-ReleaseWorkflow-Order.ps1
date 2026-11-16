@@ -37,4 +37,19 @@ if ($smoke -notmatch 'OpenSal\\dist\\OpenSalamander-Release-x64-Setup\.exe' -or
     $upload -match 'OpenSal\\dist\\') {
     throw 'Release workflow must install from built dist and upload only exact validated public artifacts.'
 }
+# The uploaded artifact, not merely its staging directory, must be
+# downloaded by a dependent job and checked independently.
+$verifiedArtifactJob = $source.IndexOf('  verify-public-artifact:', [StringComparison]::Ordinal)
+if ($verifiedArtifactJob -le $uploadStart) {
+    throw 'Missing downstream public artifact download-and-verify job.'
+}
+$downloadedArtifact = $source.Substring($verifiedArtifactJob)
+if ($downloadedArtifact -notmatch '(?m)^    needs: package\\s*
+ -or
+    $downloadedArtifact -notmatch 'actions/download-artifact@v4' -or
+    $downloadedArtifact -notmatch '\\-RequirePublicOnly' -or
+    $downloadedArtifact -notmatch 'Test-ReleaseChecksumManifest\\.ps1') {
+    throw 'Downloaded GitHub Release artifact must be independently verified.'
+}
+
 Write-Host 'PASS: release pipeline smoke, public staging and upload use correct artifact paths.'
