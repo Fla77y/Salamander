@@ -142,3 +142,39 @@ present acceptance transcript tests only restoration.
 
 This document distinguishes **source analysis**, **committed but
 unexecuted test cases**, and **real Windows evidence** deliberately.
+
+
+## Built plug-in export test investigation — 16 November 2026
+
+At **16:23:35–16:23:38 CET**, the real Windows 11 / PowerShell 7.7
+invocation `manage.cmd --update --test-plugin-exports` fast-forwarded
+the integration branch to `e6fd285208944af5c7f6ff5198176694e627c5e2`.
+The x64 Release check stopped on `7zip.spl` before examining the
+other seven plug-in/configuration combinations.
+
+The failure diagnostic **confirmed the public ABI export exists**:
+`dumpbin /exports` displayed
+
+```text
+2    1 00008A50 SalamanderPluginEntry = ?SalamanderPluginEntry@@YAPEAVCPluginInterfaceAbstract@@PEAVCSalamanderPluginEntryAbstract@@@Z (class CPluginInterfaceAbstract * __cdecl SalamanderPluginEntry(class CSalamanderPluginEntryAbstract *))
+3    2 00008A10 SalamanderPluginGetReqVer = ?SalamanderPluginGetReqVer@@YAHXZ (int __cdecl SalamanderPluginGetReqVer(void))
+```
+
+The parser introduced for the previous failure recognized the
+`PublicName = ?DecoratedInternalName` form, but inadvertently
+rejected the additional human-readable C++ signature in parentheses.
+A regression fixture with the **actual observed rows** now covers both
+required exports. `Plugin-Export-Parser.ps1` accepts an optional
+parenthesized demangled signature after an exact public export,
+without accepting partial export names, internal-only symbols or
+forwarded rows. No production plug-in or SDK API was changed.
+
+**Verification:** the new regular-expression cases were checked
+against the observed text in an independent non-PowerShell regex
+reproduction. The actual Windows PowerShell parser regression and
+eight built plug-in binary checks must be rerun; no new pass is
+claimed yet. Re-run:
+
+```powershell
+.\manage.cmd --update --test-plugin-exports
+```
