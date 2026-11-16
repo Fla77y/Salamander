@@ -679,6 +679,8 @@ if ($pluginLoadFixture -notmatch '\[switch\]\$PluginLoadSmokeOnly' -or
     $pluginLoadFixture -notmatch 'GetBlockingPluginDialog' -or
     $pluginLoadFixture -notmatch 'Blocking plug-in initialization dialog' -or
     $pluginLoadFixture -notmatch 'Missing target plug-in modules' -or
+    $pluginLoadFixture -notmatch 'Get-MissingPictViewRuntimeFiles' -or
+    $manager -notmatch 'Get-MissingPictViewRuntimeFiles' -or
     $pluginLoadFixture -notmatch 'GetWindow\(top.Handle, 4\) != mainWindow' -or
     $pluginLoadFixture -notmatch 'GetDlgItem\(top.Handle, 2601\)' -or
     $pluginLoadFixture -notmatch 'VerifiedChild\(dialog, pid, 2616\)' -or
