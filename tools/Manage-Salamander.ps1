@@ -358,6 +358,16 @@ try {
                                           '-VisualStudioRoot', $vs)
             }
         }
+        # Explicit opt-in: this test executes a shell restore verb on its
+        # uniquely identified GUID-scoped fixture. Never included in --test-all.
+        if ($requestedSet.Contains('--test-recycle-restore')) {
+            Write-Host '=== OPT-IN: UNICODE F8 PAPIERKORB-WIEDERHERSTELLUNG ==='
+            $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+            $testedExe = Join-Path (Get-VariantDirectory $configuration) 'salamand.exe'
+            Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                      '-SalamanderExe', $testedExe,
+                                      '-ShortUnicodeRecycleOnly', '-VerifyRecycleRestore')
+        }
         $automatedGuiModes = @(Get-AutomatedGuiModes -RequestedSet $requestedSet)
         foreach ($guiMode in $automatedGuiModes) {
             if ($requestedSet.Contains('--test-gui-baseline')) {
@@ -472,16 +482,6 @@ try {
                 Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
                                           '-SalamanderExe', $testedExe)
             }
-        }
-        # Explicit opt-in: this test executes a shell restore verb on its
-        # uniquely identified GUID-scoped fixture. Never included in --test-all.
-        if ($requestedSet.Contains('--test-recycle-restore')) {
-            Write-Host '=== OPT-IN: UNICODE F8 PAPIERKORB-WIEDERHERSTELLUNG ==='
-            $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
-            $testedExe = Join-Path (Get-VariantDirectory $configuration) 'salamand.exe'
-            Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
-                                      '-SalamanderExe', $testedExe,
-                                      '-ShortUnicodeRecycleOnly', '-VerifyRecycleRestore')
         }
         if ($requestedSet.Contains('--test-gui-manual')) {
             Write-Host '=== MANUELLER SALAMANDER-GUI-LANGPFADTEST ==='
