@@ -12,6 +12,7 @@
 #include "viewer.h"
 #include "shellib.h"
 #include "find.h"
+#include "common/win32_unicode_panel_name.h"
 #include "gui.h"
 #include "usermenu.h"
 #include "execute.h"
@@ -1709,14 +1710,48 @@ void CFindDialog::Validate(CTransferInfo& ti)
 
         if (ti.IsGood())
         {
-            SendMessage(hLookInWnd, WM_GETTEXT, LOOKIN_TEXT_LEN, (LPARAM)Data.LookInText);
-
-            BuildSerchForData();
-            if (SearchForData.Count == 0)
+            // Read the entire Unicode edit value first. WM_GETTEXT into an
+            // ANSI MAX_PATH buffer could silently redirect the search to
+            // a truncated existing directory or a best-fit ACP alias.
+            const int lengthW = GetWindowTextLengthW(hLookInWnd);
+            const bool validUnits = lengthW >= 0 && lengthW < LOOKIN_TEXT_LEN;
+            std::wstring wideInput;
+            if (validUnits)
             {
-                SalMessageBox(HWindow, LoadStr(IDS_FF_EMPTYSTRING), LoadStr(IDS_ERRORTITLE),
-                              MB_OK | MB_ICONEXCLAMATION);
+                wideInput.resize(static_cast<size_t>(lengthW) + 1, L'\0');
+                GetWindowTextW(hLookInWnd, &wideInput[0],
+                               static_cast<int>(wideInput.size()));
+                wideInput.resize(wcslen(wideInput.c_str()));
+            }
+            const int bytes = validUnits
+                ? WideCharToMultiByte(CP_ACP, 0, wideInput.c_str(),
+                                      -1, NULL, 0, NULL, NULL)
+                : 0;
+            char exactInput[LOOKIN_TEXT_LEN] = {};
+            const bool validInput = bytes > 0 && bytes <= LOOKIN_TEXT_LEN &&
+                WideCharToMultiByte(CP_ACP, 0, wideInput.c_str(), -1,
+                                    exactInput, bytes, NULL, NULL) == bytes &&
+                (wideInput.empty() ||
+                 Salamander::IsExactAnsiName(exactInput, wideInput.c_str()));
+            if (!validInput)
+            {
+                SalMessageBox(HWindow,
+                    "The search root cannot be represented without Unicode "
+                    "loss or truncation. Choose a shorter ANSI-compatible "
+                    "directory. No search was started.",
+                    LoadStr(IDS_ERRORTITLE), MB_OK | MB_ICONWARNING);
                 ti.ErrorOn(IDC_FIND_LOOKIN);
+            }
+            else
+            {
+                strcpy_s(Data.LookInText, exactInput);
+                BuildSerchForData();
+                if (SearchForData.Count == 0)
+                {
+                    SalMessageBox(HWindow, LoadStr(IDS_FF_EMPTYSTRING), LoadStr(IDS_ERRORTITLE),
+                                  MB_OK | MB_ICONEXCLAMATION);
+                    ti.ErrorOn(IDC_FIND_LOOKIN);
+                }
             }
         }
 
