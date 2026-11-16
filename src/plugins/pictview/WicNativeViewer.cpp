@@ -99,7 +99,7 @@ void SaveCopy(HWND hwnd, const WindowState& state) noexcept
         dialog.nFilterIndex = 1;
         dialog.lpstrFile = path.data();
         dialog.nMaxFile = static_cast<DWORD>(path.size());
-        dialog.lpstrDefExt = L"png";
+        dialog.lpstrDefExt = nullptr; // extension depends on selected encoder
         dialog.lpstrTitle = L"Save a copy (existing files will not be replaced)";
         dialog.Flags = OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
         if (!GetSaveFileNameW(&dialog))
@@ -115,7 +115,15 @@ void SaveCopy(HWND hwnd, const WindowState& state) noexcept
         default: return;
         }
 
-        const HRESULT hr = SaveNewImage(path.data(), state.image, format);
+        std::wstring destination(path.data());
+        if (!PrepareExportPath(destination, format))
+        {
+            MessageBoxW(hwnd,
+                L"The destination extension must match the selected image format.",
+                L"PictView", MB_OK | MB_ICONERROR);
+            return;
+        }
+        const HRESULT hr = SaveNewImage(destination.c_str(), state.image, format);
         if (FAILED(hr))
         {
             const bool exists =
