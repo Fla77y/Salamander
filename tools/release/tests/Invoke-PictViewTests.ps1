@@ -68,8 +68,7 @@ $specs = @(
         'src\plugins\pictview\WicBitmapPresenter.cpp'
     ); Libraries = @('user32.lib','gdi32.lib') }
 )
-if ($InteractiveWindowTests) {
-    $specs += @{
+$specs += @{
         Name = 'pictview_wic_window'
         Sources = @(
             'tools\tests\pictview_wic_window.cpp',
@@ -82,7 +81,6 @@ if ($InteractiveWindowTests) {
         )
         Libraries = @('user32.lib','gdi32.lib','comdlg32.lib','windowscodecs.lib','ole32.lib')
     }
-}
 
 # Reject quoting syntax which cmd.exe could interpret as another command.
 function Quote-CmdArgument {
@@ -121,10 +119,14 @@ function Invoke-CompiledTest {
         ('pushd ' + (Quote-CmdArgument $directory)),
         'if errorlevel 1 exit /b 1',
         ($compilerArgs -join ' '),
-        'if errorlevel 1 exit /b 1',
-        (Quote-CmdArgument $binary),
-        'exit /b %errorlevel%'
+        'if errorlevel 1 exit /b 1'
     )
+    if ($Spec.Name -ne 'pictview_wic_window' -or $InteractiveWindowTests) {
+        $lines += @( (Quote-CmdArgument $binary), 'exit /b %errorlevel%' )
+    } else {
+        $lines += 'exit /b 0'
+        Write-Host "PictView [$Architecture] window test will be compiled but not executed."
+    }
     $encoding = [Text.Encoding]::GetEncoding(
         [Globalization.CultureInfo]::CurrentCulture.TextInfo.OEMCodePage)
     [IO.File]::WriteAllLines($commandFile, $lines, $encoding)
@@ -141,4 +143,4 @@ foreach ($arch in @('x64','x86')) {
         Invoke-CompiledTest -Architecture $arch -Spec $spec
     }
 }
-Write-Host 'PASS: all requested PictView tests completed for x64 and x86.'
+Write-Host 'PASS: all native PictView tests compiled x86/x64; noninteractive tests executed successfully.'
