@@ -80,7 +80,7 @@ foreach ($required in @('PictViewHostWindows', 'GetWindowThreadProcessId',
                        '[IO.File]::ReadAllBytes($fixture)',
                        'GetGUIThreadInfo', 'GetDlgCtrlID', 'IsFileListFocused',
                        'GetInputFocusSummary', 'WM_ACTIVATE', 'Administrator',
-                       'PictView SPL is not resident after F3', 'Viewer associations',
+                       'Get-PictViewHostFailureHint', 'PictView-HostDiagnostics.ps1',
                        'Test-owned windows', 'before sending F3',
                        'EnumChildWindows', 'GetDialogDetails',
                        'Error dialog after F3', 'single BMP fixture',
@@ -112,5 +112,44 @@ if (-not $hostText.Contains("'-l ""{0}"" -r ""{0}"" -p 2'") -or
     -not $hostText.Contains("[PictViewHostWindows]::GetWindowCaption(") -or
     $hostText.Contains('if ($main.Title -notmatch [regex]::Escape((Split-Path -Leaf $root)))')) {
     throw 'Host GUI test must wait for the configured active-panel path to be applied before F3.'
+}
+# The missing X8D variable is a deterministic regression fixture, not a
+# real dependency and never an environment variable created by the tests.
+$diagnosticFile = Join-Path $root 'tools\release\tests\PictView-HostDiagnostics.ps1'
+$parseErrors = $null
+$tokens = $null
+$diagnosticAst = [Management.Automation.Language.Parser]::ParseFile(
+    $diagnosticFile, [ref]$tokens, [ref]$parseErrors)
+if (-not $diagnosticAst -or $parseErrors.Count -gt 0) {
+    throw "PictView diagnostics script has syntax errors: $($parseErrors -join '; ')"
+}
+. $diagnosticFile
+
+$externalViewerDialog = '[Error] [Static] Environment variable "X8D_BIN_TOOLS_PATH" was not found. | [Button] &Ignore | [Button] Cancel'
+$externalHint = Get-PictViewHostFailureHint -DialogText $externalViewerDialog -PictViewResident $false
+if (-not $externalHint.Contains('X8D_BIN_TOOLS_PATH') -or
+    -not $externalHint.Contains('*.bmp') -or
+    -not $externalHint.Contains('PictView') -or
+    -not $externalHint.Contains('external Viewer') -or
+    -not $externalHint.Contains('Do not create a placeholder') -or
+    [Environment]::GetEnvironmentVariable('X8D_BIN_TOOLS_PATH') -ne $null) {
+    # The environment variable must NOT be fabricated in this test.
+    # A host running with this variable already configured is legitimate;
+    # test only the returned diagnostic in that case.
+    if (-not $externalHint.Contains('X8D_BIN_TOOLS_PATH') -or
+        -not $externalHint.Contains('*.bmp') -or
+        -not $externalHint.Contains('Do not create a placeholder')) {
+        throw 'Missing external viewer variable must produce a precise non-mutating diagnosis.'
+    }
+}
+$genericHint = Get-PictViewHostFailureHint -DialogText '[Error] [Static] Unable to decode BMP' -PictViewResident $true
+if ($genericHint.Contains('X8D_BIN_TOOLS_PATH') -or
+    $genericHint.Contains('external Viewer') -or
+    -not $genericHint.Contains('WIC viewer window')) {
+    throw 'Unrelated WIC viewer failures must not be misdiagnosed as external viewer configuration.'
+}
+$unloadedHint = Get-PictViewHostFailureHint -DialogText '' -PictViewResident $false
+if (-not $unloadedHint.Contains('PictView SPL is not resident')) {
+    throw 'Unloaded PictView requires an explicit non-committal diagnostic.'
 }
 Write-Host 'PASS: manage and local PictView MSVC test registry/AST contracts.'
