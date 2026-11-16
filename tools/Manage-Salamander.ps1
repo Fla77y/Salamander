@@ -130,7 +130,13 @@ function Invoke-Native {
         [Parameter(Mandatory)][string]$Command,
         [string[]]$Arguments = @()
     )
-    & $Command @Arguments
+    # Native child processes (especially nested pwsh.exe) can write directly
+    # to the host without their output being captured by Start-Transcript.
+    # Route both stdout and stderr back through this PowerShell host, keeping
+    # each line visible live AND in the management log. Do not mask exit codes.
+    & $Command @Arguments 2>&1 | ForEach-Object {
+        Write-Host ([string]$_)
+    }
     $status = $LASTEXITCODE
     if ($status -ne 0) {
         throw "'$Command' ist mit Exitcode $status fehlgeschlagen."
@@ -216,6 +222,11 @@ function Build-Variants {
 
 function Run-Tests {
     Write-Host '=== TESTS ==='
+
+    # This process runs the rest of the suite via nested pwsh.exe. Verify
+    # that child stdout/stderr reach the transcript and failures are fatal.
+    $nativeOutputContract = Join-Path $repository 'tools\release\tests\Test-Manage-Native-Output.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $nativeOutputContract)
 
     $productVersionTest = Join-Path $repository 'tools\release\tests\Test-ProductVersion.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $productVersionTest)
