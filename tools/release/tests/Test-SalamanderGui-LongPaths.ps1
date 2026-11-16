@@ -23,6 +23,7 @@ param(
     [switch]$ShortUnicodeRenameOnly,
     [switch]$ShortUnicodeRecycleOnly,
     [switch]$VerifyRecycleRestore,
+    [switch]$PluginLoadSmokeOnly,
     [switch]$ShortUnicodeTransferOnly,
     [switch]$ShortUnicodeTransferCollisionOnly,
     [switch]$ShortUnicodeBestFitOnly,
@@ -351,6 +352,80 @@ public static class SalamanderGuiNative
         StringBuilder name = new StringBuilder(128);
         GetClassName(window, name, name.Capacity);
         return name.ToString();
+    }
+
+    // Open the application's real plug-in manager without blocking on
+    // its modal message loop. Only the verified test main HWND may receive
+    // the command; no global keyboard accelerators are used.
+    public static void PostVerifiedPluginManagerOpen(IntPtr mainWindow, uint pid)
+    {
+        uint actual;
+        if (mainWindow == IntPtr.Zero ||
+            GetWindowThreadProcessId(mainWindow, out actual) == 0 ||
+            actual != pid || !IsWindowVisible(mainWindow) ||
+            GetWindowCaption(mainWindow).IndexOf(
+                "Open Salamander", StringComparison.OrdinalIgnoreCase) < 0)
+            throw new InvalidOperationException(
+                "Refusing to open plug-in manager on an unverified main window");
+        if (!PostMessageW(mainWindow, 0x0111, new UIntPtr(815), IntPtr.Zero))
+            throw new InvalidOperationException(
+                "Could not post CM_PLUGINS to verified Salamander: " +
+                Marshal.GetLastWin32Error());
+    }
+
+    // The actual CPluginsDlg contains IDL_PLUGINS=2601 and
+    // IDB_PLUGINTESTALL=2616. Reject other #32770 dialogs, even ones
+    // owned by the same process.
+    public static IntPtr FindPluginManagerWindow(IntPtr mainWindow, uint pid)
+    {
+        uint mainPid;
+        if (mainWindow == IntPtr.Zero ||
+            GetWindowThreadProcessId(mainWindow, out mainPid) == 0 ||
+            mainPid != pid)
+            throw new InvalidOperationException("Plug-in manager main HWND was not verified");
+
+        IntPtr found = IntPtr.Zero;
+        foreach (TopLevelWindow top in GetProcessWindows(pid))
+        {
+            if (!top.Visible || top.Handle == mainWindow ||
+                ClassName(top.Handle) != "#32770" ||
+                GetWindow(top.Handle, 4) != mainWindow) // GW_OWNER
+                continue;
+
+            IntPtr list = GetDlgItem(top.Handle, 2601); // IDL_PLUGINS
+            IntPtr testAll = GetDlgItem(top.Handle, 2616); // IDB_PLUGINTESTALL
+            if (list == IntPtr.Zero || testAll == IntPtr.Zero)
+                continue;
+
+            uint listPid, testPid;
+            if (GetWindowThreadProcessId(list, out listPid) == 0 ||
+                GetWindowThreadProcessId(testAll, out testPid) == 0 ||
+                listPid != pid || testPid != pid)
+                throw new InvalidOperationException(
+                    "Plug-in Manager child controls have wrong PID");
+            if (found != IntPtr.Zero)
+                throw new InvalidOperationException(
+                    "Multiple matching Plug-in Manager dialogs in test process");
+            found = top.Handle;
+        }
+        return found;
+    }
+
+    // This invokes only Salamander's built-in "Test All" control in a
+    // verified Plug-in Manager. It can load additional configured plugins;
+    // consequently the caller must require explicit opt-in.
+    public static void PostVerifiedPluginTestAll(
+        IntPtr dialog, IntPtr mainWindow, uint pid)
+    {
+        if (dialog == IntPtr.Zero ||
+            FindPluginManagerWindow(mainWindow, pid) != dialog)
+            throw new InvalidOperationException(
+                "Refusing Test All command for unverified Plug-in Manager");
+        IntPtr button = VerifiedChild(dialog, pid, 2616);
+        if (!PostMessageW(dialog, 0x0111, new UIntPtr(2616), button))
+            throw new InvalidOperationException(
+                "Could not post verified Plug-in Manager Test All command: " +
+                Marshal.GetLastWin32Error());
     }
 
     public static IntPtr FindUnicodeSearchWindow(uint pid)
@@ -1587,6 +1662,67 @@ function Test-UnicodeFindGui {
     Write-Host 'PASS: Unicode Find GUI search, actions, shell refusal, cancellation and worker shutdown.'
 }
 
+# Exercise the real CPluginsDlg -> CPlugins::TestAll -> InitDLL path
+# using only Salamander's disposable child process, never an external DLL.
+# Confirm target modules by *absolute path*, not by filename alone.
+function Test-PluginLoadSmoke {
+    $binaryRoot = [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($SalamanderExe))
+    $expected = @(
+        '7zip', 'checksum', 'filecomp', 'renamer' | ForEach-Object {
+            $name = $_
+            $fullPath = [IO.Path]::GetFullPath(
+                (Join-Path $binaryRoot ("plugins\{0}\{0}.spl" -f $name)))
+            if (-not [IO.File]::Exists($fullPath)) {
+                throw "Missing built plug-in for GUI integration: $fullPath"
+            }
+            $fullPath
+        }
+    )
+    Assert-True ($expected.Count -eq 4) 'All four built x64 plug-in paths exist'
+
+    # Arrange: use the checked GUID-scoped source and the verified main HWND.
+    Assert-True (Test-Content $unicodeShortFile) 'Plugin smoke source fixture intact before loading'
+    [SalamanderGuiNative]::PostVerifiedPluginManagerOpen(
+        $mainWindowHandle, [uint32]$process.Id)
+    $manager = @{ Window = [IntPtr]::Zero }
+    Wait-Until {
+        $manager.Window = [SalamanderGuiNative]::FindPluginManagerWindow(
+            $mainWindowHandle, [uint32]$process.Id)
+        return $manager.Window -ne [IntPtr]::Zero
+    } 'verified Salamander Plug-in Manager dialog'
+    Write-Host 'PASS: verified Plug-in Manager dialog belongs to launched Salamander PID'
+
+    # Act: the application's actual Test All button invokes each installed
+    # plugin's InitDLL. This is explicit opt-in: third-party plugins can run.
+    [SalamanderGuiNative]::PostVerifiedPluginTestAll(
+        $manager.Window, $mainWindowHandle, [uint32]$process.Id)
+
+    # Assert: the modules must be present in the real child process. InitDLL
+    # unloads DLLs that fail entry-point and interface validation. A module
+    # with the correct filename in an unrelated directory cannot satisfy it.
+    $missing = @{ Paths = @() }
+    Wait-Until {
+        $process.Refresh()
+        if ($process.HasExited) { throw 'Salamander exited during plugin initialization.' }
+        $loaded = @($process.Modules | ForEach-Object {
+            [IO.Path]::GetFullPath($_.FileName)
+        })
+        $missing.Paths = @($expected | Where-Object {
+            $required = $_
+            -not @($loaded | Where-Object {
+                [string]::Equals($_, $required, [StringComparison]::OrdinalIgnoreCase)
+            }).Count
+        })
+        return $missing.Paths.Count -eq 0
+    } 'four exact plug-in modules loaded in the Salamander process' -TimeoutSecondsOverride 90
+
+    foreach ($path in $expected) {
+        Write-Host "PASS: Salamander loaded and retained plug-in module $path"
+    }
+    Assert-True (Test-Content $unicodeShortFile) 'Plugin test preserved original Unicode fixture bytes'
+    Write-Host 'PASS: real Plug-in Manager Test All initialized four built-in x64 plug-in modules.'
+}
+
 function Save-FailureScreenshot {
     try {
         # Save only the app window; other desktop windows may contain private data.
@@ -1741,6 +1877,7 @@ try {
         Assert-True ($collisionFile.Length -lt 260) 'Unicode collision fixture uses a short path'
     }
     if (-not $BaselineOnly -and -not $ShortUnicodeOnly -and
+        -not $PluginLoadSmokeOnly -and
         -not $ShortUnicodeCollisionOnly -and -not $ShortUnicodeRowIdentityOnly -and
         -not $ShortUnicodeBestFitOnly -and -not $ShortUnicodeRenameOnly -and
         -not $ShortUnicodeTransferOnly -and -not $ShortUnicodeTransferCollisionOnly -and
@@ -1868,6 +2005,11 @@ try {
     Write-Host 'PASS: GUI driver can navigate a normal short directory'
     if ($UnicodeFindOnly) {
         Test-UnicodeFindGui
+        $passed = $true
+        return
+    }
+    if ($PluginLoadSmokeOnly) {
+        Test-PluginLoadSmoke
         $passed = $true
         return
     }
