@@ -5,6 +5,10 @@
 #include "WicBitmapPresenter.h"
 #include "WicImageDecoder.h"
 #include "WicImageTransforms.h"
+#include "WicImageWriter.h"
+
+#include <commdlg.h>
+#pragma comment(lib, "comdlg32.lib")
 
 #include <algorithm>
 #include <climits>
@@ -71,6 +75,61 @@ bool TransformFrame(WindowState& state, ImageTransform operation) noexcept
     catch (...)
     {
         return false;
+    }
+}
+
+// Save Copy is deliberately non-destructive: existing paths are rejected by
+// CREATE_NEW in SaveNewImage, regardless of races or dialog behavior.
+void SaveCopy(HWND hwnd, const WindowState& state) noexcept
+{
+    try
+    {
+        std::vector<wchar_t> path(32768, L'\0');
+        static constexpr wchar_t filters[] =
+            L"PNG (*.png)\0*.png\0"
+            L"JPEG (*.jpg)\0*.jpg;*.jpeg\0"
+            L"Bitmap (*.bmp)\0*.bmp\0"
+            L"TIFF (*.tif)\0*.tif;*.tiff\0\0";
+
+        OPENFILENAMEW dialog{};
+        dialog.lStructSize = sizeof(dialog);
+        dialog.hwndOwner = hwnd;
+        dialog.lpstrFilter = filters;
+        dialog.nFilterIndex = 1;
+        dialog.lpstrFile = path.data();
+        dialog.nMaxFile = static_cast<DWORD>(path.size());
+        dialog.lpstrDefExt = L"png";
+        dialog.lpstrTitle = L"Save a copy (existing files will not be replaced)";
+        dialog.Flags = OFN_EXPLORER | OFN_PATHMUSTEXIST | OFN_NOCHANGEDIR;
+        if (!GetSaveFileNameW(&dialog))
+            return;
+
+        ImageFileFormat format = ImageFileFormat::Png;
+        switch (dialog.nFilterIndex)
+        {
+        case 1: format = ImageFileFormat::Png; break;
+        case 2: format = ImageFileFormat::Jpeg; break;
+        case 3: format = ImageFileFormat::Bmp; break;
+        case 4: format = ImageFileFormat::Tiff; break;
+        default: return;
+        }
+
+        const HRESULT hr = SaveNewImage(path.data(), state.image, format);
+        if (FAILED(hr))
+        {
+            const bool exists =
+                hr == HRESULT_FROM_WIN32(ERROR_FILE_EXISTS) ||
+                hr == HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS);
+            MessageBoxW(hwnd,
+                exists ? L"The destination already exists. Choose a new file name."
+                       : L"Image export failed. The source file was not modified.",
+                L"PictView", MB_OK | MB_ICONERROR);
+        }
+    }
+    catch (...)
+    {
+        MessageBoxW(hwnd, L"Image export failed. The source file was not modified.",
+                    L"PictView", MB_OK | MB_ICONERROR);
     }
 }
 
@@ -185,6 +244,13 @@ LRESULT CALLBACK ViewerProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
                 }
                 return 0;
             }
+            case 'S':
+                if (GetKeyState(VK_CONTROL) < 0 && GetKeyState(VK_SHIFT) < 0)
+                {
+                    SaveCopy(hwnd, *state);
+                    return 0;
+                }
+                break;
             case 'R':
                 if (TransformFrame(*state,
                                    GetKeyState(VK_SHIFT) < 0 ?
