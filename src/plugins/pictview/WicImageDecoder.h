@@ -26,4 +26,9 @@ struct DecodedImage
 // An explicit 256 MiB decoded-pixel limit prevents unbounded allocation
 // from untrusted images (independent of the compressed file size).
 HRESULT DecodeFirstFrame(const wchar_t* path, DecodedImage& output) noexcept;
+
+// Decode a selected frame with the same ownership, size and failure guarantees.
+// 'frameCount' receives the total count on success; nullptr is accepted.
+HRESULT DecodeFrame(const wchar_t* path, UINT frameIndex, DecodedImage& output,
+                    UINT* frameCount = nullptr) noexcept;
 } // namespace pictview::wic
