@@ -12,6 +12,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$InstallerPath,
+    [string]$PortableDirectory,
     [ValidateRange(10, 300)][int]$TimeoutSeconds = 180
 )
 
@@ -72,6 +73,13 @@ try {
         if (-not (Test-Path -LiteralPath (Join-Path $target $required) -PathType Leaf)) {
             throw "Installed Release distribution is missing $required"
         }
+    }
+
+    # A successful setup must install every portable payload file, not just
+    # a small set of required EXEs and plugins. This comparison is read-only.
+    if (-not [string]::IsNullOrWhiteSpace($PortableDirectory)) {
+        & (Join-Path $PSScriptRoot 'Test-InstalledPayload.ps1') `
+            -PortableDirectory $PortableDirectory -InstalledDirectory $target
     }
 
     $uninstallers = @(Get-ChildItem -LiteralPath $target -File -Filter 'unins*.exe')
