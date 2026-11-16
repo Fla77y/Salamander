@@ -111,11 +111,32 @@ not independently prove which repository revision or binary build produced
 the result. It does not cover long paths, network/removable drives,
 directory recycling, alternative locales or non-elevated GUI behavior.
 
-**Still pending:** the separate `--test-plugin-exports` Windows result
-for the revised public-export parser. A previous attempt on commit
-`199195f` failed at the parser assertion for `7zip.spl` before
-the Recycle Bin test ran. The corrected parser is committed, but the
-present acceptance transcript tests only restoration.
+**Now verified separately:** the corrected built plug-in PE export test passed
+for all four priority plug-ins in x64 Release and Debug on `0adf068`
+(see the acceptance record below). GUI plug-in behavior is still unverified.
+
+## Verified x64 plug-in PE/SDK binary contracts — 16 November 2026
+
+**PASS: 8/8 checked binaries (16:26:24–16:26:27 CET).**
+
+A user-provided real Windows PowerShell 7.7 transcript reports
+`manage.cmd --update --test-plugin-exports`, fast-forwarding the working
+branch from `e6fd285` to the exact tested commit
+`0adf0689578ba05a786f80440d7bb153bc236cf1`.
+
+Both x64 Release and x64 Debug tested the built `7zip.spl`,
+`checksum.spl`, `filecomp.spl` and `renamer.spl`. Every
+binary passed the architecture/public-export checks for
+`SalamanderPluginEntry` and `SalamanderPluginGetReqVer`.
+The command ended with
+`Alle angeforderten Schritte erfolgreich abgeschlossen.`
+
+This closes the previous export-parser failure, but **does not verify
+that Salamander loads the plug-ins**, activates menus, processes file
+contents, accepts Unicode paths or preserves files during operations.
+The test is deliberately read-only and does not load the DLLs.
+Actual plug-in GUI behavior must be tested separately. The build
+artifacts were reused; no fresh build was performed by this command.
 
 ## Next independently testable development slices
 
