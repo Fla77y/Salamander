@@ -1,7 +1,8 @@
 # PictView replacement with Windows Imaging Component (WIC)
 
-Status: **integrated first-frame native viewer + thumbnails; feature parity and
-real Windows GUI acceptance remain outstanding.** Work is stacked as PR #10
+Status: **integrated native WIC viewer, manual multi-frame viewing, in-memory
+transformations, export, clipboard copy and thumbnails; legacy feature parity
+and real Windows GUI acceptance remain outstanding.** Work is stacked as PR #10
 on PR #9. This branch must remain Draft.
 
 ## Licensing and rationale
@@ -30,11 +31,21 @@ by PVW32 may have no WIC codec and must not be advertised as working.
   on that thread, posts the ready event once, preserves the viewer lock
   contract and registers/unregisters with `ViewerWindowQueue`. Supports
   fit-to-window (0), zoom +/- or mouse wheel, PageUp/PageDown for
-  multipage WIC formats, and Escape/close.
+  multipage WIC formats; R/Shift+R rotate clockwise/counterclockwise, H/V
+  mirror the current in-memory frame, Ctrl+C copies a composited bitmap,
+  Ctrl+Shift+S exports a new image; Escape/close exits.
 - `pictview.cpp`: `InitViewer` no longer calls `LoadPictViewDll` or
   `PVSetParam`; the existing viewer entry point delegates to
   `RunNativeViewer`. The old PVW32 renderer is **not reached by the
   advertised viewer operation**.
+- `WicImageTransforms`: atomic pixel-perfect rotation and mirroring of the
+  in-memory, straight-alpha BGRA frame; input files are never changed.
+- `WicImageWriter`: independent WIC PNG/BMP/JPEG/TIFF encoder. The Save Copy
+  action encodes before creating a destination with CREATE_NEW, protecting
+  existing files; JPEG/BMP alpha is flattened over white. This is not
+  an in-place overwrite/save function.
+- `WicImageClipboard`: validates the image and creates a top-down CF_DIB
+  bitmap with alpha flattened over white for Ctrl+C.
 - `thumbs.cpp`: the plugin thumbnail callback decodes through WIC,
   respects cancellation, reports dimensions and streams composited rows
   to the Salamander thumbnail maker.
@@ -58,8 +69,10 @@ product. The following old capabilities are **not migrated**:
 
 - Timed animated GIF playback; multipage WIC images support manual
   frame navigation (PageUp/PageDown), not animation scheduling
-- Image rotation, mirroring, cropping, pixel editing and image save/export
-- Clipboard/capture, TWAIN/WIA, wallpaper, print and batch operations
+- Cropping, selections, additional pixel editing, in-place save/overwrite,
+  editable history/undo and the old save-format choices
+- Clipboard paste and screen capture, TWAIN/WIA, wallpaper, print and
+  batch operations; plain-image clipboard **copy** is implemented
 - Legacy format-specific codecs (RAW, CDR, PSP, etc.) not provided by WIC
 - EXIF orientation/color management, metadata UI and legacy PictView menus
 - Advanced slideshow/navigation, persistent viewer layout/configuration,
@@ -73,7 +86,8 @@ format probes and decoder failures must fail without corrupting original data.
 
 The decoder's independent MSVC x86/x64 BMP, PNG, alpha and error tests
 previously passed on PR #9. PR #10 adds the presenter, ABI path conversion,
-and Win32 viewer components, with native MSVC x86/x64 test jobs. Earlier
+and Win32 viewer, image transforms, safe writer and clipboard components,
+with native MSVC x86/x64 test jobs. Earlier
 runs detected Windows `min/max` macro and ANSI cursor type compiler errors;
 follow-up code fixes were committed. **No end-to-end Salamander GUI acceptance
 of the new native viewer has been established as of this document update.**
@@ -96,7 +110,10 @@ Required release gates before claiming a full integration:
 Do not merge PR #9/#10 as universal PictView compatibility based only
 on compiler success or decoder/unit regressions.
 
-The subsequent frame decoder regression also creates a two-page TIFF using
-WIC, then checks distinct first- and second-page pixels and rejects invalid
-indices without exposing stale image buffers. Its first real CI execution
-is still required before claiming multi-page behavior verified.
+The frame decoder regression creates a two-page TIFF using WIC, checks
+first- and second-page pixels and rejects invalid indices without stale
+outputs. Standalone x86/x64 WIC tests have passed for the decoder, geometry,
+rotation/mirroring and safe new-file PNG export at commit 7e8aa1c9.
+The clipboard DIB tests and complete native plugin builds require fresh
+verification on the latest source commit. These unit tests are not a real GUI
+acceptance of the in-process PictView plug-in.
