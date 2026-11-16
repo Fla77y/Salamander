@@ -35,6 +35,7 @@ $scriptFiles = @(
     (Join-Path $toolsDir 'Update-Build-Test-Package.ps1'),
     (Join-Path $toolsDir '..\Manage-Salamander.ps1'),
     (Join-Path $toolsDir 'tests\Test-ReleaseChecksumManifest.ps1'),
+    (Join-Path $toolsDir 'tests\Test-ReleaseInstaller.ps1'),
     (Join-Path $toolsDir 'tests\Test-FilenamesAndPaths.ps1'),
     (Join-Path $toolsDir 'tests\Test-SalamanderGui-LongPaths.ps1')
 )
@@ -412,6 +413,12 @@ function Assert-Throws {
     try { & $Action } catch { $threw = $true }
     if (-not $threw) { throw "Expected failure did not occur: $Description" }
 }
+
+# Reject absent installer before creating a temporary install directory.
+$missingInstaller = Join-Path $env:TEMP ('OpenSal-missing-setup-' + [Guid]::NewGuid().ToString('N') + '.exe')
+Assert-Throws {
+    & (Join-Path $toolsDir 'tests\Test-ReleaseInstaller.ps1') -InstallerPath $missingInstaller
+} 'Installer smoke must fail closed for a nonexistent setup executable'
 
 $root = Join-Path $env:TEMP ('OpenSal-Package-Tests-' + [guid]::NewGuid().ToString('N'))
 $stage = Join-Path $root 'stage'
