@@ -1,12 +1,22 @@
 // SPDX-FileCopyrightText: 2026 Open Salamander Authors
 // SPDX-License-Identifier: GPL-2.0-or-later
 
-#include "../../src/common/shellfileopnames.h"
-
 #include <array>
 #include <cstdio>
 #include <cstring>
 #include <string>
+
+// Model the legacy Salamander precompiled-header macro, which redirects
+// unqualified memcpy calls to a global safety wrapper. Defining it before
+// including shellfileopnames.h catches accidental std::memcpy qualification.
+static void* _sal_safe_memcpy(void* destination, const void* source,
+                              std::size_t byteCount)
+{
+    return std::memcpy(destination, source, byteCount);
+}
+#define memcpy _sal_safe_memcpy
+#include "../../src/common/shellfileopnames.h"
+#undef memcpy
 
 static bool Check(bool condition, const char* description)
 {
