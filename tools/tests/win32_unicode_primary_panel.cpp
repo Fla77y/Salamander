@@ -62,15 +62,28 @@ int main()
         legacy.cFileName[0] == '\0')
         return std::puts("FAIL: primary metadata contract changed"), 1;
 
-    // A max-length Unicode component may expand beyond the legacy ANSI
-    // WIN32_FIND_DATAA array; rejecting it is safer than truncating it.
+    // Arrange: a valid 255-unit W name expands past the ANSI data buffer
+    // under DBCS. The compatibility name must be an invalid filesystem name
+    // and the full W row identity must remain available.
     WIN32_FIND_DATAW oversized = {};
     for (int i = 0; i < 255; ++i)
         oversized.cFileName[i] = L'東';
     oversized.cFileName[255] = 0;
-    if (Salamander::TryConvertUnicodePanelFindData(
-            oversized, legacy, error) && std::strlen(legacy.cFileName) >= MAX_PATH)
-        return std::puts("FAIL: legacy ANSI buffer overflow accepted"), 1;
+    // The condition depends on the active ACP. Under a DBCS ACP the
+    // overflow path must succeed with a safe placeholder, never truncation.
+    const int bytes = WideCharToMultiByte(CP_ACP, 0, oversized.cFileName,
+                                          -1, NULL, 0, NULL, NULL);
+    if (!Salamander::TryConvertUnicodePanelFindData(oversized, legacy, error))
+        return std::puts("FAIL: valid W filename disappeared from the panel"), 1;
+    if (bytes > static_cast<int>(sizeof(legacy.cFileName)) &&
+        (legacy.cFileName[0] != '?' ||
+         std::strlen(legacy.cFileName) >= sizeof(legacy.cFileName)))
+        return std::puts("FAIL: unrepresentable ANSI alias was not safely marked"), 1;
+    Salamander::UnicodePanelRowIdentities expandedNames;
+    expandedNames.Record(legacy.cFileName, oversized.cFileName);
+    if (!expandedNames.TryGet(legacy.cFileName, name) ||
+        name != oversized.cFileName)
+        return std::puts("FAIL: placeholder lost full Unicode row identity"), 1;
 
     return std::puts("PASS: per-row Unicode identities and wide find-data adapter"), 0;
 }
