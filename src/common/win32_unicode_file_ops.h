@@ -8,6 +8,8 @@
 
 #include <windows.h>
 #include <string>
+#include <atomic>
+#include <cwchar>
 
 namespace Salamander
 {
@@ -45,13 +47,55 @@ inline bool TryCopyUnicodeFileNoOverwrite(const Utf16DiskPath& source,
         !UnicodeFileOperationsDetail::TryGetExtendedPath(destination, destinationPath, error))
         return false;
 
-    if (!CopyFileW(sourcePath.c_str(), destinationPath.c_str(), TRUE))
+    // Publish only a fully copied file. CopyFileW directly to the final
+    // name can expose incomplete bytes while the copy is still running.
+    // Stage in the destination directory, then atomically rename on the
+    // same volume without MOVEFILE_REPLACE_EXISTING.
+    static std::atomic<unsigned long long> nextCopyId{0};
+    const std::size_t slash = destinationPath.find_last_of(L'\\');
+    if (slash == std::wstring::npos)
     {
-        error = GetLastError();
+        error = ERROR_INVALID_NAME;
         return false;
     }
-    error = ERROR_SUCCESS;
-    return true;
+    const std::wstring targetDirectory = destinationPath.substr(0, slash + 1);
+    for (unsigned attempt = 0; attempt != 8; ++attempt)
+    {
+        wchar_t candidate[88];
+        swprintf_s(candidate, L".opensal-copy-%08lX-%016llX-%016llX.tmp",
+                   static_cast<unsigned long>(GetCurrentProcessId()),
+                   static_cast<unsigned long long>(GetTickCount64()),
+                   ++nextCopyId);
+        const std::wstring temporary = targetDirectory + candidate;
+        if (temporary.size() >= 32767)
+        {
+            error = ERROR_FILENAME_EXCED_RANGE;
+            return false;
+        }
+        if (!CopyFileW(sourcePath.c_str(), temporary.c_str(), TRUE))
+        {
+            error = GetLastError();
+            if (error == ERROR_FILE_EXISTS || error == ERROR_ALREADY_EXISTS)
+                continue; // Never delete a candidate we did not create.
+            // CopyFileW may have left an incomplete target on failure.
+            // The staging name was generated for this attempt only.
+            DeleteFileW(temporary.c_str());
+            return false;
+        }
+
+        if (MoveFileExW(temporary.c_str(), destinationPath.c_str(), 0))
+        {
+            error = ERROR_SUCCESS;
+            return true;
+        }
+        error = GetLastError();
+        // Preserve the original Win32 error, not a cleanup error.
+        SetFileAttributesW(temporary.c_str(), FILE_ATTRIBUTE_NORMAL);
+        DeleteFileW(temporary.c_str());
+        return false;
+    }
+    error = ERROR_ALREADY_EXISTS;
+    return false;
 }
 
 // Same-volume move/rename; deliberately no MOVEFILE_COPY_ALLOWED fallback.
