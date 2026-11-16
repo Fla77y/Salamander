@@ -83,8 +83,8 @@ if ($managerText -notmatch "--test-plugin-load" -or
     $managerText -notmatch "Get-MissingPictViewRuntimeFiles" -or
     $managerText -notmatch "Test-PictView-Host.ps1" -or
     $managerText -notmatch "-WicViewerVerified" -or
-    $runtimeText -notmatch "\[switch\]\`$WicViewerVerified" -or
-    $guiText -notmatch "\[switch\]\`$WicViewerVerified" -or
+    -not $runtimeText.Contains('[switch]$WicViewerVerified') -or
+    -not $guiText.Contains('[switch]$WicViewerVerified') -or
     $guiText -notmatch "Get-MissingPictViewRuntimeFiles") {
     throw 'PR8 plugin load gate must first verify the native WIC viewer in Salamander.'
 }
