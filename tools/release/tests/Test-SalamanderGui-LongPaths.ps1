@@ -663,8 +663,38 @@ function Read-PanelPath {
     throw 'Panel path clipboard shortcut did not publish a path after 3 verified command dispatches.'
 }
 
+function Format-GuiDiagnosticPath {
+    param([string]$Path)
+
+    if ($null -eq $Path) { return '<null>' }
+    if ($Path.Length -le 180) { return $Path }
+    $prefix = $Path.Substring(0, 90)
+    $suffix = $Path.Substring($Path.Length - 70)
+    return ("length={0} UTF-16 units; prefix='{1}'; omitted={2} units; suffix='{3}'" -f
+        $Path.Length, $prefix, ($Path.Length - 160), $suffix)
+}
+
+function Get-TestProcessState {
+    $process.Refresh()
+    if ($process.HasExited) {
+        # Preserve the original Windows NTSTATUS as an unsigned 8-digit hex
+        # value; .NET Process.ExitCode returns a signed Int32.
+        $hexCode = [uint32](([int64]$process.ExitCode) -band 0xFFFFFFFFL)
+        return ('exited=True; exitCode={0}; exitCodeHex=0x{1:X8}' -f
+            $process.ExitCode, $hexCode)
+    }
+
+    [uint32]$mainOwnerPid = 0
+    [void][SalamanderGuiNative]::GetWindowThreadProcessId(
+        $mainWindowHandle, [ref]$mainOwnerPid)
+    return ('exited=False; main HWND owner PID={0}; process windows={1}' -f
+        $mainOwnerPid, (Get-ProcessWindowSummary -OwnerProcessId ([uint32]$process.Id)))
+}
+
 function Go-ToPath {
     param([string]$Path)
+
+    $pathSummary = Format-GuiDiagnosticPath $Path
 
     # The only clipboard payload is CF_UNICODETEXT, not a file drop. The
     # synchronous WM_COMMAND 775 requests navigation to that directory.
@@ -687,9 +717,24 @@ function Go-ToPath {
             # startup clipboard races. The final attempt uses the full timeout.
             $probeSeconds = if ($attempt -eq 1) { 6 } else { $TimeoutSeconds }
             Wait-Until {
+                # A process crash destroys the main HWND and moves foreground
+                # focus elsewhere. Never report that as an ordinary navigation
+                # timeout; preserve the exit status while the Process exists.
+                $process.Refresh()
+                if ($process.HasExited) {
+                    throw ("Salamander exited during navigation to {0}: {1}" -f
+                        $pathSummary, (Get-TestProcessState))
+                }
+                [uint32]$currentMainOwner = 0
+                [void][SalamanderGuiNative]::GetWindowThreadProcessId(
+                    $mainWindowHandle, [ref]$currentMainOwner)
+                if ($currentMainOwner -ne [uint32]$process.Id) {
+                    throw ("Verified Salamander main window disappeared during navigation to {0}; {1}" -f
+                        $pathSummary, (Get-TestProcessState))
+                }
                 $dialogText = Get-TestDialog
                 if (-not [string]::IsNullOrEmpty($dialogText)) {
-                    throw "Salamander raised a dialog during navigation to '$Path': $dialogText"
+                    throw "Salamander raised a dialog during navigation to $($pathSummary): $dialogText"
                 }
                 $diagnostics.ForegroundPid = Get-ActiveProcessId
                 if ($diagnostics.ForegroundPid -ne [uint32]$process.Id) { return $false }
@@ -704,7 +749,7 @@ function Go-ToPath {
                     $diagnostics.PanelReadError = $_.Exception.Message
                     return $false
                 }
-            } "Salamander navigation to $Path" -TimeoutSecondsOverride $probeSeconds
+            } "Salamander navigation to $pathSummary" -TimeoutSecondsOverride $probeSeconds
 
             Assert-True ($diagnostics.PanelPath -ceq $Path) "Salamander panel path agrees with requested ($($Path.Length) UTF-16 units)"
             return
@@ -717,17 +762,18 @@ function Go-ToPath {
                 $diagnostics.ForegroundPid -eq [uint32]$process.Id -and
                 [string]::IsNullOrEmpty($dialogText)) {
                 Write-Warning ("GUI navigation not confirmed on attempt {0}; last path='{1}'; clipboard read='{2}'. Retrying once." -f
-                    $attempt, $diagnostics.PanelPath, $diagnostics.PanelReadError)
+                    $attempt, (Format-GuiDiagnosticPath $diagnostics.PanelPath), $diagnostics.PanelReadError)
                 continue
             }
 
             $process.Refresh()
             throw (("GUI navigation failed: {0}; Salamander PID={1}; HWND=0x{2:X}; title='{3}'; " +
-                "foreground PID={4}; last panel path='{5}'; panel read error='{6}'; dialog='{7}'; attempts={8}" ) -f
+                "foreground PID={4}; last panel path='{5}'; panel read error='{6}'; dialog='{7}'; attempts={8}; process state=[{9}]; foreground=[{10}]" ) -f
                 $failure, $process.Id, $mainWindowHandle.ToInt64(),
                 [SalamanderGuiNative]::GetWindowCaption($mainWindowHandle),
-                $diagnostics.ForegroundPid, $diagnostics.PanelPath,
-                $diagnostics.PanelReadError, $dialogText, $attempt)
+                $diagnostics.ForegroundPid, (Format-GuiDiagnosticPath $diagnostics.PanelPath),
+                $diagnostics.PanelReadError, $dialogText, $attempt,
+                (Get-TestProcessState), (Get-ForegroundWindowSummary))
         }
     }
 }
