@@ -45,7 +45,7 @@ function Get-PayloadFiles {
             throw "Duplicate case-insensitive payload path: $relative"
         }
     }
-    return $files
+    return ,$files
 }
 
 # Arrange: enumerate the complete portable and installed inventories.
