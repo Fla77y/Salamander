@@ -62,6 +62,10 @@ jobs:
         shell: pwsh
         run: ./tools/release/tests/Test-ReleaseChecksumManifest.ps1 -DistributionDirectory (Join-Path $env:RUNNER_TEMP 'OpenSal\dist')
 
+      - name: Smoke-test silent Release installer and uninstaller
+        shell: pwsh
+        run: ./tools/release/tests/Test-ReleaseInstaller.ps1 -InstallerPath (Join-Path $env:RUNNER_TEMP 'OpenSal\dist\OpenSalamander-Release-x64-Setup.exe')
+
       # Never expose Debug CRT DLLs via public workflow artifacts.
       # GUI automation requires an unlocked interactive desktop. GitHub-hosted
       # runners run as non-interactive services, so real UI tests are a
