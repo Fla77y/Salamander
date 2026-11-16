@@ -33,6 +33,7 @@ $scriptFiles = @(
     (Join-Path $toolsDir 'Package-Helpers.ps1'),
     (Join-Path $toolsDir 'Update-Build-Test-Package.ps1'),
     (Join-Path $toolsDir '..\Manage-Salamander.ps1'),
+    (Join-Path $toolsDir 'tests\Test-ReleaseChecksumManifest.ps1'),
     (Join-Path $toolsDir 'tests\Test-FilenamesAndPaths.ps1'),
     (Join-Path $toolsDir 'tests\Test-SalamanderGui-LongPaths.ps1')
 )
@@ -458,6 +459,40 @@ exit /b 0
         Set-Content -LiteralPath (Join-Path $stage $filename) -Value 'test fixture' -Encoding ascii
     }
     Test-DistributionStage -Stage $stage -Configuration Debug -DumpbinExe $fakeDumpbin
+    # Verify the distributable manifest against real fixture bytes, including
+    # malicious or accidental changes after packaging.
+    $public = Join-Path $root 'public'
+    New-Item -ItemType Directory -Path $public -Force | Out-Null
+    $archiveName = 'OpenSalamander-Release-x64.7z'
+    $setupName = 'OpenSalamander-Release-x64-Setup.exe'
+    $archiveFile = Join-Path $public $archiveName
+    $setupFile = Join-Path $public $setupName
+    Set-Content -LiteralPath $archiveFile -Value 'sample portable bytes' -Encoding ascii
+    Set-Content -LiteralPath $setupFile -Value 'sample installer bytes' -Encoding ascii
+    $publicHashes = @(
+        '{0} *{1}' -f (Get-FileHash -LiteralPath $archiveFile -Algorithm SHA256).Hash.ToLowerInvariant(), $archiveName
+        '{0} *{1}' -f (Get-FileHash -LiteralPath $setupFile -Algorithm SHA256).Hash.ToLowerInvariant(), $setupName
+    )
+    $publicManifest = Join-Path $public 'SHA256SUMS-Release.txt'
+    $verifier = Join-Path $toolsDir 'tests\Test-ReleaseChecksumManifest.ps1'
+    $publicHashes | Set-Content -LiteralPath $publicManifest -Encoding ascii
+    & $verifier -DistributionDirectory $public
+
+    # Act/Assert: tampering, duplicates, Debug references and missing files
+    # are rejected rather than reported as verified public downloads.
+    Set-Content -LiteralPath $archiveFile -Value 'tampered content' -Encoding ascii
+    Assert-Throws { & $verifier -DistributionDirectory $public } 'Tampered public Release archive must fail'
+    Set-Content -LiteralPath $archiveFile -Value 'sample portable bytes' -Encoding ascii
+    @($publicHashes[0], $publicHashes[0]) |
+        Set-Content -LiteralPath $publicManifest -Encoding ascii
+    Assert-Throws { & $verifier -DistributionDirectory $public } 'Duplicate Release entry must fail'
+    @($publicHashes[0], ('{0} *OpenSalamander-Debug-x64.7z' -f ('0' * 64))) |
+        Set-Content -LiteralPath $publicManifest -Encoding ascii
+    Assert-Throws { & $verifier -DistributionDirectory $public } 'Debug entry in public checksum file must fail'
+    $publicHashes | Set-Content -LiteralPath $publicManifest -Encoding ascii
+    Remove-Item -LiteralPath $setupFile -Force
+    Assert-Throws { & $verifier -DistributionDirectory $public } 'Missing public installer must fail'
+    Write-Host 'PASS: public artifact checksum validation rejects tampering, duplicates, Debug entries and missing files.'
     Write-Host 'PASS: source parses; required help/runtime checks, release safety and SHA256 manifest work.'
 }
 finally {
