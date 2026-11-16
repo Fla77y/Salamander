@@ -76,6 +76,12 @@ public static class SalamanderGuiNative
     private static extern int MultiByteToWideChar(
         uint codePage, uint flags, byte[] source, int sourceLength,
         [Out] char[] destination, int destinationLength);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool CheckRemoteDebuggerPresent(
+        IntPtr processHandle,
+        [MarshalAs(UnmanagedType.Bool)] out bool debuggerPresent);
+
 
     // Use Windows CP_ACP itself, not .NET's UTF-8 Encoding.Default, to
     // detect silent best-fit substitution without any '?' byte.
@@ -691,6 +697,42 @@ function Get-TestProcessState {
         $mainOwnerPid, (Get-ProcessWindowSummary -OwnerProcessId ([uint32]$process.Id)))
 }
 
+# Opt-in debugging only. Salamander's DEBUG exception handler deliberately
+# forwards native exceptions to an attached debugger instead of terminating
+# through its own reporter. Do not rely on WER for an already handled exception.
+function Wait-ForNativeDebugger {
+    if ($env:SALAMANDER_GUI_ATTACH_DEBUGGER -cne '1') { return }
+
+    $process.Refresh()
+    if ($process.HasExited) {
+        throw 'Cannot attach debugger: test Salamander exited.'
+    }
+
+    Write-Host ("DEBUGGER ATTACH: attach Visual Studio native C++ debugger to " +
+                "salamand.exe PID {0} (Debug x64). Navigation will begin " +
+                "after CheckRemoteDebuggerPresent confirms attachment." -f $process.Id)
+    $deadline = [DateTime]::UtcNow.AddMinutes(5)
+    while ([DateTime]::UtcNow -lt $deadline) {
+        $process.Refresh()
+        if ($process.HasExited) {
+            throw ("Test Salamander exited before debugger attachment: {0}" -f
+                (Get-TestProcessState))
+        }
+        [bool]$attached = $false
+        if (-not [SalamanderGuiNative]::CheckRemoteDebuggerPresent(
+                $process.Handle, [ref]$attached)) {
+            $win32Error = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+            throw "CheckRemoteDebuggerPresent failed: Win32 error $win32Error"
+        }
+        if ($attached) {
+            Write-Host "PASS: native debugger attached to test Salamander PID $($process.Id)"
+            return
+        }
+        Start-Sleep -Milliseconds 500
+    }
+    throw 'Native debugger was not attached within 5 minutes; long-path navigation was not attempted.'
+}
+
 function Go-ToPath {
     param([string]$Path)
 
@@ -1174,6 +1216,7 @@ try {
         # Act: navigate using Salamander's real clipboard command, not .NET.
         # Assert both the complete panel path and the focused full filename;
         # any truncation, ANSI alias or unhandled limit is a test failure.
+        Wait-ForNativeDebugger
         Go-ToPath $maximumDirectory
         Assert-True ((Read-PanelPath) -ceq $maximumDirectory) 'GUI preserves 32444-unit parent directory'
         Restore-FilePanelFocus -ExpectedPath $maximumDirectory
