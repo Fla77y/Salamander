@@ -421,6 +421,20 @@ exit /b 0
         throw 'SHA256 manifest is missing.'
     }
 
+    # Release output must never publish link intermediates or private
+    # debug symbols. Place each forbidden file in a plug-in subdirectory,
+    # because checking only the stage root misses the real regression.
+    $nestedPlugin = Join-Path $stage 'plugins\pictview'
+    New-Item -ItemType Directory -Path $nestedPlugin -Force | Out-Null
+    foreach ($extension in @('.pdb', '.lib', '.exp')) {
+        $intermediate = Join-Path $nestedPlugin ('pictview' + $extension)
+        Set-Content -LiteralPath $intermediate -Value 'test fixture' -Encoding ascii
+        Assert-Throws {
+            Test-DistributionStage -Stage $stage -Configuration Release -DumpbinExe $fakeDumpbin
+        } "Release package must reject nested $extension build artifacts"
+        Remove-Item -LiteralPath $intermediate -Force
+    }
+
     Set-Content -LiteralPath (Join-Path $stage 'vcruntime140d.dll') -Value 'test fixture' -Encoding ascii
     Assert-Throws { Test-DistributionStage -Stage $stage -Configuration Release -DumpbinExe $fakeDumpbin } 'Debug runtime must be rejected from Release'
 
