@@ -167,7 +167,7 @@ bool RegisterViewer(HINSTANCE instance)
     wc.hInstance = instance;
     wc.lpszClassName = kViewerClass;
     wc.lpfnWndProc = ViewerProc;
-    wc.hCursor = LoadCursorW(nullptr, IDC_ARROW);
+    wc.hCursor = LoadCursor(nullptr, IDC_ARROW);
     wc.hbrBackground = reinterpret_cast<HBRUSH>(COLOR_WINDOW + 1);
     return RegisterClassExW(&wc) != 0 ||
            GetLastError() == ERROR_CLASS_ALREADY_EXISTS;
