@@ -134,6 +134,17 @@ if (-not $externalHint.Contains('X8D_BIN_TOOLS_PATH') -or
     -not $externalHint.Contains('Do not create a placeholder')) {
     throw 'Missing external viewer variable must produce a precise non-mutating diagnosis.'
 }
+$internalHint = Get-PictViewHostFailureHint -ActualViewerClass "Salamander's Viewer Window"
+if (-not $internalHint.Contains('internal text viewer') -or
+    -not $internalHint.Contains('*.bmp') -or
+    -not $internalHint.Contains('PictView') -or
+    $internalHint.Contains('X8D_BIN_TOOLS_PATH')) {
+    throw 'Internal viewer selection must fail with a specific PictView association diagnosis.'
+}
+if (-not $hostText.Contains("'Salamander''s Viewer Window'") -and
+    -not $hostText.Contains('Salamander\'s Viewer Window')) {
+    throw 'Host GUI smoke must detect the actual internal viewer HWND without timeout.'
+}
 $genericHint = Get-PictViewHostFailureHint -DialogText '[Error] [Static] Unable to decode BMP' -PictViewResident $true
 if ($genericHint.Contains('X8D_BIN_TOOLS_PATH') -or
     $genericHint.Contains('external Viewer') -or
