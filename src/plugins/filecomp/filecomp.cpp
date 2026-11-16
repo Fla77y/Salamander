@@ -558,14 +558,16 @@ BOOL CPluginInterfaceForMenu::ExecuteMenuItem(CSalamanderForOperationsAbstract* 
         // store the name of the first file
         if (!SG->GetPanelPath(PANEL_SOURCE, file1, MAX_PATH, NULL, NULL))
             return NULL;
-        SG->SalPathAppend(file1, fd1->Name, MAX_PATH);
+        if (!SG->SalPathAppend(file1, fd1->Name, MAX_PATH))
+            return FALSE;
 
         if (fd2 &&
             !isDir && fd2 != fd1) // in case we take the file from the focus
         {
             // store the name of the second file
-            SG->GetPanelPath(PANEL_SOURCE, file2, MAX_PATH, NULL, NULL);
-            SG->SalPathAppend(file2, fd2->Name, MAX_PATH);
+            if (!SG->GetPanelPath(PANEL_SOURCE, file2, MAX_PATH, NULL, NULL) ||
+                !SG->SalPathAppend(file2, fd2->Name, MAX_PATH))
+                return FALSE;
             secondFromSource = TRUE;
         }
         else
@@ -592,7 +594,8 @@ BOOL CPluginInterfaceForMenu::ExecuteMenuItem(CSalamanderForOperationsAbstract* 
                     // store the name of the second file
                     if (!SG->GetPanelPath(PANEL_TARGET, file2, MAX_PATH, NULL, NULL))
                         return NULL;
-                    SG->SalPathAppend(file2, fd2->Name, MAX_PATH);
+                    if (!SG->SalPathAppend(file2, fd2->Name, MAX_PATH))
+                        return FALSE;
                 }
             }
         }
