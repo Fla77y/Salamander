@@ -1276,6 +1276,56 @@ function Focus-TestProcess {
            $h.ToInt64(), $process.Id, $attempts, $foreground, $windows)
 }
 
+# WaitForInputIdle can return while Salamander's main GUI thread is still
+# executing startup work. Probe its verified HWND using only a read-only WM_NULL
+# until it pumps messages; do not mutate the clipboard or send keys beforehand.
+function Wait-ForGuiResponsive {
+    param([ValidateRange(1,60)][int]$StartupTimeoutSeconds = 15)
+
+    $deadline = [DateTime]::UtcNow.AddSeconds($StartupTimeoutSeconds)
+    $attempts = 0
+    $lastErrorCode = 0
+    do {
+        $process.Refresh()
+        if ($process.HasExited) {
+            throw "Test Salamander exited before GUI startup readiness (PID $($process.Id))."
+        }
+        $dialog = Get-TestDialog
+        if (-not [string]::IsNullOrEmpty($dialog)) {
+            throw "Salamander startup is blocked by a dialog: $dialog"
+        }
+
+        [IntPtr]$response = [IntPtr]::Zero
+        $attempts++
+        $result = [SalamanderGuiNative]::SendMessageTimeout(
+            $mainWindowHandle, [uint32]0, [UIntPtr]::Zero, [IntPtr]::Zero,
+            [uint32]0x0002, [uint32]750, [ref]$response)
+        $lastErrorCode = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        if ($result -ne [IntPtr]::Zero) {
+            Write-Host "PASS: Salamander main GUI thread responds after startup readiness probe ($attempts attempt(s))."
+            return
+        }
+        if ($lastErrorCode -ne 1460) {
+            throw ("GUI startup WM_NULL failed with Win32 error {0}, " +
+                   "not a transient timeout; no clipboard command sent." -f $lastErrorCode)
+        }
+        Start-Sleep -Milliseconds 250
+    } while ([DateTime]::UtcNow -lt $deadline)
+
+    [uint32]$ownerPid = 0
+    $guiThread = [SalamanderGuiNative]::GetWindowThreadProcessId(
+        $mainWindowHandle, [ref]$ownerPid)
+    $waitChain = '<not collected>'
+    try { $waitChain = [SalamanderGuiWaitChain]::Describe([uint32]$guiThread) }
+    catch { $waitChain = "WCT unavailable: $($_.Exception.Message)" }
+    $windowSummary = Get-ProcessWindowSummary -OwnerProcessId ([uint32]$process.Id)
+    throw (("GUI startup remained unresponsive after {0} WM_NULL attempts over {1}s; " +
+           "Win32 error={2}; GUI thread={3}; owner PID={4}; " +
+           "windows=[{5}]; wait chain=[{6}]. No clipboard command sent.") -f
+           $attempts, $StartupTimeoutSeconds, $lastErrorCode, $guiThread,
+           $ownerPid, $windowSummary, $waitChain)
+}
+
 # The clipboard path command can leave focus on Salamander's main HWND.
 # Salamander's WM_ACTIVATE/WA_ACTIVE handler calls FocusPanel(GetActivePanel()).
 # Use that native focus route once, then verify the actual IDC_FILES control
@@ -2243,7 +2293,10 @@ function Save-FailureScreenshot {
             $graphics = [Drawing.Graphics]::FromImage($bitmap)
             try { $graphics.CopyFromScreen($b.Left, $b.Top, 0, 0, [Drawing.Size]::new($width, $height)) }
             finally { $graphics.Dispose() }
-            $file = Join-Path $root 'gui-failure.png'
+            # Store evidence outside the GUID-scoped directory because the
+            # F8 deletion regression cleans that directory even on failure.
+            $file = Join-Path ([IO.Path]::GetTempPath()) (
+                [IO.Path]::GetFileName($root) + '-gui-failure.png')
             $bitmap.Save($file, [Drawing.Imaging.ImageFormat]::Png)
             Write-Warning "Screenshot of failed GUI test: $file"
         }
@@ -2508,6 +2561,7 @@ try {
     if (-not $process.WaitForInputIdle(10000)) {
         throw "Test Salamander did not become input-idle within 10 seconds (PID $($process.Id))."
     }
+    Wait-ForGuiResponsive
     $process.Refresh()
     $testIsAdmin = [Security.Principal.WindowsPrincipal]::new(
         [Security.Principal.WindowsIdentity]::GetCurrent()
