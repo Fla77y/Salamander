@@ -52,7 +52,9 @@ jobs:
 
       - name: Run parser and package regression tests
         shell: pwsh
-        run: ./tools/release/tests/Test-Package-Helpers.ps1
+        run: |
+          ./tools/release/tests/Test-Package-Helpers.ps1
+          ./tools/release/tests/Test-ReleasePublicArtifact.ps1
 
       - name: Rebuild Debug and Release, compile help and produce packages
         shell: pwsh
