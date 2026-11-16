@@ -35,6 +35,11 @@ if (-not $releaseWorkflow.Contains('OpenSal\public-release\SHA256SUMS-Release.tx
 
 # Verify child-process-only TEMP isolation against the stale SAL*.tmp dialog.
 & (Join-Path $PSScriptRoot 'Test-GuiProcessTemp-Isolation.ps1')
+# Prove that an independent clipboard reader can obtain the navigation text
+# while the writer's STA thread is synchronously waiting on another process.
+& (Join-Path $PSHOME 'pwsh.exe') -Sta -NoLogo -NoProfile -File (Join-Path $PSScriptRoot 'Test-GuiClipboard-Isolation.ps1')
+if ($LASTEXITCODE -ne 0) { throw 'Cross-process GUI clipboard isolation regression failed.' }
+
 
 # Detect a broken optional PictView installation without loading or
 # distributing its unavailable proprietary converter components.
