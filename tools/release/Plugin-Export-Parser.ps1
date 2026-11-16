@@ -12,10 +12,15 @@ function Test-PeNamedExport {
     )
     if ([string]::IsNullOrWhiteSpace($Name)) { return $false }
 
-    # Only a real "ordinal hint RVA name [= internal-name]" table row
-    # qualifies. Do not match headers, diagnostic text, partial names,
-    # or "(forwarded to ...)" lines.
+    # Only a real "ordinal hint RVA public-name" row qualifies.
+    # MSVC may append "= ?DecoratedName@@ (human-readable C++ signature)".
+    # Accept the complete demangled signature (with nested parentheses),
+    # but not partial names, free-form annotations or forwarded exports.
     $pattern = '(?m)^[ \t]*[0-9]+[ \t]+[0-9A-Fa-f]+[ \t]+[0-9A-Fa-f]+[ \t]+' +
-               [regex]::Escape($Name) + '(?:[ \t]+=[ \t]+\S+)?[ \t]*\r?$'
+               [regex]::Escape($Name) +
+               '(?:[ \t]+=[ \t]+\S+(?:[ \t]+\([^\r\n]*\))?)?[ \t]*\r?
+    return [regex]::IsMatch($Report, $pattern)
+}
+
     return [regex]::IsMatch($Report, $pattern)
 }
