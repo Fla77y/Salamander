@@ -222,7 +222,13 @@ function New-DistributionStage {
 
 function Test-DistributionStage {
     param([string]$Stage, [string]$Configuration, [string]$DumpbinExe)
-    foreach ($required in @('salamand.exe', 'help\english\salamand.chm', 'LICENSE', 'vcruntime140.dll', 'msvcp140.dll')) {
+    # Version 5.2 promises native WIC PictView. Its plug-in, language
+    # resource, and native EXIF sidecar must actually ship in both variants.
+    foreach ($required in @('salamand.exe', 'help\english\salamand.chm',
+                            'LICENSE', 'vcruntime140.dll', 'msvcp140.dll',
+                            'plugins\pictview\pictview.spl',
+                            'plugins\pictview\lang\english.slg',
+                            'plugins\pictview\exif.dll')) {
         if (-not (Test-Path -LiteralPath (Join-Path $Stage $required) -PathType Leaf)) {
             throw "Distribution is incomplete. Missing: $required in $Stage"
         }
