@@ -1172,7 +1172,15 @@ BOOL CPluginInterfaceForArchiver::PackToArchive(CSalamanderForOperationsAbstract
             {
                 // prepare the buffer for names
                 char sourceName[MAX_PATH + 1]; // buffer for the full name on disk
-                strcpy(sourceName, sourcePath);
+                // The source path arrives through a legacy plug-in ABI.
+                // Never trust its length before copying to local MAX_PATH storage.
+                if (sourcePath == NULL || strlen(sourcePath) >= _countof(sourceName))
+                {
+                    TRACE_E("7-Zip source directory exceeds legacy path capacity");
+                    ret = FALSE;
+                    break;
+                }
+                strcpy_s(sourceName, sourcePath);
                 char* endSource = sourceName + strlen(sourceName); // space for the names from the 'next' enumeration
                 if (endSource > sourceName && *(endSource - 1) != '\\')
                 {
@@ -1387,8 +1395,16 @@ static BOOL TestArchive(CSalamanderForOperationsAbstract* salamander, HWND hPare
     sprintf(fileName, LoadStr(IDS_TESTING_ARCHIVE_NAME), cfd->Name);
     salamander->ProgressDialogAddText(fileName, FALSE);
 
-    SalamanderGeneral->GetPanelPath(PANEL_SOURCE, fileName, 2 * MAX_PATH, NULL, NULL);
-    SalamanderGeneral->SalPathAppend(fileName, cfd->Name, 2 * MAX_PATH);
+    if (!SalamanderGeneral->GetPanelPath(PANEL_SOURCE, fileName,
+                                         2 * MAX_PATH, NULL, NULL) ||
+        !SalamanderGeneral->SalPathAppend(fileName, cfd->Name, 2 * MAX_PATH))
+    {
+        salamander->CloseProgressDialog();
+        SalamanderGeneral->SalMessageBox(hParent,
+            "The archive path exceeds the supported legacy ANSI limit.",
+            LoadStr(IDS_PLUGINNAME), MB_OK | MB_ICONWARNING);
+        return FALSE;
+    }
     int ret = client.TestArchive(salamander, fileName);
     salamander->CloseProgressDialog();
 
