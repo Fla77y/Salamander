@@ -80,8 +80,8 @@ if ($verifyPosition -lt 0 -or $dispatchPosition -lt 0 -or
 }
 Write-Host 'PASS: GUI navigation verifies exact clipboard content and retries only safe clipboard writes.'
 
-# The former generic timeout concealed a release-only disappearance of the
-# verified main window. Poll for a terminated process or lost HWND BEFORE
+# The former generic timeout concealed a disappearing main window during
+# the second (Debug x64) maximum-length GUI test. Poll for a terminated process or lost HWND BEFORE
 # treating a foreign foreground PID as a transient focus issue.
 $processState = (Get-FunctionSource 'Get-TestProcessState').Extent.Text
 if ($navigationSource -notmatch '\$process\.HasExited' -or
