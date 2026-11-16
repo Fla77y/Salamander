@@ -69,6 +69,63 @@ public static class PictViewHostWindows
     public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll", EntryPoint = "PostMessageW", SetLastError = true)]
     public static extern bool PostMessage(IntPtr hwnd, uint msg, IntPtr w, IntPtr l);
+    [DllImport("user32.dll")]
+    private static extern int GetDlgCtrlID(IntPtr hwnd);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool GetGUIThreadInfo(uint threadId, ref GuiThreadInfo info);
+    [DllImport("user32.dll", EntryPoint = "SendMessageTimeoutW", SetLastError = true)]
+    public static extern IntPtr SendMessageTimeout(
+        IntPtr hwnd, uint message, UIntPtr wParam, IntPtr lParam,
+        uint flags, uint timeoutMilliseconds, out IntPtr result);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Rect
+    {
+        public int Left, Top, Right, Bottom;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct GuiThreadInfo
+    {
+        public uint cbSize;
+        public uint flags;
+        public IntPtr hwndActive, hwndFocus, hwndCapture, hwndMenuOwner;
+        public IntPtr hwndMoveSize, hwndCaret;
+        public Rect rcCaret;
+    }
+
+    public static bool IsFileListFocused(IntPtr mainWindow, uint expectedPid)
+    {
+        uint mainPid;
+        uint threadId = GetWindowThreadProcessId(mainWindow, out mainPid);
+        if (threadId == 0 || mainPid != expectedPid) return false;
+        GuiThreadInfo info = new GuiThreadInfo();
+        info.cbSize = (uint)Marshal.SizeOf(typeof(GuiThreadInfo));
+        if (!GetGUIThreadInfo(threadId, ref info) || info.hwndFocus == IntPtr.Zero)
+            return false;
+        uint focusPid;
+        GetWindowThreadProcessId(info.hwndFocus, out focusPid);
+        return focusPid == expectedPid && GetDlgCtrlID(info.hwndFocus) == 950;
+    }
+
+    public static string GetInputFocusSummary(IntPtr mainWindow, uint expectedPid)
+    {
+        uint mainPid;
+        uint threadId = GetWindowThreadProcessId(mainWindow, out mainPid);
+        if (threadId == 0 || mainPid != expectedPid)
+            return "main HWND is not owned by the test process";
+        GuiThreadInfo info = new GuiThreadInfo();
+        info.cbSize = (uint)Marshal.SizeOf(typeof(GuiThreadInfo));
+        if (!GetGUIThreadInfo(threadId, ref info))
+            return "GetGUIThreadInfo failed";
+        uint focusPid = 0;
+        if (info.hwndFocus != IntPtr.Zero)
+            GetWindowThreadProcessId(info.hwndFocus, out focusPid);
+        return String.Format("thread={0}, focus=0x{1:X}, focusPid={2}, controlId={3}, active=0x{4:X}",
+            threadId, info.hwndFocus.ToInt64(), focusPid,
+            info.hwndFocus == IntPtr.Zero ? -1 : GetDlgCtrlID(info.hwndFocus),
+            info.hwndActive.ToInt64());
+    }
 
     // Always require the PID of our own freshly launched process.
     public static List<Window> ForProcess(uint processId)
@@ -149,12 +206,49 @@ try {
         throw 'Could not securely focus the test-owned Salamander window.'
     }
 
+    # Do not guess where End/F3 will be delivered. The main HWND may be
+    # foreground while its command line or a toolbar child has input focus.
+    # IDC_FILES = 950 (src/resource.rh2), the same invariant used by the
+    # established Salamander long-path GUI test.
+    $testIsAdmin = [Security.Principal.WindowsPrincipal]::new(
+        [Security.Principal.WindowsIdentity]::GetCurrent()
+    ).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+    if (-not $testIsAdmin -and $main.Title -match '\(Administrator\)') {
+        throw ('Test Salamander is elevated but the GUI-test PowerShell is not. ' +
+               'Windows UIPI can block SendKeys. Run both at the same integrity level.')
+    }
+
+    if (-not [PictViewHostWindows]::IsFileListFocused(
+            $main.Handle, [uint32]$process.Id)) {
+        # Salamander's WM_ACTIVATE handler restores focus to its active panel.
+        # This notification is sent only to the verified test-owned main HWND.
+        [IntPtr]$activationResult = [IntPtr]::Zero
+        $activated = [PictViewHostWindows]::SendMessageTimeout(
+            $main.Handle, [uint32]0x0006, [UIntPtr]::new([uint32]1),
+            [IntPtr]::Zero, [uint32]0x0002, [uint32]5000,
+            [ref]$activationResult)
+        if ($activated -eq [IntPtr]::Zero) {
+            throw 'Salamander WM_ACTIVATE failed to restore file-list focus; no keys sent.'
+        }
+    }
+    if (-not [PictViewHostWindows]::IsFileListFocused(
+            $main.Handle, [uint32]$process.Id)) {
+        $focus = [PictViewHostWindows]::GetInputFocusSummary(
+            $main.Handle, [uint32]$process.Id)
+        throw "No verified file-list focus before sending F3: $focus. No keys sent."
+    }
+
     [Windows.Forms.SendKeys]::SendWait('{END}')
-    if ([PictViewHostWindows]::GetForegroundWindow() -ne $main.Handle) {
-        throw 'Focus changed before F3; no viewer command was sent.'
+    if ([PictViewHostWindows]::GetForegroundWindow() -ne $main.Handle -or
+        -not [PictViewHostWindows]::IsFileListFocused(
+            $main.Handle, [uint32]$process.Id)) {
+        $focus = [PictViewHostWindows]::GetInputFocusSummary(
+            $main.Handle, [uint32]$process.Id)
+        throw "Focus changed before sending F3: $focus. No viewer command sent."
     }
     [Windows.Forms.SendKeys]::SendWait('{F3}')
-    Wait-For -Description 'WIC PictView HWND owned by test Salamander' -Condition {
+    try {
+        Wait-For -Description 'WIC PictView HWND owned by test Salamander' -Condition {
         $windows = [PictViewHostWindows]::ForProcess([uint32]$process.Id)
         $found = @($windows | Where-Object {
             $_.ClassName -ceq 'OpenSalamander.PictView.WIC'
@@ -166,7 +260,27 @@ try {
             $script:viewerHandle = $found[0].Handle
             return $true
         }
+        $process.Refresh()
+        if ($process.HasExited) {
+            throw 'Salamander exited after F3 without opening the WIC viewer.'
+        }
         return $false
+        }
+    }
+    catch {
+        $windows = @([PictViewHostWindows]::ForProcess([uint32]$process.Id) |
+                     ForEach-Object { "[$($_.ClassName)] $($_.Title)" })
+        $loaded = @($process.Modules | Where-Object {
+            $_.FileName -ieq $expectedPlugin
+        }).Count -gt 0
+        if (-not $loaded) {
+            throw ('PictView SPL was not loaded by F3. Verify that the BMP Viewer associations ' +
+                   'select PictView and that the file-list focus is correct. ' +
+                   "Test-owned windows: $($windows -join '; '). $($_.Exception.Message)")
+        }
+        throw ('PictView SPL was loaded, but no native WIC HWND appeared. ' +
+               'Check plugin CanViewFile, decoder and viewer thread startup. ' +
+               "Test-owned windows: $($windows -join '; '). $($_.Exception.Message)")
     }
 
     # Assert: the real SPL was loaded, window identity matches, and the BMP
