@@ -103,6 +103,19 @@ bool Tests()
 
     if (ok)
     {
+        // A one-page bitmap has exactly one frame. Out-of-range frame requests
+        // must fail without preserving the previously decoded pixel buffer.
+        UINT frames = 0;
+        HRESULT hr = pictview::wic::DecodeFrame(imagePath.c_str(), 0, result, &frames);
+        ok = Check(SUCCEEDED(hr) && frames == 1 && result.width == 2,
+                   "first WIC frame and count available");
+        hr = pictview::wic::DecodeFrame(imagePath.c_str(), 1, result, &frames);
+        ok &= Check(FAILED(hr) && result.bgra.empty() && result.width == 0,
+                    "out-of-range frame refused without stale pixels");
+    }
+
+    if (ok)
+    {
         // Arrange: a PNG with partial transparency and Unicode filename.
         ok = WriteBytes(alphaPath, kAlphaPng.data(),
                         static_cast<DWORD>(kAlphaPng.size()));
