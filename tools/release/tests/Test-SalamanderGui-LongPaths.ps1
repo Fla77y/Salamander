@@ -576,6 +576,7 @@ $deep = $source
 $process = $null
 $mainWindowHandle = [IntPtr]::Zero
 $passed = $false
+$script:findCancelProbePath = $null
 $utfName = 'Größe_東京_😀.txt'
 $utfCollisionName = 'Größe_大阪_😀.txt'
 $bestFitName = $null
@@ -1445,6 +1446,7 @@ function Test-UnicodeFindGui {
     # SetLength avoids allocating a 128 MiB managed buffer. The file is
     # disposable and no untrusted files are searched by this stress case.
     $cancelProbePath = Join-Path $findRoot 'cancel-probe.bin'
+    $script:findCancelProbePath = $cancelProbePath
     $cancelStream = [IO.File]::Open(
         $cancelProbePath, [IO.FileMode]::CreateNew,
         [IO.FileAccess]::Write, [IO.FileShare]::None)
@@ -1486,6 +1488,7 @@ function Test-UnicodeFindGui {
     Assert-True (-not $process.HasExited) (
         'Closing an active Unicode Find search leaves Salamander alive')
     [IO.File]::Delete($cancelProbePath)
+    $script:findCancelProbePath = $null
     Assert-True (-not [IO.File]::Exists($cancelProbePath)) (
         'GUI cancellation fixture cleaned up without modifying other files')
     Write-Host 'PASS: Unicode Find GUI search, actions, shell refusal, cancellation and worker shutdown.'
@@ -2496,6 +2499,21 @@ finally {
         }
         catch { Write-Warning "Could not stop isolated test app: $($_.Exception.Message)" }
         $process.Dispose()
+    }
+
+    # A failed search may retain its screenshot and small fixtures, but it
+    # must not leave a large cancellation stress file on the user's disk.
+    # This deletion is limited to the exact GUID-scoped test fixture.
+    if ($UnicodeFindOnly -and
+        -not [string]::IsNullOrEmpty($script:findCancelProbePath)) {
+        $expectedProbe = Join-Path $findRoot 'cancel-probe.bin'
+        if ($script:findCancelProbePath -ceq $expectedProbe -and
+            $expectedProbe.StartsWith(
+                $root + [IO.Path]::DirectorySeparatorChar,
+                [StringComparison]::OrdinalIgnoreCase)) {
+            try { [IO.File]::Delete($expectedProbe) }
+            catch { Write-Warning "Could not clean large Find cancellation fixture: $($_.Exception.Message)" }
+        }
     }
     if ($oldClipboard) {
         try { [Windows.Forms.Clipboard]::SetDataObject($oldClipboard, $true) }
