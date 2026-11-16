@@ -57,6 +57,39 @@ if ($driverText -match 'Go-ToPath\s+\$source\s+Assert-True\s+\(\(Read-PanelPath\
 if ($driverText -notmatch 'Go-ToPath\s+\$source') {
     throw 'Baseline must still navigate and verify its short ASCII source path.'
 }
+# A visible HWND and WaitForInputIdle do not prove that Salamander's main
+# GUI thread pumps messages. Require a bounded, side-effect-free WM_NULL
+# readiness check before focus, clipboard mutation or any file operation.
+$readiness = Get-FunctionSource 'Wait-ForGuiResponsive'
+$readinessText = $readiness.Extent.Text
+$startupStart = $driverText.IndexOf(
+    '    # A visible top-level window is not evidence', [StringComparison]::Ordinal)
+$navigationStart = $driverText.IndexOf(
+    '    Go-ToPath $source', $startupStart, [StringComparison]::Ordinal)
+if ($startupStart -lt 0 -or $navigationStart -le $startupStart) {
+    throw 'GUI startup acceptance block is missing.'
+}
+$startupText = $driverText.Substring($startupStart, $navigationStart - $startupStart)
+if ($startupText -notmatch '(?s)WaitForInputIdle\(10000\).*?Wait-ForGuiResponsive.*?Focus-TestProcess' -or
+    $readinessText -notmatch 'SendMessageTimeout' -or
+    $readinessText -notmatch 'GetLastWin32Error' -or
+    $readinessText -notmatch 'Get-TestDialog' -or
+    $readinessText -notmatch 'Get-ProcessWindowSummary' -or
+    $readinessText -notmatch 'SalamanderGuiWaitChain' -or
+    $readinessText -notmatch 'Start-Sleep' -or
+    $readinessText -notmatch 'GUI startup remained unresponsive') {
+    throw 'GUI must prove bounded message-loop readiness and preserve hang diagnostics before clipboard navigation.'
+}
+# A failure screenshot is diagnostic evidence. The new temp-directory test
+# removes its fixture after failure, so evidence must be stored outside it.
+$screenshot = (Get-FunctionSource 'Save-FailureScreenshot').Extent.Text
+if ($screenshot -match "Join-Path \$root 'gui-failure.png'" -or
+    $screenshot -notmatch 'GetTempPath' -or
+    $screenshot -notmatch 'gui-failure') {
+    throw 'Failed GUI test must retain a screenshot outside its deleted disposable fixture.'
+}
+Write-Host 'PASS: GUI startup readiness is bounded and failure screenshot survives fixture cleanup.'
+
 Write-Host 'PASS: GUI baseline has no redundant read after verified navigation.'
 
 Write-Host 'PASS: GUI navigation reuses the observed path without a redundant WM_COMMAND.'
