@@ -1,0 +1,36 @@
+name: PictView WIC decoder
+
+on:
+  pull_request:
+    branches: ["**"]
+    paths:
+      - "src/plugins/pictview/WicImageDecoder.h"
+      - "src/plugins/pictview/WicImageDecoder.cpp"
+      - "src/plugins/pictview/vcxproj/pictview.vcxproj"
+      - "tools/tests/pictview_wic_decode.cpp"
+      - ".github/workflows/pr-pictview-wic.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  wic-decode:
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [x64, x86]
+    runs-on: windows-2025-vs2026
+    steps:
+      - uses: actions/checkout@v4
+      - name: Configure MSVC
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.arch }}
+      - name: Compile and execute real WIC image decoding tests
+        shell: cmd
+        run: |
+          cl /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /Fe:"%RUNNER_TEMP%\pictview_wic_decode.exe" tools\tests\pictview_wic_decode.cpp src\plugins\pictview\WicImageDecoder.cpp windowscodecs.lib ole32.lib
+          if errorlevel 1 exit /b 1
+          "%RUNNER_TEMP%\pictview_wic_decode.exe"
+          if errorlevel 1 exit /b 1
