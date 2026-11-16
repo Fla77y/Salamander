@@ -53,6 +53,8 @@ public static class PictViewHostWindows
     public delegate bool WindowCallback(IntPtr hwnd, IntPtr arg);
     [DllImport("user32.dll", SetLastError = true)]
     public static extern bool EnumWindows(WindowCallback callback, IntPtr arg);
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern bool EnumChildWindows(IntPtr parent, WindowCallback callback, IntPtr arg);
     [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetWindowTextW")]
     private static extern int GetWindowText(IntPtr hwnd, StringBuilder value, int length);
     [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetClassNameW")]
@@ -127,6 +129,36 @@ public static class PictViewHostWindows
             info.hwndActive.ToInt64());
     }
 
+    // Capture the actual text displayed in Salamander modal dialogs,
+    // including their child Static controls. A title-only 'Error' is not
+    // sufficient to distinguish a missing viewer association, startup error
+    // or a decoder failure.
+    public static string GetDialogDetails(uint processId)
+    {
+        var messages = new List<string>();
+        foreach (var window in ForProcess(processId))
+        {
+            if (window.ClassName != "#32770" || !IsWindowVisible(window.Handle))
+                continue;
+
+            var parts = new List<string>();
+            WindowCallback callback = (hwnd, unused) => {
+                var title = new StringBuilder(4096);
+                var cls = new StringBuilder(256);
+                GetWindowText(hwnd, title, title.Capacity);
+                GetClassName(hwnd, cls, cls.Capacity);
+                var value = title.ToString().Trim();
+                if (!String.IsNullOrEmpty(value))
+                    parts.Add("[" + cls + "] " + value);
+                return true;
+            };
+            if (!EnumChildWindows(window.Handle, callback, IntPtr.Zero))
+                throw new InvalidOperationException("Could not enumerate dialog child windows.");
+            messages.Add("[" + window.Title + "] " + String.Join(" | ", parts));
+        }
+        return String.Join(" || ", messages);
+    }
+
     // Always require the PID of our own freshly launched process.
     public static List<Window> ForProcess(uint processId)
     {
@@ -187,7 +219,12 @@ try {
     $startupArgs = '-l "{0}" -r "{0}" -p 2' -f $root
     $process = Start-Process -FilePath $SalamanderExe -ArgumentList $startupArgs -WorkingDirectory (Split-Path -Parent $SalamanderExe) -PassThru
 
-    # Act: open the single image through Salamander's normal viewer command.
+    # Act: open the single BMP fixture through Salamander's normal F3.
+    # Do not modify the user's clipboard or viewer associations.
+    $fixtures = @(Get-ChildItem -LiteralPath $root -File)
+    if ($fixtures.Count -ne 1 -or $fixtures[0].FullName -cne $fixture) {
+        throw 'Expected exactly one isolated BMP fixture.'
+    }
     Wait-For -Description 'test Salamander main HWND' -Condition {
         $process.Refresh()
         if ($process.HasExited) { throw 'Salamander exited before GUI readiness.' }
@@ -201,6 +238,13 @@ try {
     $main = @([PictViewHostWindows]::ForProcess([uint32]$process.Id) |
               Where-Object { $_.Title -match 'Open Salamander' -and
                              [PictViewHostWindows]::IsWindowVisible($_.Handle) })[0]
+    if ($main.Title -notmatch [regex]::Escape((Split-Path -Leaf $root))) {
+        throw "Salamander is not showing the single BMP fixture directory: $($main.Title)"
+    }
+    $startupDialog = [PictViewHostWindows]::GetDialogDetails([uint32]$process.Id)
+    if (-not [string]::IsNullOrEmpty($startupDialog)) {
+        throw "Salamander displayed a modal dialog before F3: $startupDialog"
+    }
     if (-not [PictViewHostWindows]::SetForegroundWindow($main.Handle) -or
         [PictViewHostWindows]::GetForegroundWindow() -ne $main.Handle) {
         throw 'Could not securely focus the test-owned Salamander window.'
@@ -249,6 +293,10 @@ try {
     [Windows.Forms.SendKeys]::SendWait('{F3}')
     try {
         Wait-For -Description 'WIC PictView HWND owned by test Salamander' -Condition {
+        $dialog = [PictViewHostWindows]::GetDialogDetails([uint32]$process.Id)
+        if (-not [string]::IsNullOrEmpty($dialog)) {
+            throw "Error dialog after F3: $dialog"
+        }
         $windows = [PictViewHostWindows]::ForProcess([uint32]$process.Id)
         $found = @($windows | Where-Object {
             $_.ClassName -ceq 'OpenSalamander.PictView.WIC'
@@ -273,10 +321,11 @@ try {
         $loaded = @($process.Modules | Where-Object {
             $_.FileName -ieq $expectedPlugin
         }).Count -gt 0
+        $dialog = [PictViewHostWindows]::GetDialogDetails([uint32]$process.Id)
         if (-not $loaded) {
             throw ('PictView SPL was not loaded by F3. Verify that the BMP Viewer associations ' +
                    'select PictView and that the file-list focus is correct. ' +
-                   "Test-owned windows: $($windows -join '; '). $($_.Exception.Message)")
+                   "Dialog: '$dialog'. Test-owned windows: $($windows -join '; '). $($_.Exception.Message)")
         }
         throw ('PictView SPL was present, but no native WIC HWND appeared. ' +
                'F3 may still use a different configured Viewer association; ' +
