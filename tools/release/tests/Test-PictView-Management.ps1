@@ -8,8 +8,9 @@ $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
 $manager = Join-Path $root 'tools\Manage-Salamander.ps1'
 $runner = Join-Path $root 'tools\release\tests\Invoke-PictViewTests.ps1'
+$host = Join-Path $root 'tools\release\tests\Test-PictView-Host.ps1'
 
-foreach ($path in @($manager, $runner)) {
+foreach ($path in @($manager, $runner, $host)) {
     # Arrange: parse the exact files that manage.cmd runs.
     $errors = $null
     $tokens = $null
@@ -62,5 +63,14 @@ if ($runnerText -notmatch '/W4 /WX' -or
     $runnerText -notmatch '\$LASTEXITCODE -ne 0' -or
     $runnerText -notmatch 'InteractiveWindowTests') {
     throw 'Native PictView runner must enforce MSVC warning-free build, both architectures and proper exit codes.'
+}
+$hostText = Get-Content -LiteralPath $host -Raw
+foreach ($required in @('PictViewHostWindows', 'GetWindowThreadProcessId',
+                       'OpenSalamander.PictView.WIC', 'pictview.spl',
+                       "SendWait('{F3}')", 'Stop-Process -Id $process.Id',
+                       '[IO.File]::ReadAllBytes($fixture)')) {
+    if (-not $hostText.Contains($required)) {
+        throw "PictView host smoke is missing safety contract: $required"
+    }
 }
 Write-Host 'PASS: manage and local PictView MSVC test registry/AST contracts.'
