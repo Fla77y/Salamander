@@ -39,6 +39,7 @@ if (-not $manager.Contains("'--diagnose-gui'") -or
     -not $manager.Contains('Invoke-GuiReliability.ps1') -or
     -not $manager.Contains('OPENSAL_MANAGE_SKIP_CLIPBOARD') -or
     -not $runner.Contains('OPENSAL_MANAGE_SKIP_CLIPBOARD') -or
+    -not $runner.Contains('Get-FileHash') -or
     $runner -notmatch '(?s)try\s*\{.*?finally\s*\{' -or
     $runner -notmatch 'ExitCode\s*-ne\s*0' -or
     $runner -notmatch 'Exit\s+1') {
