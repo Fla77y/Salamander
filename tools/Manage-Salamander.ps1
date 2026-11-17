@@ -267,6 +267,7 @@ function Run-Tests {
         'tools\tests\shell_file_operation_name_list.cpp',
         'tools\tests\long_path_io.cpp',
         'tools\tests\unicode_directory_delete.cpp',
+        'tools\tests\legacy_find_utf16_identity.cpp',
         'tools\tests\unicode_find.cpp',
         'tools\tests\win32_max_path.cpp',
         'tools\tests\bug_report_path.cpp'
