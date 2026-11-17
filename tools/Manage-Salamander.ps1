@@ -261,6 +261,7 @@ function Run-Tests {
         'tools\tests\win32_unicode_recycle.cpp',
         'tools\tests\shell_file_operation_name_list.cpp',
         'tools\tests\long_path_io.cpp',
+        'tools\tests\unicode_directory_delete.cpp',
         'tools\tests\unicode_find.cpp',
         'tools\tests\win32_max_path.cpp',
         'tools\tests\bug_report_path.cpp'
