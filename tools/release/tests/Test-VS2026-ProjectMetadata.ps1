@@ -12,6 +12,8 @@ $vsFinder = Get-Content -LiteralPath (
     Join-Path $repository 'src\vcxproj\find-vs2026.cmd') -Raw
 $manager = Get-Content -LiteralPath (
     Join-Path $repository 'tools\Manage-Salamander.ps1') -Raw
+$packageHelpers = Get-Content -LiteralPath (
+    Join-Path $repository 'tools\release\Package-Helpers.ps1') -Raw
 $config = Get-Content -LiteralPath (Join-Path $repository '.vsconfig') -Raw |
     ConvertFrom-Json
 
@@ -20,7 +22,8 @@ $config = Get-Content -LiteralPath (Join-Path $repository '.vsconfig') -Raw |
 if ($solutionText -notmatch '(?m)^# Visual Studio Version 18\s*$' -or
     $solutionText -notmatch '(?m)^VisualStudioVersion = 18\.' -or
     $vsFinder -notmatch '\[18\.0,19\.0\)' -or
-    $manager -notmatch '\[18\.0,19\.0\)') {
+    $manager -notmatch 'Get-VisualStudio2026' -or
+    $packageHelpers -notmatch '\[18\.0,19\.0\)') {
     throw 'Active solution metadata or MSBuild resolver is not VS 2026.'
 }
 if ($config.components -notcontains 'Microsoft.VisualStudio.Workload.NativeDesktop' -or
