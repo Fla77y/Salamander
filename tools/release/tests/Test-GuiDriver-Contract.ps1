@@ -89,6 +89,34 @@ if ($screenshot.Contains('Join-Path $root ''gui-failure.png''') -or
     $screenshot -notmatch 'gui-failure') {
     throw 'Failed GUI test must retain a screenshot outside its deleted disposable fixture.'
 }
+# Regression for a visible, empty-caption Salamander window during WM_CREATE/
+# LoadConfig. The real application first creates CMAINWINDOW_CLASSNAME with
+# an empty title. Identifying it by caption alone loses the wait-chain evidence.
+$mainClassSource = Get-Content -LiteralPath (
+    Join-Path $PSScriptRoot '..\..\..\src\salamdr1.cpp') -Raw
+$expectedMainClass = [regex]::Match(
+    $mainClassSource, 'CMAINWINDOW_CLASSNAME\s*=\s*"([^"]+)"').Groups[1].Value
+if ([string]::IsNullOrEmpty($expectedMainClass)) {
+    throw 'Main window class is not declared in src/salamdr1.cpp.'
+}
+$mainWindowMethod = [regex]::Match($driverText,
+    '(?s)public static IntPtr FindMainWindow\(uint processId\).*?^    }',
+    [Text.RegularExpressions.RegexOptions]::Multiline)
+$titleGate = Get-FunctionSource 'Wait-ForGuiTitle'
+if (-not $mainWindowMethod.Success -or
+    -not $mainWindowMethod.Value.Contains('ClassName(window.Handle)') -or
+    -not $mainWindowMethod.Value.Contains('GetProcessWindows(processId)') -or
+    -not $mainWindowMethod.Value.Contains($expectedMainClass) -or
+    $mainWindowMethod.Value.Contains('Title.IndexOf("Open Salamander"') -or
+    $startupText -notmatch '(?s)Wait-ForGuiResponsive.*?Wait-ForGuiTitle.*?Focus-TestProcess' -or
+    $titleGate.Extent.Text -notmatch 'GetWindowCaption' -or
+    $titleGate.Extent.Text -notmatch 'Get-TestDialog' -or
+    $titleGate.Extent.Text -notmatch 'SalamanderGuiWaitChain' -or
+    $titleGate.Extent.Text -notmatch 'GUI startup did not publish its main window title') {
+    throw 'GUI startup must identify the exact app class without a caption, then require verified title and responsiveness before input.'
+}
+Write-Host 'PASS: empty-caption startup window is identified by app class and diagnosed before any destructive input.'
+
 Write-Host 'PASS: GUI startup readiness is bounded and failure screenshot survives fixture cleanup.'
 
 Write-Host 'PASS: GUI baseline has no redundant read after verified navigation.'
