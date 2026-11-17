@@ -46,4 +46,11 @@ if (-not $manager.Contains("'--diagnose-gui'") -or
     $runner -notmatch 'Exit\s+1') {
     throw 'Comparison must propagate failures and restore temporary environment overrides.'
 }
+# Reject conflicting management options before invoking builds or tests.
+$diagnoseGuard = $manager.IndexOf("if (`$requestedSet.Contains('--diagnose-gui'))", [StringComparison]::Ordinal)
+$firstTestAction = $manager.IndexOf("if (`$requestedSet.Contains('--test')) { Run-Tests }", [StringComparison]::Ordinal)
+if ($diagnoseGuard -lt 0 -or $firstTestAction -lt 0 -or
+    $diagnoseGuard -ge $firstTestAction) {
+    throw 'Diagnostic mode validation must run before any build or test action.'
+}
 Write-Host 'PASS: GUI A/B comparison keeps the mode constant, reports failures and restores the clipboard.'
