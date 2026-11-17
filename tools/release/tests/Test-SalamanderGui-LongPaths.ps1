@@ -150,6 +150,8 @@ public static class SalamanderGuiNative
     [DllImport("user32.dll")]
     public static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")]
+    public static extern bool IsWindowEnabled(IntPtr window);
+    [DllImport("user32.dll")]
     public static extern bool IsHungAppWindow(IntPtr window);
     [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     private static extern int WideCharToMultiByte(
@@ -1260,6 +1262,24 @@ function Get-ForegroundWindowSummary {
             $h.ToInt64(), $ownerPid, $caption)
 }
 
+# A visible GetLastActivePopup result is not evidence of a modal dialog:
+# Windows also remembers previously activated nonmodal status windows.
+# Ignore ONLY the owned, titled Status popup when the real main HWND remains
+# enabled. All unknown and actual modal dialogs retain fail-closed handling.
+function Test-IsNonBlockingStatusPopup {
+    param([IntPtr]$Window)
+
+    if ($Window -eq [IntPtr]::Zero -or
+        -not [SalamanderGuiNative]::IsWindowVisible($Window) -or
+        -not [SalamanderGuiNative]::IsWindowEnabled($mainWindowHandle) -or
+        [SalamanderGuiNative]::GetWindowCaption($Window) -cne 'Status') {
+        return $false
+    }
+    [uint32]$popupPid = 0
+    [void][SalamanderGuiNative]::GetWindowThreadProcessId($Window, [ref]$popupPid)
+    return $popupPid -eq [uint32]$process.Id
+}
+
 function Get-TestDialog {
     if ($null -eq $process) { return $null }
     $process.Refresh()
@@ -1280,11 +1300,13 @@ function Get-TestDialog {
     $foreground = [SalamanderGuiNative]::GetForegroundWindow()
     [uint32]$ownerPid = 0
     [void][SalamanderGuiNative]::GetWindowThreadProcessId($foreground, [ref]$ownerPid)
-    if ($ownerPid -eq [uint32]$process.Id -and $foreground -ne $main) {
+    if ($ownerPid -eq [uint32]$process.Id -and $foreground -ne $main -and
+        -not (Test-IsNonBlockingStatusPopup -Window $foreground)) {
         return [SalamanderGuiNative]::DescribeWindow($foreground)
     }
     if ($popup -ne [IntPtr]::Zero -and $popup -ne $main -and
-        [SalamanderGuiNative]::IsWindowVisible($popup)) {
+        [SalamanderGuiNative]::IsWindowVisible($popup) -and
+        -not (Test-IsNonBlockingStatusPopup -Window $popup)) {
         return [SalamanderGuiNative]::DescribeWindow($popup)
     }
     return $null
@@ -1358,7 +1380,7 @@ function Focus-TestProcess {
 # until it pumps messages; do not mutate the clipboard or send keys beforehand.
 function Wait-ForGuiResponsive {
     param(
-        [ValidateSet('Startup', 'BeforeClipboard', 'PreCommand775')]
+        [ValidateSet('Startup', 'BeforeClipboard', 'PreCommand775', 'AfterDirectoryDelete')]
         [string]$Context = 'Startup',
         [ValidateRange(1,60)][int]$StartupTimeoutSeconds = 15
     )
@@ -1383,7 +1405,10 @@ function Wait-ForGuiResponsive {
             [uint32]0x0002, [uint32]750, [ref]$response)
         $lastErrorCode = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
         if ($result -ne [IntPtr]::Zero) {
-            if ($Context -eq 'PreCommand775') {
+            if ($Context -eq 'AfterDirectoryDelete') {
+                Write-Host "PASS: Salamander GUI responsive after directory deletion ($attempts attempt(s))."
+            }
+            elseif ($Context -eq 'PreCommand775') {
                 Write-Host "PASS: Salamander GUI responds to WM_NULL immediately before clipboard navigation ($attempts attempt(s))."
             }
             elseif ($Context -eq 'BeforeClipboard') {
@@ -2025,6 +2050,33 @@ function Confirm-DirectoryDeleteDialog {
     } 'owned Unicode directory deletion confirmation'
     [SalamanderGuiNative]::PostVerifiedDirectoryDeleteConfirmation(
         $script:directoryDeleteDialog, [uint32]$process.Id)
+}
+
+# An F8 confirmation is posted asynchronously. The directory may already
+# have vanished while Salamander is still closing its modal confirmation or
+# its own progress/status window. Wait for actual main-window enablement,
+# not an arbitrary delay or a stale GetLastActivePopup reference.
+function Wait-ForCompletedDirectoryDelete {
+    param([Parameter(Mandatory)][string]$DeletedDirectory)
+
+    Wait-Until {
+        $process.Refresh()
+        if ($process.HasExited) {
+            throw "Salamander exited after F8 deletion."
+        }
+        if ([IO.Directory]::Exists($DeletedDirectory) -or
+            [SalamanderGuiNative]::FindUnicodeDirectoryDeleteDialog(
+                [uint32]$process.Id) -ne [IntPtr]::Zero -or
+            -not [SalamanderGuiNative]::IsWindowEnabled($mainWindowHandle)) {
+            return $false
+        }
+        $blockingDialog = Get-TestDialog
+        if (-not [string]::IsNullOrEmpty($blockingDialog)) {
+            throw "Unexpected blocking Salamander dialog after F8: $blockingDialog"
+        }
+        return $true
+    } 'F8 confirmation closed and main window re-enabled'
+    Wait-ForGuiResponsive -Context 'AfterDirectoryDelete' -StartupTimeoutSeconds 15
 }
 
 function Focus-DirectoryRow {
@@ -2769,6 +2821,7 @@ try {
         # regression rather than being misdiagnosed as a missing panel row.
         Assert-True ([IO.Directory]::Exists($asciiTemporaryDirectory)) 'ASCII temporary sibling survives Unicode folder F8'
         Assert-True (Test-Content $asciiLeaf) 'ASCII temporary sibling retains deep Unicode file bytes'
+        Wait-ForCompletedDirectoryDelete -DeletedDirectory $temporaryDirectory
 
         # The native directory-delete handler posts an asynchronous refresh.
         # Force a verified, non-destructive parent/source navigation roundtrip
@@ -2786,6 +2839,7 @@ try {
         Send-Keys '{F8}'
         Confirm-DirectoryDeleteDialog
         Wait-Until { -not [IO.Directory]::Exists($asciiTemporaryDirectory) } 'F8 deletes ASCII temp root with Unicode long descendants'
+        Wait-ForCompletedDirectoryDelete -DeletedDirectory $asciiTemporaryDirectory
         Assert-True (Test-Content $unicodeShortFile) 'Other files remain intact after ASCII temporary root deletion'
         $passed = $true
         Write-Host 'PASS: Salamander F8 recursively deleted the real long-path temporary directory.'
