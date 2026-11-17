@@ -241,6 +241,11 @@ function Run-Tests {
     $vs2026Contract = Join-Path $repository 'tools\release\tests\Test-VS2026-ProjectMetadata.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $vs2026Contract)
 
+    # Guard the original, fully featured Ctrl+F dialog while its worker and
+    # result identities are migrated away from ANSI/MAX_PATH.
+    $legacyFindContract = Join-Path $repository 'tools\release\tests\Test-LegacyFind-UiContract.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $legacyFindContract)
+
     $guiDriverContract = Join-Path $repository 'tools\release\tests\Test-GuiDriver-Contract.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $guiDriverContract)
 
