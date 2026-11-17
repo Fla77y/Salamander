@@ -77,7 +77,56 @@ int main()
     if (GetFileAttributesW(ownedDir.c_str()) != INVALID_FILE_ATTRIBUTES ||
         GetFileAttributesW(root.c_str()) == INVALID_FILE_ATTRIBUTES)
         return std::puts("FAIL: wrong subtree or parent affected"), 1;
-    if (!RemoveDirectoryW(root.c_str()))
+    // Arrange: the original reported fixture uses an ASCII OpenSal-GuiLong
+    // directory name, but has Unicode and >MAX_PATH descendants.
+    const std::wstring asciiRoot = root + L"\\OpenSal-GuiLong-ascii";
+    if (!CreateDirectoryW(asciiRoot.c_str(), nullptr))
+        return std::puts("FAIL: create ASCII temp root"), 1;
+    std::wstring asciiDeep = asciiRoot;
+    for (int i = 0; i < 4; ++i)
+    {
+        asciiDeep += L"\\nested-" + std::to_wstring(i) + L"-" +
+                     std::wstring(65, L'y');
+        std::wstring extended;
+        if (!Salamander::TryMakeExtendedLengthPath(
+                asciiDeep.c_str(), extended, error) ||
+            !CreateDirectoryW(extended.c_str(), nullptr))
+            return std::puts("FAIL: create ASCII-named long subtree"), 1;
+    }
+    const std::wstring asciiLeaf = asciiDeep + L"\\file-大阪-😀.txt";
+    std::wstring extendedLeaf;
+    if (!Salamander::TryMakeExtendedLengthPath(
+            asciiLeaf.c_str(), extendedLeaf, error))
+        return std::puts("FAIL: extend ASCII subtree leaf"), 1;
+    HANDLE second = CreateFileW(extendedLeaf.c_str(), GENERIC_WRITE, 0,
+                                nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (second == INVALID_HANDLE_VALUE)
+        return std::puts("FAIL: create ASCII subtree Unicode leaf"), 1;
+    CloseHandle(second);
+
+    Salamander::Utf16DiskPath asciiDirectory;
+    if (!Own(asciiRoot, asciiDirectory))
+        return std::puts("FAIL: own ASCII directory path"), 1;
+    bool needsNative = false;
+    if (!Salamander::TryNeedsNativeUnicodeDirectoryDelete(
+            asciiDirectory, needsNative, error) || !needsNative)
+        return std::puts("FAIL: missed long descendant under ASCII temp root"), 1;
+    if (!Salamander::TryDeleteUnicodeDirectoryTree(asciiDirectory, error) ||
+        GetFileAttributesW(asciiRoot.c_str()) != INVALID_FILE_ATTRIBUTES)
+        return std::puts("FAIL: ASCII temp root with long Unicode child not deleted"), 1;
+
+    // A simple ASCII-only empty directory keeps the original legacy F8 path.
+    const std::wstring simple = root + L"\\simple-ascii";
+    if (!CreateDirectoryW(simple.c_str(), nullptr))
+        return std::puts("FAIL: create simple ASCII dir"), 1;
+    Salamander::Utf16DiskPath simpleDirectory;
+    if (!Own(simple, simpleDirectory))
+        return std::puts("FAIL: own simple dir"), 1;
+    needsNative = true;
+    if (!Salamander::TryNeedsNativeUnicodeDirectoryDelete(
+            simpleDirectory, needsNative, error) || needsNative)
+        return std::puts("FAIL: ordinary directory should retain legacy UI"), 1;
+    if (!RemoveDirectoryW(simple.c_str()) || !RemoveDirectoryW(root.c_str()))
         return std::puts("FAIL: owned fixture parent was not empty"), 1;
-    return std::puts("PASS: UTF-16 recursive directory deletion crosses MAX_PATH without touching parent"), 0;
+    return std::puts("PASS: UTF-16 deletion handles Unicode and ASCII temp roots with long descendants"), 0;
 }
