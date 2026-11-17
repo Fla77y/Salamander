@@ -11,6 +11,8 @@ if (-not (Test-Path -LiteralPath $runnerPath -PathType Leaf)) {
     throw 'A/B GUI reliability runner must exist.'
 }
 $runner = [IO.File]::ReadAllText($runnerPath)
+$manager = [IO.File]::ReadAllText(
+    (Join-Path $repository 'tools\Manage-Salamander.ps1'))
 
 # Arrange: an empty clipboard is a valid starting state, different from a
 # failure to read the clipboard. Tests must not leave their own data there.
