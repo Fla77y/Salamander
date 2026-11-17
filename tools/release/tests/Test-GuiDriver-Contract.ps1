@@ -275,6 +275,21 @@ if ($noFocusGo -notmatch 'NoForeground' -or
     throw 'Background-safe GUI directory integration must address verified HWNDs, not desktop focus.'
 }
 Write-Host 'PASS: directory integration uses HWND-bound navigation, row selection and delete commands.'
+# Verify the source-level assumptions of background automation. -p 2
+# selects the right panel; 729 invokes Salamander's actual F8 handler.
+$resourceHeader = Get-Content -LiteralPath (
+    Join-Path $PSScriptRoot '..\..\..\src\resource.rh2') -Raw
+$nativeMain = Get-Content -LiteralPath (
+    Join-Path $PSScriptRoot '..\..\..\src\mainwnd3.cpp') -Raw
+if ($resourceHeader -notmatch '(?m)^#define\s+CM_DELETEFILES\s+729\b' -or
+    $nativeMain -notmatch 'case CM_DELETEFILES:\s*// delete files and directories' -or
+    $nativeMain -notmatch 'cmdLineParams->ActivatePanel == 2 && GetActivePanel\(\) == LeftPanel' -or
+    $driverText -notmatch '(?s)\$startupArgs = .*?-p 2') {
+    throw 'Background directory control assumptions differ from Salamander native code.'
+}
+Write-Host 'PASS: background GUI test targets the real active panel and F8 delete handler.'
+
+
 
 
 
