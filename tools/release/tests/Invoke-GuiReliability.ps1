@@ -110,15 +110,21 @@ try {
                 'Salamander GUI responsive before clipboard publication \((\d+) attempt\(s\)\)')
             $hang = [regex]::Match($logText,
                 'GUI startup remained unresponsive \(phase=([^)]*)\)')
+            $startupAttempts = $null
+            $beforeClipboardAttempts = $null
+            $hangPhase = ''
+            if ($startup.Success) { $startupAttempts = [int]$startup.Groups[1].Value }
+            if ($clipboard.Success) { $beforeClipboardAttempts = [int]$clipboard.Groups[1].Value }
+            if ($hang.Success) { $hangPhase = $hang.Groups[1].Value }
             [void]$results.Add([pscustomobject]@{
                 Iteration = $iteration
                 Scenario = $scenario.Name
                 Configuration = $Configuration
                 ExitCode = $exitCode
                 DurationSeconds = $duration
-                StartupAttempts = if ($startup.Success) { [int]$startup.Groups[1].Value } else { $null }
-                BeforeClipboardAttempts = if ($clipboard.Success) { [int]$clipboard.Groups[1].Value } else { $null }
-                HangPhase = if ($hang.Success) { $hang.Groups[1].Value } else { '' }
+                StartupAttempts = $startupAttempts
+                BeforeClipboardAttempts = $beforeClipboardAttempts
+                HangPhase = $hangPhase
                 SurvivingProcesses = $orphanCount
                 Log = $log
             })
