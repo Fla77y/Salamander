@@ -100,6 +100,55 @@ finally {
     }
 }
 
+# Arrange: fake compiler preserves output files and records the invoked MSBuild target.
+$buildRoot = Join-Path ([IO.Path]::GetTempPath()) ('sal-build-out-' + [guid]::NewGuid().ToString('N'))
+$repositoryRoot = Join-Path ([IO.Path]::GetTempPath()) ('sal-build-repo-' + [guid]::NewGuid().ToString('N'))
+$targets = [System.Collections.Generic.List[string]]::new()
+try {
+    New-Item -ItemType Directory -Force -Path $buildRoot, $repositoryRoot | Out-Null
+    $simulateBuild = {
+        param($executable, $arguments)
+        $target = @($arguments | Where-Object { $_ -like '/t:*' })
+        $targets.Add($target[0])
+        $variant = if ($arguments -contains '/p:Configuration=Debug') { 'Debug' } else { 'Release' }
+        $out = Join-Path $buildRoot ("salamander\${variant}_x64")
+        New-Item -ItemType Directory -Force -Path $out | Out-Null
+        [IO.File]::WriteAllText((Join-Path $out 'salamand.exe'), 'fixture')
+    }
+
+    # Act: delta and rebuild retain their distinct MSBuild target selection.
+    Invoke-SalamanderBuild -Msbuild 'mock-msbuild.exe' -Solution 'mock.sln' `
+        -Repository $repositoryRoot -BuildRoot $buildRoot -Mode Delta -Invoke $simulateBuild
+    Invoke-SalamanderBuild -Msbuild 'mock-msbuild.exe' -Solution 'mock.sln' `
+        -Repository $repositoryRoot -BuildRoot $buildRoot -Mode Rebuild -Invoke $simulateBuild
+
+    # Assert
+    Assert-Equal ($targets -join ',') '/t:Build,/t:Build,/t:Rebuild,/t:Rebuild' 'MSBuild target selection'
+
+    # Arrange: a stale binary exists from the previous build.
+    $stale = Join-Path $buildRoot 'salamander\Debug_x64\obsolete.dll'
+    [IO.File]::WriteAllText($stale, 'stale')
+    # Act
+    Invoke-SalamanderBuild -Msbuild 'mock-msbuild.exe' -Solution 'mock.sln' `
+        -Repository $repositoryRoot -BuildRoot $buildRoot -Mode Clean -Invoke $simulateBuild
+    # Assert
+    if (Test-Path -LiteralPath $stale) { throw 'Clean build retained an obsolete artifact.' }
+    Assert-Equal (($targets | Select-Object -Last 2) -join ',') '/t:Build,/t:Build' 'Clean target selection'
+
+    # Arrange/Act/Assert: destructive clean must reject the repository as a build root.
+    $rejected = $false
+    try { Assert-BuildDirectory -Repository $repositoryRoot -BuildRoot $repositoryRoot }
+    catch { $rejected = $true }
+    if (-not $rejected) { throw 'Unsafe build root was accepted.' }
+}
+finally {
+    foreach ($directory in @($buildRoot, $repositoryRoot)) {
+        if (Test-Path -LiteralPath $directory) {
+            Remove-Item -LiteralPath $directory -Recurse -Force
+        }
+    }
+}
+
 # Arrange/Act/Assert: the central manager and package pipeline keep both paths.
 $manager = [IO.File]::ReadAllText((Join-Path $repository 'tools\Manage-Salamander.ps1'))
 $pipeline = [IO.File]::ReadAllText((Join-Path $repository 'tools\release\Update-Build-Test-Package.ps1'))
