@@ -473,6 +473,12 @@ public static class SalamanderGuiNative
             !IsWindowEnabled(mainWindow) ||
             ClassName(mainWindow) != "SalamanderMainWindowVer25")
             throw new InvalidOperationException("Refusing delete command for unverified main window");
+        // Salamander uses GetKeyState(VK_SHIFT) to invert Recycle Bin policy.
+        // Reject a held modifier rather than silently changing delete mode.
+        if ((GetKeyState(0x10) & 0x8000) != 0 ||
+            (GetKeyState(0x11) & 0x8000) != 0 ||
+            (GetKeyState(0x12) & 0x8000) != 0)
+            throw new InvalidOperationException("Modifier key held; refusing deletion");
         // Never SendMessage synchronously: the handler shows a modal prompt.
         if (!PostMessageW(mainWindow, 0x0111, new UIntPtr(729), IntPtr.Zero))
             throw new InvalidOperationException(
@@ -530,7 +536,7 @@ public static class SalamanderGuiNative
             throw new InvalidOperationException(
                 "Verified file list WM_KEYDOWN failed: " + Marshal.GetLastWin32Error());
         if (SendMessageTimeout(list, 0x0101, new UIntPtr(virtualKey),
-                               new IntPtr(0xC0000001), 2, 5000, out ignored) == IntPtr.Zero)
+                               new IntPtr(unchecked((int)0xC0000001u)), 2, 5000, out ignored) == IntPtr.Zero)
             throw new InvalidOperationException(
                 "Verified file list WM_KEYUP failed: " + Marshal.GetLastWin32Error());
     }
@@ -2896,8 +2902,9 @@ try {
     # WM_COMMAND 711 adds no coverage and can race with GUI processing.
     Write-Host 'PASS: GUI driver can navigate a normal short directory'
     if ($TemporaryDirectoryDeletionOnly) {
-        # Act: delete the exact test-owned directory through Salamander's F8
-        # command. Merely deleting it with .NET would not test the reported bug.
+        # Act: exercise Salamander's actual F8 deletion command handler
+        # (CM_DELETEFILES) through its verified HWND, without global focus.
+        # The F8 accelerator binding is covered by separate keyboard tests.
         Assert-True ((Read-PanelPath) -ceq $source) 'Disposable parent panel verified before F8 directory delete'
         Focus-DirectoryRow -Name $temporaryDirectoryName -VerifiedBackground
         Assert-True ((Read-FocusedFilename -AllowVerifiedBackground) -ceq $temporaryDirectoryName) 'Exact temporary directory selected for F8'
@@ -2941,7 +2948,7 @@ try {
         Wait-ForCompletedDirectoryDelete -DeletedDirectory $asciiTemporaryDirectory
         Assert-True (Test-Content $unicodeShortFile) 'Other files remain intact after ASCII temporary root deletion'
         $passed = $true
-        Write-Host 'PASS: Salamander F8 recursively deleted the real long-path temporary directory.'
+        Write-Host 'PASS: Salamander F8 recursively deleted the real long-path temporary directory (CM_DELETEFILES handler; physical F8 key not tested here).'
         return
     }
     if ($UnicodeFindOnly) {
