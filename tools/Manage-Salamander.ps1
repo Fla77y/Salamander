@@ -13,7 +13,7 @@ $repository = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Provide
 $buildRoot = 'D:\Build\OpenSal'
 $configuration = 'Release'
 $validOptions = @('--update', '--build', '--test', '--setup', '--run',
-                  '--debug', '--release', '--all', '--test-all', '--test-gui', '--test-gui-max-path', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-recycle-restore', '--test-plugin-exports', '--test-plugin-load', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-unicode-find', '--test-gui-manual', '--test-gui-temp-delete', '--test-pictview', '--test-pictview-window', '--test-pictview-host', '--help', '-h', '/?')
+                  '--debug', '--release', '--all', '--build-delta', '--build-clean', '--test-all', '--test-gui', '--test-gui-max-path', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-recycle-restore', '--test-plugin-exports', '--test-plugin-load', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-unicode-find', '--test-gui-manual', '--test-gui-temp-delete', '--test-pictview', '--test-pictview-window', '--test-pictview-host', '--help', '-h', '/?')
 $requestedSet = [System.Collections.Generic.HashSet[string]]::new(
     [StringComparer]::OrdinalIgnoreCase)
 
@@ -31,7 +31,7 @@ function Write-Usage {
 Open Salamander – Verwaltung für Visual Studio 2026
 
   manage.cmd --update       Aktuellen Git-Branch sicher aktualisieren (nur fast-forward)
-  manage.cmd --build        Debug und Release, jeweils x64, neu erstellen; CHM-Hilfe bauen
+  manage.cmd --build        Debug und Release x64 vollstaendig neu bauen (MSBuild Rebuild)\n  manage.cmd --build-delta  Schneller inkrementeller Build (MSBuild Build)\n  manage.cmd --build-clean  Output-Ordner loeschen und vollstaendig neu bauen
   manage.cmd --test         Windows-Dateisystem-/Namens-Tests und Projekt-Regressionstests
   manage.cmd --test-all     Alle automatisierten Tests: --test und sämtliche GUI-Modi
                             (Release und Debug x64; --release/--debug begrenzt die GUI-Modi)
@@ -187,39 +187,30 @@ function Get-VariantDirectory {
 }
 
 function Build-Variants {
-    Write-Host '=== BUILD DEBUG + RELEASE x64, inklusive Hilfe ==='
+    param([ValidateSet('Delta', 'Rebuild', 'Clean')][string]$Mode = 'Rebuild')
     $vs = Get-VisualStudio2026
     $msbuild = Join-Path $vs 'MSBuild\Current\Bin\MSBuild.exe'
     if (-not (Test-Path -LiteralPath $msbuild -PathType Leaf)) {
         throw "MSBuild.exe nicht gefunden: $msbuild"
     }
     $solution = Join-Path $repository 'src\vcxproj\salamand.sln'
-    $env:OPENSAL_BUILD_DIR = $buildRoot.TrimEnd('\') + '\'
-    foreach ($mode in @('Debug', 'Release')) {
-        Write-Host "=== MSBUILD $mode | x64 ==="
-        Invoke-Native $msbuild @(
-            $solution, '/t:Rebuild', "/p:Configuration=$mode",
-            '/p:Platform=x64', '/p:PreferredToolArchitecture=x64',
-            '/m', '/nr:false', '/v:minimal'
-        )
-        $app = Join-Path (Get-VariantDirectory $mode) 'salamand.exe'
-        if (-not (Test-Path -LiteralPath $app -PathType Leaf)) {
-            throw "MSBuild meldet Erfolg, aber salamand.exe fehlt: $app"
+    Invoke-SalamanderBuild -Msbuild $msbuild -Solution $solution -Repository $repository `
+        -BuildRoot $buildRoot -Mode $Mode -Invoke {
+            param($Executable, $Arguments)
+            Invoke-Native $Executable $Arguments
         }
-        # Verify the compiled PE VERSIONINFO, not only the source macros.
+    foreach ($variant in @('Debug', 'Release')) {
+        $binary = Join-Path (Get-VariantDirectory $variant) 'salamand.exe'
         $productVersionTest = Join-Path $repository 'tools\release\tests\Test-ProductVersion.ps1'
         Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $productVersionTest,
-                                  '-BinaryPath', $app)
+                                  '-BinaryPath', $binary)
     }
-
     $pf86 = [Environment]::GetFolderPath('ProgramFilesX86')
-    $hhc = Find-Executable 'hhc.exe' @(
-        (Join-Path $pf86 'HTML Help Workshop\hhc.exe')
-    )
+    $hhc = Find-Executable 'hhc.exe' @((Join-Path $pf86 'HTML Help Workshop\hhc.exe'))
     Build-CompiledHelp -Repository $repository -HhcExe $hhc -OutputDirectories @(
         (Get-VariantDirectory 'Debug'), (Get-VariantDirectory 'Release')
-    )
-    Write-Host 'Build + Haupt- und Plugin-Hilfe erstellt.'
+    ) -Incremental:($Mode -eq 'Delta')
+    Write-Host "Build ($Mode) und HTML-Hilfe abgeschlossen."
 }
 
 function Run-Tests {
@@ -232,6 +223,9 @@ function Run-Tests {
 
     $productVersionTest = Join-Path $repository 'tools\release\tests\Test-ProductVersion.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $productVersionTest)
+
+    $buildModesTest = Join-Path $repository 'tools\release\tests\Test-BuildModes.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $buildModesTest)
 
     $pictviewContract = Join-Path $repository 'tools\release\tests\Test-PictView-Management.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $pictviewContract)
@@ -381,6 +375,7 @@ try {
         if ($option -notin $validOptions) { throw "Unbekannter Parameter: '$option' (manage.cmd --help)" }
         [void]$requestedSet.Add($option)
     }
+    $null = Get-BuildMode -RequestedSet $requestedSet
     if ($requestedSet.Contains('--debug') -and $requestedSet.Contains('--release')) {
         throw '--debug und --release dürfen nicht kombiniert werden.'
     }
@@ -400,11 +395,13 @@ try {
         Expand-AutomatedTestActions -RequestedSet $requestedSet -AvailableOptions $validOptions
 
         . (Join-Path $repository 'tools\release\Package-Helpers.ps1')
+        . (Join-Path $repository 'tools\release\Build-Helpers.ps1')
         $buildRoot = [IO.Path]::GetFullPath($buildRoot)
         New-Item -ItemType Directory -Path $buildRoot -Force | Out-Null
 
         if ($requestedSet.Contains('--update')) { Update-Branch }
-        if ($requestedSet.Contains('--build')) { Build-Variants }
+        $buildMode = Get-BuildMode -RequestedSet $requestedSet
+        if ($buildMode -ne 'None') { Build-Variants -Mode $buildMode }
         if ($requestedSet.Contains('--test')) { Run-Tests }
         # Separate acceptance gate: these built plug-ins are inspected but
         # never loaded, and missing artifacts must fail rather than skip.
@@ -614,7 +611,7 @@ try {
             Write-Warning 'Die GUI-Prüfung ist manuell; diese Ausgabe bescheinigt KEIN Bestehen.'
         }
         if ($requestedSet.Contains('--setup')) {
-            Build-Setups -AlreadyBuilt:$requestedSet.Contains('--build')
+            Build-Setups -AlreadyBuilt:($buildMode -ne 'None')
         }
         if ($requestedSet.Contains('--run')) { Run-Salamander }
 
