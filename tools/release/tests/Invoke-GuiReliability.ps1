@@ -1,0 +1,124 @@
+#requires -Version 7.4
+# SPDX-FileCopyrightText: 2026 Open Salamander Authors
+# SPDX-License-Identifier: GPL-2.0-or-later
+<#
+.SYNOPSIS
+    Compares isolated GUI F8 runs against the same test after --test-all's prelude.
+.DESCRIPTION
+    Keeps one x64 binary/configuration fixed, alternates run order to reduce
+    ordering bias, records each complete transcript and exit status, and checks
+    for surviving Salamander processes. Does not change production binaries.
+    The GUI is not fully hermetic: Windows clipboard, registry and desktop
+    state are shared. A difference is evidence for further investigation, not
+    proof of a specific root cause.
+.EXAMPLE
+    pwsh -NoProfile -File .\tools\release\tests\Invoke-GuiReliability.ps1 -Iterations 3 -Configuration Release -CaptureHangDump
+#>
+[CmdletBinding()]
+param(
+    [ValidateRange(1, 20)][int]$Iterations = 3,
+    [ValidateSet('Release', 'Debug')][string]$Configuration = 'Release',
+    [switch]$CaptureHangDump,
+    [string]$OutputDirectory = 'D:\Build\OpenSal\logs\gui-reliability'
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+if (-not $IsWindows) { throw 'GUI A/B comparison requires Windows.' }
+$repository = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..\..')).ProviderPath
+$manage = Join-Path $repository 'manage.cmd'
+if (-not (Test-Path -LiteralPath $manage -PathType Leaf)) {
+    throw "Management entry point not found: $manage"
+}
+$configurationSwitch = if ($Configuration -eq 'Debug') { '--debug' } else { '--release' }
+$session = Join-Path ([IO.Path]::GetFullPath($OutputDirectory)) (
+    'compare-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' +
+    [guid]::NewGuid().ToString('N').Substring(0, 8))
+[void][IO.Directory]::CreateDirectory($session)
+$results = [System.Collections.Generic.List[object]]::new()
+$originalDumpSetting = [Environment]::GetEnvironmentVariable(
+    'OPENSAL_GUI_CAPTURE_HANG_DUMP', 'Process')
+$stoppedForOrphan = $false
+$scenarios = @(
+    @{ Name = 'Isolated'; Options = @('--test-gui-temp-delete') },
+    @{ Name = 'AfterPrelude'; Options = @('--test', '--test-plugin-exports',
+        '--test-pictview', '--test-pictview-window', '--test-gui-temp-delete') }
+)
+
+try {
+    if ($CaptureHangDump) {
+        [Environment]::SetEnvironmentVariable(
+            'OPENSAL_GUI_CAPTURE_HANG_DUMP', '1', 'Process')
+    }
+
+    for ($iteration = 1; $iteration -le $Iterations; $iteration++) {
+        # Alternate AB / BA: neither scenario always benefits from running first.
+        $order = if ($iteration % 2 -eq 0) { @($scenarios[1], $scenarios[0]) }
+                 else { @($scenarios[0], $scenarios[1]) }
+        foreach ($scenario in $order) {
+            # Never terminate arbitrary user instances. Refuse to start another
+            # test if any Salamander process outlived its previous runner.
+            $existing = @(Get-Process salamand -ErrorAction SilentlyContinue)
+            if ($existing.Count -gt 0) {
+                $pids = ($existing | ForEach-Object Id) -join ','
+                throw "Salamander process(es) still running ($pids). Stop comparison; do not kill unknown processes."
+            }
+
+            $options = @($configurationSwitch) + @($scenario.Options)
+            $stem = '{0:D2}-{1}-{2}' -f $iteration, $scenario.Name, $Configuration
+            $log = Join-Path $session ($stem + '.log')
+            $started = [DateTime]::UtcNow
+            Write-Host ("=== A/B {0} {1} x64, iteration {2}/{3} ===" -f
+                $scenario.Name, $Configuration, $iteration, $Iterations)
+            # Each management invocation runs in its own process; its full
+            # transcript and native child failures are preserved verbatim.
+            & $manage @options 2>&1 | Set-Content -LiteralPath $log -Encoding utf8
+            $exitCode = $LASTEXITCODE
+            $duration = [Math]::Round(
+                ([DateTime]::UtcNow - $started).TotalSeconds, 2)
+            $survivors = @(Get-Process salamand -ErrorAction SilentlyContinue)
+            $orphanCount = $survivors.Count
+            [void]$results.Add([pscustomobject]@{
+                Iteration = $iteration
+                Scenario = $scenario.Name
+                Configuration = $Configuration
+                ExitCode = $exitCode
+                DurationSeconds = $duration
+                SurvivingProcesses = $orphanCount
+                Log = $log
+            })
+            Write-Host ("Result: {0}; exit={1}; elapsed={2}s; survivors={3}; log={4}" -f
+                $scenario.Name, $exitCode, $duration, $orphanCount, $log)
+            if ($exitCode -ne 0) {
+                Write-Warning "Test case failed; full log: $log"
+                Get-Content -LiteralPath $log -Tail 18 | ForEach-Object { Write-Host $_ }
+            }
+            if ($orphanCount -gt 0) {
+                Write-Warning 'Not continuing: an existing Salamander process would invalidate subsequent comparisons.'
+                $stoppedForOrphan = $true
+                break
+            }
+        }
+        if ($stoppedForOrphan) { break }
+    }
+}
+finally {
+    # Restore the exact prior setting even when the test fails.
+    if ($CaptureHangDump) {
+        [Environment]::SetEnvironmentVariable(
+            'OPENSAL_GUI_CAPTURE_HANG_DUMP', $originalDumpSetting, 'Process')
+    }
+    $summary = Join-Path $session 'Summary.csv'
+    $results | Export-Csv -LiteralPath $summary -NoTypeInformation -Encoding utf8
+    Write-Host "=== GUI A/B Summary: $summary ==="
+    $results | Format-Table Iteration, Scenario, Configuration, ExitCode,
+        DurationSeconds, SurvivingProcesses -AutoSize | Out-String | Write-Host
+}
+
+# No "green" result if either test variant failed or process cleanup failed.
+if ($stoppedForOrphan -or @($results | Where-Object {
+        $_.ExitCode -ne 0 -or $_.SurvivingProcesses -ne 0
+    }).Count -gt 0) {
+    Exit 1
+}
+Write-Host 'PASS: all isolated and preconditioned GUI comparison runs completed.'
