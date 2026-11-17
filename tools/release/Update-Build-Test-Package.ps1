@@ -62,7 +62,7 @@ if (-not $SkipUpdate) {
     $afterUpdate = (& git -C $repository rev-parse HEAD).Trim()
     if ($LASTEXITCODE -ne 0) { throw 'Unable to read updated Git revision.' }
     if ($afterUpdate -ne $beforeUpdate) {
-        $changedPipeline = @(& git -C $repository diff --name-only $beforeUpdate $afterUpdate -- 'tools/release/Update-Build-Test-Package.ps1' 'tools/release/Package-Helpers.ps1' 'tools/release/OpenSalamander.iss')
+        $changedPipeline = @(& git -C $repository diff --name-only $beforeUpdate $afterUpdate -- 'tools/release/Update-Build-Test-Package.ps1' 'tools/release/Package-Helpers.ps1' 'tools/release/Build-Helpers.ps1' 'tools/release/OpenSalamander.iss')
         if ($LASTEXITCODE -ne 0) { throw 'Unable to compare pipeline versions after Git update.' }
         if ($changedPipeline.Count -gt 0) {
             throw 'The update changed release pipeline scripts. Run the command again to load the new version safely.'
