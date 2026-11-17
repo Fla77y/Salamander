@@ -60,7 +60,7 @@ Open Salamander – Verwaltung für Visual Studio 2026
   manage.cmd --test-gui-unicode-directory-rename  F2-Umbenennung eines Unicode-Verzeichnisses prüfen
   manage.cmd --test-gui-unsafe-unicode-operations  F2/F5/F6/F8 mit nicht darstellbaren Unicode-Namen sicher abweisen
   manage.cmd --test-gui-unicode-find  Neues F2-Unicode-Suchfenster: Suche, Pfade, Copy/Move/Rename, Kollisionsschutz
-  manage.cmd --test-gui-temp-delete  Echtes F8-Löschen verschachtelter temporärer Unicode-Langpfade
+  manage.cmd --test-gui-temp-delete  GUI-Löschpfad via F8-Handler (CM_DELETEFILES), ohne Desktop-Fokus
   manage.cmd --test-gui-manual  Testdaten behalten und Salamander zum manuellen Test starten
   manage.cmd --run          Release-Version starten
   manage.cmd --run --debug  Debug-Version starten
@@ -477,7 +477,7 @@ try {
         $automatedGuiModes = @(Get-AutomatedGuiModes -RequestedSet $requestedSet)
         foreach ($guiMode in $automatedGuiModes) {
             if ($requestedSet.Contains('--test-gui-temp-delete')) {
-                Write-Host '=== GUI F8 RECURSIVE UNICODE TEMP DIRECTORY DELETION ==='
+                Write-Host '=== GUI F8 DELETE HANDLER (FOREGROUND-INDEPENDENT CM_DELETEFILES) ==='
                 $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
                 $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
                 Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
