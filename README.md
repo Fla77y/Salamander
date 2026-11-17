@@ -104,8 +104,8 @@ pwsh -NoProfile -File .\tools\release\tests\Invoke-GuiReliability.ps1 -Iteration
 This explicit diagnostic runs the **same one** F8 GUI case both in isolation
 and after `--test --test-plugin-exports --test-pictview
 --test-pictview-window`, keeping the x64 configuration fixed. It alternates
-the order of these scenarios, writes individual management logs and a
-`Summary.csv` under `D:\Build\OpenSal\logs\gui-reliability`, and reports
+the order of these scenarios, streams the complete test-prelude output live
+while writing individual management logs and a `Summary.csv` under `D:\Build\OpenSal\logs\gui-reliability`, and reports
 nonzero exit codes as failures. It refuses to continue if another Salamander
 process remains, without killing unknown processes. The diagnostic manager
 runs do not copy their nested transcripts to the global clipboard. The GUI
