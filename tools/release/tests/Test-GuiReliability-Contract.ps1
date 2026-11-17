@@ -36,6 +36,16 @@ foreach ($literal in @('--test-gui-temp-delete', '--test-plugin-exports',
         throw "GUI A/B comparison is missing a mandatory reliability contract: $literal"
     }
 }
+# Live-output contract: the long prelude must not be hidden by a
+# file-only Set-Content pipeline. A streamed duplicate goes to both console
+# and per-scenario log, while the original native exit code remains checked.
+if ($runner -notmatch '(?s)&\s*\$manage\s+@options\s+2>&1\s*\|\s*Tee-Object\s+-FilePath\s+\$log\s*\|\s*Out-Host' -or
+    $runner -match '(?s)&\s*\$manage\s+@options\s+2>&1\s*\|\s*Set-Content' -or
+    $runner -notmatch '\$exitCode\s*=\s*\$LASTEXITCODE') {
+    throw 'A/B prelude output must stream to console and log without masking the management exit code.'
+}
+Write-Host 'PASS: A/B prelude output is visible live and still captured in its log.'
+
 if (-not $manager.Contains("'--diagnose-gui'") -or
     -not $manager.Contains('Invoke-GuiReliability.ps1') -or
     -not $manager.Contains('OPENSAL_MANAGE_SKIP_CLIPBOARD') -or
