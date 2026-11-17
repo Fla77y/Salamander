@@ -88,9 +88,16 @@ try {
     }
     [IO.File]::SetLastWriteTimeUtc($extra, $old)
 
-    # Act/Assert: missing one binary is not a cache hit.
-    Remove-Item -LiteralPath (Join-Path $debugDir 'test.chm') -Force
-    if (-not (Test-HelpNeedsBuild -ProjectPath $project -CompiledName 'test.chm' -OutputDirectories $outputPaths)) {
+    # Arrange: the Debug CHM exists at the same location as the compiled help output.
+    $debugHelp = Join-Path $debugDir 'help\english\test.chm'
+    if (-not (Test-Path -LiteralPath $debugHelp -PathType Leaf)) {
+        throw "Missing synthetic Debug help fixture: $debugHelp"
+    }
+    # Act: remove one of the two independently required outputs.
+    Remove-Item -LiteralPath $debugHelp -Force
+    # Assert: the incremental check must detect the missing Debug CHM.
+    if (Test-Path -LiteralPath $debugHelp -PathType Leaf -or
+        -not (Test-HelpNeedsBuild -ProjectPath $project -CompiledName 'test.chm' -OutputDirectories $outputPaths)) {
         throw 'Missing Debug help incorrectly reused Release output.'
     }
 }
