@@ -413,6 +413,51 @@ public static class SalamanderGuiNative
         return GetForegroundWindow() == window;
     }
 
+    // Find precisely one native MessageBoxW confirmation created by the
+    // guarded UTF-16 directory delete path. Windows may raise unrelated
+    // foreground overlays after the F8 keystroke.
+    public static IntPtr FindUnicodeDirectoryDeleteDialog(uint processId)
+    {
+        IntPtr result = IntPtr.Zero;
+        foreach (TopLevelWindow window in GetProcessWindows(processId))
+        {
+            if (!window.Visible ||
+                ClassName(window.Handle) != "#32770" ||
+                window.Title != "Unicode directory deletion")
+                continue;
+            if (result != IntPtr.Zero)
+                throw new InvalidOperationException(
+                    "Multiple Unicode directory deletion dialogs owned by test process");
+            result = window.Handle;
+        }
+        return result;
+    }
+
+    // Dispatch exactly one consent message to a verified dialog. Do not
+    // assume that the foreground HWND is a Salamander modal dialog.
+    public static void PostVerifiedDirectoryDeleteConfirmation(IntPtr dialog, uint processId)
+    {
+        if (dialog == IntPtr.Zero || processId == 0 || !IsWindowVisible(dialog))
+            throw new InvalidOperationException("Directory deletion dialog is not visible");
+        uint actualPid;
+        if (GetWindowThreadProcessId(dialog, out actualPid) == 0 ||
+            actualPid != processId || ClassName(dialog) != "#32770" ||
+            GetWindowCaption(dialog) != "Unicode directory deletion")
+            throw new InvalidOperationException("Directory deletion dialog identity changed");
+        IntPtr button = GetDlgItem(dialog, 1); // IDOK
+        if (button == IntPtr.Zero || !IsWindowVisible(button))
+            throw new InvalidOperationException("Directory delete OK button unavailable");
+        uint buttonPid;
+        if (GetWindowThreadProcessId(button, out buttonPid) == 0 ||
+            buttonPid != processId)
+            throw new InvalidOperationException("Directory delete OK button belongs to another PID");
+        // WM_COMMAND / IDOK / BN_CLICKED, with verified button HWND.
+        if (!PostMessageW(dialog, 0x0111, new UIntPtr(1), button))
+            throw new InvalidOperationException(
+                "Failed to post directory delete confirmation: " +
+                Marshal.GetLastWin32Error());
+    }
+
     // Only operate on controls whose top-level window belongs to the isolated
     // Salamander PID. WM_SETTEXT/WM_GETTEXT are system-marshalled messages;
     // custom ListView messages must not carry pointers across processes.
@@ -1944,6 +1989,19 @@ function Select-TwoRegularFiles {
 # Locate a real directory row in a non-root test fixture. Its first row
 # is the synthetic '..' entry, which does not publish a name via WM_COMMAND 710.
 # Never press Enter until the exact directory row has been verified.
+# Wait for the exact native confirmation instead of relying on a fixed
+# delay and an Enter sent to whichever window owns the global foreground.
+function Confirm-DirectoryDeleteDialog {
+    $script:directoryDeleteDialog = [IntPtr]::Zero
+    Wait-Until {
+        $script:directoryDeleteDialog =
+            [SalamanderGuiNative]::FindUnicodeDirectoryDeleteDialog([uint32]$process.Id)
+        return $script:directoryDeleteDialog -ne [IntPtr]::Zero
+    } 'owned Unicode directory deletion confirmation'
+    [SalamanderGuiNative]::PostVerifiedDirectoryDeleteConfirmation(
+        $script:directoryDeleteDialog, [uint32]$process.Id)
+}
+
 function Focus-DirectoryRow {
     param([Parameter(Mandatory)][string]$Name)
 
@@ -2669,8 +2727,7 @@ try {
         Focus-DirectoryRow -Name $temporaryDirectoryName
         Assert-True ((Read-FocusedFilename) -ceq $temporaryDirectoryName) 'Exact temporary directory selected for F8'
         Send-Keys '{F8}'
-        Start-Sleep -Milliseconds 350
-        Send-Keys '{ENTER}'
+        Confirm-DirectoryDeleteDialog
         # Assert: disappearance on disk (not just a refreshed panel row)
         # is required, and the adjacent fixture must remain untouched.
         try {
@@ -2702,8 +2759,7 @@ try {
         Focus-DirectoryRow -Name $asciiTemporaryName
         Assert-True ((Read-FocusedFilename) -ceq $asciiTemporaryName) 'Exact ASCII temporary root selected for F8'
         Send-Keys '{F8}'
-        Start-Sleep -Milliseconds 350
-        Send-Keys '{ENTER}'
+        Confirm-DirectoryDeleteDialog
         Wait-Until { -not [IO.Directory]::Exists($asciiTemporaryDirectory) } 'F8 deletes ASCII temp root with Unicode long descendants'
         Assert-True (Test-Content $unicodeShortFile) 'Other files remain intact after ASCII temporary root deletion'
         $passed = $true
