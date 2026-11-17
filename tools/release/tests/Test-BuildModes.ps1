@@ -162,4 +162,19 @@ if (-not $manager.Contains("'--build-delta'") -or -not $manager.Contains("'--bui
     -not $manager.Contains('Build-Setups -AlreadyBuilt:')) {
     throw 'Management CLI must wire incremental and clean modes to packaging.'
 }
+
+# Arrange/Act/Assert: self-updating must not continue with a stale loaded
+# Build-Helpers function after Git replaces the helper file on disk.
+$managerUpdate = [regex]::Match(
+    $manager, '(?s)function Update-Branch\s*\{(.*?)\nfunction Get-VariantDirectory'
+).Groups[1].Value
+$pipelineUpdate = [regex]::Match(
+    $pipeline, '(?s)if \(-not \$SkipUpdate\) \{(.*?)\n\$vsDir'
+).Groups[1].Value
+if ([string]::IsNullOrWhiteSpace($managerUpdate) -or
+    [string]::IsNullOrWhiteSpace($pipelineUpdate) -or
+    -not $managerUpdate.Contains("'tools/release/Build-Helpers.ps1'") -or
+    -not $pipelineUpdate.Contains("'tools/release/Build-Helpers.ps1'")) {
+    throw 'Git update must restart when the shared Build-Helpers script changed.'
+}
 Write-Host 'PASS: Build modes, conflicts, HTML Help cache invalidation and CLI integration.'
