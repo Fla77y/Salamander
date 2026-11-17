@@ -266,14 +266,19 @@ $diagnostics = @(
     @{ Function = 'Focus-TestProcess'; Prefix = '{0}: Cannot activate verified Salamander HWND=0x{1:X} PID={2} ' },
     @{ Function = 'Invoke-SalamanderCommand'; Prefix = 'Salamander command {0} did not complete' },
     @{ Function = 'Go-ToPath'; Prefix = 'GUI navigation failed: {0}' },
-    @{ Function = 'Wait-ForGuiTitle'; Prefix = 'GUI startup failed: {0}' }
+    @{ Function = '<main>'; Prefix = 'GUI startup failed: {0}' }
 )
 foreach ($diagnostic in $diagnostics) {
     # Act: inspect the diagnostic throw within its own function, not another
     # unrelated error message or a comment elsewhere in the driver.
     $functionPattern = '(?ms)^function\s+' + [regex]::Escape($diagnostic.Function) +
                        '\s*\{(?<body>.*?)(?=^function\s+|\z)'
-    $body = [regex]::Match($guiDriver, $functionPattern).Groups['body'].Value
+    $body = if ($diagnostic.Function -eq '<main>') {
+        $guiDriver
+    }
+    else {
+        [regex]::Match($guiDriver, $functionPattern).Groups['body'].Value
+    }
     $formatPattern = '(?s)throw\s+\(\(\s*"' +
                      [regex]::Escape($diagnostic.Prefix) + '.*?\)\s*-f\s'
     # Assert: the full diagnostic is formatted before it is thrown.
