@@ -754,6 +754,17 @@ BOOL CFilesWindow::TryUnicodeSingleDirectoryDelete()
         : Configuration.UseRecycleBin;
     if (MyGetDriveType(GetPath()) != DRIVE_FIXED)
         recycleMode = 0;
+    // Mode 2 applies the configured RecycleMasks to individual descendants.
+    // An all-or-nothing directory operation must not silently reinterpret
+    // those masks as permanent deletion or unconditional recycling.
+    if (recycleMode == 2)
+    {
+        MessageBoxW(HWindow, L"Directory deletion with per-file Recycle Bin "
+                    L"masks is not yet supported by the Unicode engine. "
+                    L"No files were changed.", L"Unicode directory deletion",
+                    MB_OK | MB_ICONWARNING);
+        return TRUE;
+    }
     const bool recycle = recycleMode == 1;
 
     // Shell recycling accepts only a short selected root. Its descendants
