@@ -13,7 +13,7 @@ $repository = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Provide
 $buildRoot = 'D:\Build\OpenSal'
 $configuration = 'Release'
 $validOptions = @('--update', '--build', '--test', '--setup', '--run',
-                  '--debug', '--release', '--all', '--build-delta', '--build-clean', '--test-all', '--test-gui', '--test-gui-max-path', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-recycle-restore', '--test-plugin-exports', '--test-plugin-load', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-unicode-find', '--test-gui-manual', '--test-gui-temp-delete', '--test-pictview', '--test-pictview-window', '--test-pictview-host', '--help', '-h', '/?')
+                  '--debug', '--release', '--all', '--build-delta', '--build-clean', '--test-all', '--test-gui', '--test-gui-max-path', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-recycle-restore', '--test-plugin-exports', '--test-plugin-load', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-unicode-find', '--test-gui-manual', '--test-gui-temp-delete', '--test-pictview', '--test-pictview-window', '--test-pictview-host', '--diagnose-gui', '--help', '-h', '/?')
 $requestedSet = [System.Collections.Generic.HashSet[string]]::new(
     [StringComparer]::OrdinalIgnoreCase)
 
@@ -63,6 +63,8 @@ Open Salamander – Verwaltung für Visual Studio 2026
   manage.cmd --test-gui-unsafe-unicode-operations  F2/F5/F6/F8 mit nicht darstellbaren Unicode-Namen sicher abweisen
   manage.cmd --test-gui-unicode-find  Neues F2-Unicode-Suchfenster: Suche, Pfade, Copy/Move/Rename, Kollisionsschutz
   manage.cmd --test-gui-temp-delete  GUI-Löschpfad via F8-Handler (CM_DELETEFILES), ohne Desktop-Fokus
+  manage.cmd --diagnose-gui  Einzeltest vs. --test-all-Vorlauf vergleichen (Release x64);
+                            --debug waehlt Debug x64; optional lokale Hang-Dumps
   manage.cmd --test-gui-manual  Testdaten behalten und Salamander zum manuellen Test starten
   manage.cmd --run          Release-Version starten
   manage.cmd --run --debug  Debug-Version starten
@@ -245,6 +247,9 @@ function Run-Tests {
 
     $guiDriverContract = Join-Path $repository 'tools\release\tests\Test-GuiDriver-Contract.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $guiDriverContract)
+
+    $guiReliabilityContract = Join-Path $repository 'tools\release\tests\Test-GuiReliability-Contract.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $guiReliabilityContract)
 
     # Test-Package-Helpers.ps1 invokes the independent release/GUI contract
     # regressions, including the cross-process clipboard test in STA.
@@ -612,6 +617,21 @@ try {
             Write-Host 'nur in der Teststruktur, Suchen, Viewer und Plugins.'
             Write-Host 'Die Testdateien werden bewusst NICHT automatisch entfernt.'
             Write-Warning 'Die GUI-Prüfung ist manuell; diese Ausgabe bescheinigt KEIN Bestehen.'
+        }
+        # Explicit, diagnostic-only: compare identical F8 GUI runs with and
+        # without the non-GUI --test-all prelude. Keep this out of --test-all,
+        # which must not recursively invoke its own management entry point.
+        if ($requestedSet.Contains('--diagnose-gui')) {
+            $allowed = @('--diagnose-gui', '--release', '--debug')
+            foreach ($action in $requestedSet) {
+                if ($action -notin $allowed) {
+                    throw '--diagnose-gui kann nur mit --release oder --debug kombiniert werden.'
+                }
+            }
+            $diagnostic = Join-Path $repository 'tools\release\tests\Invoke-GuiReliability.ps1'
+            Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $diagnostic,
+                                      '-Configuration', $configuration,
+                                      '-CaptureHangDump')
         }
         if ($requestedSet.Contains('--setup')) {
             Build-Setups -AlreadyBuilt:($buildMode -ne 'None')
