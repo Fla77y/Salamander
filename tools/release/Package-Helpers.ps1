@@ -163,8 +163,35 @@ function Assert-CoreHelpMappings {
     }
 }
 
+# Determines whether a CHM output can safely be reused across all variants.
+function Test-HelpNeedsBuild {
+    param([Parameter(Mandatory)][string]$ProjectPath,
+          [Parameter(Mandatory)][string]$CompiledName,
+          [Parameter(Mandatory)][string[]]$OutputDirectories)
+    $sourceRoot = Split-Path -Parent $ProjectPath
+    $inputs = @(Get-ChildItem -LiteralPath $sourceRoot -Recurse -File |
+        Where-Object { $_.Extension -notin @('.chm', '.log', '.tmp') })
+    $projectText = [IO.File]::ReadAllText($ProjectPath)
+    foreach ($match in [regex]::Matches($projectText, '(?mi)^\s*(?:Full text search stop list file|Contents file|Index file)\s*=\s*(.+?)\s*$')) {
+        $reference = $match.Groups[1].Value.Trim().Trim('"')
+        if ([IO.Path]::IsPathRooted($reference)) { return $true }
+        $source = [IO.Path]::GetFullPath((Join-Path $sourceRoot $reference))
+        if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { return $true }
+        $inputs += Get-Item -LiteralPath $source
+    }
+    $latest = ($inputs | Measure-Object -Property LastWriteTimeUtc -Maximum).Maximum
+    foreach ($directory in $OutputDirectories) {
+        $output = Join-Path $directory (Join-Path 'help\english' $CompiledName)
+        if (-not (Test-Path -LiteralPath $output -PathType Leaf)) { return $true }
+        $item = Get-Item -LiteralPath $output
+        if ($item.Length -lt 1024 -or $item.LastWriteTimeUtc -lt $latest) { return $true }
+    }
+    return $false
+}
+
 function Build-CompiledHelp {
-    param([string]$Repository, [string]$HhcExe, [string[]]$OutputDirectories)
+    param([string]$Repository, [string]$HhcExe, [string[]]$OutputDirectories,
+          [switch]$Incremental)
     Assert-CoreHelpMappings -Repository $Repository
     $mainHelp = Get-Item -LiteralPath (Join-Path $Repository 'help\src\salamand.hhp')
     $pluginHelp = @(Get-ChildItem -LiteralPath (Join-Path $Repository 'src\plugins') -File -Filter '*.hhp' -Recurse |
@@ -180,6 +207,11 @@ function Build-CompiledHelp {
         if ([IO.Path]::GetFileName($compiledName) -ne $compiledName -or
             -not $compiledName.EndsWith('.chm', [StringComparison]::OrdinalIgnoreCase)) {
             throw "Unsafe or unsupported CHM output name in $($project.FullName): $compiledName"
+        }
+        if ($Incremental -and -not (Test-HelpNeedsBuild -ProjectPath $project.FullName `
+                -CompiledName $compiledName -OutputDirectories $OutputDirectories)) {
+            Write-Host "  Reusing unchanged help: $compiledName"
+            continue
         }
         $compiledFile = Join-Path $project.DirectoryName $compiledName
         Remove-Item -LiteralPath $compiledFile -Force -ErrorAction SilentlyContinue
