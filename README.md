@@ -67,6 +67,33 @@ binaries. Never treat an incremental build alone as a public release
 qualification; perform the clean build, full tests, package checks and clean-VM
 acceptance before publishing.
 
+#### Diagnosing an unresponsive GUI test
+
+The GUI test driver never sends navigation or destructive input when its
+verified Salamander HWND stops responding to read-only `WM_NULL` probes.
+Some Windows failures return `LastError=0`; the driver retries these
+ambiguous failures, along with timeouts, only until a fixed deadline.
+
+For a **local, opt-in** native stack dump when the test-owned GUI hangs:
+
+```powershell
+$env:OPENSAL_GUI_CAPTURE_HANG_DUMP = '1'
+try {
+    .\\manage.cmd --test-gui-temp-delete
+}
+finally {
+    Remove-Item Env:\\OPENSAL_GUI_CAPTURE_HANG_DUMP -ErrorAction SilentlyContinue
+}
+```
+
+The driver records a `MiniDumpNormal` file in the current user's TEMP
+directory before terminating the isolated test process. Analyze it locally
+in WinDbg with Salamander's matching PDBs (for example `~* kb` and
+`!analyze -hang`). Dumps may contain private stack data: do not upload
+or distribute them without inspecting their contents. No dump is written
+by default. A hang is **not** considered a passed test.
+
+
 ### Contributing
 
 This project welcomes contributions to build and enhance Open Salamander!
