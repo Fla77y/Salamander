@@ -1915,7 +1915,7 @@ function Recover-NavigationForeground {
 }
 
 function Go-ToPath {
-    param([string]$Path)
+    param([string]$Path, [switch]$NoForeground)
 
     $pathSummary = Format-GuiDiagnosticPath $Path
 
@@ -1932,7 +1932,7 @@ function Go-ToPath {
     }
 
     for ($attempt = 1; $attempt -le $maxNavigationAttempts; $attempt++) {
-        Focus-TestProcess
+        if (-not $NoForeground) { Focus-TestProcess }
         Wait-ForGuiResponsive -Context 'BeforeClipboard' -StartupTimeoutSeconds 15
         Set-VerifiedNavigationClipboard -Text $Path
         Invoke-SalamanderCommand -CommandId 775
@@ -1962,7 +1962,8 @@ function Go-ToPath {
                     throw "Salamander raised a dialog during navigation to $($pathSummary): $dialogText"
                 }
                 $diagnostics.ForegroundPid = Get-ActiveProcessId
-                if ($diagnostics.ForegroundPid -ne [uint32]$process.Id) {
+                if (-not $NoForeground -and
+                    $diagnostics.ForegroundPid -ne [uint32]$process.Id) {
                     # This is an infrastructure focus race, not a path failure.
                     # Recover the verified test window at most once, after
                     # checking for modal dialogs and without resending WM_COMMAND.
@@ -2015,7 +2016,8 @@ function Go-ToPath {
 function Read-FocusedClipboardValue {
     param(
         [ValidateSet(709,710)][int]$CommandId,
-        [Parameter(Mandatory)][string]$Sentinel
+        [Parameter(Mandatory)][string]$Sentinel,
+        [switch]$AllowVerifiedBackground
     )
 
     $maxAttempts = 2
@@ -2031,8 +2033,13 @@ function Read-FocusedClipboardValue {
         if (-not [string]::IsNullOrEmpty($dialog)) {
             throw "Cannot read focused clipboard value while a Salamander dialog is open: $dialog"
         }
-        if ((Get-ActiveProcessId) -ne [uint32]$process.Id) {
+        if (-not $AllowVerifiedBackground -and
+            (Get-ActiveProcessId) -ne [uint32]$process.Id) {
             throw "Cannot read focused clipboard value while Salamander is not foreground: $(Get-ForegroundWindowSummary)"
+        }
+        if ($AllowVerifiedBackground -and
+            -not [SalamanderGuiNative]::IsWindowEnabled($mainWindowHandle)) {
+            throw 'Refusing background clipboard read while Salamander main window is disabled.'
         }
 
         Set-ClipboardText $Sentinel
@@ -2092,7 +2099,8 @@ function Read-FocusedClipboardValue {
 }
 
 function Read-FocusedFilename {
-    Read-FocusedClipboardValue -CommandId 710 -Sentinel 'SENTINEL_NOT_FILENAME'
+    param([switch]$AllowVerifiedBackground)
+    Read-FocusedClipboardValue -CommandId 710 -Sentinel 'SENTINEL_NOT_FILENAME' -AllowVerifiedBackground:$AllowVerifiedBackground
 }
 
 
