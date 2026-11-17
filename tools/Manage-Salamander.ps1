@@ -653,14 +653,22 @@ finally {
         Write-Host "Protokoll: $logPath"
         Write-Host 'Die gesamte protokollierte Ausgabe wird nun in die Zwischenablage kopiert.'
         Stop-Transcript | Out-Null
-        try {
-            $completeOutput = Get-Content -LiteralPath $logPath -Raw -Encoding UTF8
-            Set-Clipboard -Value $completeOutput -ErrorAction Stop
+        # Nested GUI A/B tests must not publish their entire management
+        # transcript to the global clipboard between comparisons. The outer
+        # management invocation retains the established default behavior.
+        if ($env:OPENSAL_MANAGE_SKIP_CLIPBOARD -eq '1') {
+            Write-Host 'Diagnostic child: clipboard copy skipped; full log retained on disk.'
         }
-        catch {
-            # Preserve build/test exit codes; the log is still available.
-            [Console]::Error.WriteLine(
-                "WARNUNG: Clipboard-Kopie nicht möglich. Log: $logPath. $($_.Exception.Message)")
+        else {
+            try {
+                $completeOutput = Get-Content -LiteralPath $logPath -Raw -Encoding UTF8
+                Set-Clipboard -Value $completeOutput -ErrorAction Stop
+            }
+            catch {
+                # Preserve build/test exit codes; the log is still available.
+                [Console]::Error.WriteLine(
+                    "WARNUNG: Clipboard-Kopie nicht möglich. Log: $logPath. $($_.Exception.Message)")
+            }
         }
     }
 }
