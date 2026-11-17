@@ -4,8 +4,8 @@ Set-StrictMode -Version Latest
 
 function Get-BuildMode {
     param([Parameter(Mandatory)][System.Collections.Generic.HashSet[string]]$RequestedSet)
-    $modes = @('--build', '--build-delta', '--build-clean') |
-        Where-Object { $RequestedSet.Contains($_) }
+    $modes = @(@('--build', '--build-delta', '--build-clean') |
+        Where-Object { $RequestedSet.Contains($_) })
     if ($modes.Count -gt 1) {
         throw "Conflicting build modes: $($modes -join ', '). Choose exactly one."
     }
