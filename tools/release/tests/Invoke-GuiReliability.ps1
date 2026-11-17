@@ -155,7 +155,7 @@ finally {
             'OPENSAL_GUI_CAPTURE_HANG_DUMP', $originalDumpSetting, 'Process')
     }
     $summary = Join-Path $session 'Summary.csv'
-    $results | Export-Csv -LiteralPath $summary -NoTypeInformation -Encoding utf8
+    $results | Export-Csv -LiteralPath $summary -Encoding utf8
     Write-Host "=== GUI A/B Summary: $summary ==="
     $results | Format-Table -Property @(
         'Iteration', 'Scenario', 'Configuration', 'ExitCode',
