@@ -163,7 +163,7 @@ if ($verifyPosition -lt 0 -or $dispatchPosition -lt 0 -or
 # fixture. Verify it and its payload still exist before refreshing the panel,
 # and require a round-trip through the test-owned parent before re-selection.
 $deleteStart = $driverText.IndexOf(
-    '        # Act: delete the exact test-owned directory through Salamander', [StringComparison]::Ordinal)
+    '        # Act: exercise Salamander', [StringComparison]::Ordinal)
 $deleteEnd = $driverText.IndexOf(
     "        Write-Host 'PASS: Salamander F8 recursively deleted", $deleteStart,
     [StringComparison]::Ordinal)
