@@ -118,6 +118,24 @@ if (-not $mainWindowMethod.Success -or
 }
 Write-Host 'PASS: empty-caption startup window is identified by app class and diagnosed before any destructive input.'
 
+# Regression: a successfully initialized Salamander may stop pumping messages
+# while the clipboard is published. A one-off 2500 ms WM_NULL is not a
+# conclusive hang. Observe the GUI before clipboard publication, and retry
+# read-only WM_NULL after publication for a bounded interval; never dispatch
+# clipboard navigation unless the GUI is responsive again.
+$command = (Get-FunctionSource 'Invoke-SalamanderCommand').Extent.Text
+$goto = (Get-FunctionSource 'Go-ToPath').Extent.Text
+if ($goto -notmatch '(?s)Focus-TestProcess.*?Wait-ForGuiResponsive\s+-Context\s+''BeforeClipboard''.*?Set-VerifiedNavigationClipboard.*?Invoke-SalamanderCommand\s+-CommandId\s+775' -or
+    $command -notmatch "Wait-ForGuiResponsive\s+-Context\s+'PreCommand775'" -or
+    $command -match '2500,\s*\[ref\]\$preflightResult' -or
+    $readinessText -notmatch '\[ValidateSet\(''Startup'', ''BeforeClipboard'', ''PreCommand775''\)\]' -or
+    $readinessText -notmatch 'GUI startup remained unresponsive' -or
+    $readinessText -notmatch 'wait chain' -or
+    $readinessText -notmatch 'Context') {
+    throw 'GUI pre-navigation readiness must be bounded and measured before and after clipboard publication.'
+}
+Write-Host 'PASS: GUI clipboard navigation waits for verified responsiveness before and after clipboard publication.'
+
 Write-Host 'PASS: GUI startup readiness is bounded and failure screenshot survives fixture cleanup.'
 
 Write-Host 'PASS: GUI baseline has no redundant read after verified navigation.'
