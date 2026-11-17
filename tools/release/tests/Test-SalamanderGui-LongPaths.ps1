@@ -2171,22 +2171,37 @@ function Wait-ForCompletedDirectoryDelete {
 }
 
 function Focus-DirectoryRow {
-    param([Parameter(Mandatory)][string]$Name)
+    param(
+        [Parameter(Mandatory)][string]$Name,
+        [switch]$VerifiedBackground
+    )
 
     $observed = [Collections.Generic.List[string]]::new()
-    Send-Keys '{HOME}'
-    Send-Keys '{DOWN}'
+    if ($VerifiedBackground) {
+        [SalamanderGuiNative]::SendVerifiedFileListKey(
+            $mainWindowHandle, [uint32]$process.Id, [uint32]0x24) # HOME
+        [SalamanderGuiNative]::SendVerifiedFileListKey(
+            $mainWindowHandle, [uint32]$process.Id, [uint32]0x28) # DOWN
+    }
+    else {
+        Send-Keys '{HOME}'
+        Send-Keys '{DOWN}'
+    }
     for ($row = 0; $row -lt 24; $row++) {
-        $focusedName = Read-FocusedFilename
+        $focusedName = Read-FocusedFilename -AllowVerifiedBackground:$VerifiedBackground
         if ($focusedName -ceq $Name) {
             return
         }
         $observed.Add($focusedName)
-        Send-Keys '{DOWN}'
+        if ($VerifiedBackground) {
+            [SalamanderGuiNative]::SendVerifiedFileListKey(
+                $mainWindowHandle, [uint32]$process.Id, [uint32]0x28) # DOWN
+        }
+        else {
+            Send-Keys '{DOWN}'
+        }
     }
-    # The complete bounded caret trace distinguishes an unrefreshed panel,
-    # an unexpected row alias and a missing on-disk directory. No guessed
-    # row is activated or deleted after an exact-name mismatch.
+    # A failed identity check never triggers any file-operation command.
     $uniqueObserved = ($observed | Select-Object -Unique) -join ', '
     throw ("Expected directory row was not found: '{0}'. Observed focused " +
            "names=[{1}]. No Enter or delete was sent." -f $Name, $uniqueObserved)
