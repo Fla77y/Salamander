@@ -147,6 +147,17 @@ public static class SalamanderGuiNative
         IntPtr hWnd, uint msg, UIntPtr wParam, IntPtr lParam,
         uint flags, uint timeoutMilliseconds, out IntPtr result);
 
+    // Opt-in diagnostic only. MiniDumpNormal includes native thread stacks and
+    // loaded modules but avoids full process memory. The caller is a separate
+    // test process, not the application being inspected.
+    [DllImport("dbghelp.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool MiniDumpWriteDump(
+        IntPtr processHandle, uint processId,
+        Microsoft.Win32.SafeHandles.SafeFileHandle fileHandle,
+        uint dumpType, IntPtr exceptionInfo, IntPtr userStreamInfo,
+        IntPtr callbackInfo);
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetWindowTextW(IntPtr window, StringBuilder buffer, int capacity);
     [DllImport("user32.dll")]
@@ -2604,6 +2615,45 @@ function Test-PluginLoadSmoke {
     Write-Host 'PASS: real Plug-in Manager Test All initialized four built-in x64 plug-in modules.'
 }
 
+# Capture an opt-in, minimal native dump before the owned hung process is
+# terminated. Dumps can contain private stack values and must stay local.
+function Save-GuiHangMiniDump {
+    if ($env:OPENSAL_GUI_CAPTURE_HANG_DUMP -ne '1') { return }
+    if ($null -eq $process) { return }
+
+    $dumpPath = Join-Path ([IO.Path]::GetTempPath()) (
+        'OpenSal-GuiHang-' + [guid]::NewGuid().ToString('N') + '.dmp')
+    try {
+        $process.Refresh()
+        if ($process.HasExited) { return }
+
+        $stream = [IO.File]::Open(
+            $dumpPath, [IO.FileMode]::CreateNew,
+            [IO.FileAccess]::Write, [IO.FileShare]::None)
+        try {
+            # 0 == MiniDumpNormal. Do not capture full memory by default.
+            $written = [SalamanderGuiNative]::MiniDumpWriteDump(
+                $process.Handle, [uint32]$process.Id, $stream.SafeFileHandle,
+                [uint32]0, [IntPtr]::Zero, [IntPtr]::Zero, [IntPtr]::Zero)
+            $win32Error = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+            if (-not $written) {
+                throw "MiniDumpWriteDump failed: Win32 error $win32Error"
+            }
+        }
+        finally { $stream.Dispose() }
+
+        Write-Warning "Native GUI hang minidump (private, opt-in): $dumpPath"
+        Write-Warning 'Review locally with WinDbg; minidumps can contain private stack data.'
+    }
+    catch {
+        # Do not leave partial dumps that appear valid but cannot be analyzed.
+        if (Test-Path -LiteralPath $dumpPath -PathType Leaf) {
+            Remove-Item -LiteralPath $dumpPath -Force -ErrorAction SilentlyContinue
+        }
+        Write-Warning "Native GUI hang minidump unavailable: $($_.Exception.Message)"
+    }
+}
+
 function Save-FailureScreenshot {
     try {
         # Save only the app window; other desktop windows may contain private data.
@@ -3732,6 +3782,15 @@ try {
 catch {
     Write-Warning "GUI integration FAILED: $($_.Exception.Message)"
     Save-FailureScreenshot
+    # A dump is never collected unless explicitly requested. Only inspect
+    # this test's process, and only when Windows detects a hung GUI window.
+    if ($null -ne $process -and $mainWindowHandle -ne [IntPtr]::Zero) {
+        $process.Refresh()
+        if (-not $process.HasExited -and
+            [SalamanderGuiNative]::IsHungAppWindow($mainWindowHandle)) {
+            Save-GuiHangMiniDump
+        }
+    }
     throw
 }
 finally {
