@@ -1462,6 +1462,8 @@ function Wait-ForGuiResponsive {
 
     $deadline = [DateTime]::UtcNow.AddSeconds($StartupTimeoutSeconds)
     $attempts = 0
+    $genericFailures = 0
+    $timeoutFailures = 0
     $lastErrorCode = 0
     do {
         $process.Refresh()
@@ -1496,7 +1498,12 @@ function Wait-ForGuiResponsive {
             }
             return
         }
-        if ($lastErrorCode -ne 1460) {
+        if ($lastErrorCode -eq 0) { $genericFailures++ }
+        elseif ($lastErrorCode -eq 1460) { $timeoutFailures++ }
+        # SMTO_ABORTIFHUNG does not always set LastError when a blocked GUI
+        # stops pumping messages. Retry only error 0 and ERROR_TIMEOUT (1460)
+        # until the same bounded deadline; do not send GUI navigation input.
+        if ($lastErrorCode -ne 1460 -and $lastErrorCode -ne 0) {
             # Failure may be generic (Win32 code 0), invalid HWND, or a
             # non-timeout OS failure. Never interpret it as readiness.
             $status = if ($lastErrorCode -eq 0) {
@@ -1534,11 +1541,16 @@ function Wait-ForGuiResponsive {
     try { $waitChain = [SalamanderGuiWaitChain]::Describe([uint32]$guiThread) }
     catch { $waitChain = "WCT unavailable: $($_.Exception.Message)" }
     $windowSummary = Get-ProcessWindowSummary -OwnerProcessId ([uint32]$process.Id)
+    $hung = [SalamanderGuiNative]::IsHungAppWindow($mainWindowHandle)
+    $foreground = Get-ForegroundWindowSummary
     throw (("GUI startup remained unresponsive (phase={0}) after {1} WM_NULL attempts " +
            "over {2}s; Win32 error={3}; GUI thread={4}; owner PID={5}; " +
-           "windows=[{6}]; wait chain=[{7}]. No navigation command sent.") -f
+           "windows=[{6}]; wait chain=[{7}]; IsHungAppWindow={8}; " +
+           "genericFailures={9}; timeoutFailures={10}; foreground={11}. " +
+           "No navigation command sent.") -f
            $Context, $attempts, $StartupTimeoutSeconds, $lastErrorCode,
-           $guiThread, $ownerPid, $windowSummary, $waitChain)
+           $guiThread, $ownerPid, $windowSummary, $waitChain, $hung,
+           $genericFailures, $timeoutFailures, $foreground)
 }
 
 # An HWND with the registered main class is available before the window
