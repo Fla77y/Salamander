@@ -15,6 +15,7 @@
 #include "mapi.h"
 #include "common/legacy_disk_name_safety.h"
 #include "common/win32_unicode_file_ops.h"
+#include "common/win32_unicode_directory_delete.h"
 #include "common/win32_unicode_recycle.h"
 
 //
@@ -679,6 +680,152 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
     return TRUE;
 }
 
+// Handle exactly one Unicode or long-path disk directory without handing an
+// ACP alias to the legacy recursive deletion engine. Preserve Recycle Bin policy;
+// no failed recycle operation may silently become permanent deletion.
+BOOL CFilesWindow::TryUnicodeSingleDirectoryDelete()
+{
+    if (!Is(ptDisk))
+        return FALSE;
+    const int selectedCount = GetSelCount();
+    if (selectedCount > 1)
+        return FALSE;
+    int index = GetCaretIndex();
+    if (selectedCount == 1 && GetSelItems(1, &index) != 1)
+        return FALSE;
+    if (index < 0 || index >= Dirs->Count)
+        return FALSE;
+
+    const CFileData& entry = Dirs->At(index);
+    if (strcmp(entry.Name, "..") == 0 ||
+        (entry.Attr & FILE_ATTRIBUTE_DIRECTORY) == 0 ||
+        (entry.Attr & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
+        return FALSE;
+
+    // Preserve the old directory deletion UI for safe ordinary short paths.
+    // Only the unsupported Unicode/long-path case is redirected to Win32 W.
+    if (!HasLongDiskPath() && !UnicodeDiskNames.IsUnsafeAnsiName(entry.Name))
+        return FALSE;
+
+    const std::string alias(entry.Name);
+    std::wstring originalName;
+    if (!UnicodeDiskNames.TryGetRow(entry.Name, originalName))
+        return FALSE; // No stable wide row identity: never use the ANSI alias.
+
+    const std::string panelPath(GetPath());
+    std::wstring wideDirectory;
+    if (!Salamander::TryGetUnicodePanelDirectory(
+            panelPath.c_str(), wideDirectory))
+        return FALSE;
+
+    Salamander::Utf16PathError validationError;
+    Salamander::Utf16DiskPath parent, source;
+    Salamander::Utf16FileName component;
+    if (!Salamander::Utf16DiskPath::TryCreateAbsolute(
+            std::u16string(wideDirectory.begin(), wideDirectory.end()),
+            parent, validationError) ||
+        !Salamander::Utf16FileName::TryCreate(
+            std::u16string(originalName.begin(), originalName.end()),
+            component, validationError) ||
+        !parent.TryAppend(component, source, validationError))
+        return FALSE;
+
+    DWORD error = ERROR_SUCCESS;
+    std::wstring extended;
+    if (!Salamander::UnicodeFileOperationsDetail::TryGetExtendedPath(
+            source, extended, error))
+        return FALSE;
+    const DWORD attributes = GetFileAttributesW(extended.c_str());
+    if (attributes == INVALID_FILE_ATTRIBUTES ||
+        (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0 ||
+        (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
+        return FALSE;
+
+    std::wstring resolvedName;
+    if (Salamander::ResolveUnicodePanelFileName(
+            wideDirectory.c_str(), alias.c_str(), resolvedName, error) !=
+            Salamander::UnicodePanelNameResult::Unique ||
+        resolvedName != originalName)
+        return FALSE;
+
+    const BOOL invertRecycleBin = (GetKeyState(VK_SHIFT) & 0x8000) != 0;
+    int recycleMode = invertRecycleBin
+        ? (Configuration.UseRecycleBin == 0 ? 1 : 0)
+        : Configuration.UseRecycleBin;
+    if (MyGetDriveType(GetPath()) != DRIVE_FIXED)
+        recycleMode = 0;
+    const bool recycle = recycleMode == 1;
+
+    // Shell recycling accepts only a short selected root. Its descendants
+    // may still be long, because the operation moves the directory as an item.
+    if (recycle && source.Value().size() >= MAX_PATH)
+    {
+        MessageBoxW(HWindow, L"Windows Recycle Bin cannot accept this long "
+                    L"directory path. No permanent deletion was attempted.",
+                    L"Unicode directory deletion", MB_OK | MB_ICONWARNING);
+        return TRUE;
+    }
+
+    const std::wstring prompt = (recycle
+        ? L"Move this directory and all its contents to the Recycle Bin?\n\n"
+        : L"Permanently delete this directory and all its contents?\n\n") +
+        originalName;
+    if (MessageBoxW(HWindow, prompt.c_str(), L"Unicode directory deletion",
+                    MB_OKCANCEL | MB_ICONWARNING) != IDOK)
+        return TRUE;
+
+    // A modal confirmation may permit background changes to the selected
+    // row, its name, or the directory. Revalidate before touching disk.
+    if (panelPath != GetPath())
+        return TRUE;
+    resolvedName.clear();
+    const DWORD currentAttributes = GetFileAttributesW(extended.c_str());
+    if (currentAttributes == INVALID_FILE_ATTRIBUTES ||
+        (currentAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0 ||
+        (currentAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0 ||
+        Salamander::ResolveUnicodePanelFileName(
+            wideDirectory.c_str(), alias.c_str(), resolvedName, error) !=
+            Salamander::UnicodePanelNameResult::Unique ||
+        resolvedName != originalName)
+    {
+        MessageBoxW(HWindow, L"The directory identity changed. "
+                    L"No files were deleted.", L"Unicode directory deletion",
+                    MB_OK | MB_ICONWARNING);
+        return TRUE;
+    }
+
+    BeginSuspendMode();
+    BeginStopRefresh();
+    HRESULT shellError = S_OK;
+    const bool succeeded = recycle
+        ? Salamander::TryRecycleUnicodeDirectory(
+              source, MainWindow->HWindow, shellError)
+        : Salamander::TryDeleteUnicodeDirectoryTree(source, error);
+    EndStopRefresh();
+    EndSuspendMode();
+
+    if (!succeeded)
+    {
+        wchar_t message[280];
+        if (recycle)
+            swprintf_s(message, _countof(message),
+                       L"Directory recycling failed (HRESULT 0x%08lX). "
+                       L"No permanent-delete fallback was attempted.",
+                       static_cast<unsigned long>(shellError));
+        else
+            swprintf_s(message, _countof(message),
+                       L"Permanent directory deletion failed (Win32 %lu). "
+                       L"Some entries may remain; inspect the directory.",
+                       error);
+        MessageBoxW(HWindow, message, L"Unicode directory deletion",
+                    MB_OK | MB_ICONWARNING);
+        return TRUE;
+    }
+
+    MainWindow->PostChangeOnPathNotification(panelPath.c_str(), FALSE);
+    return TRUE;
+}
+
 // Move an entire ordinary directory subtree using a same-volume Win32 W
 // rename. No recursive ANSI file operations, reparse-point traversal or
 // cross-volume copy/delete is attempted. This deliberately handles only one
@@ -867,6 +1014,13 @@ void CFilesWindow::FilesAction(CActionType type, CFilesWindow* target, int count
 {
     CALL_STACK_MESSAGE3("CFilesWindow::FilesAction(%d, , %d)", type, countSizeMode);
     if (Dirs->Count + Files->Count == 0)
+        return;
+
+    // A selected Unicode directory must never enter the fixed-buffer ANSI
+    // recursive deletion engine. This handler preserves the user's delete
+    // versus Recycle Bin policy and rejects ambiguous wide identities.
+    if (type == atDelete && countSizeMode == 0 &&
+        TryUnicodeSingleDirectoryDelete())
         return;
 
     // Long folders must never enter the fixed-buffer ANSI operation engine.
