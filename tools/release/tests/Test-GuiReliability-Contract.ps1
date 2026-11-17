@@ -19,7 +19,7 @@ $manager = [IO.File]::ReadAllText(
 # Act/Assert: both captured states have explicit, guarded restoration paths.
 if ($driver -notmatch '\$clipboardSnapshotValid\s*=\s*\$false' -or
     $driver -notmatch '\$clipboardSnapshotValid\s*=\s*\$true' -or
-    $driver -notmatch '(?s)if \(\$clipboardSnapshotValid\).*?Clipboard\]::Clear\(' -or
+    $driver -notmatch '(?s)if \(\$clipboardSnapshotValid\s+-and.*?Clipboard\]::Clear\(' -or
     $driver -notmatch 'Clipboard\]::SetDataObject\(\$oldClipboard, \$true\)') {
     throw 'GUI test must restore the originally empty or populated clipboard, without clearing on failed snapshot.'
 }
@@ -35,7 +35,9 @@ foreach ($literal in @('--test-gui-temp-delete', '--test-plugin-exports',
         throw "GUI A/B comparison is missing a mandatory reliability contract: $literal"
     }
 }
-if ($runner -notmatch '(?s)try\s*\{.*?finally\s*\{' -or
+if (-not $manager.Contains("'--diagnose-gui'") -or
+    -not $manager.Contains('Invoke-GuiReliability.ps1') -or
+    $runner -notmatch '(?s)try\s*\{.*?finally\s*\{' -or
     $runner -notmatch 'ExitCode\s*-ne\s*0' -or
     $runner -notmatch 'Exit\s+1') {
     throw 'Comparison must propagate failures and restore temporary environment overrides.'
