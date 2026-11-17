@@ -462,10 +462,11 @@ Write-Host 'PASS: GUI driver captures the original SendMessageTimeout Win32 erro
 # Windows Wait Chain Traversal diagnostics; do not mutate app state on failure.
 $dispatchSource = $dispatch.Extent.Text
 if ($dispatchSource -notmatch '\$CommandId -eq 775' -or
-    $dispatchSource -notmatch 'Salamander GUI unresponsive BEFORE clipboard command 775' -or
-    $dispatchSource -notmatch 'GUI responds to WM_NULL' -or
-    $dispatchSource -notmatch 'SalamanderGuiWaitChain\]::Describe' -or
-    $dispatchSource -notmatch 'wait chain=\[' -or
+    $dispatchSource -notmatch "Wait-ForGuiResponsive -Context 'PreCommand775'" -or
+    $readinessText -notmatch 'GUI startup remained unresponsive' -or
+    $readinessText -notmatch 'GUI responds to WM_NULL' -or
+    $readinessText -notmatch 'SalamanderGuiWaitChain\]::Describe' -or
+    $readinessText -notmatch 'wait chain=\[' -or
     $driverText -notmatch 'OpenThreadWaitChainSession' -or
     $driverText -notmatch 'GetThreadWaitChain' -or
     $driverText -notmatch 'GetWindowThreadProcessId') {
