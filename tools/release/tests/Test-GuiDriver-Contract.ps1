@@ -223,16 +223,13 @@ Write-Host 'PASS: F8 confirmations target a verified own dialog without fixed sl
 # owner is enabled. Preserve error and true modal refusals, but do not
 # let an enabled owner's stale Status popup block all subsequent GUI tests.
 $dialogSource = (Get-FunctionSource 'Get-TestDialog').Extent.Text
-$statusPredicate = (Get-FunctionSource 'Test-IsNonBlockingStatusPopup').Extent.Text
 $afterF8 = (Get-FunctionSource 'Wait-ForCompletedDirectoryDelete').Extent.Text
 if ($driverText -notmatch 'public static extern bool IsWindowEnabled\(IntPtr window\)' -or
-    $statusPredicate -notmatch 'IsWindowEnabled' -or
-    $statusPredicate -notmatch 'GetWindowCaption' -or
-    $statusPredicate -notmatch "Status" -or
-    $statusPredicate -notmatch 'GetWindowThreadProcessId' -or
     $dialogSource -notmatch 'Error Changing Directory' -or
     $dialogSource -notmatch 'Error Loading Configuration' -or
-    $dialogSource -notmatch 'Test-IsNonBlockingStatusPopup' -or
+    $dialogSource -notmatch 'IsWindowEnabled\(\$main\)' -or
+    $dialogSource -notmatch 'GetLastActivePopup' -or
+    $dialogSource -notmatch 'Salamander main window is disabled by an unidentified dialog' -or
     $afterF8 -notmatch 'FindUnicodeDirectoryDeleteDialog' -or
     $afterF8 -notmatch 'IsWindowEnabled' -or
     $afterF8 -notmatch 'Wait-Until' -or
