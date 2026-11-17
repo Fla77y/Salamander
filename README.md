@@ -79,10 +79,10 @@ For a **local, opt-in** native stack dump when the test-owned GUI hangs:
 ```powershell
 $env:OPENSAL_GUI_CAPTURE_HANG_DUMP = '1'
 try {
-    .\\manage.cmd --test-gui-temp-delete
+    .\manage.cmd --test-gui-temp-delete
 }
 finally {
-    Remove-Item Env:\\OPENSAL_GUI_CAPTURE_HANG_DUMP -ErrorAction SilentlyContinue
+    Remove-Item Env:\OPENSAL_GUI_CAPTURE_HANG_DUMP -ErrorAction SilentlyContinue
 }
 ```
 
