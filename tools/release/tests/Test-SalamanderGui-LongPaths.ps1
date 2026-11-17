@@ -1296,20 +1296,28 @@ function Get-TestDialog {
             return [SalamanderGuiNative]::DescribeWindow($window.Handle)
         }
     }
+    # GetLastActivePopup remembers prior modeless windows, including a
+    # Status display after successful F8. It is NOT a modal-state test.
+    # An enabled main HWND plus no known error dialogs means that commands
+    # addressed to its verified HWND may continue without desktop focus.
+    if ([SalamanderGuiNative]::IsWindowEnabled($main)) {
+        return $null
+    }
+
+    # A disabled main HWND is a genuine blocking condition even if its
+    # popup has already closed or a window handle is in transition.
     $popup = [SalamanderGuiNative]::GetLastActivePopup($main)
     $foreground = [SalamanderGuiNative]::GetForegroundWindow()
     [uint32]$ownerPid = 0
     [void][SalamanderGuiNative]::GetWindowThreadProcessId($foreground, [ref]$ownerPid)
-    if ($ownerPid -eq [uint32]$process.Id -and $foreground -ne $main -and
-        -not (Test-IsNonBlockingStatusPopup -Window $foreground)) {
+    if ($ownerPid -eq [uint32]$process.Id -and $foreground -ne $main) {
         return [SalamanderGuiNative]::DescribeWindow($foreground)
     }
     if ($popup -ne [IntPtr]::Zero -and $popup -ne $main -and
-        [SalamanderGuiNative]::IsWindowVisible($popup) -and
-        -not (Test-IsNonBlockingStatusPopup -Window $popup)) {
+        [SalamanderGuiNative]::IsWindowVisible($popup)) {
         return [SalamanderGuiNative]::DescribeWindow($popup)
     }
-    return $null
+    return 'Salamander main window is disabled by an unidentified dialog'
 }
 
 function Focus-TestProcess {
