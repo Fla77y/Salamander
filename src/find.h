@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "common/legacy_find_utf16_identity.h"
+
 // structure for adding messages to the Find Log; sent as the message parameter
 // of WM_USER_ADDLOG; parameters will be copied into the log data (can be deallocated after returning)
 #define FLI_INFO 0x00000000   // INFORMATION item
@@ -497,6 +499,20 @@ struct CFoundFilesData
 {
     char* Name;
     char* Path;
+
+    // Original UTF-16 identity when supplied by native W enumeration.
+    // Empty for old ANSI-only results: never reconstruct it from a potentially
+    // lossy ACP display alias. Result file actions must be migrated to W APIs
+    // before this identity may be used to authorize them.
+    Salamander::LegacyFindUtf16Identity UnicodeIdentity;
+
+    bool TrySetUnicodeIdentity(std::u16string_view directory,
+                               std::u16string_view name)
+    {
+        Salamander::Utf16PathError error;
+        return Salamander::LegacyFindUtf16Identity::TryCreate(
+            directory, name, UnicodeIdentity, error);
+    }
     CQuadWord Size;
     DWORD Attr;
     FILETIME LastWrite;
