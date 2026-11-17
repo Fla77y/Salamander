@@ -241,6 +241,45 @@ if ($driverText -notmatch 'public static extern bool IsWindowEnabled\(IntPtr win
     throw 'F8 must await modal closure and treat only the verified, nonmodal Status popup as nonblocking.'
 }
 Write-Host 'PASS: F8 waits for modal completion and distinguishes nonmodal Status from blocking dialogs.'
+# The Win32 foreground belongs to the entire desktop, not to Salamander.
+# For the destructive Unicode directory regression, drive only verified
+# Salamander window/control handles and prove the filename and source path
+# before posting exactly one CM_DELETEFILES command. Keep real keystroke tests
+# separate: WM_COMMAND exercises the same application handler, not F8 binding.
+$noFocusGo = (Get-FunctionSource 'Go-ToPath').Extent.Text
+$noFocusRows = (Get-FunctionSource 'Focus-DirectoryRow').Extent.Text
+$noFocusReads = (Get-FunctionSource 'Read-FocusedClipboardValue').Extent.Text
+$noFocusConfirm = (Get-FunctionSource 'Confirm-DirectoryDeleteDialog').Extent.Text
+$noFocusDlg = (Get-FunctionSource 'Get-TestDialog').Extent.Text
+$noFocusNative = [regex]::Match($driverText,
+    '(?s)public static void PostVerifiedDirectoryDeleteCommand\(IntPtr mainWindow, uint processId\).*?^    }',
+    [Text.RegularExpressions.RegexOptions]::Multiline)
+$noFocusKey = [regex]::Match($driverText,
+    '(?s)public static void SendVerifiedFileListKey\(IntPtr mainWindow, uint processId, uint virtualKey\).*?^    }',
+    [Text.RegularExpressions.RegexOptions]::Multiline)
+if ($noFocusGo -notmatch 'NoForeground' -or
+    $noFocusRows -notmatch 'VerifiedBackground' -or
+    $noFocusReads -notmatch 'AllowVerifiedBackground' -or
+    $noFocusConfirm -notmatch 'ExpectedName' -or
+    $noFocusConfirm -notmatch 'DescribeWindow' -or
+    $noFocusDlg -notmatch 'IsWindowEnabled' -or
+    $noFocusDlg -notmatch 'GetLastActivePopup' -or
+    -not $noFocusNative.Success -or
+    $noFocusNative.Value -notmatch 'GetWindowThreadProcessId' -or
+    $noFocusNative.Value -notmatch 'PostMessageW' -or
+    $noFocusNative.Value -notmatch '729' -or
+    -not $noFocusKey.Success -or
+    $noFocusKey.Value -notmatch 'SendMessageTimeout' -or
+    $noFocusKey.Value -notmatch 'SalamanderItemsBox' -or
+    $f8Confirmation -notmatch 'PostVerifiedDirectoryDeleteCommand' -or
+    $f8Confirmation -match "Send-Keys '\{F8\}'" -or
+    $f8Confirmation -notmatch 'VerifiedBackground' -or
+    $f8Confirmation -notmatch 'Go-ToPath \$root -NoForeground') {
+    throw 'Background-safe GUI directory integration must address verified HWNDs, not desktop focus.'
+}
+Write-Host 'PASS: directory integration uses HWND-bound navigation, row selection and delete commands.'
+
+
 
 
 
