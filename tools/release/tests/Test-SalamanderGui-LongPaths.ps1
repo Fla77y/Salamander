@@ -2620,7 +2620,17 @@ try {
     # Do not begin clipboard navigation or keyboard simulation until the
     # launched GUI process has reached its initial input-idle state.
     if (-not $process.WaitForInputIdle(10000)) {
-        throw "Test Salamander did not become input-idle within 10 seconds (PID $($process.Id))."
+        [uint32]$windowOwner = 0
+        $windowThread = [SalamanderGuiNative]::GetWindowThreadProcessId(
+            $mainWindowHandle, [ref]$windowOwner)
+        $waitChain = '<not collected>'
+        try { $waitChain = [SalamanderGuiWaitChain]::Describe([uint32]$windowThread) }
+        catch { $waitChain = "WCT unavailable: $($_.Exception.Message)" }
+        $windowSummary = Get-ProcessWindowSummary -OwnerProcessId ([uint32]$process.Id)
+        throw ("Test Salamander did not become input-idle within 10 seconds; " +
+               "PID={0}; GUI thread={1}; windows=[{2}]; wait chain=[{3}]. " +
+               "No GUI input was sent." -f
+               $process.Id, $windowThread, $windowSummary, $waitChain)
     }
     Wait-ForGuiResponsive
     Wait-ForGuiTitle
