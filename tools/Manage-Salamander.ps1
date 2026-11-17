@@ -31,7 +31,9 @@ function Write-Usage {
 Open Salamander – Verwaltung für Visual Studio 2026
 
   manage.cmd --update       Aktuellen Git-Branch sicher aktualisieren (nur fast-forward)
-  manage.cmd --build        Debug und Release x64 vollstaendig neu bauen (MSBuild Rebuild)\n  manage.cmd --build-delta  Schneller inkrementeller Build (MSBuild Build)\n  manage.cmd --build-clean  Output-Ordner loeschen und vollstaendig neu bauen
+  manage.cmd --build        Debug und Release x64 vollstaendig neu bauen (MSBuild Rebuild)
+  manage.cmd --build-delta  Schneller inkrementeller Build (MSBuild Build)
+  manage.cmd --build-clean  Output-Ordner loeschen und vollstaendig neu bauen
   manage.cmd --test         Windows-Dateisystem-/Namens-Tests und Projekt-Regressionstests
   manage.cmd --test-all     Alle automatisierten Tests: --test und sämtliche GUI-Modi
                             (Release und Debug x64; --release/--debug begrenzt die GUI-Modi)
