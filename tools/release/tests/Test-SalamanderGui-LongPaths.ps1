@@ -2133,12 +2133,20 @@ function Select-TwoRegularFiles {
 # Wait for the exact native confirmation instead of relying on a fixed
 # delay and an Enter sent to whichever window owns the global foreground.
 function Confirm-DirectoryDeleteDialog {
+    param([Parameter(Mandatory)][string]$ExpectedName)
+
     $script:directoryDeleteDialog = [IntPtr]::Zero
     Wait-Until {
         $script:directoryDeleteDialog =
             [SalamanderGuiNative]::FindUnicodeDirectoryDeleteDialog([uint32]$process.Id)
         return $script:directoryDeleteDialog -ne [IntPtr]::Zero
     } 'owned Unicode directory deletion confirmation'
+    $dialogText = [SalamanderGuiNative]::DescribeWindow($script:directoryDeleteDialog)
+    if (-not $dialogText.Contains($ExpectedName, [StringComparison]::Ordinal)) {
+        throw ("Delete confirmation does not name the exact selected fixture " +
+               "'{0}'; dialog='{1}'. No confirmation was posted." -f
+               $ExpectedName, $dialogText)
+    }
     [SalamanderGuiNative]::PostVerifiedDirectoryDeleteConfirmation(
         $script:directoryDeleteDialog, [uint32]$process.Id)
 }
@@ -2893,13 +2901,15 @@ try {
     if (-not $testIsAdmin -and $windowTitle -match '\(Administrator\)') {
         throw 'Salamander is elevated but the GUI-test PowerShell is not. Keyboard input can be blocked by Windows UIPI. Run both at the same integrity level, preferably both unelevated.'
     }
-    Focus-TestProcess
+    if (-not $TemporaryDirectoryDeletionOnly) { Focus-TestProcess }
 
     # First validate the GUI driver against a normal short path. If this
     # fails, treat it as an automation/infrastructure problem, NOT as proof
     # that the application lacks long-path support.
-    Go-ToPath $source
-    Restore-FilePanelFocus -ExpectedPath $source
+    Go-ToPath $source -NoForeground:$TemporaryDirectoryDeletionOnly
+    if (-not $TemporaryDirectoryDeletionOnly) {
+        Restore-FilePanelFocus -ExpectedPath $source
+    }
     # Go-ToPath already verified the observed panel path. A duplicate
     # WM_COMMAND 711 adds no coverage and can race with GUI processing.
     Write-Host 'PASS: GUI driver can navigate a normal short directory'
@@ -2907,10 +2917,11 @@ try {
         # Act: delete the exact test-owned directory through Salamander's F8
         # command. Merely deleting it with .NET would not test the reported bug.
         Assert-True ((Read-PanelPath) -ceq $source) 'Disposable parent panel verified before F8 directory delete'
-        Focus-DirectoryRow -Name $temporaryDirectoryName
-        Assert-True ((Read-FocusedFilename) -ceq $temporaryDirectoryName) 'Exact temporary directory selected for F8'
-        Send-Keys '{F8}'
-        Confirm-DirectoryDeleteDialog
+        Focus-DirectoryRow -Name $temporaryDirectoryName -VerifiedBackground
+        Assert-True ((Read-FocusedFilename -AllowVerifiedBackground) -ceq $temporaryDirectoryName) 'Exact temporary directory selected for F8'
+        [SalamanderGuiNative]::PostVerifiedDirectoryDeleteCommand(
+            $mainWindowHandle, [uint32]$process.Id)
+        Confirm-DirectoryDeleteDialog -ExpectedName $temporaryDirectoryName
         # Assert: disappearance on disk (not just a refreshed panel row)
         # is required, and the adjacent fixture must remain untouched.
         try {
@@ -2933,17 +2944,17 @@ try {
         # Force a verified, non-destructive parent/source navigation roundtrip
         # so that the second folder selection reads a freshly enumerated
         # panel, rather than racing a pending notification from the first F8.
-        Go-ToPath $root
-        Go-ToPath $source
-        Restore-FilePanelFocus -ExpectedPath $source
+        Go-ToPath $root -NoForeground
+        Go-ToPath $source -NoForeground
         Assert-True ((Read-PanelPath) -ceq $source) 'Source panel reloaded after first F8 directory deletion'
 
         # Repeat with the original OpenSal-GuiLong-<GUID> naming scheme,
         # for which only descendants—not the selected directory name—are risky.
-        Focus-DirectoryRow -Name $asciiTemporaryName
-        Assert-True ((Read-FocusedFilename) -ceq $asciiTemporaryName) 'Exact ASCII temporary root selected for F8'
-        Send-Keys '{F8}'
-        Confirm-DirectoryDeleteDialog
+        Focus-DirectoryRow -Name $asciiTemporaryName -VerifiedBackground
+        Assert-True ((Read-FocusedFilename -AllowVerifiedBackground) -ceq $asciiTemporaryName) 'Exact ASCII temporary root selected for F8'
+        [SalamanderGuiNative]::PostVerifiedDirectoryDeleteCommand(
+            $mainWindowHandle, [uint32]$process.Id)
+        Confirm-DirectoryDeleteDialog -ExpectedName $asciiTemporaryName
         Wait-Until { -not [IO.Directory]::Exists($asciiTemporaryDirectory) } 'F8 deletes ASCII temp root with Unicode long descendants'
         Wait-ForCompletedDirectoryDelete -DeletedDirectory $asciiTemporaryDirectory
         Assert-True (Test-Content $unicodeShortFile) 'Other files remain intact after ASCII temporary root deletion'
