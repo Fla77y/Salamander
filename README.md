@@ -117,9 +117,23 @@ dump if the GUI stops responding. Dumps are *not* captured by ordinary
 `--test-all` unless `OPENSAL_GUI_CAPTURE_HANG_DUMP=1` is explicitly set.
 Do not share dumps without reviewing their contents. A/B runs are not
 perfectly hermetic because the registry, Windows desktop, clipboard and
-filesystem caches are shared. Only a native call stack establishes which
-startup function actually blocked; failures must never be converted into
-test passes merely by lengthening timeouts.
+filesystem caches are shared. The November 17, 2026 Debug x64 hang dump identified the GUI thread at
+`CPlugins::HandleLoadOnStartFlag -> CPluginData::InitDLL ->
+C__Handles::LoadLibraryA -> ntdll!NtCreateSection`, while an icon thread
+waited for the handle monitor's critical section in `C__Handles::SetInfo`.
+The Debug monitoring wrapper previously held that lock across
+`LoadLibrary[Ex]`. It now releases the lock during the OS DLL loader call
+and restores caller metadata and `GetLastError` before recording the loaded
+handle. `Test-HandlesLoaderLock-Contract.ps1` permanently guards both paths;
+it runs within `--test` and `--test-all`. This only addresses the lock
+inversion risk, not an independent OS/third-party DLL-loading stall.
+
+For the matching native dump, inspect frame 9 in WinDbg with
+`.frame /r 9` and `dv /t` to identify the requested DLL path when the
+required stack data is present. If the loader still blocks, compare
+the exact DLL identity and its dependencies with known-good starts.
+Do not treat an extended timeout as a fix, and do not share raw dumps
+without reviewing them for private data.
 
 The driver records a `MiniDumpNormal` file in the current user's TEMP
 directory before terminating the isolated test process. Analyze it locally
