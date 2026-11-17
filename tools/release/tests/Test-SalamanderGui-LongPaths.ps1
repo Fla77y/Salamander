@@ -2377,6 +2377,20 @@ try {
         [IO.File]::WriteAllBytes($temporaryLeaf, $payload)
         Assert-True ($temporaryLeaf.Length -gt 260) 'Temporary directory fixture exceeds MAX_PATH'
         Assert-True (Test-Content $temporaryLeaf) 'Nested Unicode temporary payload is intact'
+
+        # The originally reported leftover directories have ASCII GUID names,
+        # although their children may contain Unicode or exceed MAX_PATH.
+        $asciiTemporaryName = 'OpenSal-GuiLong-' + [guid]::NewGuid().ToString('N')
+        $asciiTemporaryDirectory = Join-Path $source $asciiTemporaryName
+        $asciiChild = $asciiTemporaryDirectory
+        foreach ($index in 1..4) {
+            $asciiChild = Join-Path $asciiChild (
+                'nested-' + $index + '-' + ('y' * 64))
+            [void][IO.Directory]::CreateDirectory($asciiChild)
+        }
+        $asciiLeaf = Join-Path $asciiChild 'Datei_大阪_😀.dat'
+        [IO.File]::WriteAllBytes($asciiLeaf, $payload)
+        Assert-True ($asciiLeaf.Length -gt 260) 'ASCII temporary root contains a real Unicode long-path descendant'
     }
     if ($BaselineOnly) {
         # The baseline must also demonstrate that the automated keystroke
@@ -2605,6 +2619,16 @@ try {
         }
         Assert-True ([IO.Directory]::Exists($source)) 'Parent fixture survives F8 directory deletion'
         Assert-True (Test-Content $unicodeShortFile) 'Unrelated Unicode fixture survives F8 directory deletion'
+
+        # Repeat with the original OpenSal-GuiLong-<GUID> naming scheme,
+        # for which only descendants—not the selected directory name—are risky.
+        Focus-DirectoryRow -Name $asciiTemporaryName
+        Assert-True ((Read-FocusedFilename) -ceq $asciiTemporaryName) 'Exact ASCII temporary root selected for F8'
+        Send-Keys '{F8}'
+        Start-Sleep -Milliseconds 350
+        Send-Keys '{ENTER}'
+        Wait-Until { -not [IO.Directory]::Exists($asciiTemporaryDirectory) } 'F8 deletes ASCII temp root with Unicode long descendants'
+        Assert-True (Test-Content $unicodeShortFile) 'Other files remain intact after ASCII temporary root deletion'
         $passed = $true
         Write-Host 'PASS: Salamander F8 recursively deleted the real long-path temporary directory.'
         return
