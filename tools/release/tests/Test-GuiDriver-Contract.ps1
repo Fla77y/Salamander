@@ -108,6 +108,21 @@ Write-Host 'PASS: ambiguous WM_NULL failures retry only until the bounded deadli
 
 Write-Host 'PASS: WM_NULL failures capture fresh Win32 status and format complete diagnostic details.'
 
+# Arrange: a GUI hang needs a native stack trace to identify the blocking
+# startup component. A minidump can contain process-private data, so capture
+# must be explicit opt-in, limited to our launched process and never bundled.
+$dumpSource = (Get-FunctionSource 'Save-GuiHangMiniDump').Extent.Text
+if ($driverText -notmatch '(?s)DllImport\("dbghelp\.dll".*?MiniDumpWriteDump' -or
+    $dumpSource -notmatch 'OPENSAL_GUI_CAPTURE_HANG_DUMP' -or
+    $dumpSource -notmatch "'1'" -or
+    $dumpSource -notmatch 'MiniDumpWriteDump' -or
+    $dumpSource -notmatch 'GetTempPath' -or
+    $dumpSource -notmatch 'SafeFileHandle' -or
+    $driverText -notmatch '(?s)catch\s*\{\s*Write-Warning "GUI integration FAILED:.*?Save-FailureScreenshot.*?Save-GuiHangMiniDump.*?throw') {
+    throw 'Native GUI hang dumps must be opt-in, scoped to the test process, saved outside disposable fixtures, and collected before cleanup.'
+}
+Write-Host 'PASS: native GUI hang dump is explicit opt-in and precedes test-owned process cleanup.'
+
 # A failure screenshot is diagnostic evidence. The new temp-directory test
 # removes its fixture after failure, so evidence must be stored outside it.
 $screenshot = (Get-FunctionSource 'Save-FailureScreenshot').Extent.Text
