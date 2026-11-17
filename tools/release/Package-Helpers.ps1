@@ -179,7 +179,7 @@ function Test-HelpNeedsBuild {
         if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { return $true }
         $inputs += Get-Item -LiteralPath $source
     }
-    $latest = ($inputs | Measure-Object -Property LastWriteTimeUtc -Maximum).Maximum
+    $latest = ($inputs | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1).LastWriteTimeUtc
     foreach ($directory in $OutputDirectories) {
         $output = Join-Path $directory (Join-Path 'help\english' $CompiledName)
         if (-not (Test-Path -LiteralPath $output -PathType Leaf)) { return $true }
