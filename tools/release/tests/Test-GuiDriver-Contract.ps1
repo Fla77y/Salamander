@@ -725,6 +725,7 @@ if ($focusText -notmatch 'TryActivateVerifiedWindow' -or
     $focusText -notmatch 'window no longer belongs to launched Salamander' -or
     $focusText -notmatch 'attempts') {
     throw 'Focus recovery must retry only a verified Salamander HWND and report foreground ownership.'
+}
 # Repeatedly attempting to steal focus from a persistent system popup does
 # not improve GUI reliability. The test must distinguish desktop contention
 # from a Salamander bug and wait passively for a foreground-owner change.
@@ -736,8 +737,6 @@ if ($focusText -notmatch 'GUI_ENVIRONMENT_BLOCKED' -or
     $focusText -notmatch 'activationCount' -or
     $focusText -notmatch 'Get-ActiveProcessId') {
     throw 'Focus retry must bound activation attempts and classify external desktop interference distinctly.'
-}
-
 }
 $sendKeys = (Get-FunctionSource 'Send-Keys').Extent.Text
 if ($sendKeys -notmatch 'Get-ActiveProcessId' -or
