@@ -1947,15 +1947,23 @@ function Select-TwoRegularFiles {
 function Focus-DirectoryRow {
     param([Parameter(Mandatory)][string]$Name)
 
+    $observed = [Collections.Generic.List[string]]::new()
     Send-Keys '{HOME}'
     Send-Keys '{DOWN}'
     for ($row = 0; $row -lt 24; $row++) {
-        if ((Read-FocusedFilename) -ceq $Name) {
+        $focusedName = Read-FocusedFilename
+        if ($focusedName -ceq $Name) {
             return
         }
+        $observed.Add($focusedName)
         Send-Keys '{DOWN}'
     }
-    throw "Expected directory row was not found: '$Name'. No Enter was sent."
+    # The complete bounded caret trace distinguishes an unrefreshed panel,
+    # an unexpected row alias and a missing on-disk directory. No guessed
+    # row is activated or deleted after an exact-name mismatch.
+    $uniqueObserved = ($observed | Select-Object -Unique) -join ', '
+    throw ("Expected directory row was not found: '{0}'. Observed focused " +
+           "names=[{1}]. No Enter or delete was sent." -f $Name, $uniqueObserved)
 }
 
 function Read-FocusedFullname {
