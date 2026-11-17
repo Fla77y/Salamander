@@ -52,14 +52,13 @@ private:
 };
 } // namespace UnicodeRecycleDetail
 
-// Request a normal shell Recycle Bin operation. Never call DeleteFileW
-// or fall back to permanent deletion in this helper. The shell is allowed
-// to show its own warning if it cannot recycle the requested item
-// (FOF_WANTNUKEWARNING). Only short absolute files on a fixed local drive
-// are supported until the long-path shell identity is migrated.
-inline bool TryRecycleUnicodeFile(const Utf16DiskPath& source,
-                                  HWND owner,
-                                  HRESULT& error)
+// Request a native shell Recycle Bin operation for one exact UTF-16 entry.
+// Never silently fall back to permanent deletion. A short selected root is
+// required until extended-length shell parsing has been verified.
+inline bool TryRecycleUnicodeEntry(const Utf16DiskPath& source,
+                                   HWND owner,
+                                   HRESULT& error,
+                                   bool directory)
 {
     error = E_INVALIDARG;
     if (source.Value().empty())
@@ -74,8 +73,8 @@ inline bool TryRecycleUnicodeFile(const Utf16DiskPath& source,
         return false;
     }
 
-    // Restrict Shell deletion to absolute local drive files. UNC, USB,
-    // reparse points and directories need separate recycle policies.
+    // Restrict Shell deletion to absolute fixed-drive entries. UNC, USB,
+    // and reparse-point roots need separate recycle policies.
     if (name.size() < 4 || name[1] != L':' || name[2] != L'\\')
         return false;
     const std::wstring root = name.substr(0, 3);
@@ -91,7 +90,8 @@ inline bool TryRecycleUnicodeFile(const Utf16DiskPath& source,
         error = HRESULT_FROM_WIN32(GetLastError());
         return false;
     }
-    if ((attributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0)
+    if ((attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0 ||
+        ((attributes & FILE_ATTRIBUTE_DIRECTORY) != 0) != directory)
     {
         error = HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED);
         return false;
@@ -148,5 +148,20 @@ inline bool TryRecycleUnicodeFile(const Utf16DiskPath& source,
         return false;
     }
     return true;
+}
+
+// Preserve the original file-only public contract.
+inline bool TryRecycleUnicodeFile(const Utf16DiskPath& source,
+                                  HWND owner, HRESULT& error)
+{
+    return TryRecycleUnicodeEntry(source, owner, error, false);
+}
+
+// Request recycling of an ordinary directory as one shell item, preserving
+// the user's Recycle Bin policy even when descendants have long paths.
+inline bool TryRecycleUnicodeDirectory(const Utf16DiskPath& source,
+                                       HWND owner, HRESULT& error)
+{
+    return TryRecycleUnicodeEntry(source, owner, error, true);
 }
 } // namespace Salamander
