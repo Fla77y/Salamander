@@ -24,6 +24,7 @@ param(
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+$PSNativeCommandUseErrorActionPreference = $false
 if (-not $IsWindows) { throw 'GUI A/B comparison requires Windows.' }
 $repository = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..\..')).ProviderPath
 $manage = Join-Path $repository 'manage.cmd'
@@ -38,6 +39,8 @@ $session = Join-Path ([IO.Path]::GetFullPath($OutputDirectory)) (
 $results = [System.Collections.Generic.List[object]]::new()
 $originalDumpSetting = [Environment]::GetEnvironmentVariable(
     'OPENSAL_GUI_CAPTURE_HANG_DUMP', 'Process')
+$originalClipboardSetting = [Environment]::GetEnvironmentVariable(
+    'OPENSAL_MANAGE_SKIP_CLIPBOARD', 'Process')
 $stoppedForOrphan = $false
 $scenarios = @(
     @{ Name = 'Isolated'; Options = @('--test-gui-temp-delete') },
@@ -46,6 +49,10 @@ $scenarios = @(
 )
 
 try {
+    # Each nested manager otherwise copies its full transcript to the global
+    # clipboard, an A/B side effect absent within a single --test-all run.
+    [Environment]::SetEnvironmentVariable(
+        'OPENSAL_MANAGE_SKIP_CLIPBOARD', '1', 'Process')
     if ($CaptureHangDump) {
         [Environment]::SetEnvironmentVariable(
             'OPENSAL_GUI_CAPTURE_HANG_DUMP', '1', 'Process')
@@ -74,6 +81,10 @@ try {
             # transcript and native child failures are preserved verbatim.
             & $manage @options 2>&1 | Set-Content -LiteralPath $log -Encoding utf8
             $exitCode = $LASTEXITCODE
+            if ($null -eq $exitCode) {
+                Write-Warning 'Management child did not report an exit code.'
+                $exitCode = 1
+            }
             $duration = [Math]::Round(
                 ([DateTime]::UtcNow - $started).TotalSeconds, 2)
             $survivors = @(Get-Process salamand -ErrorAction SilentlyContinue)
@@ -103,7 +114,9 @@ try {
     }
 }
 finally {
-    # Restore the exact prior setting even when the test fails.
+    # Restore every inherited setting even when a child test fails.
+    [Environment]::SetEnvironmentVariable(
+        'OPENSAL_MANAGE_SKIP_CLIPBOARD', $originalClipboardSetting, 'Process')
     if ($CaptureHangDump) {
         [Environment]::SetEnvironmentVariable(
             'OPENSAL_GUI_CAPTURE_HANG_DUMP', $originalDumpSetting, 'Process')
