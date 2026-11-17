@@ -70,7 +70,8 @@ try {
         [IO.File]::SetLastWriteTimeUtc($file, $old)
     }
     foreach ($directory in $outputPaths) {
-        $chm = Join-Path $directory 'test.chm'
+        $chm = Join-Path $directory 'help\english\test.chm'
+        New-Item -ItemType Directory -Force -Path (Split-Path -Parent $chm) | Out-Null
         [IO.File]::WriteAllBytes($chm, [byte[]]::new(2048))
         [IO.File]::SetLastWriteTimeUtc($chm, $new)
     }
@@ -102,10 +103,11 @@ finally {
 # Arrange/Act/Assert: the central manager and package pipeline keep both paths.
 $manager = [IO.File]::ReadAllText((Join-Path $repository 'tools\Manage-Salamander.ps1'))
 $pipeline = [IO.File]::ReadAllText((Join-Path $repository 'tools\release\Update-Build-Test-Package.ps1'))
-foreach ($text in @($manager, $pipeline)) {
-    if (-not $text.Contains('/t:Build') -or -not $text.Contains('/t:Rebuild')) {
-        throw 'Build and Rebuild targets must both be explicitly selectable.'
-    }
+$sharedBuild = [IO.File]::ReadAllText((Join-Path $repository 'tools\release\Build-Helpers.ps1'))
+if (-not $sharedBuild.Contains('/t:Build') -or -not $sharedBuild.Contains('/t:Rebuild') -or
+    -not $manager.Contains('Invoke-SalamanderBuild') -or
+    -not $pipeline.Contains('Invoke-SalamanderBuild')) {
+    throw 'Build and Rebuild targets must be selectable via the shared builder.'
 }
 if (-not $manager.Contains("'--build-delta'") -or -not $manager.Contains("'--build-clean'") -or
     -not $manager.Contains('Build-Setups -AlreadyBuilt:')) {
