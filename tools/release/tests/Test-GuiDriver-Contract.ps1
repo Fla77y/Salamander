@@ -81,6 +81,21 @@ if ($startupText -notmatch '(?s)WaitForInputIdle\(10000\).*?Wait-ForGuiResponsiv
     $readinessText -notmatch 'GUI startup remained unresponsive') {
     throw 'GUI must prove bounded message-loop readiness and preserve hang diagnostics before clipboard navigation.'
 }
+# A failed SendMessageTimeoutW may leave LastError unchanged. Clear it before
+# probing, capture the result immediately and format the complete error text.
+# The failure must retain HWND/owner diagnostics; never treat a failed WM_NULL
+# as proof that the GUI is responsive.
+$nativeClearError = $driverText -match '(?m)^\s*public static extern void SetLastError\(uint'
+$readinessFormat = '(?s)throw\s+\(\(\s*"GUI WM_NULL readiness.*?No navigation command sent\."\s*\)\s*-f\s*\$Context,'
+if (-not $nativeClearError -or
+    $readinessText -notmatch '(?s)SetLastError\(\[uint32\]0\).*?SendMessageTimeout\(.*?GetLastWin32Error\(' -or
+    $readinessText -notmatch $readinessFormat -or
+    $readinessText -notmatch 'GetWindowThreadProcessId' -or
+    $readinessText -notmatch 'IsHungAppWindow') {
+    throw 'WM_NULL failure must preserve the original Win32 error and format complete HWND/owner diagnostics without sending input.'
+}
+Write-Host 'PASS: WM_NULL failures capture fresh Win32 status and format complete diagnostic details.'
+
 # A failure screenshot is diagnostic evidence. The new temp-directory test
 # removes its fixture after failure, so evidence must be stored outside it.
 $screenshot = (Get-FunctionSource 'Save-FailureScreenshot').Extent.Text
