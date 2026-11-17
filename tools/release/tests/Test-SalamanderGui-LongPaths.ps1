@@ -138,6 +138,10 @@ public static class SalamanderGuiNative
             if (!transferred) GlobalFree(memory);
         }
     }
+    // SendMessageTimeoutW may fail without updating LastError. Clear it first
+    // so the captured status cannot be inherited from another P/Invoke.
+    [DllImport("kernel32.dll", ExactSpelling = true)]
+    public static extern void SetLastError(uint errorCode);
     [DllImport("user32.dll", EntryPoint = "SendMessageTimeoutW", SetLastError = true)]
     public static extern IntPtr SendMessageTimeout(
         IntPtr hWnd, uint msg, UIntPtr wParam, IntPtr lParam,
@@ -1471,9 +1475,11 @@ function Wait-ForGuiResponsive {
 
         [IntPtr]$response = [IntPtr]::Zero
         $attempts++
+        [SalamanderGuiNative]::SetLastError([uint32]0)
         $result = [SalamanderGuiNative]::SendMessageTimeout(
             $mainWindowHandle, [uint32]0, [UIntPtr]::Zero, [IntPtr]::Zero,
             [uint32]0x0002, [uint32]750, [ref]$response)
+        # Preserve the status before any other Win32 call overwrites it.
         $lastErrorCode = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
         if ($result -ne [IntPtr]::Zero) {
             if ($Context -eq 'AfterDirectoryDelete') {
@@ -1491,9 +1497,32 @@ function Wait-ForGuiResponsive {
             return
         }
         if ($lastErrorCode -ne 1460) {
-            throw ("GUI WM_NULL readiness ({0}) failed with Win32 error {1}, " +
-                   "not a transient timeout; no navigation command sent." -f
-                   $Context, $lastErrorCode)
+            # Failure may be generic (Win32 code 0), invalid HWND, or a
+            # non-timeout OS failure. Never interpret it as readiness.
+            $status = if ($lastErrorCode -eq 0) {
+                'generic SendMessageTimeoutW failure (LastError=0)'
+            }
+            else {
+                "Win32 error $lastErrorCode"
+            }
+            [uint32]$ownerPid = 0
+            $guiThread = [SalamanderGuiNative]::GetWindowThreadProcessId(
+                $mainWindowHandle, [ref]$ownerPid)
+            $hung = [SalamanderGuiNative]::IsHungAppWindow($mainWindowHandle)
+            $foreground = Get-ForegroundWindowSummary
+            $windows = Get-ProcessWindowSummary -OwnerProcessId ([uint32]$process.Id)
+            $waitChain = '<not collected>'
+            if ($guiThread -ne 0) {
+                try { $waitChain = [SalamanderGuiWaitChain]::Describe([uint32]$guiThread) }
+                catch { $waitChain = "WCT unavailable: $($_.Exception.Message)" }
+            }
+            throw (("GUI WM_NULL readiness ({0}) failed: {1}; attempt={2}; " +
+                   "HWND=0x{3:X}; test PID={4}; owner PID={5}; GUI thread={6}; " +
+                   "IsHungAppWindow={7}; foreground={8}; windows=[{9}]; " +
+                   "wait chain=[{10}]. No navigation command sent.") -f
+                   $Context, $status, $attempts, $mainWindowHandle.ToInt64(),
+                   $process.Id, $ownerPid, $guiThread, $hung,
+                   $foreground, $windows, $waitChain)
         }
         Start-Sleep -Milliseconds 250
     } while ([DateTime]::UtcNow -lt $deadline)
