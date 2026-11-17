@@ -359,6 +359,7 @@ public static class SalamanderGuiNative
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool AttachThreadInput(uint threadId, uint attachToId, bool attach);
     [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
+    [DllImport("user32.dll")] private static extern short GetKeyState(int virtualKey);
 
     // Only a live, visible HWND belonging to the freshly launched test PID
     // may be activated. The final fallback briefly shares the input queue
@@ -458,6 +459,80 @@ public static class SalamanderGuiNative
             throw new InvalidOperationException(
                 "Failed to post directory delete confirmation: " +
                 Marshal.GetLastWin32Error());
+    }
+
+    // Foreground-independent integration path for the directory-delete
+    // regression. It uses the same CM_DELETEFILES handler as F8, but not the
+    // physical F8 accelerator, which needs a separate isolated desktop test.
+    public static void PostVerifiedDirectoryDeleteCommand(IntPtr mainWindow, uint processId)
+    {
+        uint ownerPid;
+        if (mainWindow == IntPtr.Zero || processId == 0 ||
+            GetWindowThreadProcessId(mainWindow, out ownerPid) == 0 ||
+            ownerPid != processId || !IsWindowVisible(mainWindow) ||
+            !IsWindowEnabled(mainWindow) ||
+            ClassName(mainWindow) != "SalamanderMainWindowVer25")
+            throw new InvalidOperationException("Refusing delete command for unverified main window");
+        // Never SendMessage synchronously: the handler shows a modal prompt.
+        if (!PostMessageW(mainWindow, 0x0111, new UIntPtr(729), IntPtr.Zero))
+            throw new InvalidOperationException(
+                "Could not post CM_DELETEFILES: " + Marshal.GetLastWin32Error());
+    }
+
+    // The isolated test starts with '-p 2': right panel is active, and both
+    // panels have the same fixture root. Direct list messages cannot hit an
+    // unrelated foreground window. Caller MUST verify exact selected name
+    // and parent path before posting any destructive command.
+    public static void SendVerifiedFileListKey(IntPtr mainWindow, uint processId, uint virtualKey)
+    {
+        if (virtualKey != 0x24 && virtualKey != 0x28) // HOME / DOWN only
+            throw new ArgumentOutOfRangeException("virtualKey");
+        uint ownerPid;
+        if (mainWindow == IntPtr.Zero || processId == 0 ||
+            GetWindowThreadProcessId(mainWindow, out ownerPid) == 0 ||
+            ownerPid != processId || !IsWindowEnabled(mainWindow) ||
+            ClassName(mainWindow) != "SalamanderMainWindowVer25")
+            throw new InvalidOperationException("Main window identity or enabled state invalid");
+
+        List<IntPtr> lists = new List<IntPtr>();
+        WindowCallback callback = (child, context) =>
+        {
+            uint childPid;
+            if (GetDlgCtrlID(child) == 950 &&
+                ClassName(child) == "SalamanderItemsBox" &&
+                IsWindowVisible(child) &&
+                GetWindowThreadProcessId(child, out childPid) != 0 &&
+                childPid == processId)
+                lists.Add(child);
+            return true;
+        };
+        EnumChildWindows(mainWindow, callback, IntPtr.Zero);
+        if (lists.Count != 2)
+            throw new InvalidOperationException(
+                "Expected exactly two owned visible SalamanderItemsBox controls");
+        GuiRect a, b;
+        if (!GetWindowRect(lists[0], out a) ||
+            !GetWindowRect(lists[1], out b) ||
+            (a.Left == b.Left && a.Top == b.Top))
+            throw new InvalidOperationException("Cannot distinguish right active file panel");
+        IntPtr list = (a.Left > b.Left || (a.Left == b.Left && a.Top > b.Top))
+            ? lists[0] : lists[1];
+
+        // Refuse modified selection while the user presses Shift/Ctrl/Alt.
+        if ((GetKeyState(0x10) & 0x8000) != 0 ||
+            (GetKeyState(0x11) & 0x8000) != 0 ||
+            (GetKeyState(0x12) & 0x8000) != 0)
+            throw new InvalidOperationException("Modifier key held; refusing list input");
+
+        IntPtr ignored;
+        if (SendMessageTimeout(list, 0x0100, new UIntPtr(virtualKey),
+                               new IntPtr(1), 2, 5000, out ignored) == IntPtr.Zero)
+            throw new InvalidOperationException(
+                "Verified file list WM_KEYDOWN failed: " + Marshal.GetLastWin32Error());
+        if (SendMessageTimeout(list, 0x0101, new UIntPtr(virtualKey),
+                               new IntPtr(0xC0000001), 2, 5000, out ignored) == IntPtr.Zero)
+            throw new InvalidOperationException(
+                "Verified file list WM_KEYUP failed: " + Marshal.GetLastWin32Error());
     }
 
     // Only operate on controls whose top-level window belongs to the isolated
