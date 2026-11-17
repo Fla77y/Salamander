@@ -236,6 +236,11 @@ function Run-Tests {
     $pictviewContract = Join-Path $repository 'tools\release\tests\Test-PictView-Management.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $pictviewContract)
 
+    # Guard the active VS 2026 solution metadata and every referenced C++
+    # project against accidental reintroduction of unsupported old toolsets.
+    $vs2026Contract = Join-Path $repository 'tools\release\tests\Test-VS2026-ProjectMetadata.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $vs2026Contract)
+
     $guiDriverContract = Join-Path $repository 'tools\release\tests\Test-GuiDriver-Contract.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $guiDriverContract)
 
