@@ -245,6 +245,9 @@ function Run-Tests {
     $legacyFindContract = Join-Path $repository 'tools\release\tests\Test-LegacyFind-UiContract.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $legacyFindContract)
 
+    $handlesLoaderLockContract = Join-Path $repository 'tools\release\tests\Test-HandlesLoaderLock-Contract.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $handlesLoaderLockContract)
+
     $guiDriverContract = Join-Path $repository 'tools\release\tests\Test-GuiDriver-Contract.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $guiDriverContract)
 
