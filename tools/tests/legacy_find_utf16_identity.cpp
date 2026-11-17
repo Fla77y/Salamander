@@ -61,7 +61,7 @@ int main()
 
     // Refuse paths beyond the NT-wide limit rather than truncating them.
     std::u16string excessive = u"C:\\";
-    for (int i = 0; i < 125; ++i)
+    for (int i = 0; i < 132; ++i)
         excessive += std::u16string(250, u'z') + u"\\";
     assert(excessive.size() > 30000);
     assert(!LegacyFindUtf16Identity::TryCreate(
