@@ -2674,6 +2674,20 @@ try {
         }
         Assert-True ([IO.Directory]::Exists($source)) 'Parent fixture survives F8 directory deletion'
         Assert-True (Test-Content $unicodeShortFile) 'Unrelated Unicode fixture survives F8 directory deletion'
+        # Assert sibling integrity *before* any further GUI operation. If the
+        # first F8 deleted the wrong subtree, this must fail as a data-loss
+        # regression rather than being misdiagnosed as a missing panel row.
+        Assert-True ([IO.Directory]::Exists($asciiTemporaryDirectory)) 'ASCII temporary sibling survives Unicode folder F8'
+        Assert-True (Test-Content $asciiLeaf) 'ASCII temporary sibling retains deep Unicode file bytes'
+
+        # The native directory-delete handler posts an asynchronous refresh.
+        # Force a verified, non-destructive parent/source navigation roundtrip
+        # so that the second folder selection reads a freshly enumerated
+        # panel, rather than racing a pending notification from the first F8.
+        Go-ToPath $root
+        Go-ToPath $source
+        Restore-FilePanelFocus -ExpectedPath $source
+        Assert-True ((Read-PanelPath) -ceq $source) 'Source panel reloaded after first F8 directory deletion'
 
         # Repeat with the original OpenSal-GuiLong-<GUID> naming scheme,
         # for which only descendants—not the selected directory name—are risky.
