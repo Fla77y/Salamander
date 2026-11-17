@@ -93,7 +93,10 @@ try {
                 $scenario.Name, $Configuration, $iteration, $Iterations)
             # Each management invocation runs in its own process; its full
             # transcript and native child failures are preserved verbatim.
-            & $manage @options 2>&1 | Set-Content -LiteralPath $log -Encoding utf8
+            # A preconditioned run executes the full native/ABI/WIC test
+            # prelude and can take minutes. Do not swallow its progress: keep
+            # the exact live output visible while writing the per-run log.
+            & $manage @options 2>&1 | Tee-Object -FilePath $log | Out-Host
             $exitCode = $LASTEXITCODE
             if ($null -eq $exitCode) {
                 Write-Warning 'Management child did not report an exit code.'
