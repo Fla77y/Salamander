@@ -1319,6 +1319,9 @@ public:
     // Same-volume F6 of one ordinary directory; Win32 renames the entire
     // subtree atomically, without the legacy ANSI recursive engine.
     BOOL TryUnicodeSingleDirectoryMove(CActionType type, CFilesWindow* target);
+    // One exactly resolved Unicode/long-path directory. Preserve configured
+    // Recycle Bin semantics; permanent deletion requires explicit consent.
+    BOOL TryUnicodeSingleDirectoryDelete();
     // Bounded multi-selection of ordinary Unicode disk files; any unsupported
     // selection remains behind the legacy ANSI fail-closed operation gate.
     BOOL TryUnicodeMultiFileTransfer(CActionType type, CFilesWindow* target);
