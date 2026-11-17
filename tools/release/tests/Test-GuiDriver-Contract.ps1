@@ -468,6 +468,59 @@ if ($mainGuiSource -notmatch 'GetGUIThreadInfo' -or
 }
 Write-Host 'PASS: long-directory Enter failure captures actual GUI focus and observed path.'
 
+# Arrange: execute the driver's real, side-effect-free fixture calculation for
+# different TEMP roots. Fixed names fail when a longer worktree moves the second
+# level past MAX_PATH before the intended third Enter.
+$fixtureAssignment = @($tree.FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+    $node.Left -is [System.Management.Automation.Language.VariableExpressionAst] -and
+    $node.Left.VariablePath.UserPath -ceq 'boundaryDirectoryNames'
+}, $true))
+if ($fixtureAssignment.Count -ne 1) { throw 'Expected one boundary-directory fixture assignment.' }
+$fixtureHelper = @($tree.FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+    $node.Name -ceq 'Get-BoundaryDirectoryNames'
+}, $true))
+$fixtureProgram = (($fixtureHelper | ForEach-Object { $_.Extent.Text }) -join "`n") + "`n" +
+    $fixtureAssignment[0].Extent.Text + '; $boundaryDirectoryNames'
+$fixtureCalculation = [scriptblock]::Create($fixtureProgram)
+$fixtureBases = @(116, 3, 40, 80, 170, 225, 239) | ForEach-Object {
+    if ($_ -eq 3) { 'C:\' } else { 'C:\' + ('p' * ($_ - 3)) }
+}
+$fixtureBases += ('C:\Größe_東京_😀\').PadRight(116, 'p')
+foreach ($source in $fixtureBases) {
+    $baseLength = $source.Length
+    # Act
+    $names = @(& $fixtureCalculation)
+    $paths = @()
+    $parent = $source
+    foreach ($name in $names) {
+        if ($name.Length -lt 1 -or $name.Length -gt 255 -or $name -match '[\\/:*?]') {
+            throw 'Boundary fixture produced an invalid directory component.'
+        }
+        $parent = Join-Path $parent $name
+        $paths += $parent
+    }
+    # Assert: the transition must happen on the third Enter, independent of TEMP.
+    if ($names.Count -ne 4 -or $paths[1].Length -ge 260 -or $paths[2].Length -le 260) {
+        $lengths = ($paths | ForEach-Object { $_.Length }) -join ','
+        throw "Boundary fixture crosses MAX_PATH at the wrong Enter for parent length $baseLength; level lengths: $lengths."
+    }
+}
+# Arrange / Act / Assert: an impossible short-parent fixture must fail clearly,
+# rather than manufacturing invalid components or silently changing the test.
+$source = 'C:\' + ('p' * 237)
+$refused = $false
+try { $null = & $fixtureCalculation }
+catch {
+    if ($_.Exception.Message -notlike 'GUI fixture parent is too long*') { throw }
+    $refused = $true
+}
+if (-not $refused) { throw 'An overlong fixture parent must be explicitly refused.' }
+Write-Host 'PASS: nested GUI fixture crosses MAX_PATH on the third Enter for short and long TEMP roots.'
+
 # Wait-Until invokes a supplied scriptblock using &, which creates a
 # child scope. A scalar assignment within the poll must not be used after
 # Wait-Until returns; only the shared hashtable's mutation survives.
@@ -821,6 +874,14 @@ if ($interopSource.Groups[1].Value -match 'System.Windows.Forms\.') {
     throw 'GUI C# interop must not depend on WinForms compiler assemblies.'
 }
 Add-Type -TypeDefinition $interopSource.Groups[1].Value -ErrorAction Stop
+# Arrange / Act / Assert: exercise the real PowerShell -> C# string boundary.
+# $null is converted to String.Empty; an unspecified caption must match Yes.
+if (-not [SalamanderGuiNative]::MatchesRequestedCopyDialogText('&Yes', $null) -or
+    -not [SalamanderGuiNative]::MatchesRequestedCopyDialogText('東京😀', '東京😀') -or
+    [SalamanderGuiNative]::MatchesRequestedCopyDialogText('別名', '東京😀')) {
+    throw 'Copy dialog lookup must accept an unspecified caption and preserve exact Unicode comparisons.'
+}
+Write-Host 'PASS: copy dialog lookup handles PowerShell null strings and exact Unicode captions.'
 if ($driverText -match 'Get-GuiInteropReferences|guiInteropReferences|ReferencedAssemblies') {
     throw 'GUI driver must retain the default Add-Type framework references.'
 }

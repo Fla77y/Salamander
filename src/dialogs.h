@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <string>
+
 //
 // ****************************************************************************
 
@@ -369,6 +371,8 @@ protected:
     char PrepositionCache[100];
     char SourceCache[2 * MAX_PATH];
     char TargetCache[2 * MAX_PATH];
+    std::wstring SourceCacheW; // owned UI copies; the worker may finish between paints
+    std::wstring TargetCacheW;
 
     // values are stored and drawn only when the timer fires
     BOOL OperationProgressCacheIsDirty;

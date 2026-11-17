@@ -7,7 +7,23 @@ on:
       - "src/common/buffer_bounds.h"
       - "src/common/shellfileopnames.h"
       - "src/worker.cpp"
+      - "src/worker.h"
+      - "src/dialogs.cpp"
+      - "src/dialogs.h"
+      - "src/common/worker_copy_paths.h"
+      - "src/common/win32_worker_copy_io.h"
+      - "src/common/win32_utf16_static_text.h"
       - "src/common/win32_long_path.h"
+      - "src/common/win32_plugin_module_path.h"
+      - "src/common/isolated_test_configuration.h"
+      - "src/salamdr1.cpp"
+      - "src/vcxproj/sal_base.props"
+      - "src/common/handles.cpp"
+      - "src/common/handles.h"
+      - "src/plugins1.cpp"
+      - "src/plugins2.cpp"
+      - "src/dialogs2.cpp"
+      - "src/salamdr2.cpp"
       - "src/common/win32_long_directory.h"
       - "src/common/utf16_disk_path.h"
       - "src/common/legacy_disk_name_safety.h"
@@ -25,6 +41,14 @@ on:
       - "tools/tests/**"
       - "tools/release/tests/Test-SalamanderGui-LongPaths.ps1"
       - "tools/release/tests/Test-GuiDriver-Contract.ps1"
+      - "tools/release/tests/Test-PluginModulePaths-Contract.ps1"
+      - "tools/release/tests/Test-GuiConfig-Isolation.ps1"
+      - "tools/release/tests/Clipboard-Snapshot.cs"
+      - "tools/release/Production-Binary-Contract.ps1"
+      - "tools/release/Package-Helpers.ps1"
+      - "tools/release/tests/Test-ProductionBinary-Contract.ps1"
+      - "tools/release/tests/Test-ProductVersion.ps1"
+      - "tools/release/tests/Test-HandlesLoaderLock-Contract.ps1"
       - "tools/Manage-Salamander.ps1"
       - ".github/workflows/pr-long-path.yml"
   workflow_dispatch:
@@ -46,6 +70,14 @@ jobs:
         shell: pwsh
         run: ./tools/tests/Test-LongPaths.ps1
 
+      - name: Plugin module paths and loader-lock contracts
+        shell: pwsh
+        run: |
+          ./tools/release/tests/Test-PluginModulePaths-Contract.ps1
+          ./tools/release/tests/Test-HandlesLoaderLock-Contract.ps1
+          ./tools/release/tests/Test-GuiConfig-Isolation.ps1
+          ./tools/release/tests/Test-ProductionBinary-Contract.ps1
+
       - name: Set up MSVC developer environment
         uses: ilammy/msvc-dev-cmd@v1
         with:
@@ -57,6 +89,20 @@ jobs:
           cl /nologo /W4 /WX /std:c++17 /EHsc /Fe:"%RUNNER_TEMP%\quicksearch_bounds.exe" tools\tests\quicksearch_bounds.cpp
           if errorlevel 1 exit /b 1
           "%RUNNER_TEMP%\quicksearch_bounds.exe"
+
+      - name: Unicode plugin module and language path regression
+        shell: cmd
+        run: |
+          cl /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /Fo:"%RUNNER_TEMP%\plugin_module_path.obj" /Fe:"%RUNNER_TEMP%\plugin_module_path.exe" tools\tests\plugin_module_path.cpp
+          if errorlevel 1 exit /b 1
+          "%RUNNER_TEMP%\plugin_module_path.exe"
+
+      - name: Isolated GUI configuration namespace regression
+        shell: cmd
+        run: |
+          cl /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /Fo:"%RUNNER_TEMP%\isolated_test_configuration.obj" /Fe:"%RUNNER_TEMP%\isolated_test_configuration.exe" tools\tests\isolated_test_configuration.cpp
+          if errorlevel 1 exit /b 1
+          "%RUNNER_TEMP%\isolated_test_configuration.exe"
 
       - name: Owned UTF-16 filename and path contract regression test
         shell: cmd
@@ -106,3 +152,28 @@ jobs:
           cl /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /Fe:"%RUNNER_TEMP%\long_path_io.exe" tools\tests\long_path_io.cpp
           if errorlevel 1 exit /b 1
           "%RUNNER_TEMP%\long_path_io.exe"
+
+  unicode-copy-worker:
+    runs-on: windows-2025-vs2026
+    strategy:
+      matrix:
+        arch: [x86, x64]
+        configuration: [Debug, Release]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: ${{ matrix.arch }}
+      - name: Owned paths, real W file I/O and original dialog controls
+        shell: pwsh
+        run: |
+          $runtime = if ('${{ matrix.configuration }}' -eq 'Debug') { '/MDd' } else { '/MD' }
+          $optimization = if ('${{ matrix.configuration }}' -eq 'Debug') { '/Od' } else { '/O2' }
+          foreach ($test in @('worker_copy_paths', 'worker_copy_io', 'win32_utf16_static_text')) {
+            $exe = Join-Path $env:RUNNER_TEMP "$test.exe"
+            $obj = Join-Path $env:RUNNER_TEMP "$test.obj"
+            & cl /nologo /W4 /WX /std:c++17 /EHsc /utf-8 $runtime $optimization "/Fo:$obj" "/Fe:$exe" "tools/tests/$test.cpp"
+            if ($LASTEXITCODE -ne 0) { throw "Compilation failed: $test" }
+            & $exe
+            if ($LASTEXITCODE -ne 0) { throw "Regression failed: $test" }
+          }

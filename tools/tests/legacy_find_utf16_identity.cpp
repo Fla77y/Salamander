@@ -9,8 +9,57 @@
 #include <iostream>
 #include <string>
 
+namespace
+{
+bool FindIdentity_WhenInputsAliasOutput_PreservesExactUtf16()
+{
+    // Arrange
+    Salamander::LegacyFindUtf16Identity identity;
+    Salamander::Utf16PathError error;
+    const std::u16string directory = u"C:\\";
+    const std::u16string name = u"東\U0001F600";
+    if (!Salamander::LegacyFindUtf16Identity::TryCreate(directory, name, identity, error))
+        return false;
+    // Act
+    const bool accepted = Salamander::LegacyFindUtf16Identity::TryCreate(
+        identity.Directory(), identity.Name(), identity, error);
+    // Assert
+    return accepted && error == Salamander::Utf16PathError::None &&
+           identity.Directory() == directory && identity.Name() == name &&
+           identity.FullPath() == directory + name;
+}
+
+bool FindIdentity_WhenAliasedNameSplitsSurrogate_ClearsOutput()
+{
+    // Arrange
+    Salamander::LegacyFindUtf16Identity identity;
+    Salamander::Utf16PathError error;
+    if (!Salamander::LegacyFindUtf16Identity::TryCreate(u"C:\\", u"\U0001F600", identity, error))
+        return false;
+    const auto invalid = std::u16string_view(identity.Name()).substr(0, 1);
+    // Act
+    const bool accepted = Salamander::LegacyFindUtf16Identity::TryCreate(
+        identity.Directory(), invalid, identity, error);
+    // Assert
+    return !accepted && error == Salamander::Utf16PathError::InvalidUtf16 &&
+           !identity.IsValid() && identity.Directory().empty() && identity.Name().empty() &&
+           identity.FullPath().empty();
+}
+}
+
 int main()
 {
+    if (!FindIdentity_WhenInputsAliasOutput_PreservesExactUtf16())
+    {
+        std::cerr << "FAIL: legacy Find identity must support inputs aliasing its output\n";
+        return 1;
+    }
+    if (!FindIdentity_WhenAliasedNameSplitsSurrogate_ClearsOutput())
+    {
+        std::cerr << "FAIL: invalid aliased Find name must clear identity with the correct error\n";
+        return 1;
+    }
+
     using Salamander::LegacyFindUtf16Identity;
     using Salamander::Utf16PathError;
 

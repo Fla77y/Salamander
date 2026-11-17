@@ -35,6 +35,38 @@
 
 #include "svg.h"
 
+#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
+#include "common/isolated_test_configuration.h"
+
+// Exported only by explicitly instrumented local test builds. GUI drivers
+// preflight this marker before trusting the per-process test ID environment.
+extern "C" __declspec(dllexport) const char* __cdecl OpenSalamanderIsolatedTestBuild()
+{
+    return "OpenSalamander-IsolatedGUI-Config-v1";
+}
+
+static bool InitializeIsolatedTestConfiguration()
+try
+{
+    char id[33];
+    if (GetEnvironmentVariableA("OPENSAL_GUI_TEST_ID", id, _countof(id)) != 32)
+        return false;
+    static std::string roots[SALCFG_ROOTS_COUNT];
+    for (int i = 0; i < SALCFG_ROOTS_COUNT; ++i)
+    {
+        if (!Salamander::TryBuildIsolatedConfigurationRoot(id, i, roots[i]))
+            return false;
+    }
+    for (int i = 0; i < SALCFG_ROOTS_COUNT; ++i)
+        SalamanderConfigurationRoots[i] = roots[i].c_str();
+    return true;
+}
+catch (const std::bad_alloc&)
+{
+    return false;
+}
+#endif // OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
+
 extern "C"
 {
 #include "shexreg.h"
@@ -3515,6 +3547,11 @@ BOOL ParseCommandLineParameters(LPSTR cmdLine, CCommandLineParams* cmdLineParams
 
 int WinMainBody(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPSTR cmdLine, int cmdShow)
 {
+#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
+    // Fail before any configuration discovery/import, including older versions.
+    if (!InitializeIsolatedTestConfiguration())
+        return 1;
+#endif // OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
     int myExitCode = 1;
 
     //--- I do not want any critical errors such as "no disk in drive A:"

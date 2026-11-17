@@ -15,6 +15,7 @@
 #include "cache.h"
 #include <uxtheme.h>
 #include "dialogs.h"
+#include "common/win32_plugin_module_path.h"
 
 CPlugins Plugins;
 
@@ -1709,31 +1710,28 @@ BOOL CSalamanderPluginEntry::SetBasicPluginData(const char* pluginName, DWORD fu
 
 HINSTANCE
 CSalamanderPluginEntry::LoadLanguageModule(HWND parent, const char* pluginName)
+try
 {
     HINSTANCE lang = NULL;
-    char path[MAX_PATH];
+    std::wstring path;
     char errorText[MAX_PATH + 300];
 
-    // obtain the path to the plugin's LANG directory
-    char* s = Plugin->DLLName;
-    if ((*s != '\\' || *(s + 1) != '\\') && // not UNC
-        (*s == 0 || *(s + 1) != ':'))       // not "c:" -> path relative to the plugins subdirectory
+    // Resolve beside the actual loaded W module, including on language fallback.
+    std::string slgName(Configuration.LoadedSLGName);
+    const auto loadLanguage = [&]() -> HINSTANCE
     {
-        GetModuleFileName(HInstance, path, MAX_PATH);
-        s = strrchr(path, '\\') + 1;
-        strcpy(s, "plugins\\");
-        strcat(s, Plugin->DLLName);
-    }
-    else
-        lstrcpyn(path, s, MAX_PATH);
-    s = strrchr(path, '\\') + 1;
-    lstrcpyn(s, "lang\\", MAX_PATH - (int)(s - path));
-    char* slgName = path + strlen(path);
-    int slgNameBufSize = MAX_PATH - (int)(slgName - path);
+        DWORD pathError = ERROR_SUCCESS;
+        if (!Salamander::TryResolveLanguageModulePath(
+                Plugin->GetPluginDLL(), slgName.c_str(), path, pathError))
+        {
+            SetLastError(pathError);
+            return NULL;
+        }
+        return HANDLES_Q(LoadLibraryW(path.c_str()));
+    };
 
     // first try to load the SLG of the language Salamander is currently running in
-    lstrcpyn(slgName, Configuration.LoadedSLGName, slgNameBufSize);
-    lang = HANDLES_Q(LoadLibrary(path));
+    lang = loadLanguage();
     WORD languageID = 0;
     if (lang == NULL || !IsSLGFileValid(Plugin->GetPluginDLL(), lang, languageID, NULL))
     { // the SLG doesn't exist or isn't the expected one (completely different file or at least another version)
@@ -1741,7 +1739,7 @@ CSalamanderPluginEntry::LoadLanguageModule(HWND parent, const char* pluginName)
             HANDLES(FreeLibrary(lang));
         lang = NULL;
         if (Plugin->LastSLGName == NULL ||               // no .slg chosen during the previous plugin load
-            _stricmp(slgName, Plugin->LastSLGName) == 0) // we already tried this .slg
+            _stricmp(slgName.c_str(), Plugin->LastSLGName) == 0) // we already tried this .slg
         {
             if (!Configuration.DoNotDispCantLoadPluginSLG)
             {
@@ -1750,7 +1748,7 @@ CSalamanderPluginEntry::LoadLanguageModule(HWND parent, const char* pluginName)
                 params.HParent = parent;
                 params.Flags = MB_OK | MB_ICONERROR;
                 params.Caption = pluginName;
-                _snprintf_s(errorText, _TRUNCATE, LoadStr(IDS_CANTLOADPLUGINSLG1), path);
+                _snprintf_s(errorText, _TRUNCATE, LoadStr(IDS_CANTLOADPLUGINSLG1), slgName.c_str());
                 params.Text = errorText;
                 params.CheckBoxText = LoadStr(IDS_DONOTSHOWCANTLOADPLUGINSLG);
                 params.CheckBoxValue = &Configuration.DoNotDispCantLoadPluginSLG;
@@ -1759,8 +1757,8 @@ CSalamanderPluginEntry::LoadLanguageModule(HWND parent, const char* pluginName)
         }
         else // try to load the .slg selected when the plugin was last loaded
         {
-            lstrcpyn(slgName, Plugin->LastSLGName, slgNameBufSize);
-            lang = HANDLES_Q(LoadLibrary(path));
+            slgName = Plugin->LastSLGName;
+            lang = loadLanguage();
             if (lang == NULL || !IsSLGFileValid(Plugin->GetPluginDLL(), lang, languageID, NULL))
             { // the SLG doesn't exist or isn't the expected one (completely different file or at least another version)
                 if (lang != NULL)
@@ -1773,7 +1771,7 @@ CSalamanderPluginEntry::LoadLanguageModule(HWND parent, const char* pluginName)
                     params.HParent = parent;
                     params.Flags = MB_OK | MB_ICONERROR;
                     params.Caption = pluginName;
-                    _snprintf_s(errorText, _TRUNCATE, LoadStr(IDS_CANTLOADPLUGINSLG2), path);
+                    _snprintf_s(errorText, _TRUNCATE, LoadStr(IDS_CANTLOADPLUGINSLG2), slgName.c_str());
                     params.Text = errorText;
                     params.CheckBoxText = LoadStr(IDS_DONOTSHOWCANTLOADPLUGINSLG);
                     params.CheckBoxValue = &Configuration.DoNotDispCantLoadPluginSLG2;
@@ -1786,8 +1784,12 @@ CSalamanderPluginEntry::LoadLanguageModule(HWND parent, const char* pluginName)
             char selSLGName[MAX_PATH];
             selSLGName[0] = 0;
             CLanguageSelectorDialog slgDialog(parent, selSLGName, pluginName);
-            lstrcpyn(slgName, "*.slg", slgNameBufSize);
-            slgDialog.Initialize(path, Plugin->GetPluginDLL());
+            if (!slgDialog.Initialize(NULL, Plugin->GetPluginDLL()))
+            {
+                const DWORD error = GetLastError();
+                SalMessageBox(parent, GetErrorText(error), pluginName, MB_OK | MB_ICONERROR);
+                return NULL;
+            }
             if (slgDialog.GetLanguagesCount() == 0)
                 SalMessageBox(parent, LoadStr(IDS_PLUGINSLGNOTFOUND), pluginName, MB_OK | MB_ICONERROR);
             else
@@ -1808,8 +1810,8 @@ CSalamanderPluginEntry::LoadLanguageModule(HWND parent, const char* pluginName)
                         slgDialog.Execute();
                     }
                 }
-                lstrcpyn(slgName, selSLGName, slgNameBufSize);
-                lang = HANDLES_Q(LoadLibrary(path));
+                slgName = selSLGName;
+                lang = loadLanguage();
                 if (lang == NULL || !IsSLGFileValid(Plugin->GetPluginDLL(), lang, languageID, NULL))
                 { // this should theoretically never happen (the dialog verifies the validity of the .SLG module)
                     if (lang != NULL)
@@ -1827,8 +1829,8 @@ CSalamanderPluginEntry::LoadLanguageModule(HWND parent, const char* pluginName)
     }
     if (lang != NULL)
     {
-        if (_stricmp(slgName, Configuration.LoadedSLGName) != 0)
-            Plugin->LastSLGName = DupStr(slgName);
+        if (_stricmp(slgName.c_str(), Configuration.LoadedSLGName) != 0)
+            Plugin->LastSLGName = DupStr(slgName.c_str());
         if (Plugin->SalamanderGeneral.LanguageModule == NULL)
             Plugin->SalamanderGeneral.LanguageModule = lang;
         else
@@ -1839,6 +1841,11 @@ CSalamanderPluginEntry::LoadLanguageModule(HWND parent, const char* pluginName)
         }
     }
     return lang;
+}
+catch (const std::bad_alloc&)
+{
+    SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+    return NULL;
 }
 
 void CSalamanderPluginEntry::SetPluginHomePageURL(const char* url)
@@ -2150,7 +2157,7 @@ BOOL CPluginData::InitDLL(HWND parent, BOOL quiet, BOOL waitCursor, BOOL showUns
     {
         if (showUnsupOnX64) // inform the user this plugin is available only in the 32-bit version (x86)
         {
-            sprintf(bufText, LoadStr(IDS_PLUGINISX86ONLY), Name == NULL || Name[0] == 0 ? pluginNameEN : Name);
+            _snprintf_s(bufText, _TRUNCATE, LoadStr(IDS_PLUGINISX86ONLY), Name == NULL || Name[0] == 0 ? pluginNameEN : Name);
             SalMessageBox(parent, bufText, LoadStr(IDS_INFOTITLE), MB_OK | MB_ICONINFORMATION);
         }
         return FALSE;
@@ -2161,30 +2168,35 @@ BOOL CPluginData::InitDLL(HWND parent, BOOL quiet, BOOL waitCursor, BOOL showUns
     {
         BOOL refreshUNCRootPaths = FALSE;
 
-        // obtain the full DLL name
-        char buf[MAX_PATH];
-        char* s = DLLName;
-        if ((*s != '\\' || *(s + 1) != '\\') && // not UNC
-            (*s == 0 || *(s + 1) != ':'))       // not "c:" -> path relative to the plugins subdirectory
+        // DLLName is a legacy setting, not storage for the resolved W path.
+        const char* s = DLLName;
+        std::wstring modulePath;
+        DWORD loadError = ERROR_SUCCESS;
+        BOOL pathReady = FALSE;
+        try
         {
-            GetModuleFileName(HInstance, buf, MAX_PATH);
-            s = strrchr(buf, '\\') + 1;
-            strcpy(s, "plugins\\");
-            strcat(s, DLLName);
-            s = buf;
+            pathReady = Salamander::TryResolvePluginModulePath(
+                HInstance, DLLName, modulePath, loadError);
+        }
+        catch (const std::bad_alloc&)
+        {
+            loadError = ERROR_NOT_ENOUGH_MEMORY;
         }
 
         // load the DLL
         HCURSOR oldCur;
         if (waitCursor)
             oldCur = SetCursor(LoadCursor(NULL, IDC_WAIT));
-        DLL = HANDLES(LoadLibrary(s));
+        if (pathReady)
+        {
+            DLL = HANDLES(LoadLibraryW(modulePath.c_str()));
+            loadError = GetLastError();
+        }
         if (waitCursor)
             SetCursor(oldCur);
         if (DLL == NULL) // error
         {
-            DWORD err = GetLastError();
-            sprintf(bufText, LoadStr(IDS_UNABLETOLOADPLUGIN), Name, s, GetErrorText(err));
+            _snprintf_s(bufText, _TRUNCATE, LoadStr(IDS_UNABLETOLOADPLUGIN), Name, s, GetErrorText(loadError));
             if (!quiet)
                 SalMessageBox(parent, bufText, LoadStr(IDS_ERRORTITLE), MB_OK | MB_ICONERROR);
         }
@@ -2194,7 +2206,14 @@ BOOL CPluginData::InitDLL(HWND parent, BOOL quiet, BOOL waitCursor, BOOL showUns
             if (entry != NULL)
             {
 #ifdef _DEBUG
-                AddModuleWithPossibleMemoryLeaks(s);
+                // The legacy heap reporter still accepts only a bounded ACP
+                // diagnostic path. This buffer is never used to load a file.
+                char diagnosticPath[MAX_PATH];
+                const DWORD length = GetModuleFileNameA(DLL, diagnosticPath, _countof(diagnosticPath));
+                if (length != 0 && length < _countof(diagnosticPath))
+                    AddModuleWithPossibleMemoryLeaks(diagnosticPath);
+                else
+                    TRACE_E("Plugin path cannot fit the legacy heap-reporting diagnostic buffer.");
 #endif // _DEBUG
 
                 // variables for detecting features that "upgrade" (FALSE->TRUE)
@@ -2298,9 +2317,9 @@ BOOL CPluginData::InitDLL(HWND parent, BOOL quiet, BOOL waitCursor, BOOL showUns
                     if (salamander.ShowError() && oldVer) // old version and it has not been reported yet...
                     {
                         if (Name == NULL || Name[0] == 0)
-                            sprintf(bufText, LoadStr(IDS_OLDPLUGINVERSION2), s);
+                            _snprintf_s(bufText, _TRUNCATE, LoadStr(IDS_OLDPLUGINVERSION2), s);
                         else
-                            sprintf(bufText, LoadStr(IDS_OLDPLUGINVERSION), Name, s);
+                            _snprintf_s(bufText, _TRUNCATE, LoadStr(IDS_OLDPLUGINVERSION), Name, s);
                         if (!quiet)
                             SalMessageBox(parent, bufText, LoadStr(IDS_ERRORTITLE), MB_OK | MB_ICONERROR);
                     }
@@ -2464,9 +2483,9 @@ BOOL CPluginData::InitDLL(HWND parent, BOOL quiet, BOOL waitCursor, BOOL showUns
                     if (!oldVer && salamander.ShowError())
                     { // the plugin is the correct version, but SetBasicPluginData was not called
                         if (Name == NULL || Name[0] == 0)
-                            sprintf(bufText, LoadStr(IDS_PLUGININVALID2), s);
+                            _snprintf_s(bufText, _TRUNCATE, LoadStr(IDS_PLUGININVALID2), s);
                         else
-                            sprintf(bufText, LoadStr(IDS_PLUGININVALID), Name, s);
+                            _snprintf_s(bufText, _TRUNCATE, LoadStr(IDS_PLUGININVALID), Name, s);
                         if (!quiet)
                             SalMessageBox(parent, bufText, LoadStr(IDS_ERRORTITLE), MB_OK | MB_ICONERROR);
                     }
@@ -2477,7 +2496,7 @@ BOOL CPluginData::InitDLL(HWND parent, BOOL quiet, BOOL waitCursor, BOOL showUns
                 HANDLES(FreeLibrary(DLL));
                 DLL = NULL;
 
-                sprintf(bufText, LoadStr(IDS_UNABLETOFINDPLUGINENTRY), s);
+                _snprintf_s(bufText, _TRUNCATE, LoadStr(IDS_UNABLETOFINDPLUGINENTRY), s);
                 if (!quiet)
                     SalMessageBox(parent, bufText, LoadStr(IDS_ERRORTITLE), MB_OK | MB_ICONERROR);
             }

@@ -603,7 +603,8 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
     const ULONGLONG fileSize =
         (static_cast<ULONGLONG>(attributes.nFileSizeHigh) << 32) |
         attributes.nFileSizeLow;
-    if (fileSize > MaxSynchronousTransferBytes)
+    const bool useWorker = type == atCopy && fileSize > MaxSynchronousTransferBytes;
+    if (fileSize > MaxSynchronousTransferBytes && !useWorker)
         return FALSE;
 
     std::wstring resolvedName;
@@ -617,7 +618,9 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
         type == atCopy ? L"Copy the Unicode file to the other panel?\n\n" :
                          L"Move the Unicode file to the other panel?\n\n") +
         originalName + L"\n\nDestination: " + targetDirectory +
-        L"\n\nExisting files will not be overwritten.";
+        (useWorker ? L"\n\nThe existing background copy worker will be used. "
+                     L"Existing destinations follow your overwrite confirmation settings." :
+                     L"\n\nExisting files will not be overwritten.");
     if (MessageBoxW(HWindow, prompt.c_str(),
                     type == atCopy ? L"Unicode copy" : L"Unicode move",
                     MB_OKCANCEL | MB_ICONQUESTION) != IDOK)
@@ -641,17 +644,75 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
     // A different process may replace a regular file with a junction,
     // symlink or larger object while the confirmation dialog is open.
     WIN32_FILE_ATTRIBUTE_DATA currentAttributes = {};
+    const DWORD currentTargetAttributes = GetFileAttributesW(wideTargetDirectory.c_str());
     if (!GetFileAttributesExW(
             wideSource.c_str(), GetFileExInfoStandard, &currentAttributes) ||
         (currentAttributes.dwFileAttributes &
             (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0 ||
-        ((static_cast<ULONGLONG>(currentAttributes.nFileSizeHigh) << 32) |
-         currentAttributes.nFileSizeLow) > MaxSynchronousTransferBytes)
+        currentTargetAttributes == INVALID_FILE_ATTRIBUTES ||
+        (currentTargetAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0 ||
+        (currentTargetAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0 ||
+        (!useWorker && ((static_cast<ULONGLONG>(currentAttributes.nFileSizeHigh) << 32) |
+         currentAttributes.nFileSizeLow) > MaxSynchronousTransferBytes))
     {
-        MessageBoxW(HWindow, L"The source file type or size changed. "
+        MessageBoxW(HWindow, L"The source file type, size or target directory changed. "
                      L"No files were changed.", L"Unicode transfer",
                     MB_OK | MB_ICONWARNING);
         return TRUE;
+    }
+
+    if (useWorker)
+    {
+        try
+        {
+            CCriteriaData criteria;
+            if (CopyMoveOptions.Get() != NULL)
+                criteria = *CopyMoveOptions.Get();
+            if (criteria.UseMasks || criteria.UseAdvanced)
+            {
+                MessageBoxW(HWindow, L"The saved copy filters still require the legacy name engine. "
+                    L"No files were changed.", L"Unicode copy", MB_OK | MB_ICONWARNING);
+                return TRUE;
+            }
+            std::unique_ptr<COperations, decltype(&FreeScript)> script(
+                new COperations(1, 1, NULL, NULL, NULL), FreeScript);
+            if (script == NULL)
+                throw std::bad_alloc();
+            script->CopyAttrs = criteria.CopyAttrs;
+            script->CopySecurity = criteria.CopySecurity;
+            script->OverwriteOlder = criteria.OverwriteOlder;
+            script->StartOnIdle = criteria.StartOnIdle;
+            if (criteria.UseSpeedLimit)
+                script->SetSpeedLimit(TRUE, criteria.SpeedLimit);
+            script->UnicodeCopyNotificationPath = targetPanelPath;
+            if (!PrepareUnicodeFileCopy(script.get(), source, destination, currentAttributes, criteria.IgnoreADS, error))
+            {
+                MessageBoxW(HWindow, GetErrorTextW(error), L"Unicode copy", MB_OK | MB_ICONWARNING);
+                return TRUE;
+            }
+            BeginSuspendMode();
+            BeginStopRefresh();
+            const BOOL started = StartProgressDialog(script.get(), LoadStr(IDS_COPY), NULL, NULL);
+            if (started)
+                script.release(); // the existing worker owns/frees it from here
+            EndStopRefresh();
+            EndSuspendMode();
+            if (!started)
+                MessageBoxW(HWindow, L"Unable to start the copy progress dialog and worker.",
+                    L"Unicode copy", MB_OK | MB_ICONWARNING);
+            else
+            {
+                SetSel(FALSE, -1, TRUE);
+                PostMessage(HWindow, WM_USER_SELCHANGED, 0, 0);
+            }
+            return TRUE;
+        }
+        catch (const std::bad_alloc&)
+        {
+            MessageBoxW(HWindow, L"Not enough memory to prepare the Unicode copy.",
+                L"Unicode copy", MB_OK | MB_ICONWARNING);
+            return TRUE;
+        }
     }
 
     // Refresh may be delayed until the operation completes. All filesystem

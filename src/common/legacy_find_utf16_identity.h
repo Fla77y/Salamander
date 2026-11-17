@@ -7,6 +7,7 @@
 
 #include <string>
 #include <string_view>
+#include <utility>
 
 namespace Salamander
 {
@@ -17,22 +18,27 @@ namespace Salamander
 class LegacyFindUtf16Identity
 {
 public:
+    // Inputs may refer to output's fields. Publish only after validation and
+    // ownership of both components; validation failure clears the old identity.
     static bool TryCreate(std::u16string_view directory,
                           std::u16string_view filename,
                           LegacyFindUtf16Identity& output,
                           Utf16PathError& error)
     {
-        // Failed validation must never retain a previously valid result.
-        output = LegacyFindUtf16Identity();
         Utf16DiskPath root;
         Utf16DiskPath complete;
         Utf16FileName leaf;
         if (!Utf16DiskPath::TryCreateAbsolute(directory, root, error) ||
             !Utf16FileName::TryCreate(filename, leaf, error) ||
             !root.TryAppend(leaf, complete, error))
+        {
+            output = LegacyFindUtf16Identity();
             return false;
-        output.directory_.assign(directory);
-        output.name_.assign(filename);
+        }
+        LegacyFindUtf16Identity validated;
+        validated.directory_.assign(directory);
+        validated.name_.assign(filename);
+        output = std::move(validated);
         return true;
     }
 

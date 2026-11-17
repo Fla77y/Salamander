@@ -13,6 +13,7 @@ $repository = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Provide
 $buildRoot = 'D:\Build\OpenSal'
 $configuration = 'Release'
 $validOptions = @('--update', '--build', '--test', '--setup', '--run',
+                  '--test-gui-large-unicode-copy', '--test-clipboard-snapshot',
                   '--debug', '--release', '--all', '--build-delta', '--build-clean', '--test-all', '--test-gui', '--test-gui-max-path', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-recycle-restore', '--test-plugin-exports', '--test-plugin-load', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-unicode-find', '--test-gui-manual', '--test-gui-temp-delete', '--test-pictview', '--test-pictview-window', '--test-pictview-host', '--diagnose-gui', '--help', '-h', '/?')
 $requestedSet = [System.Collections.Generic.HashSet[string]]::new(
     [StringComparer]::OrdinalIgnoreCase)
@@ -37,6 +38,9 @@ Open Salamander – Verwaltung für Visual Studio 2026
   manage.cmd --test         Windows-Dateisystem-/Namens-Tests und Projekt-Regressionstests
   manage.cmd --test-all     Alle automatisierten Tests: --test und sämtliche GUI-Modi
                             (Release und Debug x64; --release/--debug begrenzt die GUI-Modi)
+                            Große Unicode-Kopien: separater isolierter Testbuild im Worktree
+  manage.cmd --test-gui-large-unicode-copy  32-MiB-Kopie, Pause/Abbruch, Zielkollision und gesperrte Quelle
+  manage.cmd --test-clipboard-snapshot  Native Zwischenablage-Sicherung/-Wiederherstellung prüfen
   manage.cmd --setup        Debug- und Release-7z plus Inno-Setup-Pakete erzeugen
   manage.cmd --test-pictview  WIC-Decoder, GDI, Frames, Export, Clipboard, Transforms: MSVC x86/x64
   manage.cmd --test-pictview-window  Zusätzlich echten WIC-Viewer-HWND testen
@@ -108,6 +112,7 @@ function Expand-AutomatedTestActions {
     [void]$RequestedSet.Add('--test-pictview')
     [void]$RequestedSet.Add('--test-pictview-window')
     [void]$RequestedSet.Add('--test-plugin-exports')
+    [void]$RequestedSet.Add('--test-clipboard-snapshot')
     foreach ($option in $AvailableOptions) {
         if ($option.StartsWith('--test-gui', [StringComparison]::OrdinalIgnoreCase) -and
             $option -ne '--test-gui-manual') {
@@ -229,6 +234,9 @@ function Run-Tests {
     $productVersionTest = Join-Path $repository 'tools\release\tests\Test-ProductVersion.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $productVersionTest)
 
+    $productionBinaryContract = Join-Path $repository 'tools\release\tests\Test-ProductionBinary-Contract.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $productionBinaryContract)
+
     $buildModesTest = Join-Path $repository 'tools\release\tests\Test-BuildModes.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $buildModesTest)
 
@@ -245,11 +253,20 @@ function Run-Tests {
     $legacyFindContract = Join-Path $repository 'tools\release\tests\Test-LegacyFind-UiContract.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $legacyFindContract)
 
+    $pluginModuleContract = Join-Path $repository 'tools\release\tests\Test-PluginModulePaths-Contract.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $pluginModuleContract)
+
+    $guiConfigContract = Join-Path $repository 'tools\release\tests\Test-GuiConfig-Isolation.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $guiConfigContract)
+
     $handlesLoaderLockContract = Join-Path $repository 'tools\release\tests\Test-HandlesLoaderLock-Contract.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $handlesLoaderLockContract)
 
     $guiDriverContract = Join-Path $repository 'tools\release\tests\Test-GuiDriver-Contract.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $guiDriverContract)
+
+    $unicodeCopyContract = Join-Path $repository 'tools\release\tests\Test-Manage-UnicodeCopy.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $unicodeCopyContract)
 
     $guiReliabilityContract = Join-Path $repository 'tools\release\tests\Test-GuiReliability-Contract.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $guiReliabilityContract)
@@ -278,6 +295,11 @@ function Run-Tests {
         'tools\tests\long_path_io.cpp',
         'tools\tests\unicode_directory_delete.cpp',
         'tools\tests\legacy_find_utf16_identity.cpp',
+        'tools\tests\plugin_module_path.cpp',
+        'tools\tests\isolated_test_configuration.cpp',
+        'tools\tests\worker_copy_paths.cpp',
+        'tools\tests\worker_copy_io.cpp',
+        'tools\tests\win32_utf16_static_text.cpp',
         'tools\tests\unicode_find.cpp',
         'tools\tests\win32_max_path.cpp',
         'tools\tests\bug_report_path.cpp'
@@ -423,6 +445,10 @@ try {
         $buildMode = Get-BuildMode -RequestedSet $requestedSet
         if ($buildMode -ne 'None') { Build-Variants -Mode $buildMode }
         if ($requestedSet.Contains('--test')) { Run-Tests }
+        if ($requestedSet.Contains('--test-clipboard-snapshot')) {
+            $snapshotTest = Join-Path $repository 'tools\release\tests\Test-ClipboardSnapshot.ps1'
+            Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $snapshotTest)
+        }
         # Separate acceptance gate: these built plug-ins are inspected but
         # never loaded, and missing artifacts must fail rather than skip.
         if ($requestedSet.Contains('--test-plugin-exports')) {
@@ -499,6 +525,11 @@ try {
         }
         $automatedGuiModes = @(Get-AutomatedGuiModes -RequestedSet $requestedSet)
         foreach ($guiMode in $automatedGuiModes) {
+            if ($requestedSet.Contains('--test-gui-large-unicode-copy')) {
+                $largeCopyTest = Join-Path $repository 'tools\release\tests\Invoke-IsolatedUnicodeCopy.ps1'
+                Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $largeCopyTest,
+                                          '-Configuration', $guiMode)
+            }
             if ($requestedSet.Contains('--test-gui-temp-delete')) {
                 Write-Host '=== GUI F8 DELETE HANDLER (FOREGROUND-INDEPENDENT CM_DELETEFILES) ==='
                 $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'

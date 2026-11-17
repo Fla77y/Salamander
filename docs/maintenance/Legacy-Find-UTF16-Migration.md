@@ -44,3 +44,95 @@ This document records **work in progress**, not feature completion.
 6. Run the complete `manage.cmd --build --test-all` suite on Windows and an interactive GUI test in a clean Windows VM; record actual results.
 
 Until every acceptance test passes, requirement 6 must remain **open**.
+
+## 17 November 2026: alias-safe owned identities
+
+Verified on the uncommitted worktree changes based on
+`5303c25ff44aa69da5ae146d36359a36ee8f396d`, in
+`C:\Users\mk\.codex\worktrees\0e93\Salamander`.
+
+The owned-path factories previously cleared their output before reading the
+input view. Revalidating `name.Value()` or `path.Value()` into the same object
+therefore lost the original UTF-16 identity. `LegacyFindUtf16Identity::TryCreate`
+also invalidated views into its own directory/name fields before validation;
+heap-backed fields could become dangling views.
+
+The factories now retain input before replacing its owner. Invalid input still
+clears the old output and reports the original validation error. This changes
+neither `CFileData` nor the plug-in ABI, search predicates, dialog resources or
+Ctrl+F dispatch. It does not connect the legacy worker to W enumeration yet.
+
+### Executed verification
+
+- **RED:** both existing native test programs, `utf16_disk_path.cpp` and
+  `legacy_find_utf16_identity.cpp`, reproduced the aliasing failure in x86/x64,
+  with Debug and Release runtime/optimization settings (8 failing executions).
+- **GREEN:** both programs passed in all four configurations after the fix,
+  including additional substring, split-surrogate, output-clearing and precise
+  error checks. Existing Unicode, UNC, component-length and 32767-unit namespace
+  boundary checks also passed. Assertions remained enabled in optimized tests.
+- **Regression:** `long_path_io.cpp`, `unicode_find.cpp` and
+  `win32_unicode_primary_panel.cpp` passed in all four configurations (12 more
+  executions). Filesystem fixtures stayed below the worktree and were cleaned
+  by their respective tests. These are native tests, not GUI acceptance.
+- **Source contracts:** `Test-LegacyFind-UiContract.ps1` and
+  `Test-VS2026-ProjectMetadata.ps1` passed. The former checks feature presence;
+  it does not prove original-dialog dispatch or runtime feature parity.
+- **Toolchain:** VS 2026 18.12, MSVC v143 14.44.35207, Windows SDK 10.0.26100.0;
+  native tests used C++17, `/W4 /WX`, `/MDd /Od` and `/MD /O2`.
+- **Regular core build:** Debug x64 failed with compiler error `C1902`
+  (program database manager) while using the repository's `/ZI` setting.
+  No normal Release or Win32 build was reached. This is an unresolved build
+  verification failure; no toolchain repair or installation was performed.
+- **Supplementary compile:** all C++ core sources compiled successfully through
+  MSBuild target `ClCompile` in Debug/Release x64/Win32 with an ignored local
+  props override selecting `/Z7`. This excludes linking, full resources,
+  plug-in builds, help, packaging and runtime/GUI acceptance; it is not a
+  successful regular full build.
+
+Every build/test output, temporary file and local driver is under the ignored
+`.Build` directory in this worktree. Evaluated MSBuild output and intermediate
+paths were checked before compilation. Native logs are in
+`.Build/utf16-identity/{red,green}/{x64,x86}/{Debug,Release}`; the failed regular
+build log is `.Build/utf16-core/build-Debug-x64.log`; supplementary compile logs
+are in `.Build/utf16-core-no-pdb`. Existing source encodings and CRLF were
+preserved. `manage.cmd` was inspected but not invoked because its manager fixes
+the output root at `D:\Build\OpenSal` and can modify the global clipboard.
+The two extended test programs remain registered in its existing `--test` gate.
+No update, installation, branch creation, commit or original-repository edit
+was performed.
+
+### Remaining work and dependency order
+
+1. Establish an isolated regular full build and an authorized disposable GUI
+   acceptance environment. Preserve the current advanced-search predicates in
+   behavior tests before changing their inputs or enumeration.
+2. Migrate `CSearchForData`, `BuildSerchForData` and the existing root edit control
+   to owned W roots without truncation; preserve histories, multiple roots,
+   validation and saved options.
+3. Migrate `SearchDirectory` and file-content opening to W paths while retaining
+   original masks, ignored paths, recursion, cancellation, error logging, regex,
+   hex, case and whole-word semantics. Populate result identities from W records.
+4. Migrate the existing result list rendering/sorting and result actions to those
+   identities, including refinement/duplicates, clipboard, open/view/edit/delete,
+   drag/drop and shell/plugin boundaries. Unsupported boundaries remain explicit.
+5. Restore direct legacy-dialog dispatch only when its Unicode/long-path behavior
+   and the original Advanced/regex/filter workflows pass together. The currently
+   active replacement W window remains an existing A6 compliance gap, not an
+   accepted alternative to the original dialog.
+
+A0: no UI/operation contract changed in this slice; full runtime regression
+remains unverified. A1/A2: this identity defect is covered, overall migration
+remains open. A3: native tests and supplementary core compilation passed; regular
+full build remains unverified. A4: script unchanged and not run. A5: release/VM
+acceptance not performed. A6: legacy migration and runtime parity remain open.
+A7: PictView/WIC unchanged and not tested in this slice.
+
+### Subsequent verification on 17 November 2026
+
+The later [implementation record](Unicode-LongPath-Implementation.md) supersedes
+the build blocker above: normal core compilation, resources, linking and PDBs
+now pass in Debug/Release x64/Win32. It records the loader/language-directory
+corrections, selected component builds and the still-blocked GUI acceptance.
+The historical failed attempt is retained here as evidence. Full original-Find
+migration and A6 acceptance remain open.

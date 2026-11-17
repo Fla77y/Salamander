@@ -1,5 +1,6 @@
 # Internal helpers for the Windows x64 build and distribution pipeline.
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'Production-Binary-Contract.ps1')
 
 function Find-Executable {
     param([string]$Name, [string[]]$Candidates)
@@ -236,6 +237,7 @@ function New-DistributionStage {
     if (-not (Test-Path -LiteralPath (Join-Path $BuiltDirectory 'salamand.exe'))) {
         throw "Build output is missing salamand.exe: $BuiltDirectory"
     }
+    Assert-ProductionBinary -Path (Join-Path $BuiltDirectory 'salamand.exe')
     if (Test-Path -LiteralPath $Stage) { Remove-Item -LiteralPath $Stage -Recurse -Force }
     New-Item -ItemType Directory -Path $Stage -Force | Out-Null
     $copyArgs = @($BuiltDirectory, $Stage, '/E', '/XD', 'Intermediate',
@@ -265,6 +267,7 @@ function Test-DistributionStage {
             throw "Distribution is incomplete. Missing: $required in $Stage"
         }
     }
+    Assert-ProductionBinary -Path (Join-Path $Stage 'salamand.exe')
     if ($Configuration -eq 'Debug') {
         foreach ($required in @('vcruntime140d.dll', 'msvcp140d.dll', 'ucrtbased.dll', 'INTERNAL-TEST-ONLY.txt')) {
             if (-not (Test-Path -LiteralPath (Join-Path $Stage $required) -PathType Leaf)) {

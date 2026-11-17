@@ -3,6 +3,7 @@
 // CommentsTranslationProject: TRANSLATED
 
 #include "precomp.h"
+#include "common/win32_plugin_module_path.h"
 
 #include "cfgdlg.h"
 #include "dialogs.h"
@@ -790,10 +791,24 @@ int CLanguageSelectorDialog::Execute()
     {
         // load the template from the best available SLG
         int index = GetPreferredLanguageIndex(SLGName);
-        char path[MAX_PATH];
-        GetModuleFileName(HInstance, path, MAX_PATH);
-        sprintf(strrchr(path, '\\') + 1, "lang\\%s", Items[index].FileName);
-        hTmpLanguage = HANDLES(LoadLibrary(path));
+        if (index < 0 || index >= Items.Count)
+            return -1;
+        std::wstring path;
+        DWORD pathError = ERROR_SUCCESS;
+        try
+        {
+            if (!Salamander::TryResolveLanguageModulePath(HInstance, Items[index].FileName, path, pathError))
+            {
+                SetLastError(pathError);
+                return -1;
+            }
+        }
+        catch (const std::bad_alloc&)
+        {
+            SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+            return -1;
+        }
+        hTmpLanguage = HANDLES(LoadLibraryW(path.c_str()));
         if (hTmpLanguage != NULL)
             Modul = hTmpLanguage;
     }
@@ -906,41 +921,92 @@ void CLanguageSelectorDialog::Transfer(CTransferInfo& ti)
 }
 
 BOOL CLanguageSelectorDialog::Initialize(const char* slgSearchPath, HINSTANCE pluginDLL)
+try
 {
-    char path[MAX_PATH];
+    std::wstring path;
+    DWORD pathError = ERROR_SUCCESS;
     if (slgSearchPath == NULL)
     {
-        GetModuleFileName(NULL, path, MAX_PATH);
-        lstrcpy(strrchr(path, '\\') + 1, "lang\\*.slg");
+        if (!Salamander::TryResolveModuleRelativePath(
+                pluginDLL == NULL ? HInstance : pluginDLL, L"lang\\*.slg", path, pathError))
+        {
+            SetLastError(pathError);
+            return FALSE;
+        }
     }
     else
-        lstrcpyn(path, slgSearchPath, MAX_PATH);
+    {
+        std::wstring requested;
+        if (!Salamander::PluginModulePathDetail::DecodeLegacyName(slgSearchPath, requested, pathError) ||
+            !Salamander::PluginModulePathDetail::MakeLoaderPath(requested, path, pathError))
+        {
+            SetLastError(pathError);
+            return FALSE;
+        }
+    }
 
-    WIN32_FIND_DATA file;
-    HANDLE hFind = HANDLES_Q(FindFirstFile(path, &file));
+    WIN32_FIND_DATAW file;
+    HANDLE hFind = HANDLES_Q(FindFirstFileW(path.c_str(), &file));
     if (hFind != INVALID_HANDLE_VALUE)
     {
+        struct FindGuard
+        {
+            HANDLE handle;
+            ~FindGuard()
+            {
+                const DWORD error = GetLastError();
+                HANDLES(FindClose(handle));
+                SetLastError(error);
+            }
+        } guard{hFind};
         do
         {
-            char* point = strrchr(file.cFileName, '.');
-            if (point != NULL && stricmp(point + 1, "slg") == 0) // FindFirstFile was returning *.slg* too
+            const wchar_t* point = wcsrchr(file.cFileName, L'.');
+            if ((file.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0 &&
+                point != NULL && _wcsicmp(point + 1, L"slg") == 0)
             {
+                std::string legacyName;
+                if (!Salamander::TryEncodeLegacyLanguageName(file.cFileName, legacyName, pathError))
+                {
+                    SetLastError(pathError);
+                    return FALSE;
+                }
                 CLanguage lang;
-                if (lang.Init(file.cFileName, pluginDLL))
+                if (lang.Init(legacyName.c_str(), pluginDLL))
                 {
                     Items.Add(lang);
                     if (!Items.IsGood())
                     {
                         Items.ResetState();
                         lang.Free();
+                        SetLastError(ERROR_NOT_ENOUGH_MEMORY);
                         return FALSE;
                     }
                 }
             }
-        } while (FindNextFile(hFind, &file));
-        HANDLES(FindClose(hFind));
+        } while (FindNextFileW(hFind, &file));
+        const DWORD enumerationError = GetLastError();
+        if (enumerationError != ERROR_NO_MORE_FILES)
+        {
+            SetLastError(enumerationError);
+            return FALSE;
+        }
+    }
+    else
+    {
+        const DWORD error = GetLastError();
+        if (error != ERROR_FILE_NOT_FOUND && error != ERROR_PATH_NOT_FOUND && error != ERROR_NO_MORE_FILES)
+        {
+            SetLastError(error);
+            return FALSE;
+        }
     }
     return TRUE;
+}
+catch (const std::bad_alloc&)
+{
+    SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+    return FALSE;
 }
 
 int CLanguageSelectorDialog::GetPreferredLanguageIndex(const char* selectSLGName, BOOL exactMatch)

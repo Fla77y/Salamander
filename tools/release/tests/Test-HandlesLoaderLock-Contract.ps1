@@ -58,4 +58,5 @@ function Assert-LoadLibraryDoesNotHoldMonitorLock {
 }
 
 Assert-LoadLibraryDoesNotHoldMonitorLock -FunctionName 'LoadLibrary' -NativeCall '::LoadLibrary(lpLibFileName)'
+Assert-LoadLibraryDoesNotHoldMonitorLock -FunctionName 'LoadLibraryW' -NativeCall '::LoadLibraryW(lpLibFileName)'
 Assert-LoadLibraryDoesNotHoldMonitorLock -FunctionName 'LoadLibraryEx' -NativeCall '::LoadLibraryEx(lpLibFileName, hFile, dwFlags)'

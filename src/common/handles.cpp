@@ -2113,6 +2113,30 @@ C__Handles::LoadLibrary(LPCTSTR lpLibFileName)
 }
 
 HINSTANCE
+C__Handles::LoadLibraryW(LPCWSTR lpLibFileName)
+{
+#ifdef MULTITHREADED_HANDLES_ENABLE
+    C__HandlesOutputType tmpOutputType = OutputType;
+    C__HandlesData tmpTemporaryHandle = TemporaryHandle;
+    ::LeaveCriticalSection(&CriticalSection);
+#endif // MULTITHREADED_HANDLES_ENABLE
+
+    HINSTANCE ret = ::LoadLibraryW(lpLibFileName);
+    DWORD loadError = ::GetLastError();
+
+#ifdef MULTITHREADED_HANDLES_ENABLE
+    ::EnterCriticalSection(&CriticalSection);
+    OutputType = tmpOutputType;
+    TemporaryHandle = tmpTemporaryHandle;
+#endif // MULTITHREADED_HANDLES_ENABLE
+
+    ::SetLastError(loadError);
+    CheckCreate(ret != NULL, __htLibrary, __hoLoadLibrary, ret, loadError, TRUE, "UTF-16 module path");
+    ::SetLastError(loadError);
+    return ret;
+}
+
+HINSTANCE
 C__Handles::LoadLibraryEx(LPCTSTR lpLibFileName, HANDLE hFile, DWORD dwFlags)
 {
 #ifdef MULTITHREADED_HANDLES_ENABLE

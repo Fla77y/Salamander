@@ -143,6 +143,74 @@ or distribute them without inspecting their contents. No dump is written
 by default. A hang is **not** considered a passed test.
 
 
+### Isolated desktop acceptance builds
+
+The existing GUI driver accepts `-IsolatedConfiguration` for an explicitly
+instrumented test executable. In a VS 2026 Developer PowerShell at the repository
+root, build the core with a dedicated output root and the opt-in MSBuild property:
+
+```powershell
+$env:OPENSAL_BUILD_DIR = (Join-Path (Get-Location) '.Build\gui\')
+MSBuild.exe .\src\vcxproj\salamand.vcxproj /t:Build /p:Configuration=Release /p:Platform=x64 /p:OpenSalamanderIsolatedGuiTest=true
+pwsh -Sta -NoProfile -File .\tools\release\tests\Test-SalamanderGui-LongPaths.ps1 -SalamanderExe .\.Build\gui\salamander\Release_x64\salamand.exe -BaselineOnly -IsolatedConfiguration
+```
+
+This mode requires an authorized interactive desktop. It redirects all application
+configuration-version roots beneath a fresh GUID under
+`HKCU\Software\Open Salamander\CodexTests`, captures native clipboard formats before
+input, restores them afterward, and removes only that test's registry namespace.
+The private fixture selects `english.slg` using configuration version 59, so the
+run is independent of the Windows locale while still exercising the real
+configuration upgrade and plugin auto-install paths. Startup waits for Salamander
+to write its upgraded version, rather than assuming an empty first-run key
+already exists. `-StartupReadyTimeoutSeconds` defaults to 90 (maximum 120),
+separately from the ordinary operation timeouts. This is an upgrade/operation
+acceptance fixture; it does not establish completely unconfigured first-run or
+language-selection behavior. Prefer a normal, non-elevated PowerShell session.
+The driver checks the executable's test-build marker before launching it. The
+instrumented executable requires the driver's per-process `OPENSAL_GUI_TEST_ID`;
+it refuses to start without one. Regular builds do not enable this hook.
+Keep instrumented executables out of release packages. This option does not change
+the existing `manage.cmd` build/test defaults or establish full Unicode feature
+coverage; each GUI scenario still needs its own actual result.
+
+For the asynchronous large-file slice, use the same isolated executable and run
+the four cases separately (normal PowerShell, no Administrator elevation):
+
+```powershell
+$env:TEMP = Join-Path (Get-Location) '.Build\gui-temp'
+$env:TMP = $env:TEMP
+New-Item -ItemType Directory -Path $env:TEMP -Force | Out-Null
+foreach ($case in @('Copy', 'Cancel', 'Collision', 'LockedSource')) {
+    pwsh -Sta -NoProfile -File .\tools\release\tests\Test-SalamanderGui-LongPaths.ps1 -SalamanderExe .\.Build\gui\salamander\Release_x64\salamand.exe -IsolatedConfiguration -LargeUnicodeCopyOnly -LargeUnicodeCopyCase $case
+    if ($LASTEXITCODE -ne 0) { throw "GUI case failed: $case" }
+}
+```
+
+This uses the existing F5 command handler through verified test-owned window
+messages, with a 32-MiB Unicode filename and source/target paths beyond MAX_PATH.
+It checks SHA256, last-write time, read-only attributes, a Unicode ADS, the
+original progress/Pause/Resume controls, cancellation, overwrite refusal and a
+locked source. The copy/cancel cases deliberately hold the test worker at an
+event checkpoint so these controls can be tested deterministically. The GUI
+must remain responsive; an unreleased checkpoint fails after 30 seconds. This
+checkpoint exists only in opt-in isolated builds. Do not increase a timeout to
+turn a stalled test into a pass. Repeat with the Debug and x86 executables for
+the complete configuration matrix. `-UnicodeParentDirectories` additionally
+exercises the still-open Unicode parent-directory navigation gap; the default
+fixture uses deep ASCII parent names and an exact Unicode filename.
+
+`manage.cmd --test-all` now includes these four large-copy cases in Release and
+Debug x64, together with the native path/I/O/control regressions and the native
+clipboard snapshot regression. `--release` or `--debug` restricts the GUI variant.
+Use `manage.cmd --test-gui-large-unicode-copy --release` for just this GUI slice,
+or `manage.cmd --test-clipboard-snapshot` for the clipboard regression. The
+large-copy runner incrementally builds a separate instrumented core under this
+checkout's `.Build\isolated-unicode-copy`; evaluated MSBuild output paths are
+checked before compilation, and production binaries are not replaced. The
+other management actions retain their existing output locations. A failed
+precondition, missing dependency or failed case aborts the suite with an error.
+
 ### Contributing
 
 This project welcomes contributions to build and enhance Open Salamander!

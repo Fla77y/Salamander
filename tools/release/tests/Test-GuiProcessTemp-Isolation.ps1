@@ -48,7 +48,7 @@ $values = @(
     $arguments = @('-NoLogo', '-NoProfile', '-NonInteractive',
                    '-File', ('"' + $probe + '"'), ('"' + $result + '"'))
     $process = Start-Process -FilePath (Join-Path $PSHOME 'pwsh.exe') `
-        -ArgumentList $arguments -Environment @{ TEMP = $childTemp; TMP = $childTemp } `
+        -ArgumentList $arguments -WindowStyle Hidden -Environment @{ TEMP = $childTemp; TMP = $childTemp } `
         -PassThru -Wait
     try {
         if ($process.ExitCode -ne 0) {

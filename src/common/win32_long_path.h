@@ -20,16 +20,18 @@ inline bool TryMakeExtendedLengthPath(const wchar_t* absolutePath,
                                       std::wstring& extendedPath,
                                       DWORD& error)
 {
-    extendedPath.clear();
     error = ERROR_INVALID_NAME;
 
     if (absolutePath == nullptr)
     {
+        extendedPath.clear();
         error = ERROR_INVALID_PARAMETER;
         return false;
     }
 
+    // The input pointer may refer to extendedPath's current storage.
     const std::wstring path(absolutePath);
+    extendedPath.clear();
     if (path.empty() || path.find(L'/') != std::wstring::npos)
         return false;
 

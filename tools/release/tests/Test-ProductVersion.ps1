@@ -68,6 +68,8 @@ if (-not [string]::IsNullOrWhiteSpace($BinaryPath)) {
     if (-not (Test-Path -LiteralPath $BinaryPath -PathType Leaf)) {
         throw "Missing product executable for version assertion: $BinaryPath"
     }
+    . (Join-Path $PSScriptRoot '..\Production-Binary-Contract.ps1')
+    Assert-ProductionBinary -Path $BinaryPath
     # Act
     $binaryVersion = [Diagnostics.FileVersionInfo]::GetVersionInfo(
         [IO.Path]::GetFullPath($BinaryPath))

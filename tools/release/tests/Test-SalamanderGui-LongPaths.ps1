@@ -16,6 +16,7 @@
 param(
     [string]$SalamanderExe = 'D:\Build\OpenSal\salamander\Release_x64\salamand.exe',
     [ValidateRange(5,120)][int]$TimeoutSeconds = 25,
+    [ValidateRange(5,120)][int]$StartupReadyTimeoutSeconds = 90,
     [switch]$KeepFixture,
     [switch]$BaselineOnly,
     [switch]$MaximumPathOnly,
@@ -35,7 +36,11 @@ param(
     [switch]$ShortUnicodeUnsafeOperationsOnly,
     [switch]$ShortOperationsOnly,
     [switch]$TemporaryDirectoryDeletionOnly,
-    [switch]$UnicodeFindOnly
+    [switch]$UnicodeFindOnly,
+    [switch]$LargeUnicodeCopyOnly,
+    [ValidateSet('Copy','Cancel','Collision','LockedSource')][string]$LargeUnicodeCopyCase = 'Copy',
+    [switch]$UnicodeParentDirectories,
+    [switch]$IsolatedConfiguration
 )
 
 Set-StrictMode -Version Latest
@@ -47,8 +52,32 @@ if ([Threading.Thread]::CurrentThread.GetApartmentState() -ne 'STA') {
 if (-not (Test-Path -LiteralPath $SalamanderExe -PathType Leaf)) {
     throw "Salamander executable missing: $SalamanderExe"
 }
+$testConfigurationId = $null
+$testConfigurationKey = $null
+if ($IsolatedConfiguration) {
+    $binaryText = [Text.Encoding]::ASCII.GetString([IO.File]::ReadAllBytes($SalamanderExe))
+    if (-not $binaryText.Contains('OpenSalamander-IsolatedGUI-Config-v1')) {
+        throw 'Isolated configuration requires an OPENSAL_ENABLE_ISOLATED_TEST_CONFIG build.'
+    }
+    $testConfigurationId = [guid]::NewGuid().ToString('N')
+    $testConfigurationKey = 'Software\Open Salamander\CodexTests\' + $testConfigurationId
+    $existingTestKey = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($testConfigurationKey)
+    if ($null -ne $existingTestKey) {
+        $existingTestKey.Dispose()
+        throw 'Refusing to reuse an existing test configuration namespace.'
+    }
+}
 if ($VerifyRecycleRestore -and -not $ShortUnicodeRecycleOnly) {
     throw '-VerifyRecycleRestore requires -ShortUnicodeRecycleOnly.'
+}
+if ($UnicodeParentDirectories -and -not $LargeUnicodeCopyOnly) {
+    throw '-UnicodeParentDirectories requires -LargeUnicodeCopyOnly.'
+}
+if ($LargeUnicodeCopyOnly -and -not $IsolatedConfiguration) {
+    throw 'Large Unicode copy acceptance requires the isolated instrumented test build.'
+}
+if ($LargeUnicodeCopyCase -ne 'Copy' -and -not $LargeUnicodeCopyOnly) {
+    throw '-LargeUnicodeCopyCase requires -LargeUnicodeCopyOnly.'
 }
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -498,6 +527,92 @@ public static class SalamanderGuiNative
         if (!PostMessageW(mainWindow, 0x0111, new UIntPtr(729), IntPtr.Zero))
             throw new InvalidOperationException(
                 "Could not post CM_DELETEFILES: " + Marshal.GetLastWin32Error());
+    }
+
+    // Same command handler as F5. Window-bound dispatch cannot type into an
+    // unrelated foreground app; the caller verifies the exact source first.
+    public static void PostVerifiedLargeCopyCommand(IntPtr mainWindow, uint processId)
+    {
+        uint ownerPid;
+        if (mainWindow == IntPtr.Zero || processId == 0 ||
+            GetWindowThreadProcessId(mainWindow, out ownerPid) == 0 || ownerPid != processId ||
+            !IsWindowVisible(mainWindow) || !IsWindowEnabled(mainWindow) ||
+            ClassName(mainWindow) != "SalamanderMainWindowVer25")
+            throw new InvalidOperationException("Refusing copy for unverified main window");
+        if ((GetKeyState(0x10) & 0x8000) != 0 || (GetKeyState(0x11) & 0x8000) != 0 ||
+            (GetKeyState(0x12) & 0x8000) != 0)
+            throw new InvalidOperationException("Modifier key held; refusing copy");
+        if (!PostMessageW(mainWindow, 0x0111, new UIntPtr(727), IntPtr.Zero)) // CM_COPYFILES
+            throw new InvalidOperationException("Could not post CM_COPYFILES: " + Marshal.GetLastWin32Error());
+    }
+
+    public static void ConfirmVerifiedLargeCopy(uint processId)
+    {
+        IntPtr dialog = IntPtr.Zero;
+        foreach (TopLevelWindow window in GetProcessWindows(processId))
+        {
+            if (!window.Visible || ClassName(window.Handle) != "#32770" || window.Title != "Unicode copy")
+                continue;
+            if (dialog != IntPtr.Zero)
+                throw new InvalidOperationException("Multiple Unicode copy confirmations");
+            dialog = window.Handle;
+        }
+        if (dialog == IntPtr.Zero)
+            throw new InvalidOperationException("Owned Unicode copy confirmation unavailable");
+        IntPtr button = VerifiedChild(dialog, processId, 1);
+        if (!PostMessageW(dialog, 0x0111, new UIntPtr(1), button))
+            throw new InvalidOperationException("Could not confirm owned Unicode copy");
+    }
+
+    public static bool MatchesRequestedCopyDialogText(string actual, string requested)
+    {
+        return string.IsNullOrEmpty(requested) || actual == requested;
+    }
+
+    public static IntPtr FindOwnedDialogControl(uint processId, int controlId, string text)
+    {
+        IntPtr found = IntPtr.Zero;
+        foreach (TopLevelWindow window in GetProcessWindows(processId))
+        {
+            if (!window.Visible || ClassName(window.Handle) != "#32770") continue;
+            IntPtr control = GetDlgItem(window.Handle, controlId);
+            // PowerShell converts $null to String.Empty for a string argument.
+            // Both mean "identify by ID"; path assertions pass a nonempty value.
+            if (control == IntPtr.Zero || !MatchesRequestedCopyDialogText(GetWindowCaption(control), text)) continue;
+            if (found != IntPtr.Zero) throw new InvalidOperationException("Multiple matching owned dialogs");
+            found = window.Handle;
+        }
+        return found;
+    }
+
+    public static string OwnedControlText(IntPtr dialog, uint processId, int controlId)
+    {
+        return GetWindowCaption(VerifiedChild(dialog, processId, controlId));
+    }
+
+    public static bool OwnedControlEnabled(IntPtr dialog, uint processId, int controlId)
+    {
+        return IsWindowEnabled(VerifiedChild(dialog, processId, controlId));
+    }
+
+    public static bool IsOwnedModalOf(IntPtr dialog, IntPtr owner)
+    {
+        return GetWindow(dialog, 4) == owner;
+    }
+
+    public static void PostOwnedCopyDialogButton(IntPtr dialog, uint processId, int id)
+    {
+        if (id != 1 && id != 2 && id != 6 && id != 158 && id != 2480)
+            throw new ArgumentOutOfRangeException("id");
+        uint actualPid;
+        if (GetWindowThreadProcessId(dialog, out actualPid) == 0 || actualPid != processId ||
+            ClassName(dialog) != "#32770" || !IsWindowVisible(dialog))
+            throw new InvalidOperationException("Unverified copy dialog");
+        IntPtr button = VerifiedChild(dialog, processId, id);
+        if (ClassName(button) != "Button" || !IsWindowVisible(button) || !IsWindowEnabled(button))
+            throw new InvalidOperationException("Copy dialog button is not available");
+        if (!PostMessageW(dialog, 0x0111, new UIntPtr((uint)id), button))
+            throw new InvalidOperationException("Could not post owned copy dialog button");
     }
 
     // The isolated test starts with '-p 2': right panel is active, and both
@@ -1229,12 +1344,25 @@ public sealed class SalamanderGuiClipboardOwner : IDisposable
 $script:clipboardOwner = $null
 $script:clipboardTouched = $false
 $oldClipboard = $null
+$nativeClipboardSnapshot = $null
 $clipboardSnapshotValid = $false
 try {
-    $oldClipboard = [System.Windows.Forms.Clipboard]::GetDataObject()
+    if ($IsolatedConfiguration) {
+        Add-Type -Path (Join-Path $PSScriptRoot 'Clipboard-Snapshot.cs')
+        $nativeClipboardSnapshot = [SalamanderClipboardSnapshot]::Capture()
+    }
+    else {
+        $oldClipboard = [System.Windows.Forms.Clipboard]::GetDataObject()
+    }
     $clipboardSnapshotValid = $true
 }
-catch { Write-Warning 'Original clipboard could not be saved; will not overwrite unknown initial state.' }
+catch {
+    Write-Warning ('Original clipboard could not be saved; will not overwrite unknown initial state. ' +
+        $_.Exception.Message)
+}
+if ($IsolatedConfiguration -and -not $clipboardSnapshotValid) {
+    throw 'Isolated desktop acceptance requires a complete clipboard snapshot.'
+}
 
 $root = Join-Path ([IO.Path]::GetTempPath()) ('OpenSal-GuiLong-' + [guid]::NewGuid().ToString('N'))
 $source = Join-Path $root 'source'
@@ -1245,6 +1373,14 @@ $maxName = ('n' * 251) + '.txt'
 $renamedName = 'Umbenannt_日本_😀.txt'
 $deep = $source
 $process = $null
+$testConfigurationCleanupAllowed = $true
+$clipboardRestorationFailed = $false
+$primaryGuiFailure = $null
+$copyTestReached = $null
+$copyTestContinue = $null
+$largeCopyLock = $null
+$largeCopySourceFile = $null
+$largeCopyTargetFile = $null
 $mainWindowHandle = [IntPtr]::Zero
 $passed = $false
 $script:findCancelProbePath = $null
@@ -1258,6 +1394,148 @@ function Assert-True {
     param([bool]$Condition, [string]$Description)
     if (-not $Condition) { throw "FAIL: $Description" }
     Write-Host "PASS: $Description"
+}
+
+function Get-BoundaryDirectoryNames {
+    param([Parameter(Mandatory)][ValidateNotNullOrEmpty()][string]$ParentPath)
+
+    # Keep the second level at 259 UTF-16 units, then cross MAX_PATH on the
+    # third Enter. TEMP/worktree prefixes vary; fixed component lengths cannot
+    # guarantee this transition. Trim only for separator-length accounting.
+    $budget = 259 - $ParentPath.TrimEnd('\').Length - 2
+    $firstPrefix = 'Ordner-A-'
+    $secondPrefix = 'Ordner-B-'
+    if ($budget -lt ($firstPrefix.Length + $secondPrefix.Length)) {
+        throw 'GUI fixture parent is too long for two directories before the MAX_PATH transition.'
+    }
+    $firstLength = [int][Math]::Floor($budget / 2)
+    $secondLength = $budget - $firstLength
+    return @(
+        $firstPrefix.PadRight($firstLength, 'a')
+        $secondPrefix.PadRight($secondLength, 'b')
+        'Ordner-C-' + ('c' * 68)
+        'Ordner-D-' + ('d' * 68)
+    )
+}
+
+function Test-LargeUnicodeCopy {
+    # Arrange: both directories exceed MAX_PATH; the original UTF-16 row,
+    # not its ACP compatibility alias, must reach the existing copy worker.
+    Go-ToPath $largeCopySourceDirectory -NoForeground
+    Focus-DirectoryRow -Name $utfName -VerifiedBackground
+    Assert-True ((Read-FocusedFullname -AllowVerifiedBackground) -ceq $largeCopySourceFile) '32-MiB Unicode source identity verified'
+    # Act
+    [SalamanderGuiNative]::PostVerifiedLargeCopyCommand($mainWindowHandle, [uint32]$process.Id)
+    Wait-Until {
+        $dialog = Get-TestDialog
+        if ($dialog -match 'legacy ANSI file-operation engine|16.*MiB|synchronous transfer limit|native Unicode file operation') {
+            throw "Large Unicode F5 refused by the legacy transfer guard: $dialog"
+        }
+        return $dialog -match 'Copy the Unicode file to the other panel'
+    } '32-MiB Unicode copy confirmation'
+    [SalamanderGuiNative]::ConfirmVerifiedLargeCopy([uint32]$process.Id)
+    $observed = @{ Window = [IntPtr]::Zero }
+    if ($LargeUnicodeCopyCase -eq 'Collision' -or $LargeUnicodeCopyCase -eq 'LockedSource') {
+        $controlId = if ($LargeUnicodeCopyCase -eq 'Collision') { 181 } else { 171 }
+        $expected = if ($LargeUnicodeCopyCase -eq 'Collision') { $largeCopyTargetFile } else { $largeCopySourceFile }
+        Wait-Until {
+            $observed.Window = [SalamanderGuiNative]::FindOwnedDialogControl([uint32]$process.Id, $controlId, $expected)
+            return $observed.Window -ne [IntPtr]::Zero
+        } "native $LargeUnicodeCopyCase dialog with exact UTF-16 path"
+        [SalamanderGuiNative]::PostOwnedCopyDialogButton($observed.Window, [uint32]$process.Id, 2)
+        Write-Host "PASS: native $LargeUnicodeCopyCase dialog preserved the complete Unicode identity and was cancelled"
+    }
+    else {
+        Wait-Until { $copyTestReached.WaitOne(0) } 'worker reached deterministic test checkpoint'
+        Wait-Until {
+            $observed.Window = [SalamanderGuiNative]::FindOwnedDialogControl([uint32]$process.Id, 152, $largeCopySourceFile)
+            return $observed.Window -ne [IntPtr]::Zero -and
+                [SalamanderGuiNative]::OwnedControlText($observed.Window, [uint32]$process.Id, 154) -ceq $largeCopyTargetFile
+        } 'existing copy progress UI displays both complete UTF-16 paths'
+        Write-Host 'PASS: real copy progress dialog retains original Unicode source and target paths'
+        if ($LargeUnicodeCopyCase -eq 'Cancel') {
+            [SalamanderGuiNative]::PostOwnedCopyDialogButton($observed.Window, [uint32]$process.Id, 2)
+            $confirmation = @{ Window = [IntPtr]::Zero; Button = 0 }
+            Wait-Until {
+                foreach ($button in @(6, 2480)) {
+                    $candidate = [SalamanderGuiNative]::FindOwnedDialogControl([uint32]$process.Id, $button, $null)
+                    if ($candidate -ne [IntPtr]::Zero -and
+                        [SalamanderGuiNative]::IsOwnedModalOf($candidate, $observed.Window) -and
+                        [SalamanderGuiNative]::GetWindowCaption($candidate) -ceq 'Question' -and
+                        [SalamanderGuiNative]::DescribeWindow($candidate) -match 'Do you want to cancel this operation\?' -and
+                        ([SalamanderGuiNative]::OwnedControlText($candidate, [uint32]$process.Id, $button) -replace '&','') -match '(?i)^Yes$') {
+                        $confirmation.Window = $candidate
+                        $confirmation.Button = $button
+                        return $true
+                    }
+                }
+                return $false
+            } 'owned copy cancellation confirmation'
+            [SalamanderGuiNative]::PostOwnedCopyDialogButton($confirmation.Window, [uint32]$process.Id, $confirmation.Button)
+            Wait-Until {
+                return -not [SalamanderGuiNative]::OwnedControlEnabled($observed.Window, [uint32]$process.Id, 158)
+            } 'copy cancellation acknowledged before releasing worker checkpoint'
+            [void]$copyTestContinue.Set()
+        }
+        else {
+            [SalamanderGuiNative]::PostOwnedCopyDialogButton($observed.Window, [uint32]$process.Id, 158)
+            Wait-Until {
+                [SalamanderGuiNative]::OwnedControlText($observed.Window, [uint32]$process.Id, 158) -match '(?i)resume'
+            } 'existing Pause command acknowledged'
+            [void]$copyTestContinue.Set()
+            Assert-True ([SalamanderGuiNative]::IsWindowVisible($observed.Window)) 'Paused copy progress remains open'
+            [SalamanderGuiNative]::PostOwnedCopyDialogButton($observed.Window, [uint32]$process.Id, 158)
+            Write-Host 'PASS: existing Pause/Resume controls accepted through verified own HWNDs'
+        }
+    }
+    Wait-Until {
+        [SalamanderGuiNative]::FindOwnedDialogControl([uint32]$process.Id, 158, $null) -eq [IntPtr]::Zero
+    } 'copy worker and existing progress dialog completed'
+    if ($null -ne $largeCopyLock) { $largeCopyLock.Dispose(); $script:largeCopyLock = $null }
+    if ($LargeUnicodeCopyCase -ne 'Copy') {
+        if ($LargeUnicodeCopyCase -eq 'Collision') {
+            Assert-True ((Get-FileHash -LiteralPath $largeCopyTargetFile -Algorithm SHA256).Hash -ceq $largeCopyCollisionHash) 'Cancelled overwrite preserved existing destination bytes'
+        }
+        else {
+            Assert-True (-not [IO.File]::Exists($largeCopyTargetFile)) 'Cancelled or failed copy leaves no partial destination'
+        }
+        Assert-True ((Get-FileHash -LiteralPath $largeCopySourceFile -Algorithm SHA256).Hash -ceq $largeCopyHash) 'Negative copy case preserved original source bytes'
+        Write-Host "PASS: real large Unicode copy negative case $LargeUnicodeCopyCase"
+        return
+    }
+    # Assert: completion requires the worker to finish, not just a momentarily
+    # readable main stream before ADS/attributes/security have been applied.
+    Wait-Until {
+        if (-not [IO.File]::Exists($largeCopyTargetFile)) { return $false }
+        try {
+            return ([IO.FileInfo]::new($largeCopyTargetFile).Length -eq 32MB) -and
+                ((Get-FileHash -LiteralPath $largeCopyTargetFile -Algorithm SHA256).Hash -ceq $largeCopyHash)
+        }
+        catch { return $false }
+    } '32-MiB Unicode worker copy and complete SHA256 match'
+    Assert-True ((Get-FileHash -LiteralPath $largeCopySourceFile -Algorithm SHA256).Hash -ceq $largeCopyHash) 'Large Unicode copy preserved source bytes'
+    Assert-True ([IO.File]::GetLastWriteTimeUtc($largeCopyTargetFile) -eq $largeCopyLastWrite) 'Worker preserved original last-write time'
+    Assert-True (([IO.File]::GetAttributes($largeCopyTargetFile) -band [IO.FileAttributes]::ReadOnly) -ne 0) 'Worker preserved read-only file attribute'
+    Assert-True ([Linq.Enumerable]::SequenceEqual[byte]([IO.File]::ReadAllBytes($largeCopyTargetFile + ':識別_😀'), $largeCopyAdsBytes)) 'Worker preserved exact Unicode ADS name and bytes'
+    Write-Host 'PASS: the existing F5 command handler copies a 32-MiB Unicode file between long paths without the synchronous size limit.'
+}
+
+function Initialize-IsolatedGuiConfiguration {
+    # Only the fresh, preflighted namespace belongs to this test. Version 59
+    # permits the language setting to be read while retaining the real upgrade
+    # and plugin auto-install paths (do not seed the current version or disable plugins).
+    if ($testConfigurationKey -cnotmatch '^Software\\Open Salamander\\CodexTests\\[0-9a-f]{32}$') {
+        throw 'Refusing unsafe isolated configuration seed.'
+    }
+    if (-not [IO.File]::Exists((Join-Path (Split-Path -Parent $SalamanderExe) 'lang\english.slg'))) {
+        throw 'Isolated GUI acceptance requires the built english.slg language module.'
+    }
+    $versionKey = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($testConfigurationKey + '\Config0\Version')
+    try { $versionKey.SetValue('Configuration', 59, [Microsoft.Win32.RegistryValueKind]::DWord) }
+    finally { $versionKey.Dispose() }
+    $languageKey = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($testConfigurationKey + '\Config0\Configuration')
+    try { $languageKey.SetValue('Language', 'english.slg', [Microsoft.Win32.RegistryValueKind]::String) }
+    finally { $languageKey.Dispose() }
 }
 
 function Wait-Until {
@@ -2267,7 +2545,8 @@ function Focus-DirectoryRow {
 }
 
 function Read-FocusedFullname {
-    Read-FocusedClipboardValue -CommandId 709 -Sentinel 'SENTINEL_NOT_FULLNAME'
+    param([switch]$AllowVerifiedBackground)
+    Read-FocusedClipboardValue -CommandId 709 -Sentinel 'SENTINEL_NOT_FULLNAME' -AllowVerifiedBackground:$AllowVerifiedBackground
 }
 
 function Test-Content {
@@ -2861,6 +3140,7 @@ try {
         -not $ShortUnicodeRecycleOnly -and
         -not $ShortUnicodeUnsafeOperationsOnly -and -not $ShortOperationsOnly -and
         -not $UnicodeFindOnly -and -not $MaximumPathOnly -and
+        -not $LargeUnicodeCopyOnly -and
         -not $TemporaryDirectoryDeletionOnly) {
         [IO.Directory]::CreateDirectory($destination) | Out-Null
         [IO.Directory]::CreateDirectory($moveDir) | Out-Null
@@ -2874,12 +3154,7 @@ try {
         [IO.Directory]::CreateDirectory($maxDirectoryPath) | Out-Null
         [IO.File]::WriteAllBytes(
             (Join-Path $maxDirectoryPath 'max-directory-marker.bin'), $payload)
-        $boundaryDirectoryNames = @(
-            'Ordner-A-' + ('a' * 68)
-            'Ordner-B-' + ('b' * 68)
-            'Ordner-C-' + ('c' * 68)
-            'Ordner-D-' + ('d' * 68)
-        )
+        $boundaryDirectoryNames = @(Get-BoundaryDirectoryNames -ParentPath $source)
         $boundaryDirectoryPaths = @()
         $parentDirectory = $source
         foreach ($directoryName in $boundaryDirectoryNames) {
@@ -2912,6 +3187,49 @@ try {
         Assert-True ($sourceFile.Length -gt 260) 'Long-path fixture exceeds 260 UTF-16 units'
     }
 
+    if ($LargeUnicodeCopyOnly) {
+        # Arrange: bounded, deterministic payload in this test's private tree.
+        $largeCopySourceDirectory = $source
+        $largeCopyTargetDirectory = $destination
+        foreach ($level in 1..3) {
+            $prefix = if ($UnicodeParentDirectories) { '東京_😀-' } else { 'large-copy-' }
+            $component = $prefix + $level + '-' + ('x' * 55)
+            $largeCopySourceDirectory = Join-Path $largeCopySourceDirectory $component
+            $largeCopyTargetDirectory = Join-Path $largeCopyTargetDirectory $component
+        }
+        [void][IO.Directory]::CreateDirectory($largeCopySourceDirectory)
+        [void][IO.Directory]::CreateDirectory($largeCopyTargetDirectory)
+        $largeCopySourceFile = Join-Path $largeCopySourceDirectory $utfName
+        $largeCopyTargetFile = Join-Path $largeCopyTargetDirectory $utfName
+        $chunk = [Text.Encoding]::UTF8.GetBytes(('Large-copy-東京-😀-' * 16384))
+        $stream = [IO.File]::Create($largeCopySourceFile)
+        try {
+            $remaining = 32MB
+            while ($remaining -gt 0) {
+                $count = [Math]::Min($remaining, $chunk.Length)
+                $stream.Write($chunk, 0, $count)
+                $remaining -= $count
+            }
+        }
+        finally { $stream.Dispose() }
+        $largeCopyHash = (Get-FileHash -LiteralPath $largeCopySourceFile -Algorithm SHA256).Hash
+        $largeCopyAdsBytes = [Text.Encoding]::UTF8.GetBytes('Exact-ADS-東京-😀')
+        [IO.File]::WriteAllBytes($largeCopySourceFile + ':識別_😀', $largeCopyAdsBytes)
+        [IO.File]::SetLastWriteTimeUtc($largeCopySourceFile, [DateTime]::new(2020, 1, 2, 3, 4, 6, [DateTimeKind]::Utc))
+        $largeCopyLastWrite = [IO.File]::GetLastWriteTimeUtc($largeCopySourceFile)
+        [IO.File]::SetAttributes($largeCopySourceFile, [IO.FileAttributes]::ReadOnly -bor [IO.FileAttributes]::Archive)
+        if ($LargeUnicodeCopyCase -eq 'Collision') {
+            [IO.File]::WriteAllBytes($largeCopyTargetFile, [Text.Encoding]::UTF8.GetBytes('EXISTING-TARGET-MUST-SURVIVE'))
+            $largeCopyCollisionHash = (Get-FileHash -LiteralPath $largeCopyTargetFile -Algorithm SHA256).Hash
+        }
+        if ($LargeUnicodeCopyCase -eq 'LockedSource') {
+            $largeCopyLock = [IO.FileStream]::new($largeCopySourceFile, [IO.FileMode]::Open, [IO.FileAccess]::Read, [IO.FileShare]::None)
+        }
+        Assert-True (($largeCopySourceFile.Length -gt 260) -and
+            ($largeCopyTargetFile.Length -gt 260) -and
+            ([IO.FileInfo]::new($largeCopySourceFile).Length -eq 32MB)) '32-MiB fixture uses long Unicode source and destination'
+    }
+
     # Never attach keystrokes to an existing user instance.
     if (@(Get-Process salamand -ErrorAction SilentlyContinue).Count -gt 0) {
         throw 'Please close existing Salamander instances before running automated GUI tests.'
@@ -2921,6 +3239,9 @@ try {
     # subsequently deleted. -p 2 makes the active test panel deterministic.
     # Quotes keep paths with spaces safe for Salamander's command-line parser.
     $startupArgs = '-l "{0}" -r "{0}" -p 2' -f $source
+    if ($LargeUnicodeCopyOnly) {
+        $startupArgs = '-l "{0}" -r "{1}" -p 2' -f $largeCopyTargetDirectory, $source
+    }
     # The first Salamander instance searches %TEMP% for SAL*.tmp left by
     # previous sessions. A test must neither prompt about nor delete files
     # belonging to the user or an earlier application run.
@@ -2929,9 +3250,25 @@ try {
         throw 'GUI test TEMP path is too long for native Salamander disk-cache paths.'
     }
     [void][IO.Directory]::CreateDirectory($processTemp)
-    $process = Start-Process -FilePath $SalamanderExe -ArgumentList $startupArgs `
-        -WorkingDirectory (Split-Path -Parent $SalamanderExe) `
-        -Environment @{ TEMP = $processTemp; TMP = $processTemp } -PassThru
+    if ($IsolatedConfiguration) {
+        Initialize-IsolatedGuiConfiguration
+        if ($LargeUnicodeCopyOnly) {
+            $eventPrefix = 'Local\OpenSalamander.CopyTest.' + $testConfigurationId
+            $created = $false
+            $copyTestReached = [Threading.EventWaitHandle]::new($false, [Threading.EventResetMode]::ManualReset, $eventPrefix + '.reached', [ref]$created)
+            if (-not $created) { throw 'Refusing to reuse an existing copy test checkpoint.' }
+            $copyTestContinue = [Threading.EventWaitHandle]::new($false, [Threading.EventResetMode]::ManualReset, $eventPrefix + '.continue', [ref]$created)
+            if (-not $created) { throw 'Refusing to reuse an existing copy test continuation.' }
+        }
+        $process = Start-Process -FilePath $SalamanderExe -ArgumentList $startupArgs `
+            -WorkingDirectory (Split-Path -Parent $SalamanderExe) `
+            -Environment @{ TEMP = $processTemp; TMP = $processTemp; OPENSAL_GUI_TEST_ID = $testConfigurationId; OPENSAL_GUI_COPY_TEST_GATE = $(if ($LargeUnicodeCopyOnly) { '1' } else { '0' }) } -PassThru
+    }
+    else {
+        $process = Start-Process -FilePath $SalamanderExe -ArgumentList $startupArgs `
+            -WorkingDirectory (Split-Path -Parent $SalamanderExe) `
+            -Environment @{ TEMP = $processTemp; TMP = $processTemp } -PassThru
+    }
     # Process.MainWindowHandle/MainWindowTitle may select an auxiliary
     # window. The GUI driver must use the HWND found by Win32 enumeration.
     try {
@@ -2950,15 +3287,34 @@ try {
                 }
             }
             return $script:mainWindowHandle -ne [IntPtr]::Zero
-        } 'visible SalamanderMainWindowVer25 main-class HWND owned by launched process'
+        } 'visible SalamanderMainWindowVer25 main-class HWND owned by launched process' -TimeoutSecondsOverride $StartupReadyTimeoutSeconds
+        if ($IsolatedConfiguration) {
+            Wait-Until {
+                $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($testConfigurationKey + '\Config0\Version')
+                if ($null -eq $key) { return $false }
+                try { return [int]$key.GetValue('Configuration', 0) -gt 59 }
+                finally { $key.Dispose() }
+            } 'Salamander completed isolated startup configuration upgrade and plugin initialization' -TimeoutSecondsOverride $StartupReadyTimeoutSeconds
+            Write-Host 'PASS: Salamander upgraded its GUID-scoped isolated configuration'
+        }
     }
     catch {
+        $startupFailure = $_.Exception.Message
         $process.Refresh()
         $windowSummary = Get-ProcessWindowSummary -OwnerProcessId ([uint32]$process.Id)
+        $startupWindow = $mainWindowHandle
+        if ($startupWindow -eq [IntPtr]::Zero) { $startupWindow = $process.MainWindowHandle }
+        [uint32]$startupOwner = 0
+        $startupThread = [SalamanderGuiNative]::GetWindowThreadProcessId($startupWindow, [ref]$startupOwner)
+        $startupWaitChain = '<no verified startup window>'
+        if ($startupOwner -eq [uint32]$process.Id) {
+            try { $startupWaitChain = [SalamanderGuiWaitChain]::Describe($startupThread) }
+            catch { $startupWaitChain = 'unavailable: ' + $_.Exception.Message }
+        }
         throw (("GUI startup failed: {0}; launched PID={1}; .NET MainWindowHandle=0x{2:X}; " +
-            ".NET title='{3}'; process windows: {4}") -f
-            $_.Exception.Message, $process.Id, $process.MainWindowHandle.ToInt64(),
-            $process.MainWindowTitle, $windowSummary)
+            ".NET title='{3}'; process windows: {4}; startup wait chain: {5}") -f
+            $startupFailure, $process.Id, $process.MainWindowHandle.ToInt64(),
+            $process.MainWindowTitle, $windowSummary, $startupWaitChain)
     }
     # A visible top-level window is not evidence that startup has finished.
     # Do not begin clipboard navigation or keyboard simulation until the
@@ -2991,13 +3347,13 @@ try {
     if (-not $testIsAdmin -and $windowTitle -match '\(Administrator\)') {
         throw 'Salamander is elevated but the GUI-test PowerShell is not. Keyboard input can be blocked by Windows UIPI. Run both at the same integrity level, preferably both unelevated.'
     }
-    if (-not $TemporaryDirectoryDeletionOnly) { Focus-TestProcess }
+    if (-not $TemporaryDirectoryDeletionOnly -and -not $LargeUnicodeCopyOnly) { Focus-TestProcess }
 
     # First validate the GUI driver against a normal short path. If this
     # fails, treat it as an automation/infrastructure problem, NOT as proof
     # that the application lacks long-path support.
-    Go-ToPath $source -NoForeground:$TemporaryDirectoryDeletionOnly
-    if (-not $TemporaryDirectoryDeletionOnly) {
+    Go-ToPath $source -NoForeground:($TemporaryDirectoryDeletionOnly -or $LargeUnicodeCopyOnly)
+    if (-not $TemporaryDirectoryDeletionOnly -and -not $LargeUnicodeCopyOnly) {
         Restore-FilePanelFocus -ExpectedPath $source
     }
     # Go-ToPath already verified the observed panel path. A duplicate
@@ -3055,6 +3411,11 @@ try {
     }
     if ($UnicodeFindOnly) {
         Test-UnicodeFindGui
+        $passed = $true
+        return
+    }
+    if ($LargeUnicodeCopyOnly) {
+        Test-LargeUnicodeCopy
         $passed = $true
         return
     }
@@ -3792,6 +4153,7 @@ try {
 }
 catch {
     Write-Warning "GUI integration FAILED: $($_.Exception.Message)"
+    $primaryGuiFailure = $_.Exception.Message
     Save-FailureScreenshot
     # A dump is never collected unless explicitly requested. Only inspect
     # this test's process, and only when Windows detects a hung GUI window.
@@ -3805,9 +4167,12 @@ catch {
     throw
 }
 finally {
+    if ($null -ne $copyTestContinue) { [void]$copyTestContinue.Set() }
     if ($null -ne $process) {
+        $testConfigurationCleanupAllowed = $false
         try {
             $process.Refresh()
+            $testConfigurationCleanupAllowed = $process.HasExited
             if (-not $process.HasExited) {
                 # CloseMainWindow invokes Salamander's SaveConfig, persisting
                 # paths into the soon-to-be-deleted disposable fixture and
@@ -3815,7 +4180,8 @@ finally {
                 # exclusively to this test; terminate it without invoking that
                 # normal configuration-save path.
                 $process.Kill()
-                if (-not $process.WaitForExit(4000)) {
+                $testConfigurationCleanupAllowed = $process.WaitForExit(10000)
+                if (-not $testConfigurationCleanupAllowed) {
                     Write-Warning "Test Salamander PID $($process.Id) did not exit after termination."
                 }
             }
@@ -3823,6 +4189,9 @@ finally {
         catch { Write-Warning "Could not stop isolated test app: $($_.Exception.Message)" }
         $process.Dispose()
     }
+    if ($null -ne $largeCopyLock) { $largeCopyLock.Dispose() }
+    if ($null -ne $copyTestReached) { $copyTestReached.Dispose() }
+    if ($null -ne $copyTestContinue) { $copyTestContinue.Dispose() }
 
     # A failed search may retain its screenshot and small fixtures, but it
     # must not leave a large cancellation stress file on the user's disk.
@@ -3843,25 +4212,64 @@ finally {
     # A failed snapshot must never be misinterpreted as "originally empty".
     if ($clipboardSnapshotValid -and $script:clipboardTouched) {
         try {
-            if ($null -eq $oldClipboard) {
+            if ($null -ne $nativeClipboardSnapshot) {
+                $restored = $false
+                for ($attempt = 0; $attempt -lt 3; ++$attempt) {
+                    try {
+                        $nativeClipboardSnapshot.Restore()
+                        $restored = $true
+                        break
+                    }
+                    catch { if ($attempt -eq 2) { throw } }
+                }
+                if (-not $restored) { throw 'Native clipboard restoration did not complete.' }
+                Write-Host 'PASS: Native clipboard snapshot restored'
+            }
+            elseif ($null -eq $oldClipboard) {
                 [Windows.Forms.Clipboard]::Clear()
             }
             else {
                 [Windows.Forms.Clipboard]::SetDataObject($oldClipboard, $true)
             }
         }
-        catch { Write-Warning "Original clipboard could not be restored: $($_.Exception.Message)" }
+        catch {
+            $clipboardRestorationFailed = $true
+            Write-Warning "Original clipboard could not be restored: $($_.Exception.Message)"
+        }
     }
     if ($null -ne $script:clipboardOwner) {
         try { $script:clipboardOwner.Dispose() }
         catch { Write-Warning "Clipboard owner shutdown failed: $($_.Exception.Message)" }
     }
+    if ($null -ne $nativeClipboardSnapshot) { $nativeClipboardSnapshot.Dispose() }
+    if ($IsolatedConfiguration -and $testConfigurationCleanupAllowed -and
+        $testConfigurationKey -cmatch '^Software\\Open Salamander\\CodexTests\\[0-9a-f]{32}$') {
+        [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree($testConfigurationKey, $false)
+    }
+    if ($IsolatedConfiguration -and -not $testConfigurationCleanupAllowed) {
+        $passed = $false
+        $KeepFixture = $true
+    }
     # A failed F8 regression must not leave another GUID-owned temp tree.
     if (($passed -or $TemporaryDirectoryDeletionOnly) -and -not $KeepFixture) {
-        try { [IO.Directory]::Delete($root, $true) }
+        try {
+            if ($LargeUnicodeCopyOnly) {
+                foreach ($path in @($largeCopySourceFile, $largeCopyTargetFile)) {
+                    if (-not [string]::IsNullOrEmpty($path) -and
+                        [IO.Path]::GetFullPath($path).StartsWith($root + '\', [StringComparison]::OrdinalIgnoreCase) -and
+                        [IO.File]::Exists($path)) {
+                        [IO.File]::SetAttributes($path, [IO.FileAttributes]::Normal)
+                    }
+                }
+            }
+            [IO.Directory]::Delete($root, $true)
+        }
         catch { Write-Warning "Test fixture cleanup failed: $root - $($_.Exception.Message)" }
     }
     else {
         Write-Host "Diagnostic fixture retained: $root"
+    }
+    if ($IsolatedConfiguration -and ($clipboardRestorationFailed -or -not $testConfigurationCleanupAllowed)) {
+        throw ('Isolated GUI cleanup failed; acceptance cannot be reported as passed. Primary GUI failure: ' + $primaryGuiFailure)
     }
 }
