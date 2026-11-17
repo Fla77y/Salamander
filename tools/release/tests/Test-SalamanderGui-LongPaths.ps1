@@ -1337,24 +1337,6 @@ function Get-ForegroundWindowSummary {
             $h.ToInt64(), $ownerPid, $caption)
 }
 
-# A visible GetLastActivePopup result is not evidence of a modal dialog:
-# Windows also remembers previously activated nonmodal status windows.
-# Ignore ONLY the owned, titled Status popup when the real main HWND remains
-# enabled. All unknown and actual modal dialogs retain fail-closed handling.
-function Test-IsNonBlockingStatusPopup {
-    param([IntPtr]$Window)
-
-    if ($Window -eq [IntPtr]::Zero -or
-        -not [SalamanderGuiNative]::IsWindowVisible($Window) -or
-        -not [SalamanderGuiNative]::IsWindowEnabled($mainWindowHandle) -or
-        [SalamanderGuiNative]::GetWindowCaption($Window) -cne 'Status') {
-        return $false
-    }
-    [uint32]$popupPid = 0
-    [void][SalamanderGuiNative]::GetWindowThreadProcessId($Window, [ref]$popupPid)
-    return $popupPid -eq [uint32]$process.Id
-}
-
 function Get-TestDialog {
     if ($null -eq $process) { return $null }
     $process.Refresh()
