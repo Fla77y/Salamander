@@ -27,10 +27,9 @@ $checks = [ordered]@{
     Subdirectories = $source1 -match 'IDC_FIND_INCLUDE_SUBDIR'
     FilterCriteria = $source1 -match 'memmove\(&GrepData\.Criteria, &Data\.Criteria'
     FindDuplicates = $source1 -match 'case CM_FIND_DUPLICATES:'
-    FindRefinement = @('CM_FIND_INTERSECT', 'CM_FIND_SUBTRACT',
-                       'CM_FIND_APPEND') | ForEach-Object {
-        $source1 -match [regex]::Escape($_)
-    }
+    FindRefinement = ($source1 -match 'case CM_FIND_INTERSECT:' -and
+                      $source1 -match 'case CM_FIND_SUBTRACT:' -and
+                      $source1 -match 'case CM_FIND_APPEND:')
     FindOptionsAndIgnore = $header -match 'class CFindAdvancedDialog' -and
         $source1 -match 'FindOptions\.InitMenu' -and
         $source2 -match 'CFindIgnoreDialog::'
@@ -44,7 +43,6 @@ $checks = [ordered]@{
 }
 foreach ($check in $checks.Keys) {
     $value = $checks[$check]
-    if ($value -is [array]) { $value = @($value | Where-Object { $_ -eq $false }).Count -eq 0 }
     if (-not $value) { throw "Legacy Ctrl+F feature contract missing: $check" }
 }
 Write-Host 'PASS: original Find dialog, Advanced, regex, grep, filters, results and W identity scaffolding retained.'
