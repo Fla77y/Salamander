@@ -30,7 +30,8 @@ if ($driver -notmatch '\$clipboardSnapshotValid\s*=\s*\$false' -or
 foreach ($literal in @('--test-gui-temp-delete', '--test-plugin-exports',
         '--test-pictview', '--test-pictview-window', '--test', '--release',
         '--debug', 'CaptureHangDump', 'OPENSAL_GUI_CAPTURE_HANG_DUMP',
-        'ExitCode', 'Get-Process salamand', 'Iterations', 'Summary')) {
+        'ExitCode', 'Get-Process salamand', 'Iterations', 'Summary',
+        'StartupAttempts', 'BeforeClipboardAttempts', 'HangPhase')) {
     if (-not $runner.Contains($literal)) {
         throw "GUI A/B comparison is missing a mandatory reliability contract: $literal"
     }
