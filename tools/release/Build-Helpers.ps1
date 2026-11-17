@@ -44,6 +44,15 @@ function Invoke-SalamanderBuild {
             throw "Unsupported build configuration: $configuration"
         }
         $output = Join-Path $BuildRoot "salamander\${configuration}_x64"
+        $intermediateParent = Join-Path $BuildRoot 'salamander'
+        foreach ($parent in @($BuildRoot, $intermediateParent)) {
+            if (Test-Path -LiteralPath $parent) {
+                $parentItem = Get-Item -LiteralPath $parent -Force
+                if ($parentItem.Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)) {
+                    throw "Refusing to build through a junction/symlink: $parent"
+                }
+            }
+        }
         if ($Mode -eq 'Clean' -and (Test-Path -LiteralPath $output)) {
             $item = Get-Item -LiteralPath $output -Force
             if ($item.Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)) {
@@ -53,9 +62,10 @@ function Invoke-SalamanderBuild {
         }
         $target = if ($Mode -eq 'Delta' -or $Mode -eq 'Clean') { '/t:Build' } else { '/t:Rebuild' }
         Write-Host "=== MSBuild $configuration x64 ($Mode) ==="
-        & $Invoke $Msbuild @($Solution, $target, "/p:Configuration=$configuration",
+        $arguments = @($Solution, $target, "/p:Configuration=$configuration",
             '/p:Platform=x64', '/p:PreferredToolArchitecture=x64',
             '/m', '/nr:false', '/v:minimal')
+        & $Invoke $Msbuild $arguments
         $binary = Join-Path $output 'salamand.exe'
         if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) {
             throw "Build completed without expected binary: $binary"
