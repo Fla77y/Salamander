@@ -128,7 +128,7 @@ $goto = (Get-FunctionSource 'Go-ToPath').Extent.Text
 if ($goto -notmatch '(?s)Focus-TestProcess.*?Wait-ForGuiResponsive\s+-Context\s+''BeforeClipboard''.*?Set-VerifiedNavigationClipboard.*?Invoke-SalamanderCommand\s+-CommandId\s+775' -or
     $command -notmatch "Wait-ForGuiResponsive\s+-Context\s+'PreCommand775'" -or
     $command -match '2500,\s*\[ref\]\$preflightResult' -or
-    $readinessText -notmatch '\[ValidateSet\(''Startup'', ''BeforeClipboard'', ''PreCommand775''\)\]' -or
+    $readinessText -notmatch '\[ValidateSet\(''Startup'', ''BeforeClipboard'', ''PreCommand775'', ''AfterDirectoryDelete''\)\]' -or
     $readinessText -notmatch 'GUI startup remained unresponsive' -or
     $readinessText -notmatch 'wait chain' -or
     $readinessText -notmatch 'Context') {
