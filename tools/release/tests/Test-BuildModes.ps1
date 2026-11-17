@@ -96,7 +96,7 @@ try {
     # Act: remove one of the two independently required outputs.
     Remove-Item -LiteralPath $debugHelp -Force
     # Assert: the incremental check must detect the missing Debug CHM.
-    if (Test-Path -LiteralPath $debugHelp -PathType Leaf -or
+    if ((Test-Path -LiteralPath $debugHelp -PathType Leaf) -or
         -not (Test-HelpNeedsBuild -ProjectPath $project -CompiledName 'test.chm' -OutputDirectories $outputPaths)) {
         throw 'Missing Debug help incorrectly reused Release output.'
     }
