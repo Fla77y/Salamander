@@ -1227,9 +1227,14 @@ public sealed class SalamanderGuiClipboardOwner : IDisposable
 '@
 
 $script:clipboardOwner = $null
+$script:clipboardTouched = $false
 $oldClipboard = $null
-try { $oldClipboard = [System.Windows.Forms.Clipboard]::GetDataObject() }
-catch { Write-Warning 'Original clipboard could not be saved.' }
+$clipboardSnapshotValid = $false
+try {
+    $oldClipboard = [System.Windows.Forms.Clipboard]::GetDataObject()
+    $clipboardSnapshotValid = $true
+}
+catch { Write-Warning 'Original clipboard could not be saved; will not overwrite unknown initial state.' }
 
 $root = Join-Path ([IO.Path]::GetTempPath()) ('OpenSal-GuiLong-' + [guid]::NewGuid().ToString('N'))
 $source = Join-Path $root 'source'
@@ -1779,13 +1784,19 @@ function Set-NativeNavigationClipboard {
     if ($null -eq $script:clipboardOwner) {
         $script:clipboardOwner = [SalamanderGuiClipboardOwner]::new()
     }
+    # A failed publication can still have cleared the system clipboard.
+    $script:clipboardTouched = $true
     $script:clipboardOwner.SetText($Text)
 }
 
 function Set-ClipboardText {
     param([string]$Text)
     for ($i=0; $i -lt 10; $i++) {
-        try { [Windows.Forms.Clipboard]::SetText($Text); return }
+        try {
+            $script:clipboardTouched = $true
+            [Windows.Forms.Clipboard]::SetText($Text)
+            return
+        }
         catch { Start-Sleep -Milliseconds 100 }
     }
     throw 'Clipboard unavailable for GUI input.'
@@ -3827,9 +3838,19 @@ finally {
             catch { Write-Warning "Could not clean large Find cancellation fixture: $($_.Exception.Message)" }
         }
     }
-    if ($oldClipboard) {
-        try { [Windows.Forms.Clipboard]::SetDataObject($oldClipboard, $true) }
-        catch { Write-Warning 'Original clipboard could not be restored.' }
+    # An empty original clipboard is a valid captured state. Unlike the old
+    # truthiness check, restore it to empty after tests wrote clipboard data.
+    # A failed snapshot must never be misinterpreted as "originally empty".
+    if ($clipboardSnapshotValid -and $script:clipboardTouched) {
+        try {
+            if ($null -eq $oldClipboard) {
+                [Windows.Forms.Clipboard]::Clear()
+            }
+            else {
+                [Windows.Forms.Clipboard]::SetDataObject($oldClipboard, $true)
+            }
+        }
+        catch { Write-Warning "Original clipboard could not be restored: $($_.Exception.Message)" }
     }
     if ($null -ne $script:clipboardOwner) {
         try { $script:clipboardOwner.Dispose() }
