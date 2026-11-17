@@ -32,6 +32,41 @@ Solution ```\src\vcxproj\salamand.sln``` may be built from within Visual Studio 
 
 Use ```\src\vcxproj\!populate_build_dir.cmd``` to populate build directory with files required to run Open Salamander.
 
+### Build modes (Visual Studio 2026)
+
+Run these commands from the repository root on Windows with PowerShell 7.4+,
+Visual Studio 2026/MSVC v143 and the Windows SDK installed:
+
+```cmd
+manage.cmd --build-delta
+manage.cmd --build
+manage.cmd --build-clean
+manage.cmd --build-delta --test
+manage.cmd --build-clean --test-all
+manage.cmd --build-delta --setup
+```
+
+- `--build-delta` invokes MSBuild `Build` for Debug and Release x64 and reuses
+  unchanged object files, libraries and CHM help when their dependencies have
+  not changed. The first invocation also works without prior build outputs.
+- `--build` retains its existing behavior: MSBuild `Rebuild` for both x64
+  configurations and recompilation of all HTML Help projects.
+- `--build-clean` removes the two dedicated x64 build-output directories
+  before building both configurations and recompiles HTML Help. It does not
+  remove the Git workspace or the separately staged distribution packages.
+- `--test-all` executes the existing automated native and GUI test sequence.
+  GUI tests require an interactive unlocked Windows desktop.
+- `--setup` packages both configurations and verifies distribution content.
+  If it is invoked without a preceding build mode, the packaging pipeline
+  continues to rebuild both configurations itself.
+
+For direct packaging, `tools/release/Update-Build-Test-Package.ps1` also accepts
+`-BuildMode Delta`, `-BuildMode Rebuild` (default), or `-BuildMode Clean`.
+The existing `-SkipBuild` switch still bypasses MSBuild and uses present
+binaries. Never treat an incremental build alone as a public release
+qualification; perform the clean build, full tests, package checks and clean-VM
+acceptance before publishing.
+
 ### Contributing
 
 This project welcomes contributions to build and enhance Open Salamander!
