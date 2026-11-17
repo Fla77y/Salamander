@@ -32,6 +32,16 @@ if (-not (Test-Path -LiteralPath $manage -PathType Leaf)) {
     throw "Management entry point not found: $manage"
 }
 $configurationSwitch = if ($Configuration -eq 'Debug') { '--debug' } else { '--release' }
+# Reject comparisons of binaries built from different inputs or replaced
+# concurrently by another build. Source HEAD alone does not identify a binary.
+$binary = Join-Path (
+    Join-Path 'D:\Build\OpenSal\salamander' ('{0}_x64' -f $Configuration)
+) 'salamand.exe'
+if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) {
+    throw "Build $Configuration x64 first: $binary"
+}
+$expectedHash = (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash
+Write-Host "Test binary SHA256 ($Configuration x64): $expectedHash"
 $session = Join-Path ([IO.Path]::GetFullPath($OutputDirectory)) (
     'compare-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' +
     [guid]::NewGuid().ToString('N').Substring(0, 8))
@@ -71,6 +81,10 @@ try {
                 throw "Salamander process(es) still running ($pids). Stop comparison; do not kill unknown processes."
             }
 
+            $currentHash = (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash
+            if ($currentHash -cne $expectedHash) {
+                throw "Test binary changed during A/B comparison: $binary"
+            }
             $options = @($configurationSwitch) + @($scenario.Options)
             $stem = '{0:D2}-{1}-{2}' -f $iteration, $scenario.Name, $Configuration
             $log = Join-Path $session ($stem + '.log')
