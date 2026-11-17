@@ -191,6 +191,34 @@ if ($firstDelete -lt 0 -or $verifySibling -le $firstDelete -or
     $secondDelete -le $sourceRoundtrip) {
     throw 'F8 GUI test must preserve the ASCII sibling and reload its source panel before selecting the second folder.'
 }
+# Assert that the *destructive* F8 scenario no longer blindly presses
+# Enter after a fixed delay. A GUI focus loss must not confirm an unrelated
+# dialog. Wait for one verified native directory-delete dialog and post IDOK
+# only to that exact HWND, then verify filesystem state.
+$f8Confirmation = $driverText.Substring($deleteStart, $deleteEnd - $deleteStart)
+$confirmNative = [regex]::Match($driverText,
+    '(?s)public static void PostVerifiedDirectoryDeleteConfirmation\(IntPtr dialog, uint processId\).*?^    }',
+    [Text.RegularExpressions.RegexOptions]::Multiline)
+$findNative = [regex]::Match($driverText,
+    '(?s)public static IntPtr FindUnicodeDirectoryDeleteDialog\(uint processId\).*?^    }',
+    [Text.RegularExpressions.RegexOptions]::Multiline)
+$confirmPowerShell = (Get-FunctionSource 'Confirm-DirectoryDeleteDialog').Extent.Text
+if (-not $confirmNative.Success -or -not $findNative.Success -or
+    $findNative.Value -notmatch 'GetProcessWindows\(processId\)' -or
+    $findNative.Value -notmatch 'Unicode directory deletion' -or
+    $findNative.Value -notmatch '#32770' -or
+    $confirmNative.Value -notmatch 'GetWindowThreadProcessId' -or
+    $confirmNative.Value -notmatch 'GetDlgItem' -or
+    $confirmNative.Value -notmatch 'PostMessageW' -or
+    $confirmPowerShell -notmatch 'Wait-Until' -or
+    $confirmPowerShell -notmatch 'PostVerifiedDirectoryDeleteConfirmation' -or
+    ([regex]::Matches($f8Confirmation, 'Confirm-DirectoryDeleteDialog')).Count -ne 2 -or
+    $f8Confirmation -match 'Send-Keys\s+''\{ENTER\}''' -or
+    $f8Confirmation -match 'Start-Sleep\s+-Milliseconds\s+350') {
+    throw 'F8 GUI test must wait for and confirm only the verified own delete dialog; blind Enter is unsafe.'
+}
+Write-Host 'PASS: F8 confirmations target a verified own dialog without fixed sleeps or global Enter.'
+
 Write-Host 'PASS: F8 GUI test verifies sibling integrity and refreshes the panel before the next selection.'
 
 Write-Host 'PASS: GUI navigation verifies exact clipboard content and retries only safe clipboard writes.'
