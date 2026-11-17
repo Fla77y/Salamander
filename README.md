@@ -86,6 +86,41 @@ finally {
 }
 ```
 
+#### Investigating sporadic --test-all GUI startup stalls
+
+The normal `manage.cmd --test-gui-temp-delete` runs the Release x64 F8 handler
+test directly. In `--test-all`, the same test runs after non-GUI C++,
+clipboard, plug-in ABI and WIC regressions; both Release and Debug x64 are
+tested. To distinguish a startup problem from a prelude side effect, run a
+controlled comparison on an unlocked interactive Windows desktop:
+
+```powershell
+.\manage.cmd --diagnose-gui
+.\manage.cmd --diagnose-gui --debug
+# Optional: change the number of paired runs (default 3)
+pwsh -NoProfile -File .\tools\release\tests\Invoke-GuiReliability.ps1 -Iterations 5 -Configuration Release -CaptureHangDump
+```
+
+This explicit diagnostic runs the **same one** F8 GUI case both in isolation
+and after `--test --test-plugin-exports --test-pictview
+--test-pictview-window`, keeping the x64 configuration fixed. It alternates
+the order of these scenarios, writes individual management logs and a
+`Summary.csv` under `D:\Build\OpenSal\logs\gui-reliability`, and reports
+nonzero exit codes as failures. It refuses to continue if another Salamander
+process remains, without killing unknown processes. The diagnostic manager
+runs do not copy their nested transcripts to the global clipboard. The GUI
+test also restores a captured initially empty clipboard rather than leaving
+test text in it.
+
+`--diagnose-gui` explicitly opts in to a locally stored minimal native hang
+dump if the GUI stops responding. Dumps are *not* captured by ordinary
+`--test-all` unless `OPENSAL_GUI_CAPTURE_HANG_DUMP=1` is explicitly set.
+Do not share dumps without reviewing their contents. A/B runs are not
+perfectly hermetic because the registry, Windows desktop, clipboard and
+filesystem caches are shared. Only a native call stack establishes which
+startup function actually blocked; failures must never be converted into
+test passes merely by lengthening timeouts.
+
 The driver records a `MiniDumpNormal` file in the current user's TEMP
 directory before terminating the isolated test process. Analyze it locally
 in WinDbg with Salamander's matching PDBs (for example `~* kb` and
