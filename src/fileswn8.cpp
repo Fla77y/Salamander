@@ -702,10 +702,10 @@ BOOL CFilesWindow::TryUnicodeSingleDirectoryDelete()
         (entry.Attr & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
         return FALSE;
 
-    // Preserve the old directory deletion UI for safe ordinary short paths.
-    // Only the unsupported Unicode/long-path case is redirected to Win32 W.
-    if (!HasLongDiskPath() && !UnicodeDiskNames.IsUnsafeAnsiName(entry.Name))
-        return FALSE;
+    // Keep the legacy dialog for ordinary short ASCII-only trees. A short
+    // selected directory can still contain Unicode or overlong descendants.
+    const bool needsNativeName =
+        HasLongDiskPath() || UnicodeDiskNames.IsUnsafeAnsiName(entry.Name);
 
     const std::string alias(entry.Name);
     std::wstring originalName;
@@ -740,6 +740,21 @@ BOOL CFilesWindow::TryUnicodeSingleDirectoryDelete()
         (attributes & FILE_ATTRIBUTE_DIRECTORY) == 0 ||
         (attributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
         return FALSE;
+
+    if (!needsNativeName)
+    {
+        bool needsNativeTree = false;
+        if (!Salamander::TryNeedsNativeUnicodeDirectoryDelete(
+                source, needsNativeTree, error))
+        {
+            MessageBoxW(HWindow, L"Could not inspect the directory subtree "
+                        L"safely. No files were changed.",
+                        L"Unicode directory deletion", MB_OK | MB_ICONWARNING);
+            return TRUE;
+        }
+        if (!needsNativeTree)
+            return FALSE; // Original ANSI-safe directory and legacy dialog.
+    }
 
     std::wstring resolvedName;
     if (Salamander::ResolveUnicodePanelFileName(
