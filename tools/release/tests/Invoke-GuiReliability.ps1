@@ -103,12 +103,22 @@ try {
                 ([DateTime]::UtcNow - $started).TotalSeconds, 2)
             $survivors = @(Get-Process salamand -ErrorAction SilentlyContinue)
             $orphanCount = $survivors.Count
+            $logText = Get-Content -LiteralPath $log -Raw -Encoding utf8
+            $startup = [regex]::Match($logText,
+                'Salamander main GUI thread responds after startup readiness probe \((\d+) attempt\(s\)\)')
+            $clipboard = [regex]::Match($logText,
+                'Salamander GUI responsive before clipboard publication \((\d+) attempt\(s\)\)')
+            $hang = [regex]::Match($logText,
+                'GUI startup remained unresponsive \(phase=([^)]*)\)')
             [void]$results.Add([pscustomobject]@{
                 Iteration = $iteration
                 Scenario = $scenario.Name
                 Configuration = $Configuration
                 ExitCode = $exitCode
                 DurationSeconds = $duration
+                StartupAttempts = if ($startup.Success) { [int]$startup.Groups[1].Value } else { $null }
+                BeforeClipboardAttempts = if ($clipboard.Success) { [int]$clipboard.Groups[1].Value } else { $null }
+                HangPhase = if ($hang.Success) { $hang.Groups[1].Value } else { '' }
                 SurvivingProcesses = $orphanCount
                 Log = $log
             })
@@ -138,8 +148,11 @@ finally {
     $summary = Join-Path $session 'Summary.csv'
     $results | Export-Csv -LiteralPath $summary -NoTypeInformation -Encoding utf8
     Write-Host "=== GUI A/B Summary: $summary ==="
-    $results | Format-Table Iteration, Scenario, Configuration, ExitCode,
-        DurationSeconds, SurvivingProcesses -AutoSize | Out-String | Write-Host
+    $results | Format-Table -Property @(
+        'Iteration', 'Scenario', 'Configuration', 'ExitCode',
+        'StartupAttempts', 'BeforeClipboardAttempts', 'HangPhase',
+        'DurationSeconds', 'SurvivingProcesses'
+    ) -AutoSize | Out-String | Write-Host
 }
 
 # No "green" result if either test variant failed or process cleanup failed.
