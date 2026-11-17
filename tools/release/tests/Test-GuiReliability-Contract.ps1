@@ -63,4 +63,13 @@ if ($diagnoseGuard -lt 0 -or $firstTestAction -lt 0 -or
     $diagnoseGuard -ge $firstTestAction) {
     throw 'Diagnostic mode validation must run before any build or test action.'
 }
+# Arrange: PowerShell 7.7 warns about the obsolete Export-Csv switch,
+# while the default CSV format in PowerShell 7.4+ already omits type info.
+# Act/Assert: keep CSV export but avoid a warning in successful test runs.
+if ($runner -notmatch '(?m)\|\s*Export-Csv\s+-LiteralPath\s+\$summary\b' -or
+    $runner -match '(?i)Export-Csv[^\r\n]*-NoTypeInformation\b') {
+    throw 'GUI A/B CSV export must omit obsolete -NoTypeInformation while retaining Summary.csv.'
+}
+Write-Host 'PASS: A/B CSV export avoids obsolete PowerShell 7.7 parameters.'
+
 Write-Host 'PASS: GUI A/B comparison keeps the mode constant, reports failures and restores the clipboard.'
