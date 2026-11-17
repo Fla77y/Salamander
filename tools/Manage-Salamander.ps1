@@ -375,7 +375,6 @@ try {
         if ($option -notin $validOptions) { throw "Unbekannter Parameter: '$option' (manage.cmd --help)" }
         [void]$requestedSet.Add($option)
     }
-    $null = Get-BuildMode -RequestedSet $requestedSet
     if ($requestedSet.Contains('--debug') -and $requestedSet.Contains('--release')) {
         throw '--debug und --release dürfen nicht kombiniert werden.'
     }
@@ -396,6 +395,7 @@ try {
 
         . (Join-Path $repository 'tools\release\Package-Helpers.ps1')
         . (Join-Path $repository 'tools\release\Build-Helpers.ps1')
+        $null = Get-BuildMode -RequestedSet $requestedSet
         $buildRoot = [IO.Path]::GetFullPath($buildRoot)
         New-Item -ItemType Directory -Path $buildRoot -Force | Out-Null
 
