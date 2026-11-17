@@ -260,14 +260,25 @@ if ([string]::IsNullOrEmpty($navigationBlock) -or
     $guiDriver -notmatch '(?s)function Read-PanelPath\s*\{.*?Invoke-SalamanderCommand -CommandId 711.*?for \(\$attempt') {
     throw 'GUI navigation must bound clipboard retries, reject modal errors and verify an idempotent retry.'
 }
-foreach ($prefix in @(
-    'Cannot activate verified test Salamander',
-    'Salamander command {0} did not complete',
-    'GUI navigation failed: {0}',
-    'GUI startup failed: {0}'
-)) {
-    if ($guiDriver -notmatch [regex]::Escape('throw (("' + $prefix)) {
-        throw "GUI diagnostics must format the entire error message: $prefix"
+# Arrange: each diagnostic belongs to the correct GUI driver function.
+# Regressions must not silently lose formatted PID/HWND/error details.
+$diagnostics = @(
+    @{ Function = 'Focus-TestProcess'; Prefix = '{0}: Cannot activate verified Salamander HWND=0x{1:X} PID={2} ' },
+    @{ Function = 'Invoke-SalamanderCommand'; Prefix = 'Salamander command {0} did not complete' },
+    @{ Function = 'Go-ToPath'; Prefix = 'GUI navigation failed: {0}' },
+    @{ Function = 'Wait-ForGuiTitle'; Prefix = 'GUI startup failed: {0}' }
+)
+foreach ($diagnostic in $diagnostics) {
+    # Act: inspect the diagnostic throw within its own function, not another
+    # unrelated error message or a comment elsewhere in the driver.
+    $functionPattern = '(?ms)^function\s+' + [regex]::Escape($diagnostic.Function) +
+                       '\s*\{(?<body>.*?)(?=^function\s+|\z)'
+    $body = [regex]::Match($guiDriver, $functionPattern).Groups['body'].Value
+    $formatPattern = '(?s)throw\s+\(\(\s*"' +
+                     [regex]::Escape($diagnostic.Prefix) + '.*?\)\s*-f\s'
+    # Assert: the full diagnostic is formatted before it is thrown.
+    if ([string]::IsNullOrEmpty($body) -or $body -notmatch $formatPattern) {
+        throw "GUI diagnostics must format the entire error message in $($diagnostic.Function): $($diagnostic.Prefix)"
     }
 }
 
