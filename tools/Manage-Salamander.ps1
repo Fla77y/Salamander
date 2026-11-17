@@ -173,6 +173,7 @@ function Update-Branch {
     if ($before -ne $after) {
         $managedFiles = @('manage.cmd', 'tools/Manage-Salamander.ps1',
                           'tools/release/Package-Helpers.ps1',
+                          'tools/release/Build-Helpers.ps1',
                           'tools/release/Update-Build-Test-Package.ps1')
         $changed = @(& git -C $repository diff --name-only $before $after -- @managedFiles)
         if ($LASTEXITCODE -ne 0) { throw 'Git-Diff der Verwaltungsskripte fehlgeschlagen.' }
