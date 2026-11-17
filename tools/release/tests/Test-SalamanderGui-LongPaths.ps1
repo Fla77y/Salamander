@@ -235,16 +235,23 @@ public static class SalamanderGuiNative
         return windows;
     }
 
-    // Select only a visible Salamander top-level window owned by our launched PID.
+    // Salamander's CMainWindow::Create initially uses an EMPTY caption and
+    // sets the title only after configuration initialization. Identify only
+    // its registered class, never an arbitrary visible window of the PID.
     public static IntPtr FindMainWindow(uint processId)
     {
+        IntPtr found = IntPtr.Zero;
         foreach (TopLevelWindow window in GetProcessWindows(processId))
         {
-            if (window.Visible &&
-                window.Title.IndexOf("Open Salamander", StringComparison.OrdinalIgnoreCase) >= 0)
-                return window.Handle;
+            if (!window.Visible ||
+                ClassName(window.Handle) != "SalamanderMainWindowVer25")
+                continue;
+            if (found != IntPtr.Zero)
+                throw new InvalidOperationException(
+                    "Multiple visible Salamander main windows owned by the test process");
+            found = window.Handle;
         }
-        return IntPtr.Zero;
+        return found;
     }
 
     public static string GetWindowCaption(IntPtr window)
@@ -1324,6 +1331,46 @@ function Wait-ForGuiResponsive {
            "windows=[{5}]; wait chain=[{6}]. No clipboard command sent.") -f
            $attempts, $StartupTimeoutSeconds, $lastErrorCode, $guiThread,
            $ownerPid, $windowSummary, $waitChain)
+}
+
+# An HWND with the registered main class is available before the window
+# caption is initialized. Require the genuine application title in addition
+# to responsiveness before any clipboard update or simulated keystroke.
+function Wait-ForGuiTitle {
+    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    $title = ''
+    do {
+        $process.Refresh()
+        if ($process.HasExited) {
+            throw "Test Salamander exited before publishing its window title (PID $($process.Id))."
+        }
+        $actual = [SalamanderGuiNative]::FindMainWindow([uint32]$process.Id)
+        if ($actual -ne $mainWindowHandle) {
+            throw 'Salamander main window identity changed during startup.'
+        }
+        $dialog = Get-TestDialog
+        if (-not [string]::IsNullOrEmpty($dialog)) {
+            throw "Salamander startup blocked by an unexpected dialog: $dialog"
+        }
+        $title = [SalamanderGuiNative]::GetWindowCaption($mainWindowHandle)
+        if ($title.IndexOf('Open Salamander', [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+            Write-Host 'PASS: Salamander main window published its expected title before GUI input'
+            return
+        }
+        Start-Sleep -Milliseconds 250
+    } while ([DateTime]::UtcNow -lt $deadline)
+
+    [uint32]$owner = 0
+    $thread = [SalamanderGuiNative]::GetWindowThreadProcessId(
+        $mainWindowHandle, [ref]$owner)
+    $chain = '<not collected>'
+    try { $chain = [SalamanderGuiWaitChain]::Describe([uint32]$thread) }
+    catch { $chain = "WCT unavailable: $($_.Exception.Message)" }
+    $windows = Get-ProcessWindowSummary -OwnerProcessId ([uint32]$process.Id)
+    throw ("GUI startup did not publish its main window title within {0}s; " +
+           "actual title='{1}'; owner PID={2}; GUI thread={3}; " +
+           "windows=[{4}]; wait chain=[{5}]. No GUI input sent." -f
+           $TimeoutSeconds, $title, $owner, $thread, $windows, $chain)
 }
 
 # The clipboard path command can leave focus on Salamander's main HWND.
@@ -2559,7 +2606,7 @@ try {
                 }
             }
             return $script:mainWindowHandle -ne [IntPtr]::Zero
-        } 'visible Open Salamander top-level window owned by launched process'
+        } 'visible SalamanderMainWindowVer25 main-class HWND owned by launched process'
     }
     catch {
         $process.Refresh()
@@ -2576,6 +2623,7 @@ try {
         throw "Test Salamander did not become input-idle within 10 seconds (PID $($process.Id))."
     }
     Wait-ForGuiResponsive
+    Wait-ForGuiTitle
     $process.Refresh()
     $testIsAdmin = [Security.Principal.WindowsPrincipal]::new(
         [Security.Principal.WindowsIdentity]::GetCurrent()
