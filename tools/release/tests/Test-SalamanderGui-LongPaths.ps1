@@ -1296,8 +1296,15 @@ function Focus-TestProcess {
     $h = $mainWindowHandle
     if ($h -eq [IntPtr]::Zero) { throw 'No verified main window for test Salamander.' }
 
-    $attempts = 0
-    $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
+    # Windows may temporarily give the foreground to a system overlay.
+    # Repeated SetForegroundWindow attempts cannot override its policy and
+    # risk disrupting a user at the interactive desktop. Make at most six
+    # attempts, and after the initial three retry only if the foreground
+    # owner changes. Do not treat an externally blocked desktop as a product
+    # regression. No keypress is sent unless the exact HWND is foreground.
+    $activationCount = 0
+    $previousForeground = [IntPtr]::Zero
+    $deadline = [DateTime]::UtcNow.AddSeconds([Math]::Min(10, $TimeoutSeconds))
     do {
         $process.Refresh()
         if ($process.HasExited) { throw 'Test Salamander process terminated unexpectedly.' }
@@ -1307,25 +1314,43 @@ function Focus-TestProcess {
         if ($windowPid -ne [uint32]$process.Id) {
             throw "Main window no longer belongs to launched Salamander PID $($process.Id)."
         }
-
-        $attempts++
-        # Two normal attempts first. Bounded input-queue recovery is used
-        # only on selected later attempts to avoid excessive UI disruption.
-        $useFallback = $attempts -eq 3 -or $attempts -eq 10
-        $activated = [SalamanderGuiNative]::TryActivateVerifiedWindow(
-            $h, [uint32]$process.Id, $useFallback)
-        if ($activated -and [SalamanderGuiNative]::GetForegroundWindow() -eq $h) {
-            return
+        $dialog = Get-TestDialog
+        if (-not [string]::IsNullOrEmpty($dialog)) {
+            throw "Cannot focus Salamander while an application dialog is open: $dialog"
         }
+
+        $foreground = [SalamanderGuiNative]::GetForegroundWindow()
+        if ($foreground -eq $h) { return }
+        $foregroundChanged = $foreground -ne $previousForeground
+        if ($activationCount -lt 3 -or
+            ($foregroundChanged -and $activationCount -lt 6)) {
+            $activationCount++
+            $useFallback = $activationCount -eq 3 -or $activationCount -eq 6
+            $activated = [SalamanderGuiNative]::TryActivateVerifiedWindow(
+                $h, [uint32]$process.Id, $useFallback)
+            if ($activated -and [SalamanderGuiNative]::GetForegroundWindow() -eq $h) {
+                return
+            }
+        }
+
+        $previousForeground = [SalamanderGuiNative]::GetForegroundWindow()
         Start-Sleep -Milliseconds 350
     } while ([DateTime]::UtcNow -lt $deadline)
 
     $foreground = Get-ForegroundWindowSummary
     $windows = Get-ProcessWindowSummary -OwnerProcessId ([uint32]$process.Id)
-    throw (("Cannot activate verified test Salamander window HWND=0x{0:X} PID={1} " +
-           "after {2} attempts. Foreground: {3}; test process windows: {4}. " +
-           "Windows may deny SetForegroundWindow; no keys were sent.") -f
-           $h.ToInt64(), $process.Id, $attempts, $foreground, $windows)
+    $failureCategory = if ((Get-ActiveProcessId) -ne [uint32]$process.Id) {
+        'GUI_ENVIRONMENT_BLOCKED'
+    }
+    else {
+        'GUI_FOCUS_FAILURE'
+    }
+    throw (("{0}: Cannot activate verified Salamander HWND=0x{1:X} PID={2} " +
+           "after {3} bounded activation attempts. Foreground: {4}; " +
+           "test process windows: {5}. No keys were sent. " +
+           "Run destructive GUI tests in an exclusive interactive desktop session.") -f
+           $failureCategory, $h.ToInt64(), $process.Id, $activationCount,
+           $foreground, $windows)
 }
 
 # WaitForInputIdle can return while Salamander's main GUI thread is still
