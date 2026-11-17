@@ -1287,7 +1287,11 @@ function Focus-TestProcess {
 # executing startup work. Probe its verified HWND using only a read-only WM_NULL
 # until it pumps messages; do not mutate the clipboard or send keys beforehand.
 function Wait-ForGuiResponsive {
-    param([ValidateRange(1,60)][int]$StartupTimeoutSeconds = 15)
+    param(
+        [ValidateSet('Startup', 'BeforeClipboard', 'PreCommand775')]
+        [string]$Context = 'Startup',
+        [ValidateRange(1,60)][int]$StartupTimeoutSeconds = 15
+    )
 
     $deadline = [DateTime]::UtcNow.AddSeconds($StartupTimeoutSeconds)
     $attempts = 0
@@ -1309,12 +1313,21 @@ function Wait-ForGuiResponsive {
             [uint32]0x0002, [uint32]750, [ref]$response)
         $lastErrorCode = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
         if ($result -ne [IntPtr]::Zero) {
-            Write-Host "PASS: Salamander main GUI thread responds after startup readiness probe ($attempts attempt(s))."
+            if ($Context -eq 'PreCommand775') {
+                Write-Host "PASS: Salamander GUI responds to WM_NULL immediately before clipboard navigation ($attempts attempt(s))."
+            }
+            elseif ($Context -eq 'BeforeClipboard') {
+                Write-Host "PASS: Salamander GUI responsive before clipboard publication ($attempts attempt(s))."
+            }
+            else {
+                Write-Host "PASS: Salamander main GUI thread responds after startup readiness probe ($attempts attempt(s))."
+            }
             return
         }
         if ($lastErrorCode -ne 1460) {
-            throw ("GUI startup WM_NULL failed with Win32 error {0}, " +
-                   "not a transient timeout; no clipboard command sent." -f $lastErrorCode)
+            throw ("GUI WM_NULL readiness ({0}) failed with Win32 error {1}, " +
+                   "not a transient timeout; no navigation command sent." -f
+                   $Context, $lastErrorCode)
         }
         Start-Sleep -Milliseconds 250
     } while ([DateTime]::UtcNow -lt $deadline)
@@ -1326,11 +1339,11 @@ function Wait-ForGuiResponsive {
     try { $waitChain = [SalamanderGuiWaitChain]::Describe([uint32]$guiThread) }
     catch { $waitChain = "WCT unavailable: $($_.Exception.Message)" }
     $windowSummary = Get-ProcessWindowSummary -OwnerProcessId ([uint32]$process.Id)
-    throw (("GUI startup remained unresponsive after {0} WM_NULL attempts over {1}s; " +
-           "Win32 error={2}; GUI thread={3}; owner PID={4}; " +
-           "windows=[{5}]; wait chain=[{6}]. No clipboard command sent.") -f
-           $attempts, $StartupTimeoutSeconds, $lastErrorCode, $guiThread,
-           $ownerPid, $windowSummary, $waitChain)
+    throw (("GUI startup remained unresponsive (phase={0}) after {1} WM_NULL attempts " +
+           "over {2}s; Win32 error={3}; GUI thread={4}; owner PID={5}; " +
+           "windows=[{6}]; wait chain=[{7}]. No navigation command sent.") -f
+           $Context, $attempts, $StartupTimeoutSeconds, $lastErrorCode,
+           $guiThread, $ownerPid, $windowSummary, $waitChain)
 }
 
 # An HWND with the registered main class is available before the window
@@ -1501,29 +1514,12 @@ function Invoke-SalamanderCommand {
         throw "Refusing GUI command: window owner PID $ownerPid does not match test process $($process.Id)."
     }
 
-    # Detect a GUI thread already blocked during startup, independently of
-    # the clipboard-paste command. WM_NULL has no user-visible side effects.
+    # A single 2500 ms WM_NULL timeout during initial clipboard processing
+    # is not proof of a permanent GUI deadlock. Recheck the exact HWND using
+    # side-effect-free WM_NULL with a bounded deadline; fail without WM_COMMAND
+    # if it never becomes responsive.
     if ($CommandId -eq 775) {
-        [IntPtr]$preflightResult = [IntPtr]::Zero
-        $ready = [SalamanderGuiNative]::SendMessageTimeout(
-            $main, [uint32]0, [UIntPtr]::Zero, [IntPtr]::Zero,
-            [uint32]0x0002, [uint32]2500, [ref]$preflightResult)
-        $preflightError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
-        if ($ready -eq [IntPtr]::Zero) {
-            [uint32]$preflightOwner = 0
-            $preflightThread = [SalamanderGuiNative]::GetWindowThreadProcessId(
-                $main, [ref]$preflightOwner)
-            $preflightWait = '<not collected>'
-            try {
-                $preflightWait = [SalamanderGuiWaitChain]::Describe([uint32]$preflightThread)
-            }
-            catch { $preflightWait = "WCT unavailable: $($_.Exception.Message)" }
-            throw ("Salamander GUI unresponsive BEFORE clipboard command 775; " +
-                   "WM_NULL preflight Win32 error $preflightError. " +
-                   "No clipboard navigation command was sent. " +
-                   "GUI thread=$preflightThread; owner PID=$preflightOwner; wait chain=[$preflightWait]")
-        }
-        Write-Host 'PASS: Salamander GUI responds to WM_NULL immediately before clipboard navigation'
+        Wait-ForGuiResponsive -Context 'PreCommand775' -StartupTimeoutSeconds 15
     }
 
     [IntPtr]$commandResult = [IntPtr]::Zero
@@ -1759,6 +1755,7 @@ function Go-ToPath {
 
     for ($attempt = 1; $attempt -le $maxNavigationAttempts; $attempt++) {
         Focus-TestProcess
+        Wait-ForGuiResponsive -Context 'BeforeClipboard' -StartupTimeoutSeconds 15
         Set-VerifiedNavigationClipboard -Text $Path
         Invoke-SalamanderCommand -CommandId 775
 
