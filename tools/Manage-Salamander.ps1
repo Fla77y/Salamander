@@ -401,6 +401,15 @@ try {
 
         Expand-AutomatedTestActions -RequestedSet $requestedSet -AvailableOptions $validOptions
 
+        if ($requestedSet.Contains('--diagnose-gui')) {
+            $allowedDiagnosticOptions = @('--diagnose-gui', '--release', '--debug')
+            foreach ($action in $requestedSet) {
+                if ($action -notin $allowedDiagnosticOptions) {
+                    throw '--diagnose-gui kann nur mit --release oder --debug kombiniert werden.'
+                }
+            }
+        }
+
         . (Join-Path $repository 'tools\release\Package-Helpers.ps1')
         . (Join-Path $repository 'tools\release\Build-Helpers.ps1')
         $null = Get-BuildMode -RequestedSet $requestedSet
@@ -622,12 +631,6 @@ try {
         # without the non-GUI --test-all prelude. Keep this out of --test-all,
         # which must not recursively invoke its own management entry point.
         if ($requestedSet.Contains('--diagnose-gui')) {
-            $allowed = @('--diagnose-gui', '--release', '--debug')
-            foreach ($action in $requestedSet) {
-                if ($action -notin $allowed) {
-                    throw '--diagnose-gui kann nur mit --release oder --debug kombiniert werden.'
-                }
-            }
             $diagnostic = Join-Path $repository 'tools\release\tests\Invoke-GuiReliability.ps1'
             Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $diagnostic,
                                       '-Configuration', $configuration,
