@@ -34,5 +34,41 @@ int main()
     if (nonexistentDeleted || SUCCEEDED(error))
         return std::puts("FAIL: nonexistent Unicode source accepted"), 1;
 
-    return std::puts("PASS: Unicode recycle refuses invalid and missing paths"), 0;
+    // Arrange: test-owned directory and file. Type mismatches must fail
+    // before IFileOperation can recycle anything, even on an unlocked GUI.
+    wchar_t temporary[MAX_PATH] = {};
+    const DWORD length = GetTempPathW(MAX_PATH, temporary);
+    if (length == 0 || length >= MAX_PATH)
+        return std::puts("FAIL: temporary directory unavailable"), 1;
+    const std::wstring root = std::wstring(temporary) +
+        L"OpenSal-RecycleType-" + std::to_wstring(GetCurrentProcessId()) +
+        L"-" + std::to_wstring(GetTickCount64());
+    if (!CreateDirectoryW(root.c_str(), nullptr))
+        return std::puts("FAIL: create type-check fixture"), 1;
+    const std::wstring leaf = root + L"\\file-東京.txt";
+    HANDLE handle = CreateFileW(leaf.c_str(), GENERIC_WRITE, 0, nullptr,
+                                CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (handle == INVALID_HANDLE_VALUE)
+        return std::puts("FAIL: create type-check leaf"), 1;
+    CloseHandle(handle);
+
+    Salamander::Utf16DiskPath ownedRoot, ownedFile;
+    if (!Salamander::Utf16DiskPath::TryCreateAbsolute(
+            std::u16string(root.begin(), root.end()), ownedRoot, validationError) ||
+        !Salamander::Utf16DiskPath::TryCreateAbsolute(
+            std::u16string(leaf.begin(), leaf.end()), ownedFile, validationError))
+        return std::puts("FAIL: own type-check paths"), 1;
+
+    // Act / Assert: no shell operation and no filesystem mutation.
+    if (Salamander::TryRecycleUnicodeFile(ownedRoot, nullptr, error) ||
+        error != HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED) ||
+        Salamander::TryRecycleUnicodeDirectory(ownedFile, nullptr, error) ||
+        error != HRESULT_FROM_WIN32(ERROR_NOT_SUPPORTED) ||
+        GetFileAttributesW(root.c_str()) == INVALID_FILE_ATTRIBUTES ||
+        GetFileAttributesW(leaf.c_str()) == INVALID_FILE_ATTRIBUTES)
+        return std::puts("FAIL: recycle type contract did not fail closed"), 1;
+
+    if (!DeleteFileW(leaf.c_str()) || !RemoveDirectoryW(root.c_str()))
+        return std::puts("FAIL: cleanup type-check fixture"), 1;
+    return std::puts("PASS: Unicode recycle rejects missing paths and mismatched directory/file types"), 0;
 }
