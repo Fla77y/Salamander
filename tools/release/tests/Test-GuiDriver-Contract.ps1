@@ -94,6 +94,18 @@ if (-not $nativeClearError -or
     $readinessText -notmatch 'IsHungAppWindow') {
     throw 'WM_NULL failure must preserve the original Win32 error and format complete HWND/owner diagnostics without sending input.'
 }
+# Arrange: SMTO_ABORTIFHUNG can fail while LastError remains zero.
+# Act/Assert: retry only this ambiguous result and ERROR_TIMEOUT (1460) with
+# the existing fixed deadline. All other errors remain immediately fatal.
+# A permanently unresponsive GUI must still fail without navigating.
+if ($readinessText -notmatch '\$lastErrorCode -ne 1460 -and \$lastErrorCode -ne 0' -or
+    $readinessText -notmatch '(?s)Start-Sleep -Milliseconds 250.*?\} while \(\[DateTime\]::UtcNow -lt \$deadline\)' -or
+    $readinessText -notmatch 'IsHungAppWindow=\{[0-9]+\}' -or
+    $readinessText -notmatch 'genericFailures=\{[0-9]+\}') {
+    throw 'WM_NULL code zero and timeouts must remain bounded retries with a full hang diagnosis and no navigation.'
+}
+Write-Host 'PASS: ambiguous WM_NULL failures retry only until the bounded deadline.'
+
 Write-Host 'PASS: WM_NULL failures capture fresh Win32 status and format complete diagnostic details.'
 
 # A failure screenshot is diagnostic evidence. The new temp-directory test
