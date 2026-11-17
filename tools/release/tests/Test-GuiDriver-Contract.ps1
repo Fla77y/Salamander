@@ -159,6 +159,40 @@ if ($verifyPosition -lt 0 -or $dispatchPosition -lt 0 -or
     $clipboardSource -match 'Invoke-SalamanderCommand') {
     throw 'GUI navigation must verify exact clipboard round-trip before dispatching WM_COMMAND 775.'
 }
+# A successful first F8 must not count as proof for the second ASCII-GUID
+# fixture. Verify it and its payload still exist before refreshing the panel,
+# and require a round-trip through the test-owned parent before re-selection.
+$deleteStart = $driverText.IndexOf(
+    '        # Act: delete the exact test-owned directory through Salamander', [StringComparison]::Ordinal)
+$deleteEnd = $driverText.IndexOf(
+    "        Write-Host 'PASS: Salamander F8 recursively deleted", $deleteStart,
+    [StringComparison]::Ordinal)
+if ($deleteStart -lt 0 -or $deleteEnd -le $deleteStart) {
+    throw 'GUI F8 temporary-directory scenario is missing.'
+}
+$deleteCase = $driverText.Substring($deleteStart, $deleteEnd - $deleteStart)
+$firstDelete = $deleteCase.IndexOf(
+    "Wait-Until { -not [IO.Directory]::Exists(" + '$temporaryDirectory)',
+    [StringComparison]::Ordinal)
+$verifySibling = $deleteCase.IndexOf(
+    "Assert-True ([IO.Directory]::Exists(" + '$asciiTemporaryDirectory)',
+    [StringComparison]::Ordinal)
+$verifyPayload = $deleteCase.IndexOf(
+    'Assert-True (Test-Content $asciiLeaf)', [StringComparison]::Ordinal)
+$parentRoundtrip = $deleteCase.IndexOf('Go-ToPath $root', [StringComparison]::Ordinal)
+$sourceRoundtrip = $deleteCase.IndexOf('Go-ToPath $source', $parentRoundtrip + 1,
+    [StringComparison]::Ordinal)
+$secondDelete = $deleteCase.IndexOf(
+    'Focus-DirectoryRow -Name $asciiTemporaryName', [StringComparison]::Ordinal)
+if ($firstDelete -lt 0 -or $verifySibling -le $firstDelete -or
+    $verifyPayload -le $verifySibling -or
+    $parentRoundtrip -le $verifyPayload -or
+    $sourceRoundtrip -le $parentRoundtrip -or
+    $secondDelete -le $sourceRoundtrip) {
+    throw 'F8 GUI test must preserve the ASCII sibling and reload its source panel before selecting the second folder.'
+}
+Write-Host 'PASS: F8 GUI test verifies sibling integrity and refreshes the panel before the next selection.'
+
 Write-Host 'PASS: GUI navigation verifies exact clipboard content and retries only safe clipboard writes.'
 
 # A live Salamander can lose foreground focus to a browser while a
