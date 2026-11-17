@@ -112,7 +112,8 @@ if (-not $mainWindowMethod.Success -or
     $titleGate.Extent.Text -notmatch 'GetWindowCaption' -or
     $titleGate.Extent.Text -notmatch 'Get-TestDialog' -or
     $titleGate.Extent.Text -notmatch 'SalamanderGuiWaitChain' -or
-    $titleGate.Extent.Text -notmatch 'GUI startup did not publish its main window title') {
+    $titleGate.Extent.Text -notmatch 'GUI startup did not publish its main window title' -or
+    $startupText -notmatch '(?s)WaitForInputIdle\(10000\).*?SalamanderGuiWaitChain.*?Wait-ForGuiResponsive') {
     throw 'GUI startup must identify the exact app class without a caption, then require verified title and responsiveness before input.'
 }
 Write-Host 'PASS: empty-caption startup window is identified by app class and diagnosed before any destructive input.'
