@@ -18,7 +18,7 @@ function New-OptionSet {
     param([string[]]$Options)
     $set = [System.Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
     foreach ($option in $Options) { [void]$set.Add($option) }
-    return $set
+    return ,$set
 }
 
 # Arrange: each invocation has an independent set of requested CLI switches.
