@@ -240,6 +240,9 @@ function Run-Tests {
     $buildModesTest = Join-Path $repository 'tools\release\tests\Test-BuildModes.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $buildModesTest)
 
+    $vsDiscoveryTest = Join-Path $repository 'tools\release\tests\Test-VS2026Discovery.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $vsDiscoveryTest)
+
     $pictviewContract = Join-Path $repository 'tools\release\tests\Test-PictView-Management.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $pictviewContract)
 
