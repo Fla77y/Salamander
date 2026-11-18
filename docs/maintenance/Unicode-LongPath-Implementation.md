@@ -475,44 +475,44 @@ The exact native blockage or exit cause was not established. The isolated
 startup wait now checks whether the launched process has exited on every poll
 and reports its actual exit code rather than treating it as a long-running
 upgrade. The failure report additionally captures the isolated
-\`Config0\Version\Configuration\` value, process state, owned top-level windows
+`Config0\Version\Configuration` value, process state, owned top-level windows
 and a bounded summary of native thread states. The existing 90-second startup
-deadline is unchanged. If \`OPENSAL_GUI_CAPTURE_HANG_DUMP=1\` is explicitly set
+deadline is unchanged. If `OPENSAL_GUI_CAPTURE_HANG_DUMP=1` is explicitly set
 and the test-owned process remains running, the existing private minimal-dump
 facility is now available for startup failures even without a main HWND.
 No other Salamander process is terminated.
 
-**Short-path F2:** The original F2 handler invokes \`CFilesWindow::RenameFile\`
-and opens \`CCopyMoveDialog\` (resource \`IDD_COPYMOVEDIALOG_CB\`, caption
-\`Quick Rename\`, \`IDE_PATH=210\`, \`IDS_SUBJECT=209\`). This is distinct
+**Short-path F2:** The original F2 handler invokes `CFilesWindow::RenameFile`
+and opens `CCopyMoveDialog` (resource `IDD_COPYMOVEDIALOG_CB`, caption
+`Quick Rename`, `IDE_PATH=210`, `IDS_SUBJECT=209`). This is distinct
 from the separate inline quick-rename edit. The old short GUI baseline sent
 Ctrl+A, Ctrl+V and Enter globally after a fixed pause; a foreign foreground
 window while Salamander's modal dialog remained open caused a safe abort.
-The driver now selects exactly one visible \`#32770\` dialog belonging to the
+The driver now selects exactly one visible `#32770` dialog belonging to the
 launched PID and verified main-window ownership, checks its caption, subject,
 ComboBox and OK button, validates the original name, writes the ASCII test
-name by bounded HWND-targeted \`WM_SETTEXT\`, reads it back with \`WM_GETTEXT\`,
-then posts \`WM_COMMAND/IDOK\` to the verified dialog. An absent, ambiguous,
+name by bounded HWND-targeted `WM_SETTEXT`, reads it back with `WM_GETTEXT`,
+then posts `WM_COMMAND/IDOK` to the verified dialog. An absent, ambiguous,
 changed or unresponsive dialog fails without sending global replacement text
 or Enter. The product dialog, rename logic and plugin ABI are unchanged.
 
-**RED/GREEN status:** GitHub commit \`e41da1f\` introduced source-level GUI
+**RED/GREEN status:** GitHub commit `e41da1f` introduced source-level GUI
 regression assertions before these two helpers existed (structural RED);
-\`6e3fb346\` implemented the driver change. Subsequent small commits aligned
-the test with the existing \`VerifiedChild\` ownership check and clarified
+`6e3fb346` implemented the driver change. Subsequent small commits aligned
+the test with the existing `VerifiedChild` ownership check and clarified
 PowerShell error-message construction. Read-only post-change source checks
 confirmed the intended guard locations, ownership verification, bounded
-messages, failure diagnostics and unchanged timeout. No \`pwsh\`, Windows
+messages, failure diagnostics and unchanged timeout. No `pwsh`, Windows
 native build, interactive GUI or actual x86 debugging was executed in the
 available Linux/GitHub-only environment. These checks are **static**, not a
 runtime GREEN or proof that the x86 startup issue is fixed.
 
 **Next acceptance:** On a separately authorized unlocked Windows desktop,
-run the existing headless \`Test-GuiDriver-Contract.ps1\` first (it compiles
-the embedded interop), then the isolated Debug x86 large-copy \`Copy\` case
+run the existing headless `Test-GuiDriver-Contract.ps1` first (it compiles
+the embedded interop), then the isolated Debug x86 large-copy `Copy` case
 with private build/test outputs and optional private hang dump. Analyze the
 dump before changing product loader code if startup still fails. Run
-\`-ShortOperationsOnly -IsolatedConfiguration\` using an isolated Release x64
+`-ShortOperationsOnly -IsolatedConfiguration` using an isolated Release x64
 test executable to recheck F2, F6 and F8; the existing global F5/F6/F8
 confirmation inputs are not newly validated by this F2 fix. Preserve any
 failure artifacts for review and do not classify either gap as closed until
