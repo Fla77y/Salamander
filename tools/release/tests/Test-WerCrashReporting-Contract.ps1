@@ -16,14 +16,16 @@ function Read-Source([string]$relativePath) {
     return [IO.File]::ReadAllText((Join-Path $repo $relativePath))
 }
 
-# Arrange / Act / Assert: product and solution must not link or invoke SalMon.
-foreach ($former in @(
-    'src\salmon', 'src\salmoncl.cpp', 'src\salmoncl.h',
-    'src\vcxproj\salmon'
-)) {
-    if (Test-Path -LiteralPath (Join-Path $repo $former)) {
-        throw "Legacy reporter still ships in the source tree: $former"
-    }
+# Arrange / Act / Assert: no SalMon files may remain tracked by Git.
+# Git removes files, not directories. A checkout can retain empty directories
+# or untracked local build artifacts under former paths. These do not ship.
+# Never delete a developer's untracked files from a read-only contract test.
+$formerTrackedFiles = @(& git -C $repo ls-files --cached -- 'src/salmon' 'src/salmoncl.cpp' 'src/salmoncl.h' 'src/vcxproj/salmon')
+if ($LASTEXITCODE -ne 0) {
+    throw 'Unable to inspect tracked SalMon files using Git.'
+}
+if ($formerTrackedFiles.Count -gt 0) {
+    throw ('Legacy reporter files remain tracked: ' + ($formerTrackedFiles -join ', '))
 }
 $solution = Read-Source 'src\vcxproj\salamand.sln'
 $project = Read-Source 'src\vcxproj\salamand.vcxproj'
