@@ -60,7 +60,7 @@ function Invoke-SalamanderBuild {
             }
             Remove-Item -LiteralPath $output -Recurse -Force
         }
-        $target = if ($Mode -eq 'Delta' -or $Mode -eq 'Clean') { '/t:Build' } else { '/t:Rebuild' }
+        $target = if ($Mode -eq 'Delta') { '/t:Build' } else { '/t:Rebuild' }
         Write-Host "=== MSBuild $configuration x64 ($Mode) ==="
         $arguments = @($Solution, $target, "/p:Configuration=$configuration",
             '/p:Platform=x64', '/p:PreferredToolArchitecture=x64',
