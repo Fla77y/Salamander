@@ -11,7 +11,7 @@
     never production release artifacts.
 #>
 [CmdletBinding()]
-param([switch]$AllConfigurations)
+param([switch]$AllConfigurations, [string]$MSBuildPath)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
@@ -36,10 +36,34 @@ while (-not $ancestor.Equals($repository, [StringComparison]::OrdinalIgnoreCase)
 }
 
 $project = Join-Path $repository 'src\vcxproj\salamand.vcxproj'
-$msbuild = Join-Path (Get-VisualStudio2026) 'MSBuild\Current\Bin\amd64\MSBuild.exe'
-if (-not (Test-Path -LiteralPath $msbuild -PathType Leaf)) {
-    throw "MSBuild executable not found: $msbuild"
+$msbuildRelative = 'MSBuild\Current\Bin\amd64\MSBuild.exe'
+
+# vswhere can miss an otherwise usable VS 2026 installation when its MSBuild
+# component metadata is incomplete. Prefer the already initialized VS
+# Developer PowerShell environment, but validate the actual executable.
+if (-not [string]::IsNullOrWhiteSpace($MSBuildPath)) {
+    $msbuild = [IO.Path]::GetFullPath($MSBuildPath)
+    $source = 'explicit -MSBuildPath'
 }
+elseif (-not [string]::IsNullOrWhiteSpace($env:VSINSTALLDIR) -and
+        (Test-Path -LiteralPath (Join-Path $env:VSINSTALLDIR $msbuildRelative) -PathType Leaf)) {
+    $msbuild = Join-Path $env:VSINSTALLDIR $msbuildRelative
+    $source = 'VSINSTALLDIR (Developer PowerShell)'
+}
+else {
+    $msbuild = Join-Path (Get-VisualStudio2026) $msbuildRelative
+    $source = 'vswhere'
+}
+
+if (-not (Test-Path -LiteralPath $msbuild -PathType Leaf)) {
+    throw "MSBuild executable not found ($source): $msbuild"
+}
+$msbuild = (Resolve-Path -LiteralPath $msbuild).ProviderPath
+$version = [Diagnostics.FileVersionInfo]::GetVersionInfo($msbuild).FileMajorPart
+if ($version -ne 18) {
+    throw "Expected Visual Studio 2026 MSBuild major version 18; found $version at $msbuild"
+}
+Write-Host "Verified VS2026 MSBuild ($source): $msbuild"
 
 $variants = @(
     @{ Configuration = 'Debug'; Platform = 'Win32'; Output = 'Debug_x86' },
