@@ -89,3 +89,23 @@ It refuses pre-existing Salamander instances, uses GUID-scoped fixture
 paths, retains logs and copies the result to the clipboard. The optional
 `-CaptureHangDump` switch is a separate opt-in. No Windows runtime
 execution of this new wrapper is yet confirmed.
+
+## Debug x86 GUI follow-up: confirmed runtime evidence (18 November 2026)
+
+One explicitly authorized GUI run used the instrumented Debug Win32 binary
+built at `5cd874a`. It confirmed isolated configuration upgrade, responsive
+main window, short-path navigation, navigation to a 381-UTF-16-unit path,
+and the exact 32-MiB Unicode source-file identity. It then **failed**
+before copying with `Timeout waiting for 32-MiB Unicode copy confirmation`.
+Clipboard restoration was confirmed; the private disposable fixture was
+retained for diagnosis.
+
+The failure could stem from the GUI driver's `Get-TestDialog` helper:
+the native `MessageBoxW` is owned by `CFilesWindow::HWindow` (child panel),
+whereas the helper returns no dialog whenever the main HWND is enabled.
+This is a hypothesis rather than a demonstrated explanation until another
+runtime test. The driver now uses a process-owned `#32770` confirmation,
+bounded cross-process `WM_GETTEXT` on its message control, and full
+Unicode identity checks, without replaying the F5 action.
+The earlier copy failure is **not** a WER regression, and successful
+copy/progress/cancel behavior remains unverified.
