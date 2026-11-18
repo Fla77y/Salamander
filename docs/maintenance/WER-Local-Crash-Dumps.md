@@ -64,3 +64,28 @@ global `LocalDumps` settings or other applications' configuration.
 
 Microsoft reference:
 https://learn.microsoft.com/en-us/windows/win32/wer/collecting-user-mode-dumps
+
+## Build evidence: isolated VS2026 core (18 November 2026)
+
+A locally executed Windows build log for commit `5cd874a` confirms
+**Debug Win32** and **Release x64** builds of `salamand.vcxproj` under
+VS 2026 Community/MSBuild major 18. Both configurations compiled
+`callstk.cpp`, `salamdr1.cpp`, `tasklist.cpp`, and their dependent
+sources, linked `salamand.exe`, and built `lang/english.slg`. Both
+reported `PASS`; the log contains no compiler or linker error.
+
+Verified private build root:
+`C:\Repositories\Salamander\.Build\wer-build-2a2483ddf63a4764b071f9837408aa19`.
+
+These are instrumented binaries for isolated acceptance only, not
+production distribution artifacts. **No GUI startup, F2/F6/F8 or WER
+crash/minidump behavior is established by this build result.**
+
+An explicit, independently runnable GUI acceptance wrapper lives at
+`tools/release/tests/Invoke-WerGuiFollowUp.ps1`. It accepts the build root,
+exactly one of `DebugX86Copy` and `ReleaseX64Short`, and requires the
+`-AllowDesktop` switch before using an unlocked exclusive desktop.
+It refuses pre-existing Salamander instances, uses GUID-scoped fixture
+paths, retains logs and copies the result to the clipboard. The optional
+`-CaptureHangDump` switch is a separate opt-in. No Windows runtime
+execution of this new wrapper is yet confirmed.
