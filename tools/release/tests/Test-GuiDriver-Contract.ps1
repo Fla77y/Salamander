@@ -104,6 +104,23 @@ if ($readinessText -notmatch '\$lastErrorCode -ne 1460 -and \$lastErrorCode -ne 
     $readinessText -notmatch 'genericFailures=\{[0-9]+\}') {
     throw 'WM_NULL code zero and timeouts must remain bounded retries with a full hang diagnosis and no navigation.'
 }
+# Regression: MessageBoxW(HWindow) in CFilesWindow uses the panel as owner.
+# Get-TestDialog may report no popup while the main HWND remains enabled.
+# The actual 32-MiB copy confirmation must be discovered on the launched
+# process, with the full UTF-16 filename/destination validated by WM_GETTEXT.
+$largeCopySource = (Get-FunctionSource 'Test-LargeUnicodeCopy').Extent.Text
+if ($driverText -notmatch 'public static IntPtr FindVerifiedLargeCopyConfirmation' -or
+    $driverText -notmatch '(?s)FindVerifiedLargeCopyConfirmation.*?SendMessageTimeoutReadText' -or
+    $driverText -notmatch 'IsOwnedLargeCopyDialog' -or
+    $largeCopySource -notmatch 'FindVerifiedLargeCopyConfirmation' -or
+    $largeCopySource -notmatch 'ConfirmVerifiedLargeCopy' -or
+    $largeCopySource -notmatch 'Get-ProcessWindowSummary' -or
+    $largeCopySource -notmatch 'Get-ForegroundWindowSummary' -or
+    $largeCopySource -match "return \$dialog -match 'Copy the Unicode file to the other panel'") {
+    throw 'Large Unicode F5 must verify its own modal prompt, not depend on Get-TestDialog/main-window enabled state.'
+}
+Write-Host 'PASS: large Unicode F5 confirmation is process-owned and read through bounded WM_GETTEXT.'
+
 Write-Host 'PASS: ambiguous WM_NULL failures retry only until the bounded deadline.'
 
 Write-Host 'PASS: WM_NULL failures capture fresh Win32 status and format complete diagnostic details.'
