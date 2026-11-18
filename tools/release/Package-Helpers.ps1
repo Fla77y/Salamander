@@ -24,16 +24,35 @@ function Invoke-Checked {
 }
 
 function Get-VisualStudio2026 {
+    # A VS 2026 Developer PowerShell already identifies its active installation.
+    # Prefer it over vswhere's optional component registration when MSBuild exists.
+    $candidates = [System.Collections.Generic.List[string]]::new()
+    if (-not [string]::IsNullOrWhiteSpace($env:VSINSTALLDIR)) {
+        $candidates.Add($env:VSINSTALLDIR)
+    }
+
     $installerDir = Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Microsoft Visual Studio\Installer'
     $vswhere = Join-Path $installerDir 'vswhere.exe'
-    if (-not (Test-Path -LiteralPath $vswhere -PathType Leaf)) {
-        throw "Visual Studio Installer discovery tool not found: $vswhere"
+    if (Test-Path -LiteralPath $vswhere -PathType Leaf) {
+        $found = @(& $vswhere -products '*' -version '[18.0,19.0)' -property installationPath)
+        if ($LASTEXITCODE -ne 0) {
+            throw "Visual Studio discovery failed: $vswhere (exit code $LASTEXITCODE)."
+        }
+        foreach ($path in $found) {
+            if (-not [string]::IsNullOrWhiteSpace($path)) { $candidates.Add($path.Trim()) }
+        }
     }
-    $result = @(& $vswhere -latest -products '*' -version '[18.0,19.0)' -requires Microsoft.Component.MSBuild -property installationPath)
-    if ($LASTEXITCODE -ne 0 -or $result.Count -ne 1 -or [string]::IsNullOrWhiteSpace($result[0])) {
-        throw 'Visual Studio 2026 installation with MSBuild was not found.'
+
+    foreach ($candidate in $candidates) {
+        $root = [IO.Path]::GetFullPath($candidate).TrimEnd('\', '/')
+        # Do not accidentally select VS 2022 or an unrelated MSBuild installation.
+        if ($root -notmatch '(?i)[\\/]Microsoft Visual Studio[\\/]18[\\/]') { continue }
+        $msbuild = Join-Path $root 'MSBuild\Current\Bin\MSBuild.exe'
+        if (Test-Path -LiteralPath $msbuild -PathType Leaf) { return $root }
     }
-    return $result[0].Trim()
+
+    throw ('Visual Studio 2026 MSBuild.exe not found. Checked installation roots: ' +
+           ($candidates -join '; ') + '. VSINSTALLDIR=' + $env:VSINSTALLDIR)
 }
 
 function Get-MsvcRuntimeFolders {
