@@ -894,7 +894,7 @@ if (-not $renameInterop.Success -or -not $renameConfirm.Success -or
     $renameInterop.Value -notmatch '209' -or
     $renameConfirm.Value -notmatch 'SendMessageTimeout' -or
     $renameConfirm.Value -notmatch 'PostMessageW' -or
-    $renameConfirm.Value -notmatch 'GetDlgItem\(dialog, 1\)') {
+    $renameConfirm.Value -notmatch 'VerifiedChild\(dialog, processId, 1\)') {
     throw 'Quick Rename automation must verify process, parent, title, resource controls and original name before writing and confirming.'
 }
 Write-Host 'PASS: F2 drives only its verified modal Quick Rename dialog, with no global text or Enter.'
