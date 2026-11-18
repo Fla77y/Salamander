@@ -1385,7 +1385,7 @@ STRINGTABLE
  IDS_CURRENTPROCESSBREAK, "You cannot break this task (it makes no sense). Use another Open Salamander task to break this one."
  IDS_CURRENTPROCESSTERMINATE, "Are you sure you wish to terminate current process?\n\nWARNING: All unsaved data in current process will be lost!"
  IDS_CONFIRM_TERMINATE, "Are you sure you wish to terminate specified process?\n\nWARNING: All unsaved data in specified process will be lost!"
- IDS_CONFIRM_BREAK, "Are you sure you wish to break specified process and send us bug report?\n\nWARNING: All unsaved data in specified process will be lost!"
+ IDS_CONFIRM_BREAK, "Are you sure you wish to break the specified process? Windows Error Reporting may record a local dump if configured.\n\nWARNING: All unsaved data in the specified process will be lost!"
 
  IDS_UNABLETOREADFILE, "Unable to read file."
 
@@ -1678,11 +1678,11 @@ STRINGTABLE
 
  IDS_PLUGINURLNONE, "(none)"
 
- IDS_SHELLEXTBREAK, "The main window of Open Salamander was destroyed by some faulty shell extension. Please send us the following bug report to help us resolve this problem.\n\nPress OK to open the Bug Report dialog box."
- IDS_SHELLEXTBREAK2, "Some faulty shell extension has destroyed our window. Please send us the following bug report to help us resolve this problem.\n\nPress OK to open the Bug Report dialog box."
- IDS_SHELLEXTCRASH, "Open Salamander becomes unstable because of some faulty shell extension. Please send us the following bug report to help us resolve this problem.\n\nPress OK to open the Bug Report dialog box."
- IDS_SHELLEXTBREAK3, "This window cannot be closed at this time because there is some task pending that is using it. Press the Continue and wait until this task is finished.\n\nIf there is not any such task, press the Abort and send us a bug report to help us resolve this problem. Open Salamander will be terminated."
- IDS_SHELLEXTBREAK4, "Unable to execute new task because executing of previous task was not finished yet. Press the Continue and wait until previous task is executed.\n\nIf there is not any such task, press the Abort and send us a bug report to help us resolve this problem. Open Salamander will be terminated."
+ IDS_SHELLEXTBREAK, "A faulty shell extension destroyed the main window of Open Salamander. The program must terminate. Windows Error Reporting may save a local dump if configured.\n\nPress OK to continue termination."
+ IDS_SHELLEXTBREAK2, "A faulty shell extension destroyed an Open Salamander window. The program must terminate. Windows Error Reporting may save a local dump if configured.\n\nPress OK to continue termination."
+ IDS_SHELLEXTCRASH, "Open Salamander has become unstable because of a faulty shell extension. Windows Error Reporting may save a local crash dump if configured.\n\nPress OK to continue termination."
+ IDS_SHELLEXTBREAK3, "This window cannot close while a task is still using it. Choose Continue and wait for the task to finish.\n\nIf no task is pending, choose Abort to terminate Open Salamander. Unsaved data will be lost; Windows Error Reporting may save a local dump if configured."
+ IDS_SHELLEXTBREAK4, "A new task cannot start while the previous task is unfinished. Choose Continue and wait for it to complete.\n\nIf no task is pending, choose Abort to terminate Open Salamander. Unsaved data will be lost; Windows Error Reporting may save a local dump if configured."
 
  IDS_NEWLYCREATEDFILE, "The file already exists. Do you want to replace it?"
 

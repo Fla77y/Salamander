@@ -36,9 +36,6 @@ const char* AS_PROCESSLIST_EVENT_PROCESSED_NAME = "AltapSalamander3bProcessListE
 const char* FIRST_SALAMANDER_MUTEX_NAME = "AltapSalamanderFirstInstance";     // introduced in AS 2.52 beta 1
 const char* LOADSAVE_REGISTRY_MUTEX_NAME = "AltapSalamanderLoadSaveRegistry"; // introduced in AS 2.52 beta 1
 
-// path used to save the bug report and minidump; later Salmon packs them into 7z and uploads them to the server
-char BugReportPath[MAX_PATH] = "";
-
 CRITICAL_SECTION CommandLineParamsCS;
 CCommandLineParams CommandLineParams;
 HANDLE CommandLineParamsProcessed;
@@ -572,15 +569,14 @@ BOOL CTaskList::FireEvent(DWORD todo, DWORD pid, BOOL* timeouted)
         ProcessList->TodoTimestamp = GetTickCount();
         ProcessList->PID = pid;
 
-        // when breaking another Salamander instance, allow its Salmon to come to the foreground in front of us
+        // when breaking another Salamander instance, allow only the target instance to take foreground
         if (todo == TASKLIST_TODO_BREAK)
         {
             for (DWORD i = 0; i < ProcessList->ItemsCount; i++)
             {
                 if (ProcessList->Items[i].PID == pid)
                 {
-                    AllowSetForegroundWindow(ProcessList->Items[i].PID);       // better allow our own Salamander too, even if it is probably unnecessary...
-                    AllowSetForegroundWindow(ProcessList->Items[i].SalmonPID); // we definitely must allow its Salmon to come to the foreground before us
+                    AllowSetForegroundWindow(ProcessList->Items[i].PID); // only the requested Salamander process needs foreground permission
                     break;
                 }
             }

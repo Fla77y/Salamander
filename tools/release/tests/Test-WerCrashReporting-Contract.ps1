@@ -46,6 +46,15 @@ if ((Read-Source 'src\lang\texts.rc2') -match 'IDS_SALMON_' -or
     (Read-Source 'src\texts.rh2') -match 'IDS_SALMON_') {
     throw 'SalMon dialog and upload strings are still included.'
 }
+$taskList = Read-Source 'src\tasklist.cpp'
+$taskListHeader = Read-Source 'src\tasklist.h'
+if ($taskList -match '(?i)salmon|AllowSetForegroundWindow\(ProcessList->Items\[i\]\.ReservedReporterPID\)' -or
+    $taskListHeader -match '(?i)salmon|HSalmonProcess' -or
+    $taskListHeader -notmatch 'DWORD ReservedReporterPID') {
+    throw 'Task list must preserve its shared-memory field size without retaining SalMon process references.'
+}
+Write-Host 'PASS: task-list shared-memory ABI remains compatible without a reporter PID.'
+
 Write-Host 'PASS: product has no SalMon executable, uploads, dialogs or crash-handler interception.'
 
 # Arrange / Act / Assert: stale build output must not leak into packages.
