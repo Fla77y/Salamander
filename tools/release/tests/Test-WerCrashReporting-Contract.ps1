@@ -39,7 +39,7 @@ if ($solution -match '(?i)salmon' -or
 }
 if ($stack -notmatch '(?s)CCallStack::HandleException\(.*?EXCEPTION_CONTINUE_SEARCH' -or
     $stack -match 'TerminateProcess\(' -or
-    $entry -match '"/ENTRY:MyEntryPoint"(?s:.*?)WinMainCRTStartup') {
+    $entry -notmatch '(?s)#ifdef X64_STRESS_TEST\s+#pragma comment\(linker, "/ENTRY:MyEntryPoint"\)') {
     throw 'Exceptions must be allowed to reach the system WER handler without forced process termination.'
 }
 if ((Read-Source 'src\lang\texts.rc2') -match 'IDS_SALMON_' -or
