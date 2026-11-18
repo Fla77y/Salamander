@@ -3457,11 +3457,11 @@ try {
             try { $startupWaitChain = [SalamanderGuiWaitChain]::Describe($startupThread) }
             catch { $startupWaitChain = 'unavailable: ' + $_.Exception.Message }
         }
-        throw (("GUI startup failed: {0}; launched PID={1}; .NET MainWindowHandle=0x{2:X}; " +
+        $startupMessage = (("GUI startup failed: {0}; launched PID={1}; .NET MainWindowHandle=0x{2:X}; " +
             ".NET title='{3}'; process windows: {4}; startup wait chain: {5}") -f
             $startupFailure, $process.Id, $process.MainWindowHandle.ToInt64(),
-            $process.MainWindowTitle, $windowSummary, $startupWaitChain) +
-            "; isolated startup: $(Get-IsolatedStartupDiagnostics)"
+            $process.MainWindowTitle, $windowSummary, $startupWaitChain)
+        throw ($startupMessage + "; isolated startup: $(Get-IsolatedStartupDiagnostics)")
     }
     # A visible top-level window is not evidence that startup has finished.
     # Do not begin clipboard navigation or keyboard simulation until the
