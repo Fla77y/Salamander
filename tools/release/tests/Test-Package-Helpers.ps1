@@ -285,10 +285,10 @@ foreach ($diagnostic in $diagnostics) {
     # Startup diagnostics are formatted into a variable before additional
     # isolated-startup details are appended at the throw site.
     if ($diagnostic.Function -eq '<main>') {
-        $startupFormat = '(?s)\\$startupMessage\\s*=\\s*\\(\\(\\s*"' +
+        $startupFormat = '(?s)\$startupMessage\s*=\s*\(\(\s*"' +
                          [regex]::Escape($diagnostic.Prefix) +
-                         '.*?\\)\\s*-f\\s+.*?\\)'
-        $startupThrow = 'throw\\s*\\(\\$startupMessage\\s*\\+'
+                         '.*?\)\s*-f\s+.*?\)'
+        $startupThrow = 'throw\s*\(\$startupMessage\s*\+'
         if ($body -notmatch $startupFormat -or $body -notmatch $startupThrow) {
             throw 'GUI startup diagnostic must format its complete message before appending isolation details.'
         }
