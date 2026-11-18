@@ -93,3 +93,19 @@ if ($wer -notmatch 'RegistryHive\]::LocalMachine' -or
     throw 'LocalDumps must require explicit elevation, honor both registry views, and leave status read-only.'
 }
 Write-Host 'PASS: WER local dump configuration is explicit and never a startup side effect.'
+
+# Regression: VS 2026 Developer PowerShell may provide a valid MSBuild.exe
+# even when vswhere -requires Microsoft.Component.MSBuild returns no instance.
+# The isolated build runner must accept that verified environment and an
+# explicit path without loosening output isolation or selecting an older IDE.
+$buildRunnerPath = Join-Path $repo 'tools\release\tests\Invoke-WerBuildVerification.ps1'
+$buildRunner = [IO.File]::ReadAllText($buildRunnerPath)
+if ($buildRunner -notmatch '\[string\]\$MSBuildPath' -or
+    $buildRunner -notmatch 'VSINSTALLDIR' -or
+    $buildRunner -notmatch 'FileMajorPart' -or
+    $buildRunner -notmatch 'getProperty:OutDir,IntDir' -or
+    $buildRunner -notmatch 'FileAttributes\]::ReparsePoint') {
+    throw 'Isolated WER build must resolve and validate VS2026 MSBuild without relying exclusively on vswhere.'
+}
+Write-Host 'PASS: isolated WER build validates developer-shell or explicit MSBuild and keeps outputs private.'
+
