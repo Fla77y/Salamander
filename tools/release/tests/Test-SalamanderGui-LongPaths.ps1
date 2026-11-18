@@ -546,22 +546,88 @@ public static class SalamanderGuiNative
             throw new InvalidOperationException("Could not post CM_COPYFILES: " + Marshal.GetLastWin32Error());
     }
 
-    public static void ConfirmVerifiedLargeCopy(uint processId)
+    // MessageBoxW is owned by CFilesWindow::HWindow (a panel child), not
+    // necessarily by the enabled main HWND. Get-TestDialog cannot reliably
+    // identify this particular modal window.
+    private static bool IsOwnedLargeCopyDialog(IntPtr dialog, IntPtr mainWindow)
     {
-        IntPtr dialog = IntPtr.Zero;
+        IntPtr owner = GetWindow(dialog, 4); // GW_OWNER
+        return owner == mainWindow ||
+               (owner != IntPtr.Zero && GetAncestor(owner, 2) == mainWindow) ||
+               GetAncestor(dialog, 3) == mainWindow; // GA_ROOTOWNER
+    }
+
+    public static IntPtr FindVerifiedLargeCopyConfirmation(
+        IntPtr mainWindow, uint processId, string expectedName,
+        string expectedTargetDirectory)
+    {
+        if (mainWindow == IntPtr.Zero || processId == 0 ||
+            String.IsNullOrEmpty(expectedName) ||
+            String.IsNullOrEmpty(expectedTargetDirectory))
+            throw new InvalidOperationException("Large copy confirmation identity is missing");
+        uint mainPid;
+        if (GetWindowThreadProcessId(mainWindow, out mainPid) == 0 ||
+            mainPid != processId ||
+            ClassName(mainWindow) != "SalamanderMainWindowVer25")
+            throw new InvalidOperationException("Unverified main window for Unicode copy");
+
+        IntPtr found = IntPtr.Zero;
         foreach (TopLevelWindow window in GetProcessWindows(processId))
         {
-            if (!window.Visible || ClassName(window.Handle) != "#32770" || window.Title != "Unicode copy")
+            if (!window.Visible || ClassName(window.Handle) != "#32770" ||
+                window.Title != "Unicode copy" ||
+                !IsOwnedLargeCopyDialog(window.Handle, mainWindow))
                 continue;
-            if (dialog != IntPtr.Zero)
-                throw new InvalidOperationException("Multiple Unicode copy confirmations");
-            dialog = window.Handle;
+
+            bool matchingPrompt = false;
+            WindowCallback callback = (child, ignored) =>
+            {
+                uint childPid;
+                if (GetWindowThreadProcessId(child, out childPid) == 0 ||
+                    childPid != processId || ClassName(child) != "Static")
+                    return true;
+
+                // GetWindowTextW cannot read a foreign process's child
+                // control. WM_GETTEXT is system-marshalled across processes;
+                // keep it bounded even if the native UI has stopped pumping.
+                StringBuilder text = new StringBuilder(4096);
+                IntPtr result;
+                if (SendMessageTimeoutReadText(
+                        child, 0x000D, new UIntPtr(4096),
+                        text, 0x0002, 1000, out result) == IntPtr.Zero)
+                    return true;
+                string message = text.ToString();
+                if (message.StartsWith(
+                        "Copy the Unicode file to the other panel?",
+                        StringComparison.Ordinal) &&
+                    message.Contains(expectedName, StringComparison.Ordinal) &&
+                    message.Contains("Destination: " + expectedTargetDirectory,
+                                     StringComparison.Ordinal) &&
+                    message.Contains("The existing background copy worker will be used.",
+                                     StringComparison.Ordinal))
+                    matchingPrompt = true;
+                return true;
+            };
+            if (!EnumChildWindows(window.Handle, callback, IntPtr.Zero))
+                throw new InvalidOperationException("Cannot enumerate Unicode copy dialog controls");
+            if (!matchingPrompt) continue;
+
+            if (found != IntPtr.Zero)
+                throw new InvalidOperationException("Multiple verified Unicode copy confirmations");
+            found = window.Handle;
         }
-        if (dialog == IntPtr.Zero)
-            throw new InvalidOperationException("Owned Unicode copy confirmation unavailable");
-        IntPtr button = VerifiedChild(dialog, processId, 1);
-        if (!PostMessageW(dialog, 0x0111, new UIntPtr(1), button))
-            throw new InvalidOperationException("Could not confirm owned Unicode copy");
+        return found;
+    }
+
+    public static void ConfirmVerifiedLargeCopy(
+        IntPtr mainWindow, uint processId, IntPtr dialog,
+        string expectedName, string expectedTargetDirectory)
+    {
+        if (dialog == IntPtr.Zero ||
+            FindVerifiedLargeCopyConfirmation(
+                mainWindow, processId, expectedName, expectedTargetDirectory) != dialog)
+            throw new InvalidOperationException("Unicode copy confirmation changed before OK");
+        PostOwnedCopyDialogButton(dialog, processId, 1); // IDOK of verified dialog
     }
 
     public static bool MatchesRequestedCopyDialogText(string actual, string requested)
@@ -1525,14 +1591,31 @@ function Test-LargeUnicodeCopy {
     Assert-True ((Read-FocusedFullname -AllowVerifiedBackground) -ceq $largeCopySourceFile) '32-MiB Unicode source identity verified'
     # Act
     [SalamanderGuiNative]::PostVerifiedLargeCopyCommand($mainWindowHandle, [uint32]$process.Id)
-    Wait-Until {
-        $dialog = Get-TestDialog
-        if ($dialog -match 'legacy ANSI file-operation engine|16.*MiB|synchronous transfer limit|native Unicode file operation') {
-            throw "Large Unicode F5 refused by the legacy transfer guard: $dialog"
-        }
-        return $dialog -match 'Copy the Unicode file to the other panel'
-    } '32-MiB Unicode copy confirmation'
-    [SalamanderGuiNative]::ConfirmVerifiedLargeCopy([uint32]$process.Id)
+    $confirmation = @{ Window = [IntPtr]::Zero }
+    try {
+        Wait-Until {
+            $dialog = Get-TestDialog
+            if ($dialog -match 'legacy ANSI file-operation engine|16.*MiB|synchronous transfer limit|native Unicode file operation') {
+                throw "Large Unicode F5 refused by the legacy transfer guard: $dialog"
+            }
+            $confirmation.Window = [SalamanderGuiNative]::FindVerifiedLargeCopyConfirmation(
+                $mainWindowHandle, [uint32]$process.Id, $utfName, $largeCopyTargetDirectory)
+            return $confirmation.Window -ne [IntPtr]::Zero
+        } '32-MiB Unicode copy confirmation'
+    }
+    catch {
+        $reason = $_.Exception.Message
+        $windows = Get-ProcessWindowSummary -OwnerProcessId ([uint32]$process.Id)
+        $foreground = Get-ForegroundWindowSummary
+        $blockingDialog = Get-TestDialog
+        throw ("Large Unicode F5 confirmation unavailable: {0}; windows=[{1}]; " +
+               "foreground=[{2}]; generic dialog='{3}'. No second F5 command was sent." -f
+               $reason, $windows, $foreground, $blockingDialog)
+    }
+    [SalamanderGuiNative]::ConfirmVerifiedLargeCopy(
+        $mainWindowHandle, [uint32]$process.Id, $confirmation.Window,
+        $utfName, $largeCopyTargetDirectory)
+    Write-Host 'PASS: verified owned Unicode copy confirmation retains complete UTF-16 identity'
     $observed = @{ Window = [IntPtr]::Zero }
     if ($LargeUnicodeCopyCase -eq 'Collision' -or $LargeUnicodeCopyCase -eq 'LockedSource') {
         $controlId = if ($LargeUnicodeCopyCase -eq 'Collision') { 181 } else { 171 }
