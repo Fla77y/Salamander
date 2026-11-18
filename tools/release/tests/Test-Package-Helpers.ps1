@@ -282,6 +282,18 @@ foreach ($diagnostic in $diagnostics) {
     $formatPattern = '(?s)throw\s+\(\(\s*"' +
                      [regex]::Escape($diagnostic.Prefix) + '.*?\)\s*-f\s'
     # Assert: the full diagnostic is formatted before it is thrown.
+    # Startup diagnostics are formatted into a variable before additional
+    # isolated-startup details are appended at the throw site.
+    if ($diagnostic.Function -eq '<main>') {
+        $startupFormat = '(?s)\\$startupMessage\\s*=\\s*\\(\\(\\s*"' +
+                         [regex]::Escape($diagnostic.Prefix) +
+                         '.*?\\)\\s*-f\\s+.*?\\)'
+        $startupThrow = 'throw\\s*\\(\\$startupMessage\\s*\\+'
+        if ($body -notmatch $startupFormat -or $body -notmatch $startupThrow) {
+            throw 'GUI startup diagnostic must format its complete message before appending isolation details.'
+        }
+        continue
+    }
     if ([string]::IsNullOrEmpty($body) -or $body -notmatch $formatPattern) {
         throw "GUI diagnostics must format the entire error message in $($diagnostic.Function): $($diagnostic.Prefix)"
     }
