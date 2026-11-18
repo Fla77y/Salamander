@@ -10,7 +10,6 @@
 #include "cfgdlg.h"
 #include "dialogs.h"
 #include "tasklist.h"
-#include "salmoncl.h"
 
 #ifndef CALLSTK_DISABLE
 
@@ -59,129 +58,13 @@ CCallStack MainThreadStack; // ensure the call-stack object is created before co
 
 //
 // ****************************************************************************
-// PreventSetUnhandledExceptionFilter
-//
-
-#if defined _M_X64 || defined _M_IX86
-LPTOP_LEVEL_EXCEPTION_FILTER WINAPI
-MyDummySetUnhandledExceptionFilter(
-    LPTOP_LEVEL_EXCEPTION_FILTER lpTopLevelExceptionFilter)
-{
-    return NULL;
-}
-#else
-#error "This code works only for x86 and x64!"
-#endif
-
-BOOL PreventSetUnhandledExceptionFilterAux()
-{
-    HMODULE hKernel32 = LoadLibrary(_T("kernel32.dll"));
-    if (hKernel32 == NULL)
-        return FALSE;
-    void* pOrgEntry = GetProcAddress(hKernel32, "SetUnhandledExceptionFilter");
-    if (pOrgEntry == NULL)
-        return FALSE;
-
-    DWORD dwOldProtect = 0;
-    SIZE_T jmpSize = 5;
-#ifdef _M_X64
-    jmpSize = 13;
-#endif
-    BOOL bProt = VirtualProtect(pOrgEntry, jmpSize,
-                                PAGE_EXECUTE_READWRITE, &dwOldProtect);
-    BYTE newJump[20];
-    void* pNewFunc = &MyDummySetUnhandledExceptionFilter;
-#ifdef _M_IX86
-    DWORD dwOrgEntryAddr = (DWORD)pOrgEntry;
-    dwOrgEntryAddr += jmpSize; // add 5 for 5 op-codes for jmp rel32
-    DWORD dwNewEntryAddr = (DWORD)pNewFunc;
-    DWORD dwRelativeAddr = dwNewEntryAddr - dwOrgEntryAddr;
-    // JMP rel32: Jump near, relative, displacement relative to next instruction.
-    newJump[0] = 0xE9; // JMP rel32
-    memcpy(&newJump[1], &dwRelativeAddr, sizeof(pNewFunc));
-#elif _M_X64
-    // We must use R10 or R11 because these are "scratch" registers
-    // that do not need to be preserved across function calls.
-    // For more information, see: Register Usage for x64 64-Bit
-    // http://msdn.microsoft.com/en-us/library/ms794547.aspx
-    // Thanks to Matthew Smith.
-    newJump[0] = 0x49; // MOV R11, ...
-    newJump[1] = 0xBB; // ...
-    memcpy(&newJump[2], &pNewFunc, sizeof(pNewFunc));
-    //pCur += sizeof (ULONG_PTR);
-    newJump[10] = 0x41; // JMP R11, ...
-    newJump[11] = 0xFF; // ...
-    newJump[12] = 0xE3; // ...
-#endif
-    SIZE_T bytesWritten;
-    BOOL bRet = WriteProcessMemory(GetCurrentProcess(),
-                                   pOrgEntry, newJump, jmpSize, &bytesWritten);
-
-    if (bProt != FALSE)
-    {
-        DWORD dwBuf;
-        VirtualProtect(pOrgEntry, jmpSize, dwOldProtect, &dwBuf);
-        // Does it make sense? http://chadaustin.me/2009/03/disabling-functions/
-        //FlushInstructionCache(GetCurrentProcess(), pOrgEntry, 20);
-    }
-    return bRet;
-}
-
-BOOL PreventSetUnhandledExceptionFilter()
-{
-    __try
-    {
-        PreventSetUnhandledExceptionFilterAux();
-        return TRUE;
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER)
-    {
-        TRACE_E("PreventSetUnhandledExceptionFilterAux failed!");
-        return FALSE;
-    }
-}
-
-//
-// ****************************************************************************
 // CCallStack
 //
-
-struct CTBRData
-{
-    HANDLE TerminateEvent;
-    HANDLE Event;
-    HANDLE EventProcessed;
-    EXCEPTION_POINTERS* Exception;
-    BOOL ExitProcess;
-    BOOL EventProcessedRet;
-    DWORD CurrentThreadID;
-    DWORD ShellExtCrashID; // if not equal to -1, it indicates an exception during shell execute
-    const char* IconOvrlsHanName;
-    const char* BugReportPath;
-};
-
-CTBRData TBRData = {0};
-HANDLE BugReportThread = NULL;
-DWORD BugReportThreadID;
 
 void BenchmarkCallStkTestFunction(int counter, const char* string)
 {
     CALL_STACK_MESSAGE3("BenchmarkCallStkTestFunction(%d, %s)", counter, string);
 }
-
-LONG WINAPI TopLevelExceptionFilter(LPEXCEPTION_POINTERS exception)
-{
-    int ret = CCallStack::HandleException(exception);
-    if (ret == EXCEPTION_EXECUTE_HANDLER) // user clicked Terminate
-    {
-        TRACE_I("TopLevelExceptionFilter: calling ExitProcess(1).");
-        //    ExitProcess(1);
-        TerminateProcess(GetCurrentProcess(), 1); // stronger exit (this still calls something)
-    }
-    return ret;
-}
-
-LPTOP_LEVEL_EXCEPTION_FILTER OldUnhandledExceptionFilter = NULL;
 
 CCallStack::CCallStack(BOOL dontSuspend)
 {
@@ -229,59 +112,6 @@ CCallStack::CCallStack(BOOL dontSuspend)
     Skipped = 0;
     Reset();
 
-    if (FirstCallstack)
-    {
-        // Create a thread for bug report generation; in PROTECH/VKO, I observed
-        // during infinite recursion that the bug report was generated only if it
-        // was created in the helper thread
-        TBRData.TerminateEvent = NOHANDLES(CreateEvent(NULL, TRUE, FALSE, NULL));
-        TBRData.Event = NOHANDLES(CreateEvent(NULL, TRUE, FALSE, NULL));
-        TBRData.EventProcessed = NOHANDLES(CreateEvent(NULL, TRUE, FALSE, NULL));
-        if (TBRData.TerminateEvent == NULL || TBRData.Event == NULL || TBRData.EventProcessed == NULL)
-            TRACE_E("Error during creating events.");
-        else // start the thread only if the events were created successfully
-        {
-            BugReportThread = NOHANDLES(CreateThread(NULL, 0, ThreadBugReportF, &TBRData, 0, &BugReportThreadID));
-            if (BugReportThread == NULL)
-                TRACE_E("CreateThread failed!");
-            else
-                SetThreadPriority(BugReportThread, THREAD_PRIORITY_ABOVE_NORMAL);
-        }
-        if (BugReportThread == NULL)
-        {
-            TRACE_E("Unable to start BugReport thread. Error: " << _sys_errlist[errno]);
-        }
-
-        /*
-    else
-    {
-      showInfo = FALSE;
-      WaitForSingleObject(BugReport, INFINITE);  // wait for the thread to finish
-      NOHANDLES(CloseHandle(BugReport));
-    }
-    */
-
-        OldUnhandledExceptionFilter = SetUnhandledExceptionFilter(TopLevelExceptionFilter);
-
-        // Try to disable the unhandled exception filter for subsequent calls.
-        // If a DLL (plugin, shell extension) that uses a different RTL is loaded
-        // into the Salamander process, that RTL takes over this filter during its
-        // initialization. Also, since MSVC 2005, various sanity checks no longer
-        // throw exceptions, but instead display a message and call
-        // UnhandledExceptionFilter(), which opens the Watson dialog.
-        // This used to make Salamander crash without a bug report, for example
-        // with the TortoiseSVN shell extension.
-        // The following call should let us catch all unhandled crashes, including
-        // MSVC 2005 sanity checks.
-        //
-        // More on this topic: "A proposal to make Dr.Watson invocation configurable":
-        // http://connect.microsoft.com/VisualStudio/feedback/ViewFeedback.aspx?FeedbackID=101337
-        // and two hard-core solutions:
-        // http://www.debuginfo.com/articles/debugfilters.html
-        // http://blog.kalmbachnet.de/?postid=75
-        // 3/2012 - x64 update: http://blog.kalmbach-software.de/2008/04/02/unhandled-exceptions-in-vc8-and-above-for-x86-and-x64/
-        PreventSetUnhandledExceptionFilter();
-    }
 
 #if (defined(_DEBUG) || defined(CALLSTK_MEASURETIMES)) && !defined(CALLSTK_DISABLEMEASURETIMES)
     if (CCallStack::SavedPerfFreq.QuadPart == 1)
@@ -400,20 +230,6 @@ CCallStack::~CCallStack()
     HANDLES(LeaveCriticalSection(&Section));
     if (FirstCallstack)
     {
-        SetUnhandledExceptionFilter(OldUnhandledExceptionFilter);
-
-        if (BugReportThread != NULL)
-        {
-            // when this thread terminates, execution reaches this code once more because CCallStack also exits for this thread
-            SetEvent(TBRData.TerminateEvent);           // terminate the bug report thread
-            WaitForSingleObject(BugReportThread, 1000); // wait at most one second for the thread to finish
-            NOHANDLES(CloseHandle(BugReportThread));
-            BugReportThread = NULL;
-            NOHANDLES(CloseHandle(TBRData.TerminateEvent));
-            NOHANDLES(CloseHandle(TBRData.Event));
-            NOHANDLES(CloseHandle(TBRData.EventProcessed));
-        }
-
         HANDLES(DeleteCriticalSection(&Section));
         SectionOK = FALSE;
         HANDLES(TlsFree(TlsIndex));
@@ -646,228 +462,12 @@ MENU_TEMPLATE_ITEM MsgBoxButtons[] =
     }
 }
 
-DWORD WINAPI
-CCallStack::ThreadBugReportF(void* param)
+int CCallStack::HandleException(EXCEPTION_POINTERS*, DWORD, const char*)
 {
-    CCallStack stack(TRUE); // so there is somewhere to store texts from called functions
-    CALL_STACK_MESSAGE1("ThreadBugReportF()");
-
-    SetThreadNameInVC("ThreadBugReport");
-
-    CTBRData* data = (CTBRData*)param;
-
-    HANDLE events[2];
-    events[0] = data->TerminateEvent;
-    events[1] = data->Event;
-
-    BOOL loop = TRUE;
-    while (loop)
-    {
-        DWORD waitRet = WaitForMultipleObjects(2, events, FALSE, INFINITE);
-        switch (waitRet)
-        {
-        case WAIT_OBJECT_0 + 0: // TerminateEvent
-        {
-            loop = FALSE;
-            break;
-        }
-
-        case WAIT_OBJECT_0 + 1: // tasklist->Event
-        {
-            // after finishing the thread must wait for another command
-            ResetEvent(data->Event);
-
-            // save the error records to disk
-            BOOL ret = CreateBugReportFile(data->Exception, data->CurrentThreadID, data->ShellExtCrashID, data->BugReportPath);
-
-            if (HLanguage != NULL) // we need the SLG module already loaded to display the message box
-            {
-                if (data->IconOvrlsHanName != NULL)
-                    InformAboutIconOvrlsHanCrash(data->IconOvrlsHanName);
-
-                if (data->ShellExtCrashID != -1)
-                {
-                    // crash shell extension
-                    MSGBOXEX_PARAMS params;
-                    memset(&params, 0, sizeof(params));
-                    params.HParent = NULL;
-                    params.Flags = MSGBOXEX_OK | MSGBOXEX_ICONINFORMATION | MB_SETFOREGROUND;
-                    params.Caption = SALAMANDER_TEXT_VERSION;
-                    params.Text = LoadStr(IDS_SHELLEXTCRASH);
-                    SalMessageBoxEx(&params);
-                }
-            }
-            data->ExitProcess = TRUE; // terminate the thread
-
-            data->EventProcessedRet = ret;
-            SetEvent(data->EventProcessed);
-            break;
-        }
-
-        default: // this should not happen
-        {
-            TRACE_E("Wrong event!");
-            Sleep(50); // to avoid consuming CPU
-            break;
-        }
-        }
-    }
-    return 0;
-}
-
-void PrintBugReportLine(void* param, const char* txt, BOOL tab)
-{
-    static int called = 0;
-    static DWORD d;
-    if (tab)
-        WriteFile((HANDLE)param, "  ", 2, &d, NULL);
-    WriteFile((HANDLE)param, txt, lstrlen(txt), &d, NULL);
-    WriteFile((HANDLE)param, "\r\n", 2, &d, NULL);
-    if (++called % 5 == 0)
-        FlushFileBuffers((HANDLE)param);
-}
-
-BOOL CCallStack::CreateBugReportFile(EXCEPTION_POINTERS* Exception, DWORD threadID, DWORD ShellExtCrashID, const char* bugReportFileName)
-{
-    // try to create the bug report file; the fewer library functions we call,
-    // the lower the chance this routine crashes (the libraries might be corrupted
-    // -> Salamander is crashing for some reason anyway)
-    BOOL ret = TRUE;
-
-    __try
-    {
-        {
-            // create the file
-            static HANDLE file;
-            file = NOHANDLES(CreateFile(bugReportFileName, GENERIC_WRITE, 0, NULL, CREATE_NEW,
-                                        FILE_ATTRIBUTE_NORMAL, NULL));
-            if (file != INVALID_HANDLE_VALUE)
-            {
-                __try
-                {
-                    PrintBugReportLine((void*)file, "Open Salamander Bug Report File", FALSE);
-                    PrintBugReportLine((void*)file, "", FALSE);
-
-#ifndef CALLSTK_DISABLE
-                    static CCallStack* stack;
-                    stack = CCallStack::GetThis();
-                    static BOOL oldDontSuspend;
-                    if (stack != NULL)
-                    {
-                        oldDontSuspend = stack->DontSuspend;
-                        stack->DontSuspend = TRUE; // so call-stacked functions can be called as well
-                    }
-#endif // CALLSTK_DISABLE
-                    CCallStack::PrintBugReport(Exception, threadID, ShellExtCrashID, PrintBugReportLine, (void*)file);
-#ifndef CALLSTK_DISABLE
-                    if (stack != NULL)
-                        stack->DontSuspend = oldDontSuspend;
-#endif // CALLSTK_DISABLE
-                }
-                __except (EXCEPTION_EXECUTE_HANDLER)
-                {
-                    PrintBugReportLine((void*)file, "(exception in CCallStack::CreateBugReportFile)", FALSE);
-                    ret = FALSE;
-                }
-
-                NOHANDLES(CloseHandle(file));
-            }
-        }
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER)
-    {
-        ret = FALSE;
-    }
-
-    return ret;
-}
-
-int CCallStack::HandleException(EXCEPTION_POINTERS* e, DWORD shellExtCrashID, const char* iconOvrlsHanName)
-{
-    // WARNING - an exception occurred and before signaling salmon.exe (to generate
-    // the minidump), we should call only the absolute minimum API (the system may be
-    // in critical sections, with even more restrictions than inside DllMain)
-
-    // in the DEBUG version we check for a debugger; in SDK/RELEASE version we rather skip this test
-#if defined(_DEBUG) && !defined(ENABLE_BUGREPORT_DEBUGGING)
-    if (IsDebuggerPresent())              // if the software is currently being debugged, showing the Bug Report dialog makes no sense
-        return EXCEPTION_CONTINUE_SEARCH; // propagate the exception further; the debugger will catch it
-#endif
-
-    static char bugReportPath[MAX_PATH];
-
-    // request salmon to generate the minidump
-    SalmonFireAndWait(e, bugReportPath);
-
-    // Although delayed after the minidump, it is more reliable, it increases the chance of having a valid dump
-    SalamanderExceptionTime = GetTickCount();
-
-    static DWORD curThreadID;
-    curThreadID = GetCurrentThreadId();
-    TRACE_I("Exception 0x" << std::hex << e->ExceptionRecord->ExceptionCode << " in address " << e->ExceptionRecord->ExceptionAddress << ", thread ID = " << std::dec << curThreadID);
-
-    // Wait until our exception can be processed
-    while (CCallStack::ExceptionExists)
-        Sleep(1000);
-    CCallStack::ExceptionExists = TRUE; // our exception is being handled now
-
-    /*  // Opening dialog windows freezes, so this cannot be used.
-  // First we suspend the other threads so their call-stacks remain usable
-  int i;
-  for (i = 0; i < CCallStack::CallStacks.Count; i++)
-  {
-    CCallStack *stack = CCallStack::CallStacks[i];
-    if (stack->ThreadID != curThreadID && stack->ThreadHandle != NULL)
-    {
-      SuspendThread(stack->ThreadHandle);
-    }
-  }
-*/
-
-    TBRData.Exception = e;
-    TBRData.ExitProcess = FALSE; // unnecessary, output parameter, but ...
-    TBRData.CurrentThreadID = curThreadID;
-    TBRData.ShellExtCrashID = shellExtCrashID;
-    TBRData.IconOvrlsHanName = iconOvrlsHanName;
-    TBRData.BugReportPath = bugReportPath;
-
-    // if the bug-report thread is running, attempt generation there
-    BOOL reportInThisThread = TRUE;
-
-    if (BugReportThread != NULL)
-    {
-        ResetEvent(TBRData.EventProcessed);
-        SetEvent(TBRData.Event);
-        DWORD waitRet = WaitForSingleObject(TBRData.EventProcessed,
-#if defined(_DEBUG) && defined(ENABLE_BUGREPORT_DEBUGGING)
-                                            INFINITE); // wait, otherwise the software terminates during debugging step-by-step
-#else
-                                            6000); // give the background thread 6 seconds to generate the report
-#endif
-        if (waitRet != WAIT_OBJECT_0)
-            reportInThisThread = TRUE; // on error or timeout, we will try to generate the report here as well
-        else
-            reportInThisThread = TBRData.EventProcessedRet == FALSE; // if generation failed in the thread, try here too
-    }
-
-    // if the bug-report thread did not run or failed to generate the report, we will try again in this thread
-    if (reportInThisThread)
-    {
-        // Concurrent generation of two reports caused issues (with a 200 ms
-        // timeout both .BUG and .DMP were incomplete) - suspend the background thread
-        if (BugReportThread)
-            SuspendThread(BugReportThread);
-
-        // Try to generate the report in this thread
-        CreateBugReportFile(e, curThreadID, shellExtCrashID, bugReportPath); // create an on-disk record of the error
-
-        if (BugReportThread)
-            ResumeThread(BugReportThread);
-    }
-
-    TerminateProcess(GetCurrentProcess(), 1); // stronger exit (this still performs some calls)
-    // execution never reaches this point
-    return EXCEPTION_CONTINUE_SEARCH; // pass the exception on ... crash or debugger
+    // Existing SEH call sites use this return value as their filter expression.
+    // Do not swallow the exception or terminate the process here: Windows
+    // Error Reporting needs the original, unhandled exception to create a dump.
+    return EXCEPTION_CONTINUE_SEARCH;
 }
 
 #if (defined(_DEBUG) || defined(CALLSTK_MEASURETIMES)) && !defined(CALLSTK_DISABLEMEASURETIMES)

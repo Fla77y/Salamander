@@ -228,7 +228,6 @@ This project welcomes contributions to build and enhance Open Salamander!
 \src\plugins     Plugins source code
 \src\reglib      Access to Windows Registry files
 \src\res         Image resources
-\src\salmon      Crash detecting and reporting
 \src\salopen     Open files helper
 \src\salspawn    Process spawning helper
 \src\setup       Installer and uinstaller

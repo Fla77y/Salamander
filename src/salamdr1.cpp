@@ -73,20 +73,17 @@ extern "C"
 }
 #include "salshlib.h"
 #include "shiconov.h"
-#include "salmoncl.h"
 #include "jumplist.h"
 #include "usermenu.h"
 #include "execute.h"
 #include "drivelst.h"
 
-#pragma comment(linker, "/ENTRY:MyEntryPoint") // we want a custom entry point for the application
-
 #pragma comment(lib, "UxTheme.lib")
 
-// Make the application's original entry point available.
-extern "C" int WinMainCRTStartup();
-
 #ifdef X64_STRESS_TEST
+
+#pragma comment(linker, "/ENTRY:MyEntryPoint")
+extern "C" int WinMainCRTStartup();
 
 #define X64_STRESS_TEST_ALLOC_COUNT 1000
 
@@ -120,32 +117,13 @@ void X64StressTestAlloc()
     delete testNew;
 }
 
-#endif //X64_STRESS_TEST
-// our own entry point, which we told the linker to use via pragma
+// Only the explicit allocation stress build still needs a pre-CRT entry point.
 int MyEntryPoint()
 {
-#ifdef X64_STRESS_TEST
-    // Consume the lower 4 GB of address space so later allocations get pointers larger than a DWORD.
     X64StressTestAlloc();
-#endif //X64_STRESS_TEST
-
-    int ret = 1; // error
-
-    // Start Salmon so it can catch as many of our crashes as possible
-    if (SalmonInit())
-    {
-        // call the application's original entry point to start the program
-        ret = WinMainCRTStartup();
-    }
-    else
-        MessageBox(NULL, "Open Salamander Bug Reporter (salmon.exe) initialization has failed. Please reinstall Open Salamander.",
-                   SALAMANDER_TEXT_VERSION, MB_OK | MB_ICONSTOP);
-
-    // the debugger no longer gets this far; we crash in the RTL (tested with VC 2008 and our RTL)
-
-    // done
-    return ret;
+    return WinMainCRTStartup();
 }
+#endif // X64_STRESS_TEST
 
 BOOL SalamanderBusy = TRUE;       // Is Salamander busy?
 DWORD LastSalamanderIdleTime = 0; // GetTickCount() value from when SalamanderBusy last changed to TRUE
@@ -3879,9 +3857,6 @@ FIND_NEW_SLG_FILE:
 
     strcpy(Configuration.LoadedSLGName, Configuration.SLGName);
 
-    // Let the already running Salmon load the selected SLG (so far it used a provisional one).
-    SalmonSetSLG(Configuration.SLGName);
-
     // Set localized messages in the ALLOCHAN module (it provides out-of-memory messages for the user, a Retry button,
     // and if everything fails, even Cancel to terminate the application).
     SetAllocHandlerMessage(LoadStr(IDS_ALLOCHANDLER_MSG), SALAMANDER_TEXT_VERSION,
@@ -4385,9 +4360,6 @@ FIND_NEW_SLG_FILE:
 
                     // Tell the process list that we are running and have a main window (so it can activate us in OnlyOneInstance mode)
                     TaskList.SetProcessState(PROCESS_STATE_RUNNING, MainWindow->HWindow);
-
-                    // Ask Salmon to check whether there are any old bug reports on disk that need to be sent.
-                    SalmonCheckBugs();
 
                     if (IsSLGIncomplete[0] != 0 && Configuration.ShowSLGIncomplete)
                         PostMessage(MainWindow->HWindow, WM_USER_SLGINCOMPLETE, 0, 0);

@@ -240,8 +240,11 @@ function New-DistributionStage {
     Assert-ProductionBinary -Path (Join-Path $BuiltDirectory 'salamand.exe')
     if (Test-Path -LiteralPath $Stage) { Remove-Item -LiteralPath $Stage -Recurse -Force }
     New-Item -ItemType Directory -Path $Stage -Force | Out-Null
+    # Incremental build outputs can retain deleted reporter binaries.
+    # Never include them in a portable archive or installer.
     $copyArgs = @($BuiltDirectory, $Stage, '/E', '/XD', 'Intermediate',
-                  '/XF', '*.obj', '*.pch', '*.idb', '*.ilk', '*.tlog', '*.lastbuildstate')
+                  '/XF', '*.obj', '*.pch', '*.idb', '*.ilk', '*.tlog', '*.lastbuildstate',
+                  'salmon.exe', 'salmon.pdb', 'salmon.lib', 'salmon.exp')
     if ($Configuration -eq 'Release') {
         # Keep private debug symbols and linker intermediates in the original
         # build output, not in end-user archives or installers. Developer-only
@@ -256,6 +259,9 @@ function New-DistributionStage {
 
 function Test-DistributionStage {
     param([string]$Stage, [string]$Configuration, [string]$DumpbinExe)
+    if (Test-Path -LiteralPath (Join-Path $Stage 'utils\salmon.exe') -PathType Leaf) {
+        throw 'Distribution contains the removed SalMon crash reporter.'
+    }
     # Version 5.2 promises native WIC PictView. Its plug-in, language
     # resource, and native EXIF sidecar must actually ship in both variants.
     foreach ($required in @('salamand.exe', 'help\english\salamand.chm',
