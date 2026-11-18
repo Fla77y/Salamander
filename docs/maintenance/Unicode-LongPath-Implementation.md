@@ -517,3 +517,25 @@ test executable to recheck F2, F6 and F8; the existing global F5/F6/F8
 confirmation inputs are not newly validated by this F2 fix. Preserve any
 failure artifacts for review and do not classify either gap as closed until
 the corresponding Windows acceptance passes.
+
+### SalMon retirement and WER migration (18 November 2026)
+
+The previous successful builds of `salmon` above are **historical evidence**;
+the SalMon project, client bridge, upload and reporter UI are now removed.
+Core startup no longer creates or waits for `utils\salmon.exe`. The
+application uses the standard CRT entry point in ordinary builds.
+`CCallStack::HandleException` passes faults through to the debugger/system
+handler; the old top-level exception-filter patching and forced termination
+were removed. WER local crash dumps are optional and require an explicit
+elevated HKLM application-specific configuration. See
+[`WER-Local-Crash-Dumps.md`](WER-Local-Crash-Dumps.md).
+
+The isolated Debug x86 screenshot showed a missing SalMon reporter while
+an instrumented `salamand.vcxproj`-only build was being used. That build did
+not include the prior `utils\salmon.exe` dependency. The screenshot is thus
+**not** evidence of a native Unicode-copy failure. The new WER-enabled
+build and all Windows GUI scenarios still require fresh acceptance tests.
+No solution build, full package/installer verification, controlled fault
+or GUI test was run by the GitHub-only assistant; source-level checks are
+not substitutes. WER crash dumps and the existing opt-in GUI hang dumps
+cover different failure classes.

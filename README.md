@@ -211,6 +211,15 @@ checked before compilation, and production binaries are not replaced. The
 other management actions retain their existing output locations. A failed
 precondition, missing dependency or failed case aborts the suite with an error.
 
+### Native crash reporting (Windows Error Reporting)
+
+The legacy SalMon executable, upload dialog and custom crash interception have
+been removed. Windows Error Reporting handles unhandled crashes. Optional local
+minidump storage is deliberately configured only by an elevated, explicit
+developer action; no registry settings are changed on normal startup.
+See [WER local crash dump setup](docs/maintenance/WER-Local-Crash-Dumps.md).
+The existing GUI hang-dump facility remains a separate explicit opt-in.
+
 ### Contributing
 
 This project welcomes contributions to build and enhance Open Salamander!
