@@ -914,8 +914,12 @@ $startupUpgradePrefix = $driverText.Substring(
     [Math]::Max(0, $startupUpgradeStart - 700),
     [Math]::Min(700, $startupUpgradeStart))
 $startupDiag = (Get-FunctionSource 'Get-IsolatedStartupDiagnostics').Extent.Text
-$mainCatch = $driverText.Substring(
-    $driverText.LastIndexOf("catch {\n    Write-Warning \"GUI integration FAILED:", [StringComparison]::Ordinal))
+$mainCatchMatch = [regex]::Match(
+    $driverText, '(?s)catch \{\r?\n    Write-Warning "GUI integration FAILED:.*')
+if (-not $mainCatchMatch.Success) {
+    throw 'Main GUI failure cleanup/diagnostic handler is missing.'
+}
+$mainCatch = $mainCatchMatch.Value
 if ($startupUpgradePrefix -notmatch '\$process\.Refresh\(\)' -or
     $startupUpgradePrefix -notmatch '\$process\.HasExited' -or
     $startupDiag -notmatch 'Configuration' -or
