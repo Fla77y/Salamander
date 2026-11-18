@@ -585,6 +585,105 @@ public static class SalamanderGuiNative
         return found;
     }
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetAncestor(IntPtr window, uint flags);
+    [DllImport("user32.dll", EntryPoint = "SendMessageTimeoutW",
+               CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr SendMessageTimeoutReadText(
+        IntPtr window, uint message, UIntPtr length, StringBuilder buffer,
+        uint flags, uint timeoutMilliseconds, out IntPtr result);
+    [DllImport("user32.dll", EntryPoint = "SendMessageTimeoutW",
+               CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern IntPtr SendMessageTimeoutWriteText(
+        IntPtr window, uint message, UIntPtr unused, string text,
+        uint flags, uint timeoutMilliseconds, out IntPtr result);
+
+    private static string ReadQuickRenameText(IntPtr control)
+    {
+        StringBuilder text = new StringBuilder(260);
+        IntPtr result;
+        if (SendMessageTimeoutReadText(control, 0x000D, new UIntPtr(260),
+                                       text, 0x0002, 5000, out result) == IntPtr.Zero)
+            throw new InvalidOperationException(
+                "Quick Rename WM_GETTEXT did not complete: " + Marshal.GetLastWin32Error());
+        return text.ToString();
+    }
+
+    // F2 uses the existing CCopyMoveDialog (not the separate inline rename
+    // edit). Its ComboBox IDE_PATH=210 and subject IDS_SUBJECT=209 must both
+    // belong to the single visible modal dialog owned by our verified main.
+    public static IntPtr FindVerifiedQuickRenameDialog(
+        IntPtr mainWindow, uint processId, string expectedName)
+    {
+        uint mainPid;
+        if (mainWindow == IntPtr.Zero || processId == 0 ||
+            String.IsNullOrEmpty(expectedName) ||
+            GetWindowThreadProcessId(mainWindow, out mainPid) == 0 ||
+            mainPid != processId ||
+            ClassName(mainWindow) != "SalamanderMainWindowVer25")
+            throw new InvalidOperationException("Unverified Quick Rename main window");
+
+        IntPtr found = IntPtr.Zero;
+        foreach (TopLevelWindow window in GetProcessWindows(processId))
+        {
+            if (!window.Visible || ClassName(window.Handle) != "#32770" ||
+                window.Title != "Quick Rename")
+                continue;
+            IntPtr owner = GetWindow(window.Handle, 4); // GW_OWNER
+            if (owner == IntPtr.Zero ||
+                (owner != mainWindow && GetAncestor(owner, 2) != mainWindow))
+                continue;
+
+            IntPtr edit = GetDlgItem(window.Handle, 210); // IDE_PATH
+            IntPtr subject = GetDlgItem(window.Handle, 209); // IDS_SUBJECT
+            IntPtr ok = GetDlgItem(window.Handle, 1); // IDOK
+            if (edit == IntPtr.Zero || subject == IntPtr.Zero ||
+                ok == IntPtr.Zero || ClassName(edit) != "ComboBox" ||
+                ClassName(ok) != "Button")
+                throw new InvalidOperationException("Malformed owned Quick Rename dialog");
+            if (GetWindowCaption(subject).IndexOf(
+                    expectedName, StringComparison.Ordinal) < 0)
+                continue;
+            if (found != IntPtr.Zero)
+                throw new InvalidOperationException("Ambiguous owned Quick Rename dialog");
+            found = window.Handle;
+        }
+        return found;
+    }
+
+    public static void ConfirmVerifiedQuickRename(
+        IntPtr mainWindow, uint processId, IntPtr dialog,
+        string expectedName, string newName)
+    {
+        if (String.IsNullOrEmpty(newName) || newName.Length >= 260 ||
+            newName.IndexOf('\0') >= 0 ||
+            FindVerifiedQuickRenameDialog(mainWindow, processId, expectedName) != dialog ||
+            dialog == IntPtr.Zero)
+            throw new InvalidOperationException("Refusing unverified Quick Rename edit");
+
+        IntPtr edit = VerifiedChild(dialog, processId, 210);
+        if (ReadQuickRenameText(edit) != expectedName)
+            throw new InvalidOperationException("Quick Rename original filename changed");
+
+        IntPtr result;
+        if (SendMessageTimeoutWriteText(edit, 0x000C, UIntPtr.Zero,
+                                         newName, 0x0002, 5000, out result) == IntPtr.Zero ||
+            result == IntPtr.Zero ||
+            ReadQuickRenameText(edit) != newName)
+            throw new InvalidOperationException("Quick Rename text was not accepted");
+
+        // Never send a global Enter: the dialog may have lost foreground to
+        // another process. Revalidate the exact owned OK button before posting.
+        IntPtr ok = VerifiedChild(dialog, processId, 1);
+        if (ClassName(ok) != "Button" || !IsWindowVisible(ok) ||
+            !IsWindowEnabled(ok) ||
+            FindVerifiedQuickRenameDialog(mainWindow, processId, expectedName) != dialog)
+            throw new InvalidOperationException("Quick Rename confirmation is not safe");
+        if (!PostMessageW(dialog, 0x0111, new UIntPtr(1), ok)) // WM_COMMAND / IDOK
+            throw new InvalidOperationException(
+                "Could not confirm owned Quick Rename: " + Marshal.GetLastWin32Error());
+    }
+
     public static string OwnedControlText(IntPtr dialog, uint processId, int controlId)
     {
         return GetWindowCaption(VerifiedChild(dialog, processId, controlId));
@@ -1622,6 +1721,49 @@ function Get-ProcessWindowSummary {
             $window.Handle.ToInt64(), $window.Visible, $title
     }
     return ($descriptions -join '; ')
+}
+
+function Get-ProcessThreadSummary {
+    if ($null -eq $process) { return '<not launched>' }
+    try {
+        $process.Refresh()
+        if ($process.HasExited) { return "exited; code=$($process.ExitCode)" }
+        $threads = @($process.Threads)
+        $descriptions = @($threads | Select-Object -First 16 | ForEach-Object {
+            $state = $_.ThreadState.ToString()
+            $wait = if ($_.ThreadState -eq [Diagnostics.ThreadState]::Wait) {
+                try { $_.WaitReason.ToString() }
+                catch { '<unavailable>' }
+            } else { '-' }
+            'TID={0} state={1} wait={2}' -f $_.Id, $state, $wait
+        })
+        return 'count={0}; {1}' -f $threads.Count, ($descriptions -join '; ')
+    }
+    catch { return '<unavailable: ' + $_.Exception.Message + '>' }
+}
+
+function Get-IsolatedStartupDiagnostics {
+    if (-not $IsolatedConfiguration) { return '<not isolated>' }
+    $version = '<missing>'
+    try {
+        $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey(
+            $testConfigurationKey + '\Config0\Version')
+        if ($null -ne $key) {
+            try {
+                $value = $key.GetValue('Configuration', $null)
+                $version = if ($null -eq $value) { '<no Configuration value>' }
+                           else { [string]$value }
+            }
+            finally { $key.Dispose() }
+        }
+    }
+    catch { $version = '<read error: ' + $_.Exception.Message + '>' }
+    $process.Refresh()
+    $state = if ($process.HasExited) { "exited code=$($process.ExitCode)" }
+             else { 'running' }
+    return ('Config0.Version.Configuration={0}; process={1}; windows=[{2}]; threads=[{3}]' -f
+        $version, $state, (Get-ProcessWindowSummary -OwnerProcessId ([uint32]$process.Id)),
+        (Get-ProcessThreadSummary))
 }
 
 function Get-ActiveProcessId {
@@ -3290,6 +3432,10 @@ try {
         } 'visible SalamanderMainWindowVer25 main-class HWND owned by launched process' -TimeoutSecondsOverride $StartupReadyTimeoutSeconds
         if ($IsolatedConfiguration) {
             Wait-Until {
+                $process.Refresh()
+                if ($process.HasExited) {
+                    throw "Salamander exited during isolated startup upgrade (exit code $($process.ExitCode))."
+                }
                 $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($testConfigurationKey + '\Config0\Version')
                 if ($null -eq $key) { return $false }
                 try { return [int]$key.GetValue('Configuration', 0) -gt 59 }
@@ -3314,7 +3460,8 @@ try {
         throw (("GUI startup failed: {0}; launched PID={1}; .NET MainWindowHandle=0x{2:X}; " +
             ".NET title='{3}'; process windows: {4}; startup wait chain: {5}") -f
             $startupFailure, $process.Id, $process.MainWindowHandle.ToInt64(),
-            $process.MainWindowTitle, $windowSummary, $startupWaitChain)
+            $process.MainWindowTitle, $windowSummary, $startupWaitChain) +
+            "; isolated startup: $(Get-IsolatedStartupDiagnostics)"
     }
     # A visible top-level window is not evidence that startup has finished.
     # Do not begin clipboard navigation or keyboard simulation until the
@@ -3484,12 +3631,16 @@ try {
         Assert-True ((Read-PanelPath) -ceq $destination) 'ASCII copy destination active for F2'
         Send-Keys '{END}'
         Assert-True ((Read-FocusedFilename) -ceq $asciiName) 'Exact ASCII file selected before F2'
-        Set-ClipboardText $asciiRenamedName
         Send-Keys '{F2}'
-        Start-Sleep -Milliseconds 350
-        Send-Keys '^a'
-        Send-Keys '^v'
-        Send-Keys '{ENTER}'
+        $quickRename = @{ Window = [IntPtr]::Zero }
+        Wait-Until {
+            $quickRename.Window = [SalamanderGuiNative]::FindVerifiedQuickRenameDialog(
+                $mainWindowHandle, [uint32]$process.Id, $asciiName)
+            return $quickRename.Window -ne [IntPtr]::Zero
+        } 'owned Quick Rename dialog for exact ASCII fixture'
+        [SalamanderGuiNative]::ConfirmVerifiedQuickRename(
+            $mainWindowHandle, [uint32]$process.Id, $quickRename.Window,
+            $asciiName, $asciiRenamedName)
         $renamed = Join-Path $destination $asciiRenamedName
         Wait-Until { (Test-Content $renamed) -and -not [IO.File]::Exists($copied) } 'ASCII F2 rename'
 
@@ -4157,11 +4308,16 @@ catch {
     Save-FailureScreenshot
     # A dump is never collected unless explicitly requested. Only inspect
     # this test's process, and only when Windows detects a hung GUI window.
-    if ($null -ne $process -and $mainWindowHandle -ne [IntPtr]::Zero) {
+    if ($null -ne $process) {
         $process.Refresh()
-        if (-not $process.HasExited -and
-            [SalamanderGuiNative]::IsHungAppWindow($mainWindowHandle)) {
-            Save-GuiHangMiniDump
+        if (-not $process.HasExited) {
+            $startupFailure = $primaryGuiFailure -like 'GUI startup failed:*'
+            if ($startupFailure -or
+                ($mainWindowHandle -ne [IntPtr]::Zero -and
+                 [SalamanderGuiNative]::IsHungAppWindow($mainWindowHandle))) {
+                # Explicit opt-in also covers startup stalls with no main HWND.
+                Save-GuiHangMiniDump
+            }
         }
     }
     throw
