@@ -265,6 +265,9 @@ function Run-Tests {
     $guiDriverContract = Join-Path $repository 'tools\release\tests\Test-GuiDriver-Contract.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $guiDriverContract)
 
+    $werContract = Join-Path $repository 'tools\release\tests\Test-WerCrashReporting-Contract.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $werContract)
+
     $unicodeCopyContract = Join-Path $repository 'tools\release\tests\Test-Manage-UnicodeCopy.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $unicodeCopyContract)
 
