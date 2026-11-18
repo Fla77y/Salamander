@@ -140,7 +140,7 @@ try {
         -Repository $repositoryRoot -BuildRoot $buildRoot -Mode Clean -Invoke $simulateBuild
     # Assert
     if (Test-Path -LiteralPath $stale) { throw 'Clean build retained an obsolete artifact.' }
-    Assert-Equal (($targets | Select-Object -Last 2) -join ',') '/t:Build,/t:Build' 'Clean target selection'
+    Assert-Equal (($targets | Select-Object -Last 2) -join ',') '/t:Rebuild,/t:Rebuild' 'Clean target selection'
 
     # Arrange/Act/Assert: destructive clean must reject the repository as a build root.
     $rejected = $false
