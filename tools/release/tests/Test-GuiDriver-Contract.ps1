@@ -116,7 +116,7 @@ if ($driverText -notmatch 'public static IntPtr FindVerifiedLargeCopyConfirmatio
     $largeCopySource -notmatch 'ConfirmVerifiedLargeCopy' -or
     $largeCopySource -notmatch 'Get-ProcessWindowSummary' -or
     $largeCopySource -notmatch 'Get-ForegroundWindowSummary' -or
-    $largeCopySource -match "return \$dialog -match 'Copy the Unicode file to the other panel'") {
+    $largeCopySource.Contains("return `$dialog -match 'Copy the Unicode file to the other panel'")) {
     throw 'Large Unicode F5 must verify its own modal prompt, not depend on Get-TestDialog/main-window enabled state.'
 }
 Write-Host 'PASS: large Unicode F5 confirmation is process-owned and read through bounded WM_GETTEXT.'
