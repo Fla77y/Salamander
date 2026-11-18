@@ -861,6 +861,72 @@ Write-Host 'PASS: F6 directory GUI assertions use the valid byte-comparison help
 
 
 
+# Arrange: the existing F2 command opens CCopyMoveDialog with a ComboBox
+# (IDE_PATH=210), not the separate inline quick-rename editor. F2 used to
+# press Ctrl+A/Ctrl+V/Enter globally after an arbitrary sleep, risking input
+# in a foreign window while its own modal dialog was still open.
+$shortF2Start = $driverText.IndexOf(
+    'Exact ASCII file selected before F2', [StringComparison]::Ordinal)
+$shortF2End = $driverText.IndexOf(
+    "'ASCII F2 rename'", $shortF2Start, [StringComparison]::Ordinal)
+if ($shortF2Start -lt 0 -or $shortF2End -le $shortF2Start) {
+    throw 'Short F2 GUI regression block is missing.'
+}
+$shortF2 = $driverText.Substring($shortF2Start, $shortF2End - $shortF2Start)
+if ($shortF2 -notmatch 'FindVerifiedQuickRenameDialog' -or
+    $shortF2 -notmatch 'ConfirmVerifiedQuickRename' -or
+    $shortF2 -match "Send-Keys\s+'(?:\^a|\^v|\{ENTER\})'" -or
+    $shortF2 -match 'Start-Sleep') {
+    throw 'F2 must identify and confirm its own modal Quick Rename dialog, never send global text/Enter after a fixed delay.'
+}
+$renameInterop = [regex]::Match(
+    $driverText,
+    '(?s)public static IntPtr FindVerifiedQuickRenameDialog\(.*?\r?\n    \}')
+$renameConfirm = [regex]::Match(
+    $driverText,
+    '(?s)public static void ConfirmVerifiedQuickRename\(.*?\r?\n    \}')
+if (-not $renameInterop.Success -or -not $renameConfirm.Success -or
+    $renameInterop.Value -notmatch 'GetProcessWindows\(processId\)' -or
+    $renameInterop.Value -notmatch 'ClassName' -or
+    $renameInterop.Value -notmatch 'GetWindow\(' -or
+    $renameInterop.Value -notmatch 'Quick Rename' -or
+    $renameInterop.Value -notmatch '210' -or
+    $renameInterop.Value -notmatch '209' -or
+    $renameConfirm.Value -notmatch 'SendMessageTimeout' -or
+    $renameConfirm.Value -notmatch 'PostMessageW' -or
+    $renameConfirm.Value -notmatch 'GetDlgItem\(dialog, 1\)') {
+    throw 'Quick Rename automation must verify process, parent, title, resource controls and original name before writing and confirming.'
+}
+Write-Host 'PASS: F2 drives only its verified modal Quick Rename dialog, with no global text or Enter.'
+
+# Arrange: Debug x86 previously timed out before copy when its configuration
+# migration and plugin initialization had not published the expected version.
+# Assert that startup detects early exit instead of waiting blindly, records
+# the actual registry state, and can capture an explicitly opted-in dump even
+# when no application main HWND exists yet.
+$startupUpgradeStart = $driverText.IndexOf(
+    "'Salamander completed isolated startup configuration upgrade and plugin initialization'",
+    [StringComparison]::Ordinal)
+if ($startupUpgradeStart -lt 0) {
+    throw 'Isolated startup upgrade wait is missing.'
+}
+$startupUpgradePrefix = $driverText.Substring(
+    [Math]::Max(0, $startupUpgradeStart - 700),
+    [Math]::Min(700, $startupUpgradeStart))
+$startupDiag = (Get-FunctionSource 'Get-IsolatedStartupDiagnostics').Extent.Text
+$mainCatch = $driverText.Substring(
+    $driverText.LastIndexOf("catch {\n    Write-Warning \"GUI integration FAILED:", [StringComparison]::Ordinal))
+if ($startupUpgradePrefix -notmatch '\$process\.Refresh\(\)' -or
+    $startupUpgradePrefix -notmatch '\$process\.HasExited' -or
+    $startupDiag -notmatch 'Configuration' -or
+    $startupDiag -notmatch 'Get-ProcessWindowSummary' -or
+    $startupDiag -notmatch 'Get-ProcessThreadSummary' -or
+    $mainCatch -notmatch 'Save-GuiHangMiniDump' -or
+    $mainCatch -notmatch 'startup') {
+    throw 'Isolated startup must distinguish early exit, registry progress and no-HWND hangs without increasing timeouts.'
+}
+Write-Host 'PASS: isolated GUI startup diagnoses early exit and missing HWND before any copy input.'
+
 # Compile the embedded C# Win32 interop in the headless Windows test process.
 # PowerShell's AST check alone would not catch invalid P/Invoke signatures.
 $interopSource = [regex]::Match(
