@@ -162,8 +162,8 @@ input, restores them afterward, and removes only that test's registry namespace.
 The private fixture selects `english.slg` using configuration version 59, so the
 run is independent of the Windows locale while still exercising the real
 configuration upgrade and plugin auto-install paths. Startup waits for Salamander
-to write its upgraded version, rather than assuming an empty first-run key
-already exists. `-StartupReadyTimeoutSeconds` defaults to 90 (maximum 120),
+to finish saving the upgraded configuration, enable its main window, and respond
+to a bounded window message. `-StartupReadyTimeoutSeconds` defaults to 90 (maximum 120),
 separately from the ordinary operation timeouts. This is an upgrade/operation
 acceptance fixture; it does not establish completely unconfigured first-run or
 language-selection behavior. Prefer a normal, non-elevated PowerShell session.

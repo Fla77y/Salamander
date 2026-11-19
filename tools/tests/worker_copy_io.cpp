@@ -122,6 +122,32 @@ void Io_WhenTokensAreBound_UsesOriginalWidePathsAndMetadata()
     LocalFree(descriptor);
 }
 
+void Io_WhenCreatingAnAlternateStream_RefusesToReplaceExistingData()
+{
+    // Arrange
+    Fixture fixture;
+    Io::Scope scope(fixture.Paths);
+    const auto streamPath = Extended(fixture.Source) + L":識別_😀:$DATA";
+
+    // Act: create a stream on a file whose main stream already exists.
+    HANDLE stream = Io::CreateNewAlternateStream(streamPath.c_str());
+    assert(stream != INVALID_HANDLE_VALUE);
+    DWORD count;
+    assert(WriteFile(stream, "ads", 3, &count, nullptr) && count == 3);
+    assert(CloseHandle(stream));
+
+    // Assert: a second create fails without changing the existing stream.
+    assert(Io::CreateNewAlternateStream(streamPath.c_str()) == INVALID_HANDLE_VALUE);
+    assert(GetLastError() == ERROR_FILE_EXISTS);
+    stream = CreateFileW(streamPath.c_str(), GENERIC_READ, FILE_SHARE_READ,
+        nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    assert(stream != INVALID_HANDLE_VALUE);
+    char bytes[3];
+    assert(ReadFile(stream, bytes, sizeof(bytes), &count, nullptr) && count == sizeof(bytes));
+    assert(memcmp(bytes, "ads", sizeof(bytes)) == 0);
+    assert(CloseHandle(stream));
+}
+
 void Io_WhenUnknownOrSourceMutation_RefusesWithoutChangingFiles()
 {
     // Arrange
@@ -199,6 +225,7 @@ int main()
     _CrtSetReportFile(_CRT_ASSERT, _CRTDBG_FILE_STDERR);
 #endif
     Io_WhenTokensAreBound_UsesOriginalWidePathsAndMetadata();
+    Io_WhenCreatingAnAlternateStream_RefusesToReplaceExistingData();
     Io_WhenUnknownOrSourceMutation_RefusesWithoutChangingFiles();
     Io_WhenTargetIsSourceHardLink_NeverTruncatesOrChangesSource();
     Io_WhenSourceReplacedBetweenRetries_RejectsDifferentFileId();

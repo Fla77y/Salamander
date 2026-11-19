@@ -7,6 +7,16 @@ $repository = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..\..')).P
 . (Join-Path $repository 'tools\release\Build-Helpers.ps1')
 . (Join-Path $repository 'tools\release\Package-Helpers.ps1')
 
+# Arrange: Debug Unicode path comparisons use the MSVC standard library.
+$debugProperties = Get-Content -LiteralPath (Join-Path $repository 'src\vcxproj\sal_debug.props') -Raw
+
+# Act and assert: keep the stack and uninitialized-variable checks without
+# the incompatible narrowing instrumentation that aborted the x86 F5 test.
+if ($debugProperties -match '<SmallerTypeCheck>true</SmallerTypeCheck>|_ALLOW_RTCc_IN_STL' -or
+    $debugProperties -notmatch '<BasicRuntimeChecks>EnableFastChecks</BasicRuntimeChecks>') {
+    throw 'Core Debug builds must use /RTC1 and must not enable /RTCc for the MSVC standard library.'
+}
+
 function Assert-Equal {
     param([object]$Actual, [object]$Expected, [string]$Scenario)
     if ($Actual -cne $Expected) {

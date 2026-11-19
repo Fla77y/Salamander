@@ -60,3 +60,27 @@ function Assert-LoadLibraryDoesNotHoldMonitorLock {
 Assert-LoadLibraryDoesNotHoldMonitorLock -FunctionName 'LoadLibrary' -NativeCall '::LoadLibrary(lpLibFileName)'
 Assert-LoadLibraryDoesNotHoldMonitorLock -FunctionName 'LoadLibraryW' -NativeCall '::LoadLibraryW(lpLibFileName)'
 Assert-LoadLibraryDoesNotHoldMonitorLock -FunctionName 'LoadLibraryEx' -NativeCall '::LoadLibraryEx(lpLibFileName, hFile, dwFlags)'
+
+foreach ($wrapper in @(
+    @{ Name = 'RegisterDragDrop'; Call = '::RegisterDragDrop(hwnd, pDropTarget)'; Track = 'CheckCreate(' },
+    @{ Name = 'RevokeDragDrop'; Call = '::RevokeDragDrop(hwnd)'; Track = 'CheckClose(' }
+)) {
+    # Arrange
+    $signature = [regex]::Escape("C__Handles::$($wrapper.Name)(")
+    $body = [regex]::Match($source, "(?ms)$signature[^}]*^}").Value
+
+    # Act
+    $steps = @(
+        'tmpOutputType = OutputType;', 'tmpTemporaryHandle = TemporaryHandle;',
+        '::LeaveCriticalSection(&CriticalSection);', $wrapper.Call,
+        '::EnterCriticalSection(&CriticalSection);', 'OutputType = tmpOutputType;',
+        'TemporaryHandle = tmpTemporaryHandle;', $wrapper.Track
+    )
+    $order = ($steps | ForEach-Object { [regex]::Escape($_) }) -join '.*?'
+
+    # Assert
+    if ($body -notmatch "(?s)$order") {
+        throw "C__Handles::$($wrapper.Name) must release the handle monitor during the reentrant OLE call and restore the original tracking metadata."
+    }
+    Write-Host "PASS: C__Handles::$($wrapper.Name) allows OLE callbacks while retaining handle tracking."
+}

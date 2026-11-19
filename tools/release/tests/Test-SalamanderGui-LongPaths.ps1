@@ -307,6 +307,11 @@ public static class SalamanderGuiNative
         return caption.ToString();
     }
 
+    public static bool MatchesDialogTitle(string title, string expected)
+    {
+        return title == expected || title == "[#] " + expected + " [#]";
+    }
+
     // A dialog's message is in child controls; the caption alone is ambiguous.
     public static string DescribeWindow(IntPtr window) {
         List<string> messages = new List<string>();
@@ -664,6 +669,30 @@ public static class SalamanderGuiNative
         IntPtr window, uint message, UIntPtr unused, string text,
         uint flags, uint timeoutMilliseconds, out IntPtr result);
 
+    public static bool HasVerifiedStaticText(IntPtr dialog, uint processId, string expected)
+    {
+        uint dialogPid;
+        if (GetWindowThreadProcessId(dialog, out dialogPid) == 0 || dialogPid != processId)
+            return false;
+        bool matched = false;
+        WindowCallback callback = (child, ignored) =>
+        {
+            uint childPid;
+            if (ClassName(child) != "Static" ||
+                GetWindowThreadProcessId(child, out childPid) == 0 || childPid != processId)
+                return true;
+            StringBuilder text = new StringBuilder(512);
+            IntPtr result;
+            if (SendMessageTimeoutReadText(child, 0x000D, new UIntPtr(512),
+                    text, 0x0002, 1000, out result) != IntPtr.Zero &&
+                text.ToString() == expected)
+                matched = true;
+            return true;
+        };
+        EnumChildWindows(dialog, callback, IntPtr.Zero);
+        return matched;
+    }
+
     private static string ReadQuickRenameText(IntPtr control)
     {
         StringBuilder text = new StringBuilder(260);
@@ -693,7 +722,7 @@ public static class SalamanderGuiNative
         foreach (TopLevelWindow window in GetProcessWindows(processId))
         {
             if (!window.Visible || ClassName(window.Handle) != "#32770" ||
-                window.Title != "Quick Rename")
+                !MatchesDialogTitle(window.Title, "Quick Rename"))
                 continue;
             IntPtr owner = GetWindow(window.Handle, 4); // GW_OWNER
             if (owner == IntPtr.Zero ||
@@ -701,13 +730,13 @@ public static class SalamanderGuiNative
                 continue;
 
             IntPtr edit = GetDlgItem(window.Handle, 210); // IDE_PATH
-            IntPtr subject = GetDlgItem(window.Handle, 209); // IDS_SUBJECT
+            IntPtr subject = VerifiedChild(window.Handle, processId, 209); // IDS_SUBJECT
             IntPtr ok = GetDlgItem(window.Handle, 1); // IDOK
             if (edit == IntPtr.Zero || subject == IntPtr.Zero ||
                 ok == IntPtr.Zero || ClassName(edit) != "ComboBox" ||
                 ClassName(ok) != "Button")
                 throw new InvalidOperationException("Malformed owned Quick Rename dialog");
-            if (GetWindowCaption(subject).IndexOf(
+            if (ReadQuickRenameText(subject).IndexOf(
                     expectedName, StringComparison.Ordinal) < 0)
                 continue;
             if (found != IntPtr.Zero)
@@ -1608,8 +1637,8 @@ function Test-LargeUnicodeCopy {
         $windows = Get-ProcessWindowSummary -OwnerProcessId ([uint32]$process.Id)
         $foreground = Get-ForegroundWindowSummary
         $blockingDialog = Get-TestDialog
-        throw ("Large Unicode F5 confirmation unavailable: {0}; windows=[{1}]; " +
-               "foreground=[{2}]; generic dialog='{3}'. No second F5 command was sent." -f
+        throw (("Large Unicode F5 confirmation unavailable: {0}; windows=[{1}]; " +
+                "foreground=[{2}]; generic dialog='{3}'. No second F5 command was sent.") -f
                $reason, $windows, $foreground, $blockingDialog)
     }
     [SalamanderGuiNative]::ConfirmVerifiedLargeCopy(
@@ -1643,8 +1672,8 @@ function Test-LargeUnicodeCopy {
                     $candidate = [SalamanderGuiNative]::FindOwnedDialogControl([uint32]$process.Id, $button, $null)
                     if ($candidate -ne [IntPtr]::Zero -and
                         [SalamanderGuiNative]::IsOwnedModalOf($candidate, $observed.Window) -and
-                        [SalamanderGuiNative]::GetWindowCaption($candidate) -ceq 'Question' -and
-                        [SalamanderGuiNative]::DescribeWindow($candidate) -match 'Do you want to cancel this operation\?' -and
+                        [SalamanderGuiNative]::MatchesDialogTitle([SalamanderGuiNative]::GetWindowCaption($candidate), 'Question') -and
+                        [SalamanderGuiNative]::HasVerifiedStaticText($candidate, [uint32]$process.Id, 'Do you want to cancel this operation?') -and
                         ([SalamanderGuiNative]::OwnedControlText($candidate, [uint32]$process.Id, $button) -replace '&','') -match '(?i)^Yes$') {
                         $confirmation.Window = $candidate
                         $confirmation.Button = $button
@@ -3521,9 +3550,17 @@ try {
                 }
                 $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($testConfigurationKey + '\Config0\Version')
                 if ($null -eq $key) { return $false }
-                try { return [int]$key.GetValue('Configuration', 0) -gt 59 }
+                try { $version = [int]$key.GetValue('Configuration', 0) }
                 finally { $key.Dispose() }
-            } 'Salamander completed isolated startup configuration upgrade and plugin initialization' -TimeoutSecondsOverride $StartupReadyTimeoutSeconds
+                if ($version -le 59) { return $false }
+
+                # SaveConfig writes the version before it finishes saving.
+                $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($testConfigurationKey + '\Config0')
+                if ($null -eq $key) { return $false }
+                try { $saving = $null -ne $key.GetValue('Save In Progress', $null) }
+                finally { $key.Dispose() }
+                return -not $saving -and [SalamanderGuiNative]::IsWindowEnabled($mainWindowHandle)
+            } 'Salamander saved its upgraded isolated configuration and enabled its main window' -TimeoutSecondsOverride $StartupReadyTimeoutSeconds
             Write-Host 'PASS: Salamander upgraded its GUID-scoped isolated configuration'
         }
     }
@@ -3547,9 +3584,9 @@ try {
         throw ($startupMessage + "; isolated startup: $(Get-IsolatedStartupDiagnostics)")
     }
     # A visible top-level window is not evidence that startup has finished.
-    # Do not begin clipboard navigation or keyboard simulation until the
-    # launched GUI process has reached its initial input-idle state.
-    if (-not $process.WaitForInputIdle(10000)) {
+    # The isolated upgrade gate above and the HWND probe below establish
+    # readiness without relying on the process-wide input-idle result.
+    if (-not $IsolatedConfiguration -and -not $process.WaitForInputIdle(10000)) {
         [uint32]$windowOwner = 0
         $windowThread = [SalamanderGuiNative]::GetWindowThreadProcessId(
             $mainWindowHandle, [ref]$windowOwner)

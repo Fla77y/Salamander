@@ -2615,7 +2615,7 @@ COPY_ADS_AGAIN:
 
                     while (1)
                     {
-                        HANDLE out = CreateFileW(tgtName, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_FLAG_SEQUENTIAL_SCAN, NULL);
+                        HANDLE out = CopyIo::CreateNewAlternateStream(tgtName);
                         HANDLES_ADD_EX(__otQuiet, out != INVALID_HANDLE_VALUE, __htFile,
                                        __hoCreateFile, out, GetLastError(), TRUE);
 
@@ -2666,7 +2666,7 @@ COPY_ADS_AGAIN:
                                     out = INVALID_HANDLE_VALUE;
                                     if (DeleteFileW(tgtName))
                                     {
-                                        out = CreateFileW(tgtName, GENERIC_WRITE, 0, NULL, CREATE_NEW, FILE_FLAG_SEQUENTIAL_SCAN, NULL);
+                                        out = CopyIo::CreateNewAlternateStream(tgtName);
                                         HANDLES_ADD_EX(__otQuiet, out != INVALID_HANDLE_VALUE, __htFile,
                                                        __hoCreateFile, out, GetLastError(), TRUE);
                                         if (out == INVALID_HANDLE_VALUE)

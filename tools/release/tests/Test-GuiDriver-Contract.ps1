@@ -62,6 +62,13 @@ if ($driverText -notmatch 'Go-ToPath\s+\$source') {
 # readiness check before focus, clipboard mutation or any file operation.
 $readiness = Get-FunctionSource 'Wait-ForGuiResponsive'
 $readinessText = $readiness.Extent.Text
+$isolatedStart = $driverText.IndexOf('    # Process.MainWindowHandle/MainWindowTitle', [StringComparison]::Ordinal)
+$isolatedEnd = $driverText.IndexOf('    # A visible top-level window is not evidence', [StringComparison]::Ordinal)
+if ($isolatedStart -lt 0 -or $isolatedEnd -le $isolatedStart -or
+    $driverText.Substring($isolatedStart, $isolatedEnd - $isolatedStart) -notmatch
+        '(?s)GetValue\(''Configuration'', 0\).*?GetValue\(''Save In Progress''.*?IsWindowEnabled\(\$mainWindowHandle\)') {
+    throw 'Isolated startup must wait for the version upgrade, the end of the registry save and an enabled main window.'
+}
 $startupStart = $driverText.IndexOf(
     '    # A visible top-level window is not evidence', [StringComparison]::Ordinal)
 if ($startupStart -lt 0) { throw 'GUI startup acceptance block is missing.' }
@@ -71,7 +78,7 @@ if ($navigationStart -le $startupStart) {
     throw 'GUI startup acceptance block is missing.'
 }
 $startupText = $driverText.Substring($startupStart, $navigationStart - $startupStart)
-if ($startupText -notmatch '(?s)WaitForInputIdle\(10000\).*?Wait-ForGuiResponsive.*?Focus-TestProcess' -or
+if ($startupText -notmatch '(?s)-not \$IsolatedConfiguration -and -not \$process\.WaitForInputIdle\(10000\).*?Wait-ForGuiResponsive.*?Focus-TestProcess' -or
     $readinessText -notmatch 'SendMessageTimeout' -or
     $readinessText -notmatch 'GetLastWin32Error' -or
     $readinessText -notmatch 'Get-TestDialog' -or
@@ -80,6 +87,10 @@ if ($startupText -notmatch '(?s)WaitForInputIdle\(10000\).*?Wait-ForGuiResponsiv
     $readinessText -notmatch 'Start-Sleep' -or
     $readinessText -notmatch 'GUI startup remained unresponsive') {
     throw 'GUI must prove bounded message-loop readiness and preserve hang diagnostics before clipboard navigation.'
+}
+$largeCopySource = (Get-FunctionSource 'Test-LargeUnicodeCopy').Extent.Text
+if ($largeCopySource -notmatch '(?s)throw\s+\(\(\s*"Large Unicode F5 confirmation unavailable:.*?No second F5 command was sent\."\)\s*-f\s*\$reason,\s*\$windows,\s*\$foreground,\s*\$blockingDialog') {
+    throw 'F5 timeout diagnostics must format the complete message, including the failure reason and owned windows.'
 }
 # A failed SendMessageTimeoutW may leave LastError unchanged. Clear it before
 # probing, capture the result immediately and format the complete error text.
@@ -906,7 +917,8 @@ if (-not $renameInterop.Success -or -not $renameConfirm.Success -or
     $renameInterop.Value -notmatch 'GetProcessWindows\(processId\)' -or
     $renameInterop.Value -notmatch 'ClassName' -or
     $renameInterop.Value -notmatch 'GetWindow\(' -or
-    $renameInterop.Value -notmatch 'Quick Rename' -or
+    $renameInterop.Value -notmatch 'MatchesDialogTitle\(window.Title, "Quick Rename"\)' -or
+    $renameInterop.Value -notmatch 'ReadQuickRenameText\(subject\)' -or
     $renameInterop.Value -notmatch '210' -or
     $renameInterop.Value -notmatch '209' -or
     $renameConfirm.Value -notmatch 'SendMessageTimeout' -or
@@ -916,20 +928,27 @@ if (-not $renameInterop.Success -or -not $renameConfirm.Success -or
 }
 Write-Host 'PASS: F2 drives only its verified modal Quick Rename dialog, with no global text or Enter.'
 
+$copyCancel = (Get-FunctionSource 'Test-LargeUnicodeCopy').Extent.Text
+if ($copyCancel -notmatch 'MatchesDialogTitle\(.*?\x27Question\x27\)' -or
+    $copyCancel -notmatch 'HasVerifiedStaticText\(.*?\x27Do you want to cancel this operation\?\x27\)') {
+    throw 'Copy cancellation must match the decorated caption and read the owned prompt through bounded WM_GETTEXT.'
+}
+
 # Arrange: Debug x86 previously timed out before copy when its configuration
 # migration and plugin initialization had not published the expected version.
 # Assert that startup detects early exit instead of waiting blindly, records
 # the actual registry state, and can capture an explicitly opted-in dump even
 # when no application main HWND exists yet.
-$startupUpgradeStart = $driverText.IndexOf(
-    "'Salamander completed isolated startup configuration upgrade and plugin initialization'",
+$startupUpgradeEnd = $driverText.IndexOf(
+    "'Salamander saved its upgraded isolated configuration and enabled its main window'",
     [StringComparison]::Ordinal)
-if ($startupUpgradeStart -lt 0) {
+if ($startupUpgradeEnd -lt 0) {
     throw 'Isolated startup upgrade wait is missing.'
 }
+$startupUpgradeStart = $driverText.LastIndexOf('Wait-Until {', $startupUpgradeEnd, [StringComparison]::Ordinal)
+if ($startupUpgradeStart -lt 0) { throw 'Isolated startup upgrade wait has no condition.' }
 $startupUpgradePrefix = $driverText.Substring(
-    [Math]::Max(0, $startupUpgradeStart - 700),
-    [Math]::Min(700, $startupUpgradeStart))
+    $startupUpgradeStart, $startupUpgradeEnd - $startupUpgradeStart)
 $startupDiag = (Get-FunctionSource 'Get-IsolatedStartupDiagnostics').Extent.Text
 $mainCatchMatch = [regex]::Match(
     $driverText, '(?s)catch \{\r?\n    Write-Warning "GUI integration FAILED:.*')

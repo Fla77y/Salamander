@@ -2487,7 +2487,21 @@ C__Handles::_beginthreadex(void* security, unsigned stack_size,
 HRESULT
 C__Handles::RegisterDragDrop(HWND hwnd, IDropTarget* pDropTarget)
 {
+#ifdef MULTITHREADED_HANDLES_ENABLE
+    C__HandlesOutputType tmpOutputType = OutputType;
+    C__HandlesData tmpTemporaryHandle = TemporaryHandle;
+    ::LeaveCriticalSection(&CriticalSection);
+#endif // MULTITHREADED_HANDLES_ENABLE
+
+    // OLE can dispatch window messages during registration.
     HRESULT ret = ::RegisterDragDrop(hwnd, pDropTarget);
+
+#ifdef MULTITHREADED_HANDLES_ENABLE
+    ::EnterCriticalSection(&CriticalSection);
+    OutputType = tmpOutputType;
+    TemporaryHandle = tmpTemporaryHandle;
+#endif // MULTITHREADED_HANDLES_ENABLE
+
     CheckCreate(ret == S_OK, __htDropTarget, __hoRegisterDragDrop, hwnd);
     return ret;
 }
@@ -2495,7 +2509,21 @@ C__Handles::RegisterDragDrop(HWND hwnd, IDropTarget* pDropTarget)
 HRESULT
 C__Handles::RevokeDragDrop(HWND hwnd)
 {
+#ifdef MULTITHREADED_HANDLES_ENABLE
+    C__HandlesOutputType tmpOutputType = OutputType;
+    C__HandlesData tmpTemporaryHandle = TemporaryHandle;
+    ::LeaveCriticalSection(&CriticalSection);
+#endif // MULTITHREADED_HANDLES_ENABLE
+
+    // OLE can call back into the drop target when releasing it.
     HRESULT ret = ::RevokeDragDrop(hwnd);
+
+#ifdef MULTITHREADED_HANDLES_ENABLE
+    ::EnterCriticalSection(&CriticalSection);
+    OutputType = tmpOutputType;
+    TemporaryHandle = tmpTemporaryHandle;
+#endif // MULTITHREADED_HANDLES_ENABLE
+
     CheckClose(ret == S_OK, hwnd, __htDropTarget, "RevokeDragDrop");
     return ret;
 }

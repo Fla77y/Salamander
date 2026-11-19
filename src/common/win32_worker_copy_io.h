@@ -33,6 +33,27 @@ inline bool SameIdentity(const BY_HANDLE_FILE_INFORMATION& first, const BY_HANDL
         first.nFileIndexHigh == second.nFileIndexHigh && first.nFileIndexLow == second.nFileIndexLow;
 }
 
+inline HANDLE CreateNewAlternateStream(const wchar_t* streamPath)
+{
+    HANDLE stream = CreateFileW(streamPath, GENERIC_WRITE, 0, nullptr, CREATE_NEW,
+        FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
+    if (stream != INVALID_HANDLE_VALUE || GetLastError() != ERROR_FILE_EXISTS)
+        return stream;
+
+    // CREATE_NEW may report the existing base file even when the named
+    // stream is absent. OPEN_ALWAYS distinguishes creation from opening
+    // without truncating anything or racing a separate existence check.
+    stream = CreateFileW(streamPath, GENERIC_WRITE, 0, nullptr, OPEN_ALWAYS,
+        FILE_FLAG_SEQUENTIAL_SCAN, nullptr);
+    const DWORD openError = GetLastError();
+    if (stream == INVALID_HANDLE_VALUE || openError == ERROR_SUCCESS)
+        return stream;
+
+    CloseHandle(stream);
+    SetLastError(openError == ERROR_ALREADY_EXISTS ? ERROR_FILE_EXISTS : openError);
+    return INVALID_HANDLE_VALUE;
+}
+
 inline bool BeforeTargetMutation(const char* token, const wchar_t* path)
 {
     if (Current->TargetToken != token)
