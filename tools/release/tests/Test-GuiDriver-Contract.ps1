@@ -1060,15 +1060,17 @@ if ($driverText -notmatch '\[switch\]\$UnicodeFindOnly' -or
     $driverText -notmatch 'FindUnicodeSearchWindow' -or
     $driverText -notmatch 'GetWindowThreadProcessId\(child' -or
     $driverText -notmatch 'SelectSingleFindResult' -or
-    $driverText -notmatch 'WindowFromPoint\(point\) != list' -or
     $driverText -notmatch 'LVM_GETSELECTEDCOUNT' -or
     $driverText -notmatch 'LVM_ENSUREVISIBLE' -or
-    $driverText -notmatch 'WaitForFindSelection' -or
     $driverText -notmatch 'WM_KEYDOWN / VK_HOME' -or
-    $driverText -notmatch 'Unicode Find selected result via safe ListView keyboard fallback' -or
     $findQuery -notmatch 'Wait-FindCompleted' -or
     $findSelection -notmatch 'SENTINEL_NOT_A_FIND_PATH' -or
-    $findGui -notmatch 'Restore-FilePanelFocus' -or
+    $findSelection -notmatch 'Set-NativeNavigationClipboard' -or
+    $findSelection -notmatch 'GetClipboardSequenceNumber\(\)' -or
+    $driverText -notmatch '\$backgroundCommandsOnly = .* -or \$UnicodeFindOnly' -or
+    $driverText -notmatch 'Go-ToPath \$source -NoForeground:\$backgroundCommandsOnly' -or
+    $findGui -notmatch 'Go-ToPath \$findRoot -NoForeground' -or
+    $findGui -notmatch 'PostUnicodeFindCommand\(' -or
     $findGui -notmatch 'unique-utf16-probe' -or
     $findGui -notmatch 'Unicode Find refuses destination overwrite' -or
     $findGui -notmatch 'PostFindButton.*5113' -or
@@ -1079,20 +1081,19 @@ if ($driverText -notmatch '\[switch\]\$UnicodeFindOnly' -or
 }
 Write-Host 'PASS: Unicode Find modeless GUI test is registered and guards UTF-16 search, result selection and no-overwrite actions.'
 
-# Only one mouse click is allowed: repeating a physical click on the same
-# row could be interpreted as a double-click and open the selected file.
-# The fallback is a non-destructive Home key sent to the verified ListView.
+# Selection must work independently of the foreground window. Use a
+# non-destructive Home key sent directly to the verified ListView.
 $selectInterop = [regex]::Match(
     $driverText, '(?s)public static int SelectSingleFindResult\(.*?\r?\n    \}')
 if (-not $selectInterop.Success -or
-    [regex]::Matches($selectInterop.Value, 'mouse_event\(').Count -ne 2 -or
     $selectInterop.Value -notmatch 'VerifiedChild\(window, pid, 5117\)' -or
-    $selectInterop.Value -notmatch 'WaitForFindSelection' -or
+    $selectInterop.Value -notmatch 'SelectedFindIndex\(list\)' -or
+    $selectInterop.Value -match 'GetForegroundWindow|TryActivateVerifiedWindow|mouse_event' -or
     $selectInterop.Value -notmatch '0x0100' -or
     $selectInterop.Value -notmatch '0x0101') {
-    throw 'Unicode Find selection must use a single checked click and a safe keyboard fallback.'
+    throw 'Unicode Find selection must use a verified ListView and work in the background.'
 }
-Write-Host 'PASS: Unicode Find selection is bounded, diagnosed and never retries a potentially opening mouse click.'
+Write-Host 'PASS: Unicode Find selection uses verified, foreground-independent ListView messages.'
 
 
 # The new Find GUI gate covers explicitly unsupported shell and legacy
@@ -1117,6 +1118,7 @@ if ($driverText -notmatch 'FindUnicodeNotice' -or
     $findGui -notmatch '5108' -or
     $findGui -notmatch 'Search cancelled:' -or
     $findGui -notmatch 'joins an active search worker' -or
+    $findGui -notmatch 'IsWindow\(\$script:findWindow\)' -or
     $findGui -notmatch 'cancelProbePath' -or
     $findGui -notmatch '\[IO\.File\]::Delete\(\$cancelProbePath\)') {
     throw 'Unicode Find GUI integration must preserve safe refusals, stale-hit protection and observable cancellation.'

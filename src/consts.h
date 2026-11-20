@@ -1030,7 +1030,7 @@ void SuppressToolTipOnCurrentMousePos();                                 // see 
 // Makes Ctrl+Left/Right skip over backslashes and spaces. Assigns
 // EditWordBreakProc to an edit line or combo box. Can be called from
 // WM_INITDIALOG. Uninstalling is not required.
-BOOL InstallWordBreakProc(HWND hWindow);
+BOOL InstallWordBreakProc(HWND hWindow, BOOL preserveUnicode = FALSE);
 
 // removes all items from a combo box drop-down list
 // used when clearing history

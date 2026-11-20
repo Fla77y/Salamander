@@ -3612,13 +3612,14 @@ MENU_TEMPLATE_ITEM AddToSystemMenu[] =
         }
 
         case CM_FINDFILE:
+        case CM_FINDUNICODEFILE:
         {
             if (activePanel->Is(ptDisk)) // does Find apply to the current path? (not yet for archives and file systems)
             {
                 activePanel->UserWorkedOnThisPath = TRUE;
             }
 
-            activePanel->FindFile();
+            activePanel->FindFile(LOWORD(wParam) == CM_FINDUNICODEFILE);
             return 0;
         }
 

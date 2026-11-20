@@ -84,6 +84,7 @@ BEGIN
     VK_F6,          CM_UNPACK,              VIRTKEY, ALT
     VK_F7,          CM_CREATEDIR,           VIRTKEY 
     VK_F7,          CM_FINDFILE,            VIRTKEY, ALT
+    VK_F7,          CM_FINDUNICODEFILE,     VIRTKEY, ALT, SHIFT
     VK_F7,          CM_CHANGECASE,          VIRTKEY, CONTROL
     VK_F7,          CM_ACTIVE_CHANGEDIR,    VIRTKEY, SHIFT
     VK_F8,          CM_DELETEFILES,         VIRTKEY 

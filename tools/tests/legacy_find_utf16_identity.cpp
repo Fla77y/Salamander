@@ -4,6 +4,7 @@
 // Arrange / Act / Assert: search results must retain their original UTF-16
 // filesystem identity, independently of display buffers and ANSI code pages.
 #include "../../src/common/legacy_find_utf16_identity.h"
+#include "../../src/common/legacy_find_query.h"
 
 #include <cassert>
 #include <iostream>
@@ -45,10 +46,66 @@ bool FindIdentity_WhenAliasedNameSplitsSurrogate_ClearsOutput()
            !identity.IsValid() && identity.Directory().empty() && identity.Name().empty() &&
            identity.FullPath().empty();
 }
+
+void ParseRoots_WhenEscapedAndSeparated_PreservesIndividualIdentities()
+{
+    // Arrange
+    const std::wstring root = L"C:\\\u6771\u4eac;\U0001F600";
+    const std::wstring network = L"\\\\server\\share\\\u00e9";
+    const std::wstring query = L" ; " + Salamander::EscapeLegacyFindRoot(root) +
+        L"  ; " + network + L"\\\\  ; ";
+    // Act
+    const auto parsed = Salamander::ParseLegacyFindRoots(query);
+    // Assert
+    const std::vector<std::wstring> expected{root, network + L"\\"};
+    assert(parsed == expected);
+}
+
+void ParseRoots_WhenPastMaxPath_PreservesEveryUtf16Unit()
+{
+    // Arrange
+    const std::wstring root = L"\\\\?\\C:\\" + std::wstring(200, L'x') +
+        L"\\" + std::wstring(200, L';') + L"\U0001F600";
+    const std::wstring query = Salamander::EscapeLegacyFindRoot(root);
+    // Act
+    const auto parsed = Salamander::ParseLegacyFindRoots(query);
+    // Assert
+    assert(query.size() == root.size() + 200);
+    assert(parsed.size() == 1 && parsed.front() == root);
+}
+
+void ParseRoots_WhenBlank_ReturnsNoRoots()
+{
+    // Arrange
+    const std::wstring query = L" ; ;  ";
+    // Act
+    const auto parsed = Salamander::ParseLegacyFindRoots(query);
+    // Assert
+    assert(parsed.empty());
+}
+
+bool ParseRoots_WhenMissingUncServer_DoesNotTurnIntoCurrentDriveRoot()
+{
+    // Arrange
+    const std::wstring query = L"\\\\";
+    // Act
+    const auto parsed = Salamander::ParseLegacyFindRoots(query);
+    // Assert
+    return parsed.size() == 1 && parsed.front() == query;
+}
 }
 
 int main()
 {
+    ParseRoots_WhenEscapedAndSeparated_PreservesIndividualIdentities();
+    ParseRoots_WhenPastMaxPath_PreservesEveryUtf16Unit();
+    ParseRoots_WhenBlank_ReturnsNoRoots();
+    if (!ParseRoots_WhenMissingUncServer_DoesNotTurnIntoCurrentDriveRoot())
+    {
+        std::cerr << "FAIL: malformed UNC root must not become the current drive root\n";
+        return 1;
+    }
+
     if (!FindIdentity_WhenInputsAliasOutput_PreservesExactUtf16())
     {
         std::cerr << "FAIL: legacy Find identity must support inputs aliasing its output\n";
@@ -117,5 +174,5 @@ int main()
         excessive, std::u16string(250, u'z'), identity, error));
     assert(!identity.IsValid());
 
-    std::cout << "PASS: legacy Find result identities retain validated UTF-16 and long paths\n";
+    std::cout << "PASS: legacy Find roots and result identities retain UTF-16 and long paths\n";
 }

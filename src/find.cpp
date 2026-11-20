@@ -6,11 +6,15 @@
 
 #include "cfgdlg.h"
 #include "find.h"
+#include "common/win32_unicode_panel_name.h"
 #include "md5.h"
+#include <algorithm>
+#include <mutex>
 
-char* FindNamedHistory[FIND_NAMED_HISTORY_SIZE];
-char* FindLookInHistory[FIND_LOOKIN_HISTORY_SIZE];
+std::wstring FindNamedHistory[FIND_NAMED_HISTORY_SIZE];
+std::wstring FindLookInHistory[FIND_LOOKIN_HISTORY_SIZE];
 char* FindGrepHistory[FIND_GREP_HISTORY_SIZE];
+static std::mutex FindTextHistoryMutex;
 
 CFindOptions FindOptions;
 CFindIgnore FindIgnore;
@@ -27,8 +31,8 @@ const char* FINDOPTIONSITEM_CASESENSITIVE_REG = "CaseSensitive";
 const char* FINDOPTIONSITEM_HEXMODE_REG = "HexMode";
 const char* FINDOPTIONSITEM_REGULAR_REG = "RegularExpresions";
 const char* FINDOPTIONSITEM_AUTOLOAD_REG = "AutoLoad";
-const char* FINDOPTIONSITEM_NAMED_REG = "Named";
-const char* FINDOPTIONSITEM_LOOKIN_REG = "LookIn";
+const wchar_t* FINDOPTIONSITEM_NAMED_REG = L"Named";
+const wchar_t* FINDOPTIONSITEM_LOOKIN_REG = L"LookIn";
 const char* FINDOPTIONSITEM_GREP_REG = "Grep";
 
 const char* FINDIGNOREITEM_PATH_REG = "Path";
@@ -46,10 +50,6 @@ const char* OLD_FINDOPTIONSITEM_EXCLUDEMASK_REG = "ExcludeMask";
 BOOL InitializeFind()
 {
     int i;
-    for (i = 0; i < FIND_NAMED_HISTORY_SIZE; i++)
-        FindNamedHistory[i] = NULL;
-    for (i = 0; i < FIND_LOOKIN_HISTORY_SIZE; i++)
-        FindLookInHistory[i] = NULL;
     for (i = 0; i < FIND_GREP_HISTORY_SIZE; i++)
         FindGrepHistory[i] = NULL;
 
@@ -72,22 +72,12 @@ BOOL InitializeFind()
 void ClearFindHistory(BOOL dataOnly)
 {
     int i;
-    for (i = 0; i < FIND_NAMED_HISTORY_SIZE; i++)
     {
-        if (FindNamedHistory[i] != NULL)
-        {
-            free(FindNamedHistory[i]);
-            FindNamedHistory[i] = NULL;
-        }
-    }
-
-    for (i = 0; i < FIND_LOOKIN_HISTORY_SIZE; i++)
-    {
-        if (FindLookInHistory[i] != NULL)
-        {
-            free(FindLookInHistory[i]);
-            FindLookInHistory[i] = NULL;
-        }
+        const std::lock_guard<std::mutex> lock(FindTextHistoryMutex);
+        for (auto& text : FindNamedHistory)
+            text.clear();
+        for (auto& text : FindLookInHistory)
+            text.clear();
     }
 
     for (i = 0; i < FIND_GREP_HISTORY_SIZE; i++)
@@ -132,8 +122,6 @@ CFindOptionsItem::CFindOptionsItem()
 
     AutoLoad = FALSE;
 
-    NamedText[0] = 0;
-    LookInText[0] = 0;
     GrepText[0] = 0;
 }
 
@@ -154,8 +142,8 @@ CFindOptionsItem::operator=(const CFindOptionsItem& s)
 
     AutoLoad = s.AutoLoad;
 
-    lstrcpy(NamedText, s.NamedText);
-    lstrcpy(LookInText, s.LookInText);
+    NamedText = s.NamedText;
+    LookInText = s.LookInText;
     lstrcpy(GrepText, s.GrepText);
 
     return *this;
@@ -163,8 +151,112 @@ CFindOptionsItem::operator=(const CFindOptionsItem& s)
 
 void CFindOptionsItem::BuildItemName()
 {
-    sprintf(ItemName, "\"%s\" %s \"%s\"",
-            NamedText, LoadStr(IDS_FF_IN), LookInText);
+    // The ANSI menu caption is presentation only. Saving or applying an
+    // option always uses the separate, owned UTF-16 query values.
+    const std::wstring caption = L"\"" + NamedText + L"\" " +
+        LoadStrW(IDS_FF_IN) + L" \"" + LookInText + L"\"";
+    size_t units = (std::min)(caption.size(), _countof(ItemName) - 1);
+    int bytes = 0;
+    while (units > 0)
+    {
+        if (caption[units - 1] >= 0xd800 && caption[units - 1] <= 0xdbff)
+            --units;
+        bytes = WideCharToMultiByte(CP_ACP, 0, caption.data(), static_cast<int>(units),
+                                    ItemName, _countof(ItemName) - 1, NULL, NULL);
+        if (bytes > 0)
+            break;
+        --units;
+    }
+    ItemName[bytes] = '\0';
+}
+
+// REG_SZ values written by the old A APIs already reside in the registry as
+// UTF-16. Reading them with W preserves existing data without a new format.
+static bool LoadFindText(HKEY key, const wchar_t* name, std::wstring& value, int limit)
+try
+{
+    value.clear();
+    DWORD bytes = 0;
+    if (RegGetValueW(key, NULL, name, RRF_RT_REG_SZ, NULL, NULL, &bytes) != ERROR_SUCCESS ||
+        bytes == 0 || bytes % sizeof(wchar_t) != 0 || bytes > limit * sizeof(wchar_t))
+        return false;
+    std::wstring text(bytes / sizeof(wchar_t), L'\0');
+    if (RegGetValueW(key, NULL, name, RRF_RT_REG_SZ, NULL, text.data(), &bytes) != ERROR_SUCCESS)
+        return false;
+    text.resize(wcslen(text.c_str()));
+    value = std::move(text);
+    return true;
+}
+catch (const std::bad_alloc&)
+{
+    TRACE_E(LOW_MEMORY);
+    return false;
+}
+
+static bool SaveFindText(HKEY key, const wchar_t* name, const std::wstring& value)
+{
+    const DWORD bytes = static_cast<DWORD>((value.size() + 1) * sizeof(wchar_t));
+    const LSTATUS status = RegSetValueExW(key, name, 0, REG_SZ,
+        reinterpret_cast<const BYTE*>(value.c_str()), bytes);
+    if (status != ERROR_SUCCESS)
+        TRACE_E("Cannot write Find text to the registry, error " << status);
+    return status == ERROR_SUCCESS;
+}
+
+void LoadFindTextHistory(HKEY key, const char* name, std::wstring history[], int count, int textLimit)
+{
+    const std::lock_guard<std::mutex> lock(FindTextHistoryMutex);
+    for (int i = 0; i < count; ++i)
+        history[i].clear();
+    HKEY historyKey;
+    if (!OpenKey(key, name, historyKey))
+        return;
+    for (int i = 0; i < count; ++i)
+    {
+        wchar_t number[12];
+        _itow_s(i + 1, number, 10);
+        if (!LoadFindText(historyKey, number, history[i], textLimit))
+            break;
+    }
+    CloseKey(historyKey);
+}
+
+void SaveFindTextHistory(HKEY key, const char* name, const std::wstring history[], int count, BOOL clear)
+{
+    const std::lock_guard<std::mutex> lock(FindTextHistoryMutex);
+    HKEY historyKey;
+    if (!CreateKey(key, name, historyKey))
+        return;
+    ClearKey(historyKey);
+    if (!clear)
+    {
+        for (int i = 0; i < count && !history[i].empty(); ++i)
+        {
+            wchar_t number[12];
+            _itow_s(i + 1, number, 10);
+            if (!SaveFindText(historyKey, number, history[i]))
+                break;
+        }
+    }
+    CloseKey(historyKey);
+}
+
+std::vector<std::wstring> GetFindTextHistory(std::wstring history[], int count, const std::wstring* newEntry)
+{
+    const std::lock_guard<std::mutex> lock(FindTextHistoryMutex);
+    auto end = history + count;
+    if (newEntry != NULL && !newEntry->empty())
+    {
+        auto entry = std::find(history, end, *newEntry);
+        if (entry == end)
+        {
+            entry = end - 1;
+            *entry = *newEntry;
+        }
+        std::rotate(history, entry, entry + 1);
+    }
+    const auto activeEnd = std::find_if(history, end, [](const std::wstring& value) { return value.empty(); });
+    return {history, activeEnd};
 }
 
 BOOL CFindOptionsItem::Save(HKEY hKey)
@@ -187,10 +279,10 @@ BOOL CFindOptionsItem::Save(HKEY hKey)
         SetValue(hKey, FINDOPTIONSITEM_REGULAR_REG, REG_DWORD, &RegularExpresions, sizeof(DWORD));
     if (AutoLoad != def.AutoLoad)
         SetValue(hKey, FINDOPTIONSITEM_AUTOLOAD_REG, REG_DWORD, &AutoLoad, sizeof(DWORD));
-    if (strcmp(NamedText, def.NamedText) != 0)
-        SetValue(hKey, FINDOPTIONSITEM_NAMED_REG, REG_SZ, NamedText, -1);
-    if (strcmp(LookInText, def.LookInText) != 0)
-        SetValue(hKey, FINDOPTIONSITEM_LOOKIN_REG, REG_SZ, LookInText, -1);
+    if (!NamedText.empty())
+        SaveFindText(hKey, FINDOPTIONSITEM_NAMED_REG, NamedText);
+    if (!LookInText.empty())
+        SaveFindText(hKey, FINDOPTIONSITEM_LOOKIN_REG, LookInText);
     if (strcmp(GrepText, def.GrepText) != 0)
         SetValue(hKey, FINDOPTIONSITEM_GREP_REG, REG_SZ, GrepText, -1);
 
@@ -208,8 +300,8 @@ BOOL CFindOptionsItem::Load(HKEY hKey, DWORD cfgVersion)
     GetValue(hKey, FINDOPTIONSITEM_HEXMODE_REG, REG_DWORD, &HexMode, sizeof(DWORD));
     GetValue(hKey, FINDOPTIONSITEM_REGULAR_REG, REG_DWORD, &RegularExpresions, sizeof(DWORD));
     GetValue(hKey, FINDOPTIONSITEM_AUTOLOAD_REG, REG_DWORD, &AutoLoad, sizeof(DWORD));
-    GetValue(hKey, FINDOPTIONSITEM_NAMED_REG, REG_SZ, NamedText, NAMED_TEXT_LEN);
-    GetValue(hKey, FINDOPTIONSITEM_LOOKIN_REG, REG_SZ, LookInText, LOOKIN_TEXT_LEN);
+    LoadFindText(hKey, FINDOPTIONSITEM_NAMED_REG, NamedText, NAMED_TEXT_LEN);
+    LoadFindText(hKey, FINDOPTIONSITEM_LOOKIN_REG, LookInText, LOOKIN_TEXT_LEN);
     GetValue(hKey, FINDOPTIONSITEM_GREP_REG, REG_SZ, GrepText, GREP_TEXT_LEN);
 
     if (cfgVersion <= 13)
@@ -221,8 +313,13 @@ BOOL CFindOptionsItem::Load(HKEY hKey, DWORD cfgVersion)
         GetValue(hKey, OLD_FINDOPTIONSITEM_EXCLUDEMASK_REG, REG_DWORD, &excludeMask, sizeof(DWORD));
         if (excludeMask)
         {
-            memmove(NamedText + 1, NamedText, NAMED_TEXT_LEN - 1);
-            NamedText[0] = '|';
+            if (NamedText.size() == NAMED_TEXT_LEN - 1)
+            {
+                NamedText.pop_back();
+                if (NamedText.back() >= 0xd800 && NamedText.back() <= 0xdbff)
+                    NamedText.pop_back();
+            }
+            NamedText.insert(NamedText.begin(), L'|');
         }
 
         Criteria.LoadOld(hKey);
@@ -1145,11 +1242,33 @@ void CDuplicateCandidates::Examine(CGrepData* data)
 // CSearchForData
 //
 
-void CSearchForData::Set(const char* dir, const char* masksGroup, BOOL includeSubDirs)
+bool TryFindTextToAnsi(const std::wstring& text, char* output, int capacity)
+try
 {
-    strcpy(Dir, dir);
-    MasksGroup.SetMasksString(masksGroup);
-    IncludeSubDirs = includeSubDirs;
+    return WideCharToMultiByte(CP_ACP, 0, text.c_str(), -1, output, capacity, NULL, NULL) > 0 &&
+           (text.empty() || Salamander::IsExactAnsiName(output, text.c_str()));
+}
+catch (const std::bad_alloc&)
+{
+    TRACE_E(LOW_MEMORY);
+    return false;
+}
+
+// Until enumeration is wide, leave room for the separator, wildcard and NUL.
+bool TryLegacyFindWorkerRoot(const std::wstring& directory, char (&path)[MAX_PATH])
+{
+    if (directory.empty() || !TryFindTextToAnsi(directory, path, _countof(path)))
+        return false;
+    size_t length = strlen(path);
+    const bool addSeparator = path[length - 1] != '\\';
+    if (length + addSeparator + 1 >= _countof(path))
+        return false;
+    if (addSeparator)
+    {
+        path[length++] = '\\';
+        path[length] = '\0';
+    }
+    return true;
 }
 
 //*********************************************************************************
@@ -1853,6 +1972,53 @@ void RefineData(CMaskGroup* masksGroup, CGrepData* data)
     }
 }
 
+#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
+// These events are created by the isolated GUI driver before starting the
+// process. Normal binaries do not contain this coordination code.
+static HANDLE OpenIsolatedFindEvent(const char* suffix, DWORD access)
+{
+    char enabled[2];
+    if (GetEnvironmentVariableA("OPENSAL_GUI_FIND_TEST_GATE", enabled, _countof(enabled)) != 1 ||
+        enabled[0] != '1')
+        return NULL;
+
+    char id[33];
+    if (GetEnvironmentVariableA("OPENSAL_GUI_TEST_ID", id, _countof(id)) != 32 ||
+        strspn(id, "0123456789abcdef") != 32)
+        return NULL;
+
+    char name[96];
+    _snprintf_s(name, _TRUNCATE, "Local\\OpenSalamander.FindTest.%s.%s", id, suffix);
+    return OpenEventA(access, FALSE, name);
+}
+
+void SignalIsolatedFindCancellation()
+{
+    HANDLE cancelled = OpenIsolatedFindEvent("cancelled", EVENT_MODIFY_STATE);
+    if (cancelled != NULL)
+    {
+        SetEvent(cancelled);
+        CloseHandle(cancelled);
+    }
+}
+
+static void WaitAtIsolatedFindCheckpoint()
+{
+    HANDLE reached = OpenIsolatedFindEvent("reached", EVENT_MODIFY_STATE);
+    if (reached == NULL)
+        return;
+
+    HANDLE cancelled = OpenIsolatedFindEvent("cancelled", SYNCHRONIZE);
+    if (cancelled != NULL)
+    {
+        if (SetEvent(reached))
+            WaitForSingleObject(cancelled, 15000);
+        CloseHandle(cancelled);
+    }
+    CloseHandle(reached);
+}
+#endif
+
 unsigned GrepThreadFBody(void* ptr)
 {
     CALL_STACK_MESSAGE1("GrepThreadFBody()");
@@ -1863,20 +2029,14 @@ unsigned GrepThreadFBody(void* ptr)
     CGrepData* data = (CGrepData*)ptr;
     data->NeedRefresh = FALSE;
     data->Criteria.PrepareForTest();
+#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
+    WaitAtIsolatedFindCheckpoint();
+#endif
     char path[MAX_PATH];
-    char* end;
     if (data->Refine != 0)
     {
         if (data->Data->Count > 0)
         {
-            strcpy_s(path, data->Data->At(0)->Dir);
-            int len = (int)strlen(path);
-            if (path[len - 1] != '\\')
-            {
-                strcat_s(path, "\\");
-                len++;
-            }
-            end = path + len;
             CMaskGroup* mg = &data->Data->At(0)->MasksGroup;
             int errorPos;
             if (mg->PrepareMasks(errorPos))
@@ -1912,15 +2072,15 @@ unsigned GrepThreadFBody(void* ptr)
             int i;
             for (i = 0; i < data->Data->Count; i++)
             {
-                strcpy_s(path, data->Data->At(i)->Dir);
-                int len = (int)strlen(path);
-                if (path[len - 1] != '\\')
+                CSearchForData* query = data->Data->At(i);
+                if (!TryLegacyFindWorkerRoot(query->Directory, path))
                 {
-                    strcat_s(path, "\\");
-                    len++;
+                    TRACE_E("Legacy Find received a root that cannot be enumerated losslessly.");
+                    data->StopSearch = TRUE;
+                    break;
                 }
-                end = path + len;
-                CMaskGroup* mg = &data->Data->At(i)->MasksGroup;
+                char* end = path + strlen(path);
+                CMaskGroup* mg = &query->MasksGroup;
                 int errorPos;
                 if (!mg->PrepareMasks(errorPos))
                 {
@@ -1929,7 +2089,7 @@ unsigned GrepThreadFBody(void* ptr)
                     break;
                 }
 
-                BOOL includeSubDirs = data->Data->At(i)->IncludeSubDirs;
+                BOOL includeSubDirs = query->IncludeSubDirs;
                 TDirectArray<char*>* dirStack = NULL; // see description at SearchDirectory
                 if (includeSubDirs)
                 {
@@ -2112,7 +2272,7 @@ unsigned ThreadFindDialogMessageLoopBody(void* parameter)
             MSG msg;
             HWND findDialogHWindow = findDialog->HWindow; // because of WM_QUIT, when the window will no longer be allocated
             BOOL haveMSG = FALSE;                         // FALSE means GetMessage() should be called in the loop condition
-            while (haveMSG || GetMessage(&msg, NULL, 0, 0))
+            while (haveMSG || GetMessageW(&msg, NULL, 0, 0) > 0)
             {
                 haveMSG = FALSE;
                 if ((msg.message == WM_SYSKEYDOWN || msg.message == WM_KEYDOWN) &&
@@ -2124,18 +2284,18 @@ unsigned ThreadFindDialogMessageLoopBody(void* parameter)
                     if (msg.message == WM_KEYDOWN && msg.wParam == VK_ESCAPE && findDialog != NULL)
                         findDialog->SetProcessingEscape(TRUE);
                     if (findDialog == NULL ||
-                        (!TranslateAccelerator(findDialogHWindow, FindDialogAccelTable, &msg)) &&
+                        (!TranslateAcceleratorW(findDialogHWindow, FindDialogAccelTable, &msg)) &&
                             (!findDialog->ManageHiddenShortcuts(&msg)) &&
-                            (!IsDialogMessage(findDialogHWindow, &msg)))
+                            (!IsDialogMessageW(findDialogHWindow, &msg)))
                     {
                         TranslateMessage(&msg); // prevent generating WM_CHAR -> would cause a beep on Cancel
-                        DispatchMessage(&msg);
+                        DispatchMessageW(&msg);
                     }
                     if (msg.message == WM_KEYDOWN && msg.wParam == VK_ESCAPE && findDialog != NULL)
                         findDialog->SetProcessingEscape(FALSE);
                 }
 
-                if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+                if (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE))
                 {
                     if (msg.message == WM_QUIT)
                         break;      // equivalent to the situation where GetMessage() returns FALSE
@@ -2184,13 +2344,21 @@ DWORD WINAPI ThreadFindDialogMessageLoop(void* param)
     return ThreadFindDialogMessageLoopEH(param);
 }
 
-BOOL OpenFindDialog(HWND hCenterAgainst, const char* initPath)
+BOOL OpenFindDialog(HWND hCenterAgainst, std::wstring_view initPath)
 {
-    CALL_STACK_MESSAGE3("OpenFindDialog(0x%p, %s)", hCenterAgainst, initPath);
+    CALL_STACK_MESSAGE3("OpenFindDialog(0x%p, %Iu UTF-16 units)", hCenterAgainst, initPath.size());
 
     HCURSOR hOldCur = SetCursor(LoadCursor(NULL, IDC_WAIT));
 
-    CFindDialog* findDlg = new CFindDialog(hCenterAgainst, initPath);
+    CFindDialog* findDlg = NULL;
+    try
+    {
+        findDlg = new CFindDialog(hCenterAgainst, initPath);
+    }
+    catch (const std::bad_alloc&)
+    {
+        // The allocation-failure path below restores the cursor.
+    }
     if (findDlg != NULL && findDlg->IsGood())
     {
         CTFDData data;

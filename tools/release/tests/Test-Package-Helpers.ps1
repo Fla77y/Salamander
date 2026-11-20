@@ -879,14 +879,18 @@ if ($pluginDispatch -notmatch 'HasUnsupportedLegacyPluginSelection' -or
 
 # Search roots must be transferred from the complete W control value and
 # rejected if the ACP round-trip loses characters or exceeds the buffer.
-if ($findDialog1 -notmatch 'GetWindowTextW\(hLookInWnd' -or
-    $findDialog1 -notmatch 'IsExactAnsiName\(exactInput, wideInput\.c_str\(\)\)' -or
+$findWorker = Get-Content -LiteralPath (Join-Path $toolsDir '..\..\src\find.cpp') -Raw
+if ($findDialog1 -notmatch 'const std::wstring roots = ReadFindEdit\(lookIn\)' -or
+    $findDialog1 -notmatch 'TryLegacyFindWorkerRoot\(root, ansiRoot\)' -or
+    $findWorker -notmatch 'TryFindTextToAnsi\(directory, path, _countof\(path\)\)' -or
+    $findWorker -notmatch 'IsExactAnsiName\(output, text\.c_str\(\)\)' -or
+    $findWorker -notmatch 'length \+ addSeparator \+ 1 >= _countof\(path\)' -or
     $findDialog1 -notmatch 'ti\.ErrorOn\(IDC_FIND_LOOKIN\)') {
     throw 'F2: search root validation must not silently truncate or best-fit Unicode.'
 }
 
-# F2: real disk searches must reach the new W-owned result model, and the
-# native 32700-unit fixture must exercise the same search implementation.
+# The secondary Unicode Find command and the native near-limit fixture
+# must reach the same W-owned search implementation.
 $wideFind = Get-Content -LiteralPath (
     Join-Path $toolsDir '..\..\src\common\win32_unicode_find.h') -Raw
 $wideFindWindow = Get-Content -LiteralPath (

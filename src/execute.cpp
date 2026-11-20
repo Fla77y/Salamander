@@ -15,8 +15,8 @@
 // CComboboxEdit
 //
 
-CComboboxEdit::CComboboxEdit()
-    : CWindow(ooAllocated)
+CComboboxEdit::CComboboxEdit(BOOL unicodeWnd)
+    : CWindow(ooAllocated, unicodeWnd)
 {
     SelStart = 0;
     SelEnd = -1;
@@ -60,6 +60,12 @@ void CComboboxEdit::ReplaceText(const char* text)
     // we must restore the selection because the combo box lost it
     SendMessage(HWindow, EM_SETSEL, SelStart, SelEnd);
     SendMessage(HWindow, EM_REPLACESEL, TRUE, (LPARAM)text);
+}
+
+void CComboboxEdit::ReplaceText(const wchar_t* text)
+{
+    SendMessageW(HWindow, EM_SETSEL, SelStart, SelEnd);
+    SendMessageW(HWindow, EM_REPLACESEL, TRUE, reinterpret_cast<LPARAM>(text));
 }
 
 //******************************************************************************

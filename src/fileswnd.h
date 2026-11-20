@@ -1304,7 +1304,7 @@ public:
     // edit-file-with: opens a menu for selecting an editor; name == NULL -> item under the cursor in the panel;
     // handlerID != NULL -> returns only the selected handler ID (does not open the viewer); on failure returns 0xFFFFFFFF
     void EditFileWith(char* name, HWND hMenuParent, const POINT* menuPos, DWORD* handlerID = NULL);
-    void FindFile();
+    void FindFile(bool unicodeDialog);
     void DriveInfo();
     void OpenActiveFolder();
 

@@ -670,9 +670,9 @@ void CFilesWindow::ChangeAttr(BOOL setCompress, BOOL compressed, BOOL setEncrypt
     EndStopRefresh(); // snooper will start again now
 }
 
-void CFilesWindow::FindFile()
+void CFilesWindow::FindFile(bool unicodeDialog)
 {
-    CALL_STACK_MESSAGE1("CFilesWindow::FindFile()");
+    CALL_STACK_MESSAGE2("CFilesWindow::FindFile(%d)", unicodeDialog);
     if (Is(ptDisk) && CheckPath(TRUE) != ERROR_SUCCESS)
         return;
 
@@ -703,10 +703,6 @@ void CFilesWindow::FindFile()
 
     if (Is(ptDisk))
     {
-        // The historical Find dialog stores root, recursive paths and result
-        // names in ANSI MAX_PATH buffers. Use a separate W-owned result model
-        // for physical disk search, retaining the advanced legacy dialog
-        // as an explicit option only for representable short roots.
         std::wstring wideRoot;
         if (!Salamander::TryGetUnicodePanelDirectory(GetPath(), wideRoot))
         {
@@ -717,21 +713,15 @@ void CFilesWindow::FindFile()
             return;
         }
         const HWND owner = MainWindow->HWindow;
+        if (!unicodeDialog)
+        {
+            OpenFindDialog(owner, wideRoot);
+            return;
+        }
         const auto openAdvanced = [owner](const std::wstring& root) {
-            // The old dialog and shell plug-in interfaces are CP_ACP-based.
-            // Do not permit replacement characters or a shortened root.
-            if (root.size() >= MAX_PATH)
-                return;
-            const int bytes = WideCharToMultiByte(CP_ACP, 0,
-                root.c_str(), -1, nullptr, 0, nullptr, nullptr);
-            if (bytes <= 0 || bytes >= MAX_PATH)
-                return;
-            std::string ansi(static_cast<size_t>(bytes), '\0');
-            if (WideCharToMultiByte(CP_ACP, 0, root.c_str(), -1,
-                                    &ansi[0], bytes, nullptr, nullptr) != bytes ||
-                !Salamander::IsExactAnsiName(ansi.c_str(), root.c_str()))
-                return;
-            OpenFindDialog(owner, ansi.c_str());
+            char legacyRoot[MAX_PATH];
+            if (TryLegacyFindWorkerRoot(root, legacyRoot))
+                OpenFindDialog(owner, root);
         };
         if (!Salamander::UnicodeFindWindow::Open(owner, wideRoot, openAdvanced))
             MessageBoxW(HWindow, L"Unable to open the Unicode Find window.",
@@ -739,7 +729,7 @@ void CFilesWindow::FindFile()
         return;
     }
 
-    OpenFindDialog(MainWindow->HWindow, "");
+    OpenFindDialog(MainWindow->HWindow, {});
 }
 
 void CFilesWindow::ViewFile(char* name, BOOL altView, DWORD handlerID, int enumFileNamesSourceUID,

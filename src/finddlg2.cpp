@@ -760,8 +760,8 @@ void CFindManageDialog::LoadControls()
         item = (CFindOptionsItem*)itemID;
     else
         item = (CFindOptionsItem*)CurrenOptionsItem;
-    SetDlgItemText(HWindow, IDC_FFS_NAMED, item->NamedText);
-    SetDlgItemText(HWindow, IDC_FFS_LOOKIN, item->LookInText);
+    SetDlgItemTextW(HWindow, IDC_FFS_NAMED, item->NamedText.c_str());
+    SetDlgItemTextW(HWindow, IDC_FFS_LOOKIN, item->LookInText.c_str());
     SetDlgItemText(HWindow, IDC_FFS_SUBDIRS, item->SubDirectories ? LoadStr(IDS_INFODLGYES) : LoadStr(IDS_INFODLGNO));
     SetDlgItemText(HWindow, IDC_FFS_CONTAINING, item->GrepText);
     char buff[200];

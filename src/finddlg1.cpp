@@ -12,6 +12,7 @@
 #include "viewer.h"
 #include "shellib.h"
 #include "find.h"
+#include "common/legacy_find_query.h"
 #include "common/win32_unicode_panel_name.h"
 #include "gui.h"
 #include "usermenu.h"
@@ -19,6 +20,7 @@
 #include "tasklist.h"
 
 #include <Shlwapi.h>
+#include <algorithm>
 
 const char* MINIMIZED_FINDING_CAPTION = "(%d) %s [%s %s]";
 const char* NORMAL_FINDING_CAPTION = "%s [%s %s]";
@@ -1302,10 +1304,56 @@ BOOL CFoundFilesListView::InitColumns()
 // CFindDialog
 //
 
-CFindDialog::CFindDialog(HWND hCenterAgainst, const char* initPath)
+static std::wstring ReadFindEdit(HWND edit)
+{
+    std::wstring text(static_cast<size_t>(GetWindowTextLengthW(edit)) + 1, L'\0');
+    const int length = GetWindowTextW(edit, text.data(), static_cast<int>(text.size()));
+    text.resize(length);
+    return text;
+}
+
+static std::wstring WidenFindText(const char* text)
+{
+    const int units = MultiByteToWideChar(CP_ACP, 0, text, -1, NULL, 0);
+    if (units <= 0)
+        return {};
+    std::wstring result(units, L'\0');
+    if (MultiByteToWideChar(CP_ACP, 0, text, -1, result.data(), units) != units)
+        return {};
+    result.pop_back();
+    return result;
+}
+
+static void TransferFindText(CTransferInfo& ti, int id, std::wstring& text, int limit,
+                             std::wstring history[], int count)
+{
+    HWND combo;
+    if (!ti.GetControl(combo, id))
+        return;
+    if (ti.Type == ttDataFromWindow)
+    {
+        std::wstring input = ReadFindEdit(combo);
+        if (input.size() >= static_cast<size_t>(limit))
+        {
+            ti.ErrorOn(id);
+            return;
+        }
+        text = std::move(input);
+    }
+    const auto entries = GetFindTextHistory(history, count, ti.Type == ttDataFromWindow ? &text : NULL);
+
+    SendMessageW(combo, CB_RESETCONTENT, 0, 0);
+    SendMessageW(combo, CB_LIMITTEXT, limit - 1, 0);
+    for (const auto& entry : entries)
+        SendMessageW(combo, CB_ADDSTRING, 0, reinterpret_cast<LPARAM>(entry.c_str()));
+    SetWindowTextW(combo, text.c_str());
+}
+
+CFindDialog::CFindDialog(HWND hCenterAgainst, std::wstring_view initPath)
     : CCommonDialog(HLanguage, IDD_FIND, NULL, ooStandard, hCenterAgainst),
       SearchForData(50, 10)
 {
+    UnicodeWnd = TRUE;
     // data needed to lay out the dialog
     FirstWMSize = TRUE;
     VMargin = 0;
@@ -1353,7 +1401,7 @@ CFindDialog::CFindDialog(HWND hCenterAgainst, const char* initPath)
     ZeroOnDestroy = NULL;
     OleInitialized = FALSE;
     ProcessingEscape = FALSE;
-    EditLine = new CComboboxEdit();
+    EditLine = new CComboboxEdit(TRUE);
     OKButton = NULL;
 
     FileNameFormat = Configuration.FileNameFormat;
@@ -1374,32 +1422,14 @@ CFindDialog::CFindDialog(HWND hCenterAgainst, const char* initPath)
             break;
         }
 
-    // data for controls
-    if (Data.NamedText[0] == 0)
-        lstrcpy(Data.NamedText, "*.*");
-    if (Data.LookInText[0] == 0)
+    if (Data.NamedText.empty())
+        Data.NamedText = L"*.*";
+    if (Data.LookInText.empty())
     {
-        // The legacy Find dialog cannot represent this root. Never
-        // silently search the existing prefix of a truncated input.
-        if (initPath == NULL || strlen(initPath) >= LOOKIN_TEXT_LEN)
-        {
-            InitRootTooLong = TRUE;
-            Data.LookInText[0] = 0;
-        }
-        const char* s = InitRootTooLong ? "" : initPath;
-        char* d = Data.LookInText;
-        char* end = Data.LookInText + LOOKIN_TEXT_LEN - 1; // -1 leaves room for the null terminator at the end of the string
-        while (*s != 0 && d < end)
-        {
-            if (*s == ';')
-            {
-                *d++ = ';';
-                if (d >= end)
-                    break;
-            }
-            *d++ = *s++;
-        }
-        *d++ = 0;
+        Data.LookInText = Salamander::EscapeLegacyFindRoot(initPath);
+        InitRootTooLong = Data.LookInText.size() >= LOOKIN_TEXT_LEN;
+        if (InitRootTooLong)
+            Data.LookInText.clear();
     }
 }
 
@@ -1686,90 +1716,72 @@ void CFindDialog::SetContentVisible(BOOL visible)
 void CFindDialog::Validate(CTransferInfo& ti)
 {
     CALL_STACK_MESSAGE1("CFindDialog::Validate()");
+    HWND names;
+    HWND lookIn;
+    if (!ti.GetControl(names, IDC_FIND_NAMED) || !ti.GetControl(lookIn, IDC_FIND_LOOKIN))
+        return;
 
-    HWND hNamesWnd;
-    HWND hLookInWnd;
-
-    if (ti.GetControl(hNamesWnd, IDC_FIND_NAMED) &&
-        ti.GetControl(hLookInWnd, IDC_FIND_LOOKIN))
+    char ansiMask[NAMED_TEXT_LEN];
+    if (!TryFindTextToAnsi(ReadFindEdit(names), ansiMask, _countof(ansiMask)))
     {
-        // back up the data
-        char bufNamed[NAMED_TEXT_LEN];
-        char bufLookIn[LOOKIN_TEXT_LEN];
-        strcpy(bufNamed, Data.NamedText);
-        strcpy(bufLookIn, Data.LookInText);
+        SalMessageBox(HWindow, "The search mask cannot yet be used without Unicode loss or truncation.",
+                      LoadStr(IDS_ERRORTITLE), MB_OK | MB_ICONWARNING);
+        ti.ErrorOn(IDC_FIND_NAMED);
+        return;
+    }
 
-        SendMessage(hNamesWnd, WM_GETTEXT, NAMED_TEXT_LEN, (LPARAM)Data.NamedText);
-        CMaskGroup mask(Data.NamedText);
-        int errorPos;
-        if (!mask.PrepareMasks(errorPos))
+    CMaskGroup mask(ansiMask);
+    int errorPos;
+    if (!mask.PrepareMasks(errorPos))
+    {
+        SalMessageBox(HWindow, LoadStr(IDS_INCORRECTSYNTAX), LoadStr(IDS_ERRORTITLE),
+                      MB_OK | MB_ICONEXCLAMATION);
+        // The legacy matcher reports a byte offset. The edit selection is UTF-16.
+        ansiMask[(std::clamp)(errorPos, 0, lstrlen(ansiMask))] = '\0';
+        const size_t offset = WidenFindText(ansiMask).size();
+        SetFocus(names);
+        SendMessageW(names, CB_SETEDITSEL, 0, MAKELPARAM(offset, offset + 1));
+        ti.ErrorOn(IDC_FIND_NAMED);
+        return;
+    }
+
+    const std::wstring roots = ReadFindEdit(lookIn);
+    if (roots.size() >= LOOKIN_TEXT_LEN)
+    {
+        SalMessageBox(HWindow, LoadStr(IDS_TOOLONGNAME), LoadStr(IDS_ERRORTITLE), MB_OK | MB_ICONWARNING);
+        ti.ErrorOn(IDC_FIND_LOOKIN);
+        return;
+    }
+    const auto parsed = Salamander::ParseLegacyFindRoots(roots);
+    if (parsed.empty())
+    {
+        SalMessageBox(HWindow, LoadStr(IDS_FF_EMPTYSTRING), LoadStr(IDS_ERRORTITLE),
+                      MB_OK | MB_ICONEXCLAMATION);
+        ti.ErrorOn(IDC_FIND_LOOKIN);
+        return;
+    }
+    for (const auto& root : parsed)
+    {
+        char ansiRoot[MAX_PATH];
+        if (!TryLegacyFindWorkerRoot(root, ansiRoot))
         {
-            SalMessageBox(HWindow, LoadStr(IDS_INCORRECTSYNTAX), LoadStr(IDS_ERRORTITLE),
-                          MB_OK | MB_ICONEXCLAMATION);
-            SetFocus(hNamesWnd); // ensure the CB_SETEDITSEL message works correctly
-            SendMessage(hNamesWnd, CB_SETEDITSEL, 0, MAKELPARAM(errorPos, errorPos + 1));
-            ti.ErrorOn(IDC_FIND_NAMED);
+            SalMessageBox(HWindow,
+                "The search root cannot be represented without Unicode "
+                "loss or truncation. Choose a shorter ANSI-compatible "
+                "directory. No search was started.",
+                LoadStr(IDS_ERRORTITLE), MB_OK | MB_ICONWARNING);
+            ti.ErrorOn(IDC_FIND_LOOKIN);
+            return;
         }
-
-        if (ti.IsGood())
-        {
-            // Read the entire Unicode edit value first. WM_GETTEXT into an
-            // ANSI MAX_PATH buffer could silently redirect the search to
-            // a truncated existing directory or a best-fit ACP alias.
-            const int lengthW = GetWindowTextLengthW(hLookInWnd);
-            const bool validUnits = lengthW >= 0 && lengthW < LOOKIN_TEXT_LEN;
-            std::wstring wideInput;
-            if (validUnits)
-            {
-                wideInput.resize(static_cast<size_t>(lengthW) + 1, L'\0');
-                GetWindowTextW(hLookInWnd, &wideInput[0],
-                               static_cast<int>(wideInput.size()));
-                wideInput.resize(wcslen(wideInput.c_str()));
-            }
-            const int bytes = validUnits
-                ? WideCharToMultiByte(CP_ACP, 0, wideInput.c_str(),
-                                      -1, NULL, 0, NULL, NULL)
-                : 0;
-            char exactInput[LOOKIN_TEXT_LEN] = {};
-            const bool validInput = bytes > 0 && bytes <= LOOKIN_TEXT_LEN &&
-                WideCharToMultiByte(CP_ACP, 0, wideInput.c_str(), -1,
-                                    exactInput, bytes, NULL, NULL) == bytes &&
-                (wideInput.empty() ||
-                 Salamander::IsExactAnsiName(exactInput, wideInput.c_str()));
-            if (!validInput)
-            {
-                SalMessageBox(HWindow,
-                    "The search root cannot be represented without Unicode "
-                    "loss or truncation. Choose a shorter ANSI-compatible "
-                    "directory. No search was started.",
-                    LoadStr(IDS_ERRORTITLE), MB_OK | MB_ICONWARNING);
-                ti.ErrorOn(IDC_FIND_LOOKIN);
-            }
-            else
-            {
-                strcpy_s(Data.LookInText, exactInput);
-                BuildSerchForData();
-                if (SearchForData.Count == 0)
-                {
-                    SalMessageBox(HWindow, LoadStr(IDS_FF_EMPTYSTRING), LoadStr(IDS_ERRORTITLE),
-                                  MB_OK | MB_ICONEXCLAMATION);
-                    ti.ErrorOn(IDC_FIND_LOOKIN);
-                }
-            }
-        }
-
-        // restore data from the backup
-        strcpy(Data.LookInText, bufLookIn);
-        strcpy(Data.NamedText, bufNamed);
     }
 }
 
 void CFindDialog::Transfer(CTransferInfo& ti)
 {
-    HistoryComboBox(HWindow, ti, IDC_FIND_NAMED, Data.NamedText, NAMED_TEXT_LEN,
-                    FALSE, FIND_NAMED_HISTORY_SIZE, FindNamedHistory);
-    HistoryComboBox(HWindow, ti, IDC_FIND_LOOKIN, Data.LookInText, LOOKIN_TEXT_LEN,
-                    FALSE, FIND_LOOKIN_HISTORY_SIZE, FindLookInHistory);
+    TransferFindText(ti, IDC_FIND_NAMED, Data.NamedText, NAMED_TEXT_LEN,
+                     FindNamedHistory, FIND_NAMED_HISTORY_SIZE);
+    TransferFindText(ti, IDC_FIND_LOOKIN, Data.LookInText, LOOKIN_TEXT_LEN,
+                     FindLookInHistory, FIND_LOOKIN_HISTORY_SIZE);
 
     ti.CheckBox(IDC_FIND_INCLUDE_SUBDIR, Data.SubDirectories);
     HistoryComboBox(HWindow, ti, IDC_FIND_CONTAINING, Data.GrepText, GREP_TEXT_LEN,
@@ -1796,10 +1808,10 @@ void CFindDialog::LoadControls(int index)
     Data = *FindOptions.At(index);
 
     // if any edit line is empty, keep its previous value
-    if (Data.NamedText[0] == 0)
-        GetDlgItemText(HWindow, IDC_FIND_NAMED, Data.NamedText, NAMED_TEXT_LEN);
-    if (Data.LookInText[0] == 0)
-        GetDlgItemText(HWindow, IDC_FIND_LOOKIN, Data.LookInText, LOOKIN_TEXT_LEN);
+    if (Data.NamedText.empty())
+        Data.NamedText = ReadFindEdit(GetDlgItem(HWindow, IDC_FIND_NAMED));
+    if (Data.LookInText.empty())
+        Data.LookInText = ReadFindEdit(GetDlgItem(HWindow, IDC_FIND_LOOKIN));
     if (Data.GrepText[0] == 0)
         GetDlgItemText(HWindow, IDC_FIND_CONTAINING, Data.GrepText, GREP_TEXT_LEN);
 
@@ -1816,8 +1828,12 @@ void CFindDialog::LoadControls(int index)
     EnableControls();
 }
 
-void CFindDialog::BuildSerchForData()
+BOOL CFindDialog::BuildSerchForData()
 {
+    SearchForData.DestroyMembers();
+    char mask[NAMED_TEXT_LEN];
+    if (!TryFindTextToAnsi(Data.NamedText, mask, _countof(mask)))
+        return FALSE;
     char named[NAMED_TEXT_LEN + NAMED_TEXT_LEN];
     char* begin;
     char* end;
@@ -1826,7 +1842,7 @@ void CFindDialog::BuildSerchForData()
     // Therefore, we must inspect each item in the mask group and, if it contains neither
     // a wildcard nor '.', surround it with asterisks.
     char* iterator = named;
-    begin = Data.NamedText;
+    begin = mask;
     while (1)
     {
         end = begin;
@@ -1882,70 +1898,20 @@ void CFindDialog::BuildSerchForData()
     if (named[0] == 0)
         strcpy(named, "*"); // replace empty string with '*'
 
-    SearchForData.DestroyMembers();
-
-    char path[MAX_PATH];
-    lstrcpy(path, Data.LookInText);
-    begin = path;
-    do
+    for (auto& root : Salamander::ParseLegacyFindRoots(Data.LookInText))
     {
-        end = begin;
-        while (*end != 0)
+        CSearchForData* item = new CSearchForData(std::move(root), named, Data.SubDirectories);
+        if (item == NULL)
+            return FALSE;
+        SearchForData.Add(item);
+        if (!SearchForData.IsGood())
         {
-            if (*end == ';')
-            {
-                if (*(end + 1) != ';')
-                    break;
-                else
-                    memmove(end, end + 1, strlen(end + 1) + 1); // shift left (";;" -> ";")
-            }
-            end++;
+            SearchForData.ResetState();
+            delete item;
+            return FALSE;
         }
-        char* tmp = end - 1;
-        if (*end == ';')
-        {
-            *end = 0;
-            end++;
-        }
-        // while (*end == ';') end++;   // always false because ";;" -> ";" and it's a regular character, not a separator
-
-        // remove spaces before the path
-        while (*begin == ' ')
-            begin++;
-        // remove spaces after the path
-        if (tmp > begin)
-        {
-            while (tmp > begin && *tmp <= ' ')
-                tmp--;
-            *(tmp + 1) = 0; // there might already be '\0'; otherwise add it
-        }
-        // remove redundant slashes/backslashes at the end of the path (keep at most one)
-        if (tmp > begin)
-        {
-            while (tmp > begin && (*tmp == '/' || *tmp == '\\'))
-                tmp--;
-            if (*(tmp + 1) == '/' || *(tmp + 1) == '\\')
-                tmp++;      // leave one
-            *(tmp + 1) = 0; // there might already be '\0'; otherwise add it
-        }
-
-        if (*begin != 0)
-        {
-            CSearchForData* item = new CSearchForData(begin, named, Data.SubDirectories);
-            if (item != NULL)
-            {
-                SearchForData.Add(item);
-                if (!SearchForData.IsGood())
-                {
-                    SearchForData.ResetState();
-                    delete item;
-                    return;
-                }
-            }
-        }
-        if (*end != 0)
-            begin = end;
-    } while (*end != 0);
+    }
+    return SearchForData.Count > 0;
 }
 
 void CFindDialog::StartSearch(WORD command)
@@ -1979,6 +1945,12 @@ void CFindDialog::StartSearch(WORD command)
             TRACE_E("Invalid output from CFindDuplicatesDialog dialog.");
             return;
         }
+    }
+
+    if (!BuildSerchForData())
+    {
+        SalMessageBox(HWindow, LoadStr(IDS_ERRORFINDINGFILE), LoadStr(IDS_ERRORTITLE), MB_OK | MB_ICONWARNING);
+        return;
     }
 
     TBHeader->SetFoundCount(0);
@@ -2088,7 +2060,6 @@ void CFindDialog::StartSearch(WORD command)
     }
     SetFocus(FoundFilesListView->HWindow);
 
-    BuildSerchForData();
     GrepData.Data = &SearchForData;
     GrepData.StopSearch = FALSE;
     GrepData.HWindow = HWindow;
@@ -2141,6 +2112,9 @@ void CFindDialog::StopSearch()
 {
     CALL_STACK_MESSAGE1("CFindDialog::StopSearch()");
     GrepData.StopSearch = TRUE;
+#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
+    SignalIsolatedFindCancellation();
+#endif
     MSG msg;
     while (1)
     {
@@ -2943,10 +2917,19 @@ void CFindDialog::SetFullRowSelect(BOOL fullRow)
 
 INT_PTR
 CFindDialog::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
+try
 {
     SLOW_CALL_STACK_MESSAGE4("CFindDialog::DialogProc(0x%X, 0x%IX, 0x%IX)", uMsg, wParam, lParam);
     switch (uMsg)
     {
+    case WM_NOTIFYFORMAT:
+        if (lParam == NF_QUERY && reinterpret_cast<HWND>(wParam) == GetDlgItem(HWindow, IDC_FIND_RESULTS))
+        {
+            SetWindowLongPtr(HWindow, DWLP_MSGRESULT, NFR_ANSI);
+            return TRUE;
+        }
+        break;
+
     case WM_INITDIALOG:
     {
         FindDialogQueue.Add(new CWindowQueueItem(HWindow));
@@ -2955,8 +2938,8 @@ CFindDialog::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
 
         UpdateAdvancedText();
 
-        InstallWordBreakProc(GetDlgItem(HWindow, IDC_FIND_NAMED));      // install WordBreakProc into the combo box
-        InstallWordBreakProc(GetDlgItem(HWindow, IDC_FIND_LOOKIN));     // install WordBreakProc into the combo box
+        InstallWordBreakProc(GetDlgItem(HWindow, IDC_FIND_NAMED), TRUE);
+        InstallWordBreakProc(GetDlgItem(HWindow, IDC_FIND_LOOKIN), TRUE);
         InstallWordBreakProc(GetDlgItem(HWindow, IDC_FIND_CONTAINING)); // install WordBreakProc into the combo box
 
         CComboboxEdit* edit = new CComboboxEdit();
@@ -2981,6 +2964,7 @@ CFindDialog::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
 
         // construct the list view
         FoundFilesListView = new CFoundFilesListView(HWindow, IDC_FIND_RESULTS, this);
+        SendDlgItemMessageW(HWindow, IDC_FIND_RESULTS, CCM_SETUNICODEFORMAT, FALSE, 0);
 
         SetFullRowSelect(Configuration.FindFullRowSelect);
 
@@ -3129,8 +3113,13 @@ CFindDialog::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
 
     case WM_USER_CLEARHISTORY:
     {
-        ClearComboboxListbox(GetDlgItem(HWindow, IDC_FIND_NAMED));
-        ClearComboboxListbox(GetDlgItem(HWindow, IDC_FIND_LOOKIN));
+        for (const int id : {IDC_FIND_NAMED, IDC_FIND_LOOKIN})
+        {
+            const HWND combo = GetDlgItem(HWindow, id);
+            const std::wstring text = ReadFindEdit(combo);
+            SendMessageW(combo, CB_RESETCONTENT, 0, 0);
+            SetWindowTextW(combo, text.c_str());
+        }
         ClearComboboxListbox(GetDlgItem(HWindow, IDC_FIND_CONTAINING));
         return TRUE;
     }
@@ -3616,51 +3605,35 @@ MENU_TEMPLATE_ITEM FindLookInBrowseMenu[] =
             {
                 if (cmd == 1)
                 {
-                    // Browse...
-                    char path[MAX_PATH + 200];
-                    char buff[1024];
                     DWORD start, end;
                     EditLine->GetSel(&start, &end);
-                    SendMessage(EditLine->HWindow, WM_GETTEXT, (WPARAM)1024, (LPARAM)buff);
-                    path[0] = 0;
-                    if (start < end)
-                        lstrcpyn(path, buff + start, end - start + 1);
+                    const std::wstring text = ReadFindEdit(EditLine->HWindow);
+                    start = (std::min)(start, static_cast<DWORD>(text.size()));
+                    end = (std::min)(end, static_cast<DWORD>(text.size()));
+
+                    char path[MAX_PATH] = "";
+                    if (start < end && !TryFindTextToAnsi(text.substr(start, end - start), path, _countof(path)))
+                        path[0] = '\0'; // The existing picker can only be seeded with an exact ANSI path.
                     if (GetTargetDirectory(HWindow, HWindow, LoadStr(IDS_CHANGE_DIRECTORY),
                                            LoadStr(IDS_BROWSECHANGEDIRTEXT), path, FALSE, path))
                     {
-                        char* s = path;
-                        while (*s != 0) // duplicate ';' characters (escape sequence for ';' is ';;')
-                        {
-                            if (*s == ';')
-                            {
-                                memmove(s + 1, s, strlen(s) + 1);
-                                s++;
-                            }
-                            s++;
-                        }
-
-                        int leftIndex = -1;  // last character after which the text will be inserted
-                        int rightIndex = -1; // first character after the inserted text
+                        std::wstring inserted = Salamander::EscapeLegacyFindRoot(WidenFindText(path));
                         if (start > 0)
-                            leftIndex = start - 1;
-                        if (end < (DWORD)lstrlen(buff))
-                            rightIndex = end;
-                        if (leftIndex != -1)
                         {
-                            s = buff + leftIndex;
-                            while (s >= buff && *s == ';')
-                                s--;
-                            if ((((buff + leftIndex) - s) & 1) == 0)
-                            {
-                                memmove(path + 2, path, lstrlen(path) + 1);
-                                path[0] = ';';
-                                path[1] = ' ';
-                            }
+                            DWORD preceding = start;
+                            while (preceding > 0 && text[preceding - 1] == L';')
+                                --preceding;
+                            if ((start - preceding) % 2 == 0)
+                                inserted.insert(0, L"; ");
                         }
-                        if (rightIndex != -1 && (buff[rightIndex] != ';' || buff[rightIndex + 1] == ';'))
-                            lstrcat(path, "; ");
-
-                        EditLine->ReplaceText(path);
+                        if (end < text.size() &&
+                            (text[end] != L';' || (end + 1 < text.size() && text[end + 1] == L';')))
+                            inserted += L"; ";
+                        if (text.size() - (end - start) + inserted.size() < LOOKIN_TEXT_LEN)
+                            EditLine->ReplaceText(inserted.c_str());
+                        else
+                            SalMessageBox(HWindow, LoadStr(IDS_TOOLONGNAME), LoadStr(IDS_ERRORTITLE),
+                                          MB_OK | MB_ICONWARNING);
                     }
                     return TRUE;
                 }
@@ -4459,6 +4432,11 @@ MENU_TEMPLATE_ITEM FindLookInBrowseMenu[] =
     }
     }
     return CCommonDialog::DialogProc(uMsg, wParam, lParam);
+}
+catch (const std::bad_alloc&)
+{
+    TRACE_E(LOW_MEMORY);
+    return FALSE;
 }
 
 //****************************************************************************

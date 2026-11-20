@@ -13,6 +13,9 @@ $source2 = Get-Content -LiteralPath (Join-Path $root 'src\finddlg2.cpp') -Raw
 $header = Get-Content -LiteralPath (Join-Path $root 'src\find.h') -Raw
 $worker = Get-Content -LiteralPath (Join-Path $root 'src\find.cpp') -Raw
 $dispatch = Get-Content -LiteralPath (Join-Path $root 'src\fileswn5.cpp') -Raw
+$mainDispatch = Get-Content -LiteralPath (Join-Path $root 'src\mainwnd3.cpp') -Raw
+$ctrlLetters = Get-Content -LiteralPath (Join-Path $root 'src\mainwnd4.cpp') -Raw
+$accelerators = Get-Content -LiteralPath (Join-Path $root 'src\salamand.rc') -Raw
 $resource = Get-Content -LiteralPath (Join-Path $root 'src\resource.rh2') -Raw
 
 $checks = [ordered]@{
@@ -38,11 +41,15 @@ $checks = [ordered]@{
         $resource -match 'CM_FIND_CLIPCOPYFULLPATH'
     LegacyWorkerPresent = $worker -match 'GrepThreadFBody' -and
         $worker -match 'SearchDirectory\('
-    OriginalDialogAvailable = $dispatch -match 'OpenFindDialog\(owner, ansi\.c_str\(\)\)'
+    OriginalDialogDefault = $ctrlLetters -match "case 'F':\s+cmd = CM_FINDFILE;" -and
+        $mainDispatch -match 'activePanel->FindFile\(LOWORD\(wParam\) == CM_FINDUNICODEFILE\)' -and
+        $dispatch -match 'if \(!unicodeDialog\)\s*\{\s*OpenFindDialog\(owner, wideRoot\);\s*return;'
+    FindAccelerators = $accelerators -match 'VK_F7,\s+CM_FINDFILE,\s+VIRTKEY,\s+ALT\s*\r?\n' -and
+        $accelerators -match 'VK_F7,\s+CM_FINDUNICODEFILE,\s+VIRTKEY,\s+ALT,\s+SHIFT'
     UnicodeIdentityModel = $header -match 'LegacyFindUtf16Identity UnicodeIdentity'
 }
 foreach ($check in $checks.Keys) {
     $value = $checks[$check]
     if (-not $value) { throw "Legacy Ctrl+F feature contract missing: $check" }
 }
-Write-Host 'PASS: original Find dialog, Advanced, regex, grep, filters, results and W identity scaffolding retained.'
+Write-Host 'PASS: original Find dispatch, Advanced, regex, grep, filters and result contracts.'

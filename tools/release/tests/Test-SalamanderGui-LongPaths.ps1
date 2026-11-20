@@ -37,6 +37,13 @@ param(
     [switch]$ShortOperationsOnly,
     [switch]$TemporaryDirectoryDeletionOnly,
     [switch]$UnicodeFindOnly,
+    [ValidateSet('Baseline','Cancel','AdvancedInputs','ViewResults','ShellClipboard','ShellOpen','ShellProperties','ExternalEditor','RecycleRestore',
+        'EncryptedFixture','UnicodeName','UnicodeResult',
+        'UnicodeDistinct','UnicodeFeatures','UnicodeSettings','UnicodeSettingsStorage','UnicodeRoot','LongRoot','LongDescendant','LongResult',
+        'NearLimit','DefaultDialog','DefaultDialogShortcut','DefaultDialogLongRoot','DefaultDialogAltF7',
+        'UnicodeFindCommand','UnicodeFindShortcut')]
+    [string]$LegacyFindScenario,
+    [string]$LegacyFindEncryptedFixture,
     [switch]$LargeUnicodeCopyOnly,
     [ValidateSet('Copy','Cancel','Collision','LockedSource')][string]$LargeUnicodeCopyCase = 'Copy',
     [switch]$UnicodeParentDirectories,
@@ -51,6 +58,12 @@ if ([Threading.Thread]::CurrentThread.GetApartmentState() -ne 'STA') {
 }
 if (-not (Test-Path -LiteralPath $SalamanderExe -PathType Leaf)) {
     throw "Salamander executable missing: $SalamanderExe"
+}
+if ($LegacyFindScenario -and -not $IsolatedConfiguration) {
+    throw 'Legacy Find GUI tests require -IsolatedConfiguration.'
+}
+if (($LegacyFindScenario -eq 'EncryptedFixture') -ne [bool]$LegacyFindEncryptedFixture) {
+    throw 'EncryptedFixture requires -LegacyFindEncryptedFixture with an existing disposable EFS file.'
 }
 $testConfigurationId = $null
 $testConfigurationKey = $null
@@ -403,7 +416,7 @@ public static class SalamanderGuiNative
             focusPid, windowClass.ToString());
     }
 
-    [DllImport("user32.dll")] private static extern bool IsWindow(IntPtr window);
+    [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr window);
     [DllImport("user32.dll")] private static extern bool BringWindowToTop(IntPtr window);
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool AttachThreadInput(uint threadId, uint attachToId, bool attach);
@@ -874,14 +887,6 @@ public static class SalamanderGuiNative
     private static extern bool PostMessageW(IntPtr window, uint message, UIntPtr wParam, IntPtr lParam);
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr GetWindow(IntPtr window, uint command);
-    [DllImport("user32.dll", SetLastError = true)]
-    private static extern bool SetCursorPos(int x, int y);
-    [DllImport("user32.dll")]
-    private static extern void mouse_event(uint flags, uint x, uint y, uint data, UIntPtr extra);
-    [StructLayout(LayoutKind.Sequential)]
-    public struct NativePoint { public int X; public int Y; }
-    [DllImport("user32.dll")]
-    private static extern IntPtr WindowFromPoint(NativePoint point);
 
     private static string ClassName(IntPtr window)
     {
@@ -1004,6 +1009,315 @@ public static class SalamanderGuiNative
         return result;
     }
 
+    public static IntPtr FindLegacySearchWindow(uint pid)
+    {
+        IntPtr found = IntPtr.Zero;
+        foreach (TopLevelWindow window in GetProcessWindows(pid))
+        {
+            if (!window.Visible || ClassName(window.Handle) != "#32770" ||
+                ClassName(GetDlgItem(window.Handle, 2501)) != "ComboBox" ||
+                ClassName(GetDlgItem(window.Handle, 2510)) != "SysListView32")
+                continue;
+            if (found != IntPtr.Zero)
+                throw new InvalidOperationException("Multiple original Find dialogs");
+            found = window.Handle;
+        }
+        return found;
+    }
+
+    public static IntPtr FindLegacyModal(IntPtr owner, uint pid, string title)
+    {
+        IntPtr found = IntPtr.Zero;
+        foreach (TopLevelWindow window in GetProcessWindows(pid))
+        {
+            if (!window.Visible || ClassName(window.Handle) != "#32770" ||
+                GetWindow(window.Handle, 4) != owner ||
+                !MatchesDialogTitle(window.Title, title))
+                continue;
+            if (found != IntPtr.Zero)
+                throw new InvalidOperationException("Multiple owned Find dialogs named " + title);
+            found = window.Handle;
+        }
+        return found;
+    }
+
+    public static IntPtr FindLegacyResultViewer(uint pid, string expectedPath)
+    {
+        IntPtr found = IntPtr.Zero;
+        string prefix = expectedPath + " - ";
+        foreach (TopLevelWindow window in GetProcessWindows(pid))
+        {
+            if (!window.Visible || ClassName(window.Handle) != "Salamander's Viewer Window" ||
+                (!window.Title.StartsWith(prefix, StringComparison.Ordinal) &&
+                 !window.Title.StartsWith("[#] " + prefix, StringComparison.Ordinal)))
+                continue;
+            if (found != IntPtr.Zero)
+                throw new InvalidOperationException("Multiple viewers for the same Find result");
+            found = window.Handle;
+        }
+        return found;
+    }
+
+    public static IntPtr FindLegacyShellProperties(uint pid, string fixtureName)
+    {
+        IntPtr found = IntPtr.Zero;
+        foreach (TopLevelWindow window in GetProcessWindows(pid))
+        {
+            if (!window.Visible || ClassName(window.Handle) != "#32770" ||
+                !window.Title.Contains(fixtureName))
+                continue;
+            if (found != IntPtr.Zero)
+                throw new InvalidOperationException("Multiple test-owned property windows for " + fixtureName);
+            found = window.Handle;
+        }
+        return found;
+    }
+
+    public static void CloseLegacyShellProperties(IntPtr window, uint pid, string fixtureName)
+    {
+        if (window == IntPtr.Zero || FindLegacyShellProperties(pid, fixtureName) != window)
+            throw new InvalidOperationException("Find properties window is not verified");
+        if (!PostMessageW(window, 0x0010, UIntPtr.Zero, IntPtr.Zero)) // WM_CLOSE
+            throw new InvalidOperationException("Could not close test-owned property window: " + Marshal.GetLastWin32Error());
+    }
+
+    public static bool ConfirmLegacyFindRecycle(IntPtr find, uint pid)
+    {
+        if (FindLegacySearchWindow(pid) != find)
+            throw new InvalidOperationException("Unverified Find window for recycle confirmation");
+        IntPtr confirmation = IntPtr.Zero;
+        foreach (TopLevelWindow window in GetProcessWindows(pid))
+        {
+            if (!window.Visible || ClassName(window.Handle) != "#32770" ||
+                (!MatchesDialogTitle(window.Title, "Delete File") &&
+                 !MatchesDialogTitle(window.Title, "Datei löschen")))
+                continue;
+            IntPtr owner = GetWindow(window.Handle, 4); // GW_OWNER
+            if (owner != find &&
+                (owner == IntPtr.Zero || !GetWindowCaption(owner).Contains("SEW: CFindDialog::OnDelete toRecycle=1") ||
+                 GetAncestor(owner, 2) != find))
+                continue;
+            if (confirmation != IntPtr.Zero)
+                throw new InvalidOperationException("Multiple owned Find recycle confirmations");
+            confirmation = window.Handle;
+        }
+        if (confirmation == IntPtr.Zero)
+            return false;
+        PostFindButton(confirmation, pid, 6); // IDYES
+        return true;
+    }
+
+    public static void LegacyResultViewerCommand(IntPtr viewer, uint pid, string expectedPath, uint command)
+    {
+        if (viewer == IntPtr.Zero || FindLegacyResultViewer(pid, expectedPath) != viewer ||
+            (command != 0 && command != 6085 && command != 6086))
+            throw new InvalidOperationException("Unverified viewer or unsupported Find viewer command");
+        uint message = command == 0 ? 0x0010u : 0x0111u; // WM_CLOSE or WM_COMMAND
+        if (!PostMessageW(viewer, message, new UIntPtr(command), IntPtr.Zero))
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+    }
+
+    public static void LegacyFindCommand(IntPtr window, uint pid, uint command, bool post)
+    {
+        uint owner;
+        if (GetWindowThreadProcessId(window, out owner) == 0 || owner != pid ||
+            !IsWindowVisible(window) ||
+            (FindLegacySearchWindow(pid) != window &&
+             ((command != 741 && command != 687) || ClassName(window) != "SalamanderMainWindowVer25")))
+            throw new InvalidOperationException("Unverified Find command window");
+        if (post)
+        {
+            if (!PostMessageW(window, 0x0111, new UIntPtr(command), IntPtr.Zero))
+                throw new InvalidOperationException("Could not queue verified Find command " + command);
+        }
+        else
+            SendChecked(window, 0x0111, new UIntPtr(command), IntPtr.Zero);
+    }
+
+    public static void PostUnicodeFindCommand(IntPtr mainWindow, uint pid)
+    {
+        if (mainWindow == IntPtr.Zero || FindMainWindow(pid) != mainWindow)
+            throw new InvalidOperationException("Unverified main window for the Unicode Find command");
+        if (!PostMessageW(mainWindow, 0x0111, new UIntPtr(796), IntPtr.Zero)) // CM_FINDUNICODEFILE
+            throw new InvalidOperationException("Could not queue the Unicode Find command");
+    }
+
+    public static void SetLegacyFindCheck(IntPtr window, uint pid, int id, uint state)
+    {
+        IntPtr child = VerifiedChild(window, pid, id);
+        if (ClassName(child) != "Button" || !IsWindowEnabled(child) || state > 2)
+            throw new InvalidOperationException("Find checkbox is unavailable: " + id);
+        SendChecked(child, 0x00F1, new UIntPtr(state), IntPtr.Zero); // BM_SETCHECK
+        ClickFindButton(window, pid, id);
+        if (SendChecked(child, 0x00F0, UIntPtr.Zero, IntPtr.Zero).ToInt64() != state)
+            throw new InvalidOperationException("Find checkbox did not accept state: " + id);
+    }
+
+    public static void SetLegacyFindComboIndex(IntPtr window, uint pid, int id, uint index)
+    {
+        IntPtr child = VerifiedChild(window, pid, id);
+        if (ClassName(child) != "ComboBox" || !IsWindowEnabled(child) ||
+            SendChecked(child, 0x014E, new UIntPtr(index), IntPtr.Zero).ToInt64() != index)
+            throw new InvalidOperationException("Find combo did not accept index: " + id);
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern IntPtr VirtualAllocEx(Microsoft.Win32.SafeHandles.SafeProcessHandle process,
+        IntPtr address, UIntPtr size, uint allocationType, uint protection);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool VirtualFreeEx(Microsoft.Win32.SafeHandles.SafeProcessHandle process,
+        IntPtr address, UIntPtr size, uint freeType);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool WriteProcessMemory(Microsoft.Win32.SafeHandles.SafeProcessHandle process,
+        IntPtr address, byte[] data, UIntPtr size, out UIntPtr written);
+
+    public static void SetLegacyFindDateTime(IntPtr dialog, System.Diagnostics.Process process,
+        int controlId, DateTime value)
+    {
+        uint pid = checked((uint)process.Id);
+        IntPtr control = VerifiedChild(dialog, pid, controlId);
+        if (controlId < 2581 || controlId > 2584 ||
+            !MatchesDialogTitle(GetWindowCaption(dialog), "Advanced Options") ||
+            ClassName(control) != "SysDateTimePick32" || !IsWindowEnabled(control))
+            throw new InvalidOperationException("Unverified Advanced date/time picker");
+
+        // DTM_SETSYSTEMTIME does not marshal its SYSTEMTIME argument between
+        // processes. Stage just the 16-byte value in the launched test process.
+        ushort[] fields = { (ushort)value.Year, (ushort)value.Month, (ushort)value.DayOfWeek,
+            (ushort)value.Day, (ushort)value.Hour, (ushort)value.Minute, (ushort)value.Second, 0 };
+        byte[] data = new byte[16];
+        Buffer.BlockCopy(fields, 0, data, 0, data.Length);
+        UIntPtr size = new UIntPtr((uint)data.Length);
+        var handle = process.SafeHandle;
+        IntPtr remote = VirtualAllocEx(handle, IntPtr.Zero, size, 0x3000, 0x04);
+        if (remote == IntPtr.Zero)
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        bool pending = false;
+        try
+        {
+            UIntPtr written;
+            if (!WriteProcessMemory(handle, remote, data, size, out written) || written != size)
+                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+
+            pending = true;
+            IntPtr result;
+            if (SendMessageTimeout(control, 0x1002, UIntPtr.Zero, remote, 3, 5000, out result) == IntPtr.Zero)
+                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+            pending = false;
+            if (result == IntPtr.Zero)
+                throw new InvalidOperationException("Advanced date/time picker rejected the value");
+        }
+        finally
+        {
+            // On timeout the control may still hold the pointer. The driver
+            // terminates its own test process in finally, reclaiming the page.
+            if (!pending)
+                VirtualFreeEx(handle, remote, UIntPtr.Zero, 0x8000);
+        }
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool DeviceIoControl(Microsoft.Win32.SafeHandles.SafeFileHandle file,
+        uint code, ref ushort format, uint inputSize, IntPtr output, uint outputSize,
+        out uint returned, IntPtr overlapped);
+
+    public static void CompressLegacyFindFixture(System.IO.FileStream file)
+    {
+        ushort format = 1; // COMPRESSION_FORMAT_DEFAULT
+        uint returned;
+        if (!DeviceIoControl(file.SafeFileHandle, 0x0009C040, ref format, 2,
+            IntPtr.Zero, 0, out returned, IntPtr.Zero))
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+    }
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern bool LocalFileTimeToFileTime(in long localFileTime, out long utcFileTime);
+
+    public static DateTime LegacyFindFixtureUtc(DateTime wallClock)
+    {
+        // The original filter uses FileTimeToLocalFileTime, which uses the
+        // current Windows offset even for a date from another DST season.
+        long local = DateTime.SpecifyKind(wallClock, DateTimeKind.Utc).ToFileTimeUtc();
+        long utc;
+        if (!LocalFileTimeToFileTime(in local, out utc))
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        return DateTime.FromFileTimeUtc(utc);
+    }
+
+    public static int LegacyFindResultCount(IntPtr window, uint pid)
+    {
+        return LegacyFindListCount(window, pid, 2510);
+    }
+
+    public static int LegacyFindListCount(IntPtr window, uint pid, int id)
+    {
+        IntPtr list = VerifiedChild(window, pid, id);
+        if (ClassName(list) != "SysListView32")
+            throw new InvalidOperationException("Original Find control is not a ListView: " + id);
+        return checked((int)SendChecked(list, 0x1004, UIntPtr.Zero, IntPtr.Zero).ToInt64());
+    }
+
+    public static int LegacyFindSelectionCount(IntPtr window, uint pid)
+    {
+        IntPtr list = VerifiedChild(window, pid, 2510);
+        return checked((int)SendChecked(list, 0x1032, UIntPtr.Zero, IntPtr.Zero).ToInt64());
+    }
+
+    public static string ReadLegacyFindHistory(IntPtr window, uint pid, int id, uint index)
+    {
+        IntPtr combo = VerifiedChild(window, pid, id);
+        if (ClassName(combo) != "ComboBox" || (id != 2501 && id != 2504 && id != 2505))
+            throw new InvalidOperationException("Unverified original Find history control");
+        long length = SendChecked(combo, 0x0149, new UIntPtr(index), IntPtr.Zero).ToInt64(); // CB_GETLBTEXTLEN
+        if (length < 0 || length >= 32767)
+            throw new InvalidOperationException("Missing or excessive original Find history entry");
+        var text = new StringBuilder(checked((int)length + 1));
+        IntPtr result;
+        if (SendMessageTimeoutReadText(combo, 0x0148, new UIntPtr(index),
+            text, 3, 5000, out result) == IntPtr.Zero || result.ToInt64() < 0)
+            throw new InvalidOperationException("Cannot read the original Find history entry");
+        return text.ToString();
+    }
+
+    public static void ToggleFirstLegacyFindIgnoreItem(IntPtr dialog, uint pid)
+    {
+        IntPtr list = VerifiedChild(dialog, pid, 2531);
+        if (!MatchesDialogTitle(GetWindowCaption(dialog), "Ignore Directory List") ||
+            ClassName(list) != "ListBox" ||
+            SendChecked(list, 0x0186, UIntPtr.Zero, IntPtr.Zero) != IntPtr.Zero) // LB_SETCURSEL
+            throw new InvalidOperationException("Unverified first Ignore Directory List item");
+        SendChecked(dialog, 0x0028, new UIntPtr((ulong)list.ToInt64()), new IntPtr(1));
+        SendChecked(list, 0x0102, new UIntPtr(0x20), new IntPtr(1)); // WM_CHAR / original Space toggle
+    }
+
+    public static bool IsLegacyFindControlVisible(IntPtr window, uint pid, int id)
+    {
+        return IsWindowVisible(VerifiedChild(window, pid, id));
+    }
+
+    public static uint ReadLegacyFindCheck(IntPtr window, uint pid, int id)
+    {
+        IntPtr child = VerifiedChild(window, pid, id);
+        if (ClassName(child) != "Button")
+            throw new InvalidOperationException("Unverified original Find checkbox");
+        return checked((uint)SendChecked(child, 0x00F0, UIntPtr.Zero, IntPtr.Zero).ToInt64());
+    }
+
+    public static void SelectLegacyFindRow(IntPtr window, uint pid, int index)
+    {
+        IntPtr list = VerifiedChild(window, pid, 2510);
+        if (index < 0 || index >= LegacyFindResultCount(window, pid) ||
+            (GetKeyState(0x10) & 0x8000) != 0 || (GetKeyState(0x11) & 0x8000) != 0 ||
+            (GetKeyState(0x12) & 0x8000) != 0)
+            throw new InvalidOperationException("Cannot safely select the original Find result");
+        SendChecked(window, 0x0028, new UIntPtr((ulong)list.ToInt64()), new IntPtr(1)); // WM_NEXTDLGCTL
+        SendChecked(list, 0x0100, new UIntPtr(0x24), new IntPtr(1)); // VK_HOME
+        for (int row = 0; row < index; ++row)
+            SendChecked(list, 0x0100, new UIntPtr(0x28), new IntPtr(1)); // VK_DOWN
+        if (LegacyFindSelectionCount(window, pid) != 1 || SelectedFindIndex(list) != index)
+            throw new InvalidOperationException("The original Find list did not select the requested row");
+    }
+
 
     public static IntPtr FindUnicodeNotice(uint pid)
     {
@@ -1051,13 +1365,23 @@ public static class SalamanderGuiNative
                 Marshal.GetLastWin32Error());
     }
 
-    public static IntPtr FindRenameDialog(uint pid)
+    public static IntPtr FindRenameDialog(IntPtr findWindow, uint pid)
     {
+        if (findWindow == IntPtr.Zero || FindUnicodeSearchWindow(pid) != findWindow)
+            throw new InvalidOperationException("Unverified Unicode Find window for rename");
+        IntPtr found = IntPtr.Zero;
         foreach (TopLevelWindow top in GetProcessWindows(pid))
-            if (top.Visible && top.Title == "Rename Unicode item" &&
-                ClassName(top.Handle) == "#32770")
-                return top.Handle;
-        return IntPtr.Zero;
+        {
+            if (GetWindow(top.Handle, 4) != findWindow || ClassName(top.Handle) != "#32770" ||
+                !MatchesDialogTitle(top.Title, "Rename Unicode item") ||
+                ClassName(GetDlgItem(top.Handle, 4101)) != "Edit" ||
+                ClassName(GetDlgItem(top.Handle, 1)) != "Button")
+                continue;
+            if (found != IntPtr.Zero)
+                throw new InvalidOperationException("Multiple Unicode Find rename dialogs");
+            found = top.Handle;
+        }
+        return found;
     }
 
     public static IntPtr VerifiedChild(IntPtr window, uint pid, int id)
@@ -1084,6 +1408,24 @@ public static class SalamanderGuiNative
         return result;
     }
 
+    [DllImport("user32.dll")]
+    private static extern bool IsWindowUnicode(IntPtr window);
+
+    public static void PostLegacyFindCharacters(IntPtr window, uint pid, int id, string text)
+    {
+        if (FindLegacySearchWindow(pid) != window || (id != 2501 && id != 2505))
+            throw new InvalidOperationException("Unverified legacy Find edit");
+        IntPtr combo = VerifiedChild(window, pid, id);
+        IntPtr edit = GetWindow(combo, 5); // GW_CHILD
+        uint owner;
+        if (GetWindowThreadProcessId(edit, out owner) == 0 || owner != pid ||
+            ClassName(edit) != "Edit" || !IsWindowUnicode(edit))
+            throw new InvalidOperationException("Legacy Find edit is not Unicode");
+        foreach (char ch in text)
+            if (!PostMessageW(edit, 0x0102, new UIntPtr(ch), new IntPtr(1))) // WM_CHAR
+                throw new InvalidOperationException("Could not post a Unicode edit character");
+    }
+
     public static void SetFindText(IntPtr window, uint pid, int id, string text)
     {
         IntPtr child = VerifiedChild(window, pid, id);
@@ -1094,14 +1436,18 @@ public static class SalamanderGuiNative
                 throw new InvalidOperationException("WM_SETTEXT rejected Find control " + id);
         }
         finally { Marshal.FreeHGlobal(bytes); }
-        if (!String.Equals(ReadFindText(window, pid, id), text, StringComparison.Ordinal))
-            throw new InvalidOperationException("Find edit control did not preserve UTF-16 text");
+        string observed = ReadFindText(window, pid, id);
+        if (!String.Equals(observed, text, StringComparison.Ordinal))
+            throw new InvalidOperationException("Find control " + id +
+                " did not preserve UTF-16 text (requested " + text.Length +
+                ", observed " + observed.Length + " units; Unicode control=" +
+                IsWindowUnicode(child) + ", Unicode edit=" + IsWindowUnicode(GetWindow(child, 5)) + ")");
     }
 
     public static string ReadFindText(IntPtr window, uint pid, int id)
     {
         IntPtr child = VerifiedChild(window, pid, id);
-        const int capacity = 32767;
+        const int capacity = 65537;
         IntPtr buffer = Marshal.AllocHGlobal(capacity * sizeof(char));
         try
         {
@@ -1147,87 +1493,28 @@ public static class SalamanderGuiNative
             new IntPtr(2)).ToInt64()); // LVM_GETNEXTITEM, LVNI_SELECTED
     }
 
-    private static bool WaitForFindSelection(IntPtr window, IntPtr list)
-    {
-        for (int attempt = 0; attempt != 25; ++attempt)
-        {
-            if (GetForegroundWindow() != window)
-                throw new InvalidOperationException(
-                    "Unicode Find lost foreground during ListView selection");
-            if (SelectedFindIndex(list) == 0)
-                return true;
-            System.Threading.Thread.Sleep(40);
-        }
-        return false;
-    }
-
-    // A single physical click exercises the real ListView selection. A
-    // fallback uses VK_HOME targeted at the verified result control, never
-    // a second click (which could accidentally cause a double-click/Open).
-    // Every selection is checked before any path is copied or file modified.
+    // Send a Home key to the owned ListView and verify the selection before
+    // copying its path or acting on the file. The desktop can stay in the background.
     public static int SelectSingleFindResult(IntPtr window, uint pid)
     {
         IntPtr list = VerifiedChild(window, pid, 5117);
         if (FindResultCount(window, pid) != 1 ||
-            !TryActivateVerifiedWindow(window, pid, true) ||
-            GetForegroundWindow() != window)
+            (GetKeyState(0x10) & 0x8000) != 0 || (GetKeyState(0x11) & 0x8000) != 0 ||
+            (GetKeyState(0x12) & 0x8000) != 0)
             throw new InvalidOperationException(
-                "Find result window is not safely foreground or count is not one");
+                "Cannot safely select the only Unicode Find result");
 
-        // Ensure that any ListView scroll position left by a previous search
-        // cannot put row zero outside the tested click location.
         if (SendChecked(list, 0x1013, UIntPtr.Zero, IntPtr.Zero) ==
             IntPtr.Zero) // LVM_ENSUREVISIBLE
             throw new InvalidOperationException(
                 "Unicode Find could not make its only result visible");
 
-        IntPtr header = SendChecked(list, 0x101F, UIntPtr.Zero, IntPtr.Zero);
-        GuiRect listBounds, headerBounds;
-        if (header == IntPtr.Zero || !GetWindowRect(list, out listBounds) ||
-            !GetWindowRect(header, out headerBounds))
-            throw new InvalidOperationException("Find results have no visible header");
-        NativePoint point = new NativePoint { X = listBounds.Left + 25,
-            Y = headerBounds.Bottom + 10 };
-        if (point.Y >= listBounds.Bottom || WindowFromPoint(point) != list)
-            throw new InvalidOperationException(
-                "Find result row is obscured or outside the list");
-        if (!SetCursorPos(point.X, point.Y))
-            throw new InvalidOperationException("Could not position pointer over Find result");
-
-        // Only one mouse click is ever sent. Its completion is confirmed by
-        // reading the ListView state, not by relying on input queue timing.
-        mouse_event(0x0002, 0, 0, 0, UIntPtr.Zero);
-        mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero);
-        if (WaitForFindSelection(window, list))
-            return 0;
-
-        // VK_HOME is read-only in a ListView with one result. Unlike a second
-        // click, it cannot trigger the result's double-click Open command.
-        // Send only to the verified list HWND; keep the exact-path clipboard
-        // assertion in PowerShell as the final gate before file operations.
         SendChecked(list, 0x0100, new UIntPtr(0x24), IntPtr.Zero); // WM_KEYDOWN / VK_HOME
         SendChecked(list, 0x0101, new UIntPtr(0x24), IntPtr.Zero); // WM_KEYUP
-        if (WaitForFindSelection(window, list))
-        {
-            Console.WriteLine(
-                "INFO: Unicode Find selected result via safe ListView keyboard fallback.");
-            return 0;
-        }
-
-        uint owner;
-        uint thread = GetWindowThreadProcessId(window, out owner);
-        GuiThreadInfo info = new GuiThreadInfo();
-        info.cbSize = (uint)Marshal.SizeOf(typeof(GuiThreadInfo));
-        string focus = GetGUIThreadInfo(thread, ref info)
-            ? "0x" + info.hwndFocus.ToInt64().ToString("X")
-            : "unavailable";
-        int selectedCount = checked((int)SendChecked(
-            list, 0x1032, UIntPtr.Zero, IntPtr.Zero).ToInt64());
-        throw new InvalidOperationException(String.Format(
-            "Unicode Find result selection failed: items=1; selected={0}; " +
-            "focus HWND={1}; list HWND=0x{2:X}; foreground HWND=0x{3:X}",
-            selectedCount, focus, list.ToInt64(),
-            GetForegroundWindow().ToInt64()));
+        int selected = SelectedFindIndex(list);
+        if (selected != 0)
+            throw new InvalidOperationException("Unicode Find did not select its only result");
+        return selected;
     }
 }
 
@@ -1572,6 +1859,8 @@ $clipboardRestorationFailed = $false
 $primaryGuiFailure = $null
 $copyTestReached = $null
 $copyTestContinue = $null
+$findTestReached = $null
+$findTestCancelled = $null
 $largeCopyLock = $null
 $largeCopySourceFile = $null
 $largeCopyTargetFile = $null
@@ -2839,17 +3128,23 @@ function Start-FindQuery {
 
 function Select-VerifiedFindResult {
     param([string]$ExpectedPath)
-    $oldMouse = [Windows.Forms.Cursor]::Position
-    try {
-        $selected = [SalamanderGuiNative]::SelectSingleFindResult(
-            $script:findWindow, [uint32]$process.Id)
-    }
-    finally { [Windows.Forms.Cursor]::Position = $oldMouse }
+    $ownerPid = [uint32]$process.Id
+    $selected = [SalamanderGuiNative]::SelectSingleFindResult($script:findWindow, $ownerPid)
     Assert-True ($selected -eq 0) 'Unicode Find selected exactly one visible result'
-    Set-ClipboardText 'SENTINEL_NOT_A_FIND_PATH'
-    [SalamanderGuiNative]::ClickFindButton($script:findWindow, [uint32]$process.Id, 5109)
-    $foundPath = Get-ClipboardText
-    Assert-True ($foundPath -ceq $ExpectedPath) 'Unicode Find copied the exact UTF-16 result path'
+    $sentinel = 'SENTINEL_NOT_A_FIND_PATH'
+    for ($attempt = 1; $attempt -le 3; $attempt++) {
+        Set-NativeNavigationClipboard -Text $sentinel
+        if ((Get-ClipboardText) -cne $sentinel) { continue }
+        $sequence = [SalamanderGuiNative]::GetClipboardSequenceNumber()
+        [SalamanderGuiNative]::ClickFindButton($script:findWindow, $ownerPid, 5109)
+        $foundPath = Get-ClipboardText
+        if ([SalamanderGuiNative]::GetClipboardSequenceNumber() -ne $sequence -and
+            $foundPath -and $foundPath -cne $sentinel) {
+            Assert-True ($foundPath -ceq $ExpectedPath) 'Unicode Find copied the exact UTF-16 result path'
+            return
+        }
+    }
+    throw 'Unicode Find copy did not publish the selected path after three attempts.'
 }
 
 
@@ -2874,13 +3169,12 @@ function Assert-FindNotice {
 
 function Test-UnicodeFindGui {
     # Arrange: the GUI root is >MAX_PATH. Only test-owned files are altered.
-    Go-ToPath $findRoot
-    Restore-FilePanelFocus -ExpectedPath $findRoot
-    Send-Keys '%{F7}'
+    Go-ToPath $findRoot -NoForeground
+    [SalamanderGuiNative]::PostUnicodeFindCommand($mainWindowHandle, [uint32]$process.Id)
     Wait-Until {
         $script:findWindow = Get-UnicodeFindWindow
         return $script:findWindow -ne [IntPtr]::Zero
-    } 'modeless Unicode Find window launched by Alt+F7'
+    } 'modeless Unicode Find window launched by its command'
     Assert-True ([SalamanderGuiNative]::ReadFindText(
         $script:findWindow, [uint32]$process.Id, 5101) -ceq $findRoot) 'Unicode Find preserves full long-path search root'
 
@@ -2963,10 +3257,18 @@ function Test-UnicodeFindGui {
     Start-FindQuery -Mask $findUtf16Name -Content 'unique-utf16-probe' -ExpectedCount 1
     Select-VerifiedFindResult -ExpectedPath $findUtf16Path
     [SalamanderGuiNative]::PostFindButton($script:findWindow, [uint32]$process.Id, 5113)
-    Wait-Until {
-        $script:renameWindow = [SalamanderGuiNative]::FindRenameDialog([uint32]$process.Id)
-        return $script:renameWindow -ne [IntPtr]::Zero
-    } 'native Unicode Find rename confirmation dialog'
+    try {
+        Wait-Until {
+            $script:renameWindow = [SalamanderGuiNative]::FindRenameDialog(
+                $script:findWindow, [uint32]$process.Id)
+            return $script:renameWindow -ne [IntPtr]::Zero
+        } 'native Unicode Find rename confirmation dialog'
+    }
+    catch {
+        $status = [SalamanderGuiNative]::ReadFindText($script:findWindow, [uint32]$process.Id, 5118)
+        $windows = Get-ProcessWindowSummary -OwnerProcessId ([uint32]$process.Id)
+        throw ("{0} Unicode Find status='{1}', test windows=[{2}]." -f $_.Exception.Message,$status,$windows)
+    }
     [SalamanderGuiNative]::SetFindText($script:renameWindow, [uint32]$process.Id, 4101, $findRenamedName)
     [SalamanderGuiNative]::PostFindButton($script:renameWindow, [uint32]$process.Id, 1)
     Wait-Until { [IO.File]::Exists($findRenamedPath) -and
@@ -3040,12 +3342,13 @@ function Test-UnicodeFindGui {
         $script:findWindow, [uint32]$process.Id, 5107)
     [SalamanderGuiNative]::PostFindButton(
         $script:findWindow, [uint32]$process.Id, 5116)
-    Wait-Until { (Get-UnicodeFindWindow) -eq [IntPtr]::Zero } (
+    Wait-Until { -not [SalamanderGuiNative]::IsWindow($script:findWindow) } (
         'Unicode Find closes and joins an active search worker')
     $process.Refresh()
     Assert-True (-not $process.HasExited) (
         'Closing an active Unicode Find search leaves Salamander alive')
     [IO.File]::Delete($cancelProbePath)
+    Wait-Until { -not [IO.File]::Exists($cancelProbePath) } 'Windows finishes removing the cancellation fixture'
     $script:findCancelProbePath = $null
     Assert-True (-not [IO.File]::Exists($cancelProbePath)) (
         'GUI cancellation fixture cleaned up without modifying other files')
@@ -3234,6 +3537,11 @@ try {
     # a baseline-only pass must never be confused with a long-path pass.
     [IO.Directory]::CreateDirectory($source) | Out-Null
     Assert-True ($source.Length -lt 257) 'Short-path GUI baseline fixture is below MAX_PATH'
+    if ($LegacyFindScenario -eq 'NearLimit') {
+        . (Join-Path $PSScriptRoot 'LegacyFind-GuiCases.ps1')
+        $legacyNearLimitRoot = [IO.Directory]::CreateDirectory((Join-Path $root 'find')).FullName
+        $legacyNearLimitFile = New-LegacyFindNearLimitFixture -SearchRoot $legacyNearLimitRoot
+    }
     if ($MaximumPathOnly) {
         # Arrange: real Win32-scale directory depth with a single 255-unit
         # Unicode file. This mode performs read-only GUI checks and never
@@ -3331,7 +3639,7 @@ try {
         $asciiRenamedName = 'renamed-baseline.txt'
         [IO.File]::WriteAllBytes((Join-Path $source $asciiName), $payload)
     }
-    if (-not $BaselineOnly -and -not $ShortOperationsOnly -and
+    if (-not $BaselineOnly -and -not $ShortOperationsOnly -and -not $LegacyFindScenario -and
         -not $ShortUnicodeBestFitOnly) {
         # Independent Unicode-only fixture with a short total path.
         $unicodeShortFile = Join-Path $source $utfName
@@ -3393,7 +3701,7 @@ try {
         -not $ShortUnicodeDirectoryRenameOnly -and
         -not $ShortUnicodeRecycleOnly -and
         -not $ShortUnicodeUnsafeOperationsOnly -and -not $ShortOperationsOnly -and
-        -not $UnicodeFindOnly -and -not $MaximumPathOnly -and
+        -not $UnicodeFindOnly -and -not $LegacyFindScenario -and -not $MaximumPathOnly -and
         -not $LargeUnicodeCopyOnly -and
         -not $TemporaryDirectoryDeletionOnly) {
         [IO.Directory]::CreateDirectory($destination) | Out-Null
@@ -3506,6 +3814,22 @@ try {
     [void][IO.Directory]::CreateDirectory($processTemp)
     if ($IsolatedConfiguration) {
         Initialize-IsolatedGuiConfiguration
+        if ($LegacyFindScenario -eq 'Baseline') {
+            . (Join-Path $PSScriptRoot 'LegacyFind-GuiCases.ps1')
+            Initialize-LegacyFindBaseline
+        }
+        if ($LegacyFindScenario -eq 'ExternalEditor') {
+            . (Join-Path $PSScriptRoot 'LegacyFind-GuiCases.ps1')
+            Initialize-LegacyFindExternalEditor
+        }
+        if ($LegacyFindScenario -eq 'Cancel') {
+            $prefix = 'Local\OpenSalamander.FindTest.' + $testConfigurationId
+            $created = $false
+            $findTestReached = [Threading.EventWaitHandle]::new($false, 'ManualReset', "$prefix.reached", [ref]$created)
+            if (-not $created) { throw 'Refusing to reuse an existing Find checkpoint.' }
+            $findTestCancelled = [Threading.EventWaitHandle]::new($false, 'ManualReset', "$prefix.cancelled", [ref]$created)
+            if (-not $created) { throw 'Refusing to reuse an existing Find cancellation event.' }
+        }
         if ($LargeUnicodeCopyOnly) {
             $eventPrefix = 'Local\OpenSalamander.CopyTest.' + $testConfigurationId
             $created = $false
@@ -3516,7 +3840,11 @@ try {
         }
         $process = Start-Process -FilePath $SalamanderExe -ArgumentList $startupArgs `
             -WorkingDirectory (Split-Path -Parent $SalamanderExe) `
-            -Environment @{ TEMP = $processTemp; TMP = $processTemp; OPENSAL_GUI_TEST_ID = $testConfigurationId; OPENSAL_GUI_COPY_TEST_GATE = $(if ($LargeUnicodeCopyOnly) { '1' } else { '0' }) } -PassThru
+            -Environment @{
+                TEMP = $processTemp; TMP = $processTemp; OPENSAL_GUI_TEST_ID = $testConfigurationId
+                OPENSAL_GUI_COPY_TEST_GATE = $(if ($LargeUnicodeCopyOnly) { '1' } else { '0' })
+                OPENSAL_GUI_FIND_TEST_GATE = $(if ($LegacyFindScenario -eq 'Cancel') { '1' } else { '0' })
+            } -PassThru
     }
     else {
         $process = Start-Process -FilePath $SalamanderExe -ArgumentList $startupArgs `
@@ -3614,13 +3942,20 @@ try {
     if (-not $testIsAdmin -and $windowTitle -match '\(Administrator\)') {
         throw 'Salamander is elevated but the GUI-test PowerShell is not. Keyboard input can be blocked by Windows UIPI. Run both at the same integrity level, preferably both unelevated.'
     }
-    if (-not $TemporaryDirectoryDeletionOnly -and -not $LargeUnicodeCopyOnly) { Focus-TestProcess }
+    if ($LegacyFindScenario) {
+        . (Join-Path $PSScriptRoot 'LegacyFind-GuiCases.ps1')
+        Test-LegacyFindGui -Scenario $LegacyFindScenario
+        $passed = $true
+        return
+    }
+    $backgroundCommandsOnly = $TemporaryDirectoryDeletionOnly -or $LargeUnicodeCopyOnly -or $UnicodeFindOnly
+    if (-not $backgroundCommandsOnly) { Focus-TestProcess }
 
     # First validate the GUI driver against a normal short path. If this
     # fails, treat it as an automation/infrastructure problem, NOT as proof
     # that the application lacks long-path support.
-    Go-ToPath $source -NoForeground:($TemporaryDirectoryDeletionOnly -or $LargeUnicodeCopyOnly)
-    if (-not $TemporaryDirectoryDeletionOnly -and -not $LargeUnicodeCopyOnly) {
+    Go-ToPath $source -NoForeground:$backgroundCommandsOnly
+    if (-not $backgroundCommandsOnly) {
         Restore-FilePanelFocus -ExpectedPath $source
     }
     # Go-ToPath already verified the observed panel path. A duplicate
@@ -4468,6 +4803,8 @@ finally {
     if ($null -ne $largeCopyLock) { $largeCopyLock.Dispose() }
     if ($null -ne $copyTestReached) { $copyTestReached.Dispose() }
     if ($null -ne $copyTestContinue) { $copyTestContinue.Dispose() }
+    if ($null -ne $findTestReached) { $findTestReached.Dispose() }
+    if ($null -ne $findTestCancelled) { $findTestCancelled.Dispose() }
 
     # A failed search may retain its screenshot and small fixtures, but it
     # must not leave a large cancellation stress file on the user's disk.
