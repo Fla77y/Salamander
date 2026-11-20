@@ -22,8 +22,7 @@
 #include <Shlwapi.h>
 #include <algorithm>
 
-const char* MINIMIZED_FINDING_CAPTION = "(%d) %s [%s %s]";
-const char* NORMAL_FINDING_CAPTION = "%s [%s %s]";
+
 
 BOOL FindManageInUse = FALSE;
 BOOL FindIgnoreInUse = FALSE;
@@ -153,6 +152,18 @@ char* CFoundFilesData::GetText(int i, char* text, int fileNameFormat)
     }
     }
     return text;
+}
+
+int CFoundFilesData::CompareName(const CFoundFilesData& other) const
+{
+    // WIN32_FIND_DATAW bounds a native leaf below MAX_PATH.
+    const auto& first = UnicodeIdentity.Name();
+    const auto& second = other.UnicodeIdentity.Name();
+    wchar_t a[MAX_PATH];
+    wchar_t b[MAX_PATH];
+    std::copy(first.begin(), first.end(), a);
+    std::copy(second.begin(), second.end(), b);
+    return CompareLegacyFindNames({a, first.size()}, {b, second.size()});
 }
 
 bool CFoundFilesData::CanUseLegacyPath() const
@@ -642,14 +653,17 @@ int CFoundFilesListView::CompareFunc(CFoundFilesData* f1, CFoundFilesData* f2, i
             {
             case 0:
             {
-                res = RegSetStrICmp(f1->Name, f2->Name);
+                res = f1->CompareName(*f2);
+                if (res == 0)
+                    res = f1->UnicodeIdentity.Name().compare(f2->UnicodeIdentity.Name());
                 break;
             }
 
             case 1:
             {
                 res = RegSetStrICmp(f1->Path, f2->Path);
-                break;
+                if (res == 0)
+                    res = f1->UnicodeIdentity.Directory().compare(f2->UnicodeIdentity.Directory());
                 break;
             }
 
@@ -763,7 +777,7 @@ int CFoundFilesListView::CompareDuplicatesFunc(CFoundFilesData* f1, CFoundFilesD
     if (byName)
     {
         // by name
-        res = RegSetStrICmp(f1->Name, f2->Name);
+        res = f1->CompareName(*f2);
         if (res == 0)
         {
             // by size
@@ -799,7 +813,7 @@ int CFoundFilesListView::CompareDuplicatesFunc(CFoundFilesData* f1, CFoundFilesD
             if (f1->Size == f2->Size)
             {
                 // by name
-                res = RegSetStrICmp(f1->Name, f2->Name);
+                res = f1->CompareName(*f2);
                 if (res == 0)
                 {
                     // by group
@@ -1741,26 +1755,15 @@ void CFindDialog::Validate(CTransferInfo& ti)
     if (!ti.GetControl(names, IDC_FIND_NAMED) || !ti.GetControl(lookIn, IDC_FIND_LOOKIN))
         return;
 
-    char ansiMask[NAMED_TEXT_LEN];
-    if (!TryFindTextToAnsi(ReadFindEdit(names), ansiMask, _countof(ansiMask)))
-    {
-        SalMessageBox(HWindow, "The search mask cannot yet be used without Unicode loss or truncation.",
-                      LoadStr(IDS_ERRORTITLE), MB_OK | MB_ICONWARNING);
-        ti.ErrorOn(IDC_FIND_NAMED);
-        return;
-    }
-
-    CMaskGroup mask(ansiMask);
-    int errorPos;
-    if (!mask.PrepareMasks(errorPos))
+    const std::wstring text = ReadFindEdit(names);
+    Salamander::LegacyFindMasks masks;
+    size_t errorPos = NAMED_TEXT_LEN - 1;
+    if (text.size() >= NAMED_TEXT_LEN || !masks.Prepare(text, errorPos))
     {
         SalMessageBox(HWindow, LoadStr(IDS_INCORRECTSYNTAX), LoadStr(IDS_ERRORTITLE),
                       MB_OK | MB_ICONEXCLAMATION);
-        // The legacy matcher reports a byte offset. The edit selection is UTF-16.
-        ansiMask[(std::clamp)(errorPos, 0, lstrlen(ansiMask))] = '\0';
-        const size_t offset = WidenFindText(ansiMask).size();
         SetFocus(names);
-        SendMessageW(names, CB_SETEDITSEL, 0, MAKELPARAM(offset, offset + 1));
+        SendMessageW(names, CB_SETEDITSEL, 0, MAKELPARAM(errorPos, errorPos + 1));
         ti.ErrorOn(IDC_FIND_NAMED);
         return;
     }
@@ -1837,76 +1840,13 @@ void CFindDialog::LoadControls(int index)
 BOOL CFindDialog::BuildSerchForData()
 {
     SearchForData.DestroyMembers();
-    char mask[NAMED_TEXT_LEN];
-    if (!TryFindTextToAnsi(Data.NamedText, mask, _countof(mask)))
+    Salamander::LegacyFindMasks masks;
+    size_t errorPos;
+    if (!masks.Prepare(Data.NamedText, errorPos))
         return FALSE;
-    char named[NAMED_TEXT_LEN + NAMED_TEXT_LEN];
-    char* begin;
-    char* end;
-
-    // Users often want to enter just "i_am_dummy" to find files like "*i_am_dummy*".
-    // Therefore, we must inspect each item in the mask group and, if it contains neither
-    // a wildcard nor '.', surround it with asterisks.
-    char* iterator = named;
-    begin = mask;
-    while (1)
-    {
-        end = begin;
-        while (*end != 0)
-        {
-            if (*end == '|')
-                break;
-            if (*end == ';')
-            {
-                if (*(end + 1) != ';')
-                    break;
-                else
-                    end++;
-            }
-            end++;
-        }
-        while (*begin != 0 && *begin <= ' ')
-            begin++; // skip spaces at the beginning
-        char* tmpEnd = end;
-        while (tmpEnd > begin && *(tmpEnd - 1) <= ' ')
-            tmpEnd--; // skip spaces at the end
-        if (tmpEnd > begin)
-        {
-            // check whether the substring contains a wildcard '*', '?', or '.'
-            BOOL wildcard = FALSE;
-            char* tmp = begin;
-            while (tmp < tmpEnd)
-            {
-                if (*tmp == '*' || *tmp == '?' || *tmp == '.')
-                {
-                    wildcard = TRUE;
-                    break;
-                }
-                tmp++;
-            }
-
-            if (!wildcard)
-                *iterator++ = '*'; // no wildcard - prepend an asterisk
-
-            memcpy(iterator, begin, tmpEnd - begin);
-            iterator += tmpEnd - begin;
-
-            if (!wildcard)
-                *iterator++ = '*'; // no wildcard - append an asterisk
-        }
-        *iterator++ = *end;
-        if (*end != 0)
-            begin = end + 1;
-        else
-            break;
-    }
-
-    if (named[0] == 0)
-        strcpy(named, "*"); // replace empty string with '*'
-
     for (auto& root : Salamander::ParseLegacyFindRoots(Data.LookInText))
     {
-        CSearchForData* item = new CSearchForData(std::move(root), named, Data.SubDirectories);
+        CSearchForData* item = new CSearchForData(std::move(root), masks, Data.SubDirectories);
         if (item == NULL)
             return FALSE;
         SearchForData.Add(item);
@@ -2107,11 +2047,23 @@ void CFindDialog::StartSearch(WORD command)
     SearchingText.SetDirty(TRUE);
     PostMessage(HWindow, WM_TIMER, IDT_REPAINT, 0);
 
-    char buff[MAX_PATH + 100];
-    _snprintf_s(buff, _TRUNCATE, NORMAL_FINDING_CAPTION, LoadStr(IDS_FF_NAME), LoadStr(IDS_FF_NAMED), SearchForData[0]->MasksGroup.GetMasksString());
-    SetWindowText(HWindow, buff);
+    UpdateSearchCaption(false);
 
     EnableControls();
+}
+
+void CFindDialog::UpdateSearchCaption(bool showCount)
+{
+    std::wstring title;
+    if (showCount)
+        title = L"(" + std::to_wstring(FoundFilesListView->GetCount()) + L") ";
+    title += LoadStrW(IDS_FF_NAME);
+    title += L" [";
+    title += LoadStrW(IDS_FF_NAMED);
+    title += L" ";
+    title += Data.NamedText.empty() ? L"*" : Data.NamedText;
+    title += L"]";
+    SetWindowTextW(HWindow, title.c_str());
 }
 
 void CFindDialog::StopSearch()
@@ -2359,15 +2311,10 @@ void CFindDialog::UpdateListViewItems()
         // when minimized, display the item count in the title
         if (IsIconic(HWindow))
         {
-            char buf[MAX_PATH + 100];
             if (SearchInProgress)
-            {
-                _snprintf_s(buf, _TRUNCATE, MINIMIZED_FINDING_CAPTION, FoundFilesListView->GetCount(),
-                            LoadStr(IDS_FF_NAME), LoadStr(IDS_FF_NAMED), SearchForData[0]->MasksGroup.GetMasksString());
-            }
+                UpdateSearchCaption(true);
             else
-                lstrcpy(buf, LoadStr(IDS_FF_NAME));
-            SetWindowText(HWindow, buf);
+                SetWindowText(HWindow, LoadStr(IDS_FF_NAME));
         }
 
         // used by the search thread to know when to notify us next
@@ -2967,7 +2914,7 @@ try
     case WM_NOTIFYFORMAT:
         if (lParam == NF_QUERY && reinterpret_cast<HWND>(wParam) == GetDlgItem(HWindow, IDC_FIND_RESULTS))
         {
-            SetWindowLongPtr(HWindow, DWLP_MSGRESULT, NFR_ANSI);
+            SetWindowLongPtr(HWindow, DWLP_MSGRESULT, NFR_UNICODE);
             return TRUE;
         }
         break;
@@ -3006,7 +2953,7 @@ try
 
         // construct the list view
         FoundFilesListView = new CFoundFilesListView(HWindow, IDC_FIND_RESULTS, this);
-        SendDlgItemMessageW(HWindow, IDC_FIND_RESULTS, CCM_SETUNICODEFORMAT, FALSE, 0);
+        SendDlgItemMessageW(HWindow, IDC_FIND_RESULTS, CCM_SETUNICODEFORMAT, TRUE, 0);
 
         SetFullRowSelect(Configuration.FindFullRowSelect);
 
@@ -3326,12 +3273,7 @@ try
     {
         // when restoring, refresh the window title
         if (SearchInProgress && (wParam == SIZE_RESTORED || wParam == SIZE_MAXIMIZED)) // restore
-        {
-            char buff[MAX_PATH + 100];
-            _snprintf_s(buff, _TRUNCATE, NORMAL_FINDING_CAPTION, LoadStr(IDS_FF_NAME), LoadStr(IDS_FF_NAMED),
-                        SearchForData[0]->MasksGroup.GetMasksString());
-            SetWindowText(HWindow, buff);
-        }
+            UpdateSearchCaption(false);
 
         //      if (FirstWMSize)
         //        FirstWMSize = FALSE;
@@ -4062,27 +4004,23 @@ MENU_TEMPLATE_ITEM FindLookInBrowseMenu[] =
                         // draw the text with path shortening
                         r2.left += 5;
                         r2.right -= 5;
-                        CFoundFilesData* item2 = FoundFilesListView->At((int)cd->nmcd.dwItemSpec);
+                        const auto& directory = item->UnicodeIdentity.Directory();
+                        std::wstring path(directory.begin(), directory.end());
                         SelectObject(CacheBitmap->HMemDC, (HFONT)SendMessage(FoundFilesListView->HWindow, WM_GETFONT, 0, 0));
                         int oldTextColor = SetTextColor(CacheBitmap->HMemDC, GetSysColor(textColor));
 
                         // DT_PATH_ELLIPSIS does not work for some strings and can cause clipped text to be drawn
                         // PathCompactPath() requires a copy in a local buffer, but it does not clip the text
-                        if (strlen(item2->Path) < MAX_PATH)
+                        UINT format = DT_VCENTER | DT_LEFT | DT_NOPREFIX | DT_SINGLELINE;
+                        if (path.size() < MAX_PATH)
                         {
-                            char buff[MAX_PATH];
-                            strcpy_s(buff, item2->Path);
-                            PathCompactPath(CacheBitmap->HMemDC, buff, r2.right - r2.left);
-                            DrawText(CacheBitmap->HMemDC, buff, -1, &r2,
-                                     DT_VCENTER | DT_LEFT | DT_NOPREFIX | DT_SINGLELINE);
+                            wchar_t compact[MAX_PATH];
+                            wcscpy_s(compact, path.c_str());
+                            PathCompactPathW(CacheBitmap->HMemDC, compact, r2.right - r2.left);
+                            DrawTextW(CacheBitmap->HMemDC, compact, -1, &r2, format);
                         }
                         else
-                        {
-                            DrawText(CacheBitmap->HMemDC, item2->Path, -1, &r2,
-                                     DT_VCENTER | DT_LEFT | DT_NOPREFIX | DT_SINGLELINE | DT_END_ELLIPSIS);
-                        }
-                        //                DrawText(CacheBitmap->HMemDC, item2->Path, -1, &r2,
-                        //                         DT_VCENTER | DT_LEFT | DT_NOPREFIX | DT_SINGLELINE | DT_PATH_ELLIPSIS);
+                            DrawTextW(CacheBitmap->HMemDC, path.c_str(), -1, &r2, format | DT_END_ELLIPSIS);
                         SetTextColor(CacheBitmap->HMemDC, oldTextColor);
 
                         // copy the cache to the list view
@@ -4106,68 +4044,33 @@ MENU_TEMPLATE_ITEM FindLookInBrowseMenu[] =
                 break;
             }
 
-            case LVN_ODFINDITEM:
+            case LVN_ODFINDITEMW:
             {
-                // assist the list view with quick search
-                NMLVFINDITEM* pFindInfo = (NMLVFINDITEM*)lParam;
-                int iStart = pFindInfo->iStart;
-                LVFINDINFO* fi = &pFindInfo->lvfi;
-                int ret = -1; // not found
-
-                if (fi->flags & LVFI_STRING || fi->flags & LVFI_PARTIAL)
+                const auto* info = reinterpret_cast<const NMLVFINDITEMW*>(lParam);
+                const auto& search = info->lvfi;
+                const int count = FoundFilesListView->GetCount();
+                const int start = (std::clamp)(info->iStart, 0, count);
+                const int limit = search.flags & LVFI_WRAP ? count : count - start;
+                int found = -1;
+                if ((search.flags & (LVFI_STRING | LVFI_PARTIAL)) && search.psz != NULL)
                 {
-                    //              BOOL partial = fi->flags & LVFI_PARTIAL != 0;
-                    // the documentation says LVFI_PARTIAL and LVFI_STRING should arrive,
-                    // but only LVFI_STRING comes through. Some guy complained about it
-                    // on the newsgroups, but no reply. So we'll force it here.
-                    BOOL partial = TRUE;
-                    int i;
-                    for (i = iStart; i < FoundFilesListView->GetCount(); i++)
+                    const int length = lstrlenW(search.psz);
+                    for (int offset = 0; offset < limit; ++offset)
                     {
-                        const CFoundFilesData* item = FoundFilesListView->At(i);
-                        if (partial)
+                        const int index = static_cast<int>((static_cast<size_t>(start) + offset) % count);
+                        const auto& name = FoundFilesListView->At(index)->UnicodeIdentity.Name();
+                        // Owner-data quick search uses prefixes, even for LVFI_STRING.
+                        if (name.size() < static_cast<size_t>(length))
+                            continue;
+                        const std::wstring prefix(name.begin(), name.begin() + length);
+                        if (CompareStringOrdinal(prefix.c_str(), length, search.psz, length, TRUE) == CSTR_EQUAL)
                         {
-                            if (StrNICmp(item->Name, fi->psz, (int)strlen(fi->psz)) == 0)
-                            {
-                                ret = i;
-                                break;
-                            }
-                        }
-                        else
-                        {
-                            if (StrICmp(item->Name, fi->psz) == 0)
-                            {
-                                ret = i;
-                                break;
-                            }
-                        }
-                    }
-                    if (ret == -1 && fi->flags & LVFI_WRAP)
-                    {
-                        for (i = 0; i < iStart; i++)
-                        {
-                            const CFoundFilesData* item = FoundFilesListView->At(i);
-                            if (partial)
-                            {
-                                if (StrNICmp(item->Name, fi->psz, (int)strlen(fi->psz)) == 0)
-                                {
-                                    ret = i;
-                                    break;
-                                }
-                            }
-                            else
-                            {
-                                if (StrICmp(item->Name, fi->psz) == 0)
-                                {
-                                    ret = i;
-                                    break;
-                                }
-                            }
+                            found = index;
+                            break;
                         }
                     }
                 }
-
-                SetWindowLongPtr(HWindow, DWLP_MSGRESULT, ret);
+                SetWindowLongPtr(HWindow, DWLP_MSGRESULT, found);
                 return TRUE;
             }
 
@@ -4179,14 +4082,31 @@ MENU_TEMPLATE_ITEM FindLookInBrowseMenu[] =
                 break;
             }
 
-            case LVN_GETDISPINFO:
+            case LVN_GETDISPINFOW:
             {
-                LV_DISPINFO* info = (LV_DISPINFO*)lParam;
+                auto* info = reinterpret_cast<NMLVDISPINFOW*>(lParam);
                 CFoundFilesData* item = FoundFilesListView->At(info->item.iItem);
                 if (info->item.mask & LVIF_IMAGE)
                     info->item.iImage = item->IsDir ? 0 : 1;
                 if (info->item.mask & LVIF_TEXT)
-                    info->item.pszText = item->GetText(info->item.iSubItem, FoundFilesDataTextBuffer, FileNameFormat);
+                {
+                    if (info->item.iSubItem == 0 && item->Name[0] == '\0')
+                    {
+                        const auto& name = item->UnicodeIdentity.Name();
+                        FoundFilesDataWideText.assign(name.begin(), name.end());
+                    }
+                    else if (info->item.iSubItem == 1)
+                    {
+                        const auto& path = item->UnicodeIdentity.Directory();
+                        FoundFilesDataWideText.assign(path.begin(), path.end());
+                    }
+                    else
+                    {
+                        FoundFilesDataWideText = WidenFindText(
+                            item->GetText(info->item.iSubItem, FoundFilesDataTextBuffer, FileNameFormat));
+                    }
+                    info->item.pszText = FoundFilesDataWideText.data();
+                }
                 break;
             }
 

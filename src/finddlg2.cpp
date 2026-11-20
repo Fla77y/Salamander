@@ -99,8 +99,8 @@ void CFindDialog::OnHideDuplicateNames()
         {
             CFoundFilesData* data = FoundFilesListView->At(i);
             if (lastData->IsDir == data->IsDir &&
-                RegSetStrICmp(lastData->Path, data->Path) == 0 &&
-                RegSetStrICmp(lastData->Name, data->Name) == 0)
+                lastData->UnicodeIdentity.Directory() == data->UnicodeIdentity.Directory() &&
+                lastData->UnicodeIdentity.Name() == data->UnicodeIdentity.Name())
             {
                 FoundFilesListView->Delete(i);
                 deletedCount++;

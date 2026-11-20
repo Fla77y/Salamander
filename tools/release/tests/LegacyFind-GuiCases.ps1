@@ -1011,12 +1011,60 @@ function Test-LegacyFindDistinctUnicodeResults {
     }
     Set-LegacyFindQuery -SearchRoot $Fixture -Mask 'needle-*.txt' -Content 'needle[0-9]+$' -Mode Regex
     Invoke-LegacyFindQuery -Expected $names.Count -Description 'Distinct Unicode spellings all survive original Find'
-    $actual = for ($row = 0; $row -lt $names.Count; $row++) {
-        Read-LegacyFindResult -Index $row
+    Invoke-LegacyFindQuery -Expected ($names.Count * 2) -Description 'Append also finds every Unicode spelling' -Command 2291
+    [SalamanderGuiNative]::LegacyFindCommand($legacyWindow, [uint32]$process.Id, 2287, $false)
+    Assert-LegacyFindCount -Expected $names.Count -Description 'Hide Duplicate Names removes only repeated UTF-16 identities'
+
+    $actual = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    for ($row = 0; $row -lt $names.Count; $row++) {
+        [void]$actual.Add((Read-LegacyFindResult -Index $row))
     }
     foreach ($path in $expected) {
-        Assert-True ($actual -ccontains $path) 'Exact original UTF-16 result identity is present without alias substitution'
+        Assert-True ($actual.Contains($path)) 'Exact original UTF-16 result identity is present without alias substitution'
     }
+}
+
+function Test-LegacyFindUnicodeRootIgnore {
+    param([string]$Fixture)
+
+    $directory = [IO.Directory]::CreateDirectory((Join-Path $Fixture '東京-😀')).FullName
+    $subdirectories = @('visible-大阪','ignore-active','ignore-inactive')
+    foreach ($name in $subdirectories) {
+        $child = [IO.Directory]::CreateDirectory((Join-Path $directory $name)).FullName
+        [IO.File]::WriteAllText((Join-Path $child 'needle.txt'), 'needle42')
+    }
+    Set-LegacyFindQuery -SearchRoot $directory -Mask '*.txt' -Recursive $true
+    Invoke-LegacyFindQuery -Expected 2 -Description 'A Unicode root honors enabled and disabled relative Ignore rules'
+    $actual = [Collections.Generic.HashSet[string]]::new([StringComparer]::Ordinal)
+    foreach ($row in 0..1) {
+        [void]$actual.Add((Read-LegacyFindResult -Index $row))
+    }
+    foreach ($name in 'visible-大阪','ignore-inactive') {
+        Assert-True ($actual.Contains((Join-Path $directory "$name\needle.txt"))) (
+            'The Unicode root search returned the intended unignored subtree')
+    }
+
+    $explicit = Join-Path $directory 'ignore-active'
+    Set-LegacyFindQuery -SearchRoot $explicit -Mask '*.txt' -Recursive $true
+    Invoke-LegacyFindQuery -Expected 1 -Description 'An explicitly chosen root still overrides a matching Ignore rule'
+    Assert-True ([string]::Equals((Read-LegacyFindResult -Index 0 -CopyCommand 2285), $explicit,
+        [StringComparison]::Ordinal)) 'Copy Path keeps the exact Unicode directory'
+}
+
+function Test-LegacyFindUnicodeMasks {
+    param([string]$Fixture)
+
+    $expected = Join-Path $Fixture 'Ä-東京;報告-😀.txt'
+    foreach ($name in @('Ä-東京;報告-😀.txt', 'Ä-東京;報告-😺.txt', 'Ä-東京;報告-😀x.txt', 'Ä-大阪.dat')) {
+        [IO.File]::WriteAllText((Join-Path $Fixture $name), 'match')
+    }
+    Set-LegacyFindQuery -SearchRoot $Fixture -Mask ' ä-東京;;報告-?.txt ; *.dat | *😺* ; *.dat '
+    Invoke-LegacyFindQuery -Expected 1 -Description 'Unicode masks preserve case folding, wildcards, literal semicolons and exclusions'
+    Assert-True ((Read-LegacyFindResult -Index 0) -ceq $expected) (
+        'A question mark consumes one complete supplementary character')
+    $displayName = [SalamanderGuiNative]::LegacyFindDisplayedName($legacyWindow, [uint32]$process.Id, 0)
+    Assert-True ([string]::Equals($displayName, [IO.Path]::GetFileName($expected),
+        [StringComparison]::Ordinal)) 'The result list exposes the original Unicode name as its displayed label'
 }
 
 function Test-LegacyFindUnicodeAdvancedRefinement {
@@ -1202,6 +1250,14 @@ function Test-LegacyFindGui {
         Invoke-LegacyFindQuery -Expected 1 -Description 'Original Find reaches the 32700-unit Unicode result'
         Assert-True ((Read-LegacyFindResult -Index 0) -ceq $legacyNearLimitFile) (
             'Result clipboard preserves the exact 32700-unit file identity')
+        return
+    }
+    if ($Scenario -eq 'UnicodeRootIgnore') {
+        Test-LegacyFindUnicodeRootIgnore -Fixture $fixture
+        return
+    }
+    if ($Scenario -eq 'UnicodeMasks') {
+        Test-LegacyFindUnicodeMasks -Fixture $fixture
         return
     }
     if ($Scenario -eq 'UnicodeFeatures') {

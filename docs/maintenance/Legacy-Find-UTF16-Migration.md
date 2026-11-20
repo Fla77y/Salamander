@@ -16,7 +16,7 @@ This document records **work in progress**, not feature completion.
 
 | Subsystem | Current source | Migration requirement |
 | --- | --- | --- |
-| Ctrl+F route | `src/fileswn5.cpp::CFilesWindow::FindFile` | Currently opens `UnicodeFindWindow` by default for physical disks; after migration, it must directly open **legacy `CFindDialog`** for all roots without losing Unicode coverage |
+| Ctrl+F route | `src/fileswn5.cpp::CFilesWindow::FindFile` | Opens **legacy `CFindDialog`** directly. Alt+Shift+F7 opens the separate Unicode Find window. |
 | Dialog, options and original layout | `src/finddlg1.cpp`, `src/finddlg2.cpp`, `src/find.h` | Keep `IDD_FIND` and every current control, history, advanced filter and command |
 | Initial root and directories | `CFindDialog::CFindDialog`, `BuildSerchForData`, `CSearchForData` | Remove ANSI and `MAX_PATH` storage at the root and input validation; reject invalid paths without truncation |
 | Search worker | `src/find.cpp::SearchDirectory` and `GrepThreadFBody` | Enumerate with `FindFirstFileW` / `FindNextFileW` and extended-length absolute paths; preserve ignore, masks, recursion, cancellation and error log |
@@ -85,9 +85,10 @@ and exclude against the real attribute and never creates EFS keys or writes to
 the supplied file. The ordinary baseline tests the same filter on an
 unencrypted file.
 
-Run `UnicodeName`, `UnicodeResult`, `UnicodeDistinct`, `UnicodeFeatures`,
-`UnicodeSettings`, `UnicodeRoot`, `LongRoot`, `LongDescendant`, `LongResult`,
-`NearLimit` separately in place of `Baseline`.
+Run `UnicodeName`, `UnicodeResult`, `UnicodeDistinct`, `UnicodeMasks`,
+`UnicodeFeatures`, `UnicodeSettings`, `UnicodeRoot`, `UnicodeRootIgnore`,
+`LongRoot`, `LongDescendant`, `LongResult` and `NearLimit` separately in place of
+`Baseline`.
 These are positive assertions for the target behavior. Failed assertions stay
 red until the corresponding production feature works. The name/result
 cases distinguish an exact Unicode name
@@ -283,6 +284,33 @@ acceptance on a suitable disposable Windows desktop.
   A1 and A2 remain partial, while A3 was verified for the core builds.
   The full manage.cmd suite, release packaging, and PictView (A4, A5, A7)
   were outside this check.
+
+## 20 November 2026: Unicode masks, roots and displayed results
+
+- The legacy worker evaluates UTF-16 names and masks for new and refined
+  searches. The grammar preserves wildcard and exclusion groups, escaped
+  semicolons, bare-word substring matching and extensionless names. A question
+  mark consumes one complete UTF-16 character.
+- The existing result list shows UTF-16 names and paths. Copy Name, Copy Path
+  and Copy Full Name use the exact identity for results outside the ANSI
+  action boundary. Append and Hide Duplicate Names preserve distinct UTF-16
+  spellings and collapse repeated rows for the same spelling.
+- The worker can recurse through Unicode roots and apply existing full,
+  rooted and relative Ignore rules. An explicitly selected root still
+  overrides a matching Ignore rule. The Ignore editor, log paths and other
+  ANSI result actions still require migration.
+- Before the worker changes, `UnicodeMasks` was rejected in validation,
+  `UnicodeDistinct` found one of four files, and `UnicodeRootIgnore` found
+  zero of two expected files. After the changes, all three pass. The
+  `UnicodeMasks` case also reads the displayed name via the result list's
+  accessibility interface. The `NearLimit` run stopped at 2,511 units with
+  Win32 error 998 during fixture creation, before opening Find.
+- Core builds passed in Debug and Release on Win32 and x64. The 120-check
+  Baseline passed on Release x64 and Debug Win32. Each configuration also
+  passed the final Unicode mask, distinct identity and root/Ignore cases.
+  The Find UI contract, GUI-driver contract and the scoped Find root check
+  in the package-helper script passed. The complete package-helper run
+  stalled in the child-process TEMP isolation check.
 
 ## 17 November 2026: alias-safe owned identities
 

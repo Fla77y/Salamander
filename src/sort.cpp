@@ -6,25 +6,54 @@
 
 #include "cfgdlg.h"
 
+#include <string>
+#include <string_view>
+
 //
 //*****************************************************************************
 
-// since Windows XP the system provides StrCmpLogicalW, which Explorer uses for this comparison
-int StrCmpLogicalEx(const char* s1, int l1, const char* s2, int l2, BOOL* numericalyEqual, BOOL ignoreCase)
+static int CompareLogicalText(const char* a, int aLength, const char* b, int bLength, BOOL ignoreCase)
 {
-    const char* strEnd1 = s1 + l1; // end of string 's1'
-    const char* beg1 = s1;         // start of the segment (text or number)
-    const char* end1 = s1;         // end of the segment (text or number)
-    const char* strEnd2 = s2 + l2; // end of string 's2'
-    const char* beg2 = s2;         // start of the segment (text or number)
-    const char* end2 = s2;         // end of the segment (text or number)
+    if (Configuration.SortUsesLocale)
+        return CompareStringA(LOCALE_USER_DEFAULT, ignoreCase ? NORM_IGNORECASE : 0, a, aLength, b, bLength) - CSTR_EQUAL;
+    return ignoreCase ? StrICmpEx(a, aLength, b, bLength) : StrCmpEx(a, aLength, b, bLength);
+}
+
+static int CompareOrdinalText(const wchar_t* a, int aLength, const wchar_t* b, int bLength, BOOL ignoreCase)
+{
+    if (aLength == 0 || bLength == 0)
+        return (aLength > 0) - (bLength > 0);
+    return CompareStringOrdinal(a, aLength, b, bLength, ignoreCase) - CSTR_EQUAL;
+}
+
+static int CompareLogicalText(const wchar_t* a, int aLength, const wchar_t* b, int bLength, BOOL ignoreCase)
+{
+    if (Configuration.SortUsesLocale && aLength != 0 && bLength != 0)
+    {
+        const int sorted = CompareStringW(LOCALE_USER_DEFAULT, ignoreCase ? NORM_IGNORECASE : 0,
+                                          a, aLength, b, bLength);
+        if (sorted != 0)
+            return sorted - CSTR_EQUAL;
+    }
+    return CompareOrdinalText(a, aLength, b, bLength, ignoreCase);
+}
+
+template <class Char>
+static int CompareLogical(const Char* s1, int l1, const Char* s2, int l2, BOOL* numericalyEqual, BOOL ignoreCase)
+{
+    const Char* strEnd1 = s1 + l1; // end of string 's1'
+    const Char* beg1 = s1;         // start of the segment (text or number)
+    const Char* end1 = s1;         // end of the segment (text or number)
+    const Char* strEnd2 = s2 + l2; // end of string 's2'
+    const Char* beg2 = s2;         // start of the segment (text or number)
+    const Char* end2 = s2;         // end of the segment (text or number)
     int suggestion = 0;            // suggested result (0 / -1 / 1 = nothing / s1<s2 / s1>s2) – e.g. "001" < "01"
 
     BOOL findDots = WindowsVistaAndLater && !SystemPolicies.GetNoDotBreakInLogicalCompare(); // TRUE = names could also be separated by dots (not only numbers)
 
     while (1)
     {
-        const char* numBeg1 = NULL; // position of the first non-zero digit
+        const Char* numBeg1 = NULL; // position of the first non-zero digit
         BOOL isStr1 = (end1 >= strEnd1 || *end1 < '0' || *end1 > '9');
         if (isStr1) // text (even empty) or a dot
         {
@@ -45,7 +74,7 @@ int StrCmpLogicalEx(const char* s1, int l1, const char* s2, int l2, BOOL* numeri
                 end1++;
             }
         }
-        const char* numBeg2 = NULL; // position of the first non-zero digit
+        const Char* numBeg2 = NULL; // position of the first non-zero digit
         BOOL isStr2 = (end2 >= strEnd2 || *end2 < '0' || *end2 > '9');
         if (isStr2) // text (even empty) or a dot
         {
@@ -69,20 +98,7 @@ int StrCmpLogicalEx(const char* s1, int l1, const char* s2, int l2, BOOL* numeri
 
         if (isStr1 || isStr2) // comparison of text, dots, or mixed pairs of text, dots, or numbers (everything except two numbers is compared as strings)
         {
-            int ret;
-            if (Configuration.SortUsesLocale)
-            {
-                ret = CompareString(LOCALE_USER_DEFAULT, ignoreCase ? NORM_IGNORECASE : 0,
-                                    beg1, (int)(end1 - beg1), beg2, (int)(end2 - beg2)) -
-                      CSTR_EQUAL;
-            }
-            else
-            {
-                if (ignoreCase)
-                    ret = StrICmpEx(beg1, (int)(end1 - beg1), beg2, (int)(end2 - beg2));
-                else
-                    ret = StrCmpEx(beg1, (int)(end1 - beg1), beg2, (int)(end2 - beg2));
-            }
+            const int ret = CompareLogicalText(beg1, (int)(end1 - beg1), beg2, (int)(end2 - beg2), ignoreCase);
             if (ret != 0)
             {
                 if (numericalyEqual != NULL)
@@ -137,12 +153,12 @@ int StrCmpLogicalEx(const char* s1, int l1, const char* s2, int l2, BOOL* numeri
                         }
                         else // numbers have the same number of digits; we compare them by value (equivalent to string comparison)
                         {
-                            int ret = StrCmpEx(numBeg1, (int)(end1 - numBeg1), numBeg2, (int)(end2 - numBeg2));
+                            const int ret = std::char_traits<Char>::compare(numBeg1, numBeg2, end1 - numBeg1);
                             if (ret != 0) // values differ
                             {
                                 if (numericalyEqual != NULL)
                                     *numericalyEqual = FALSE;
-                                return ret;
+                                return ret < 0 ? -1 : 1;
                             }
                             else // the numeric values are equal; if they differ only in the number of leading zeros, reflect that in the suggested result
                             {
@@ -173,6 +189,23 @@ int StrCmpLogicalEx(const char* s1, int l1, const char* s2, int l2, BOOL* numeri
 
 //
 //*****************************************************************************
+
+int StrCmpLogicalEx(const char* s1, int l1, const char* s2, int l2, BOOL* numericalyEqual, BOOL ignoreCase)
+{
+    return CompareLogical(s1, l1, s2, l2, numericalyEqual, ignoreCase);
+}
+
+int CompareLegacyFindNames(std::wstring_view a, std::wstring_view b)
+{
+    const int aLength = static_cast<int>(a.size());
+    const int bLength = static_cast<int>(b.size());
+    const int sorted = Configuration.SortDetectNumbers
+                           ? CompareLogical(a.data(), aLength, b.data(), bLength, NULL, TRUE)
+                           : CompareLogicalText(a.data(), aLength, b.data(), bLength, TRUE);
+    // Locale collation can equate different UTF-16 spellings. Keep them in
+    // distinct duplicate-search groups while retaining case-insensitive names.
+    return sorted != 0 ? sorted : CompareOrdinalText(a.data(), aLength, b.data(), bLength, TRUE);
+}
 
 int RegSetStrICmp(const char* s1, const char* s2)
 {

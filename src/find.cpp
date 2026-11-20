@@ -590,7 +590,14 @@ BOOL CFindIgnore::Prepare(CFindIgnore* source)
                 return FALSE;
             item = Items[Items.Count - 1];
             item->Type = type;
-            item->Len = (int)strlen(buff);
+            const int units = MultiByteToWideChar(CP_ACP, MB_ERR_INVALID_CHARS, buff, -1, NULL, 0);
+            if (units <= 0)
+                return FALSE;
+            item->PreparedPath.resize(units);
+            if (MultiByteToWideChar(CP_ACP, MB_ERR_INVALID_CHARS, buff, -1,
+                                    item->PreparedPath.data(), units) != units)
+                return FALSE;
+            item->PreparedPath.pop_back();
         }
     }
     return TRUE;
@@ -615,47 +622,45 @@ const char* SkipRoot(const char* path)
     }
 }
 
-BOOL CFindIgnore::Contains(const char* path, int startPathLen)
+static size_t FindRootSeparator(std::wstring_view path)
 {
-    // full path
-    int i;
-    for (i = 0; i < Items.Count; i++)
+    if (path.substr(0, 2) == L"\\\\")
     {
-        // startPathLen is the path length entered in the Find dialog (search root);
-        // only its subpaths are ignored, see https://forum.altap.cz/viewtopic.php?f=7&t=7434
-        CFindIgnoreItem* item = Items[i];
+        const size_t serverEnd = path.find(L'\\', 2);
+        return serverEnd == std::wstring_view::npos ? serverEnd : path.find(L'\\', serverEnd + 1);
+    }
+    return 2; // skip the drive letter and colon
+}
+
+BOOL CFindIgnore::Contains(std::wstring_view path, size_t startPathLen)
+{
+    for (int i = 0; i < Items.Count; ++i)
+    {
+        const CFindIgnoreItem* item = Items[i];
+        const auto& rule = item->PreparedPath;
+        const auto matchesAt = [&](size_t offset) {
+            // An explicitly chosen search root overrides the Ignore list.
+            return offset <= path.size() && rule.size() <= path.size() - offset &&
+                   offset + rule.size() > startPathLen &&
+                   CompareStringOrdinal(path.data() + offset, static_cast<int>(rule.size()),
+                                        rule.c_str(), static_cast<int>(rule.size()), TRUE) == CSTR_EQUAL;
+        };
         switch (item->Type)
         {
         case fiitFull:
-        {
-            if (item->Len > startPathLen && StrNICmp(path, item->Path, item->Len) == 0)
+            if (matchesAt(0))
                 return TRUE;
             break;
-        }
-
         case fiitRooted:
-        {
-            const char* noRoot = SkipRoot(path);
-            if ((noRoot - path) + item->Len > startPathLen && StrNICmp(noRoot, item->Path, item->Len) == 0)
+            if (matchesAt(FindRootSeparator(path)))
                 return TRUE;
             break;
-        }
-
         case fiitRelative:
-        {
-            const char* m = path;
-            while (m != NULL)
-            {
-                m = StrIStr(m, item->Path);
-                if (m != NULL) // found
-                {
-                    if ((m - path) + item->Len > startPathLen) // subpath: ignore it
-                        return TRUE;
-                    m++; // look for another occurrence, maybe it will be in a subpath
-                }
-            }
+            for (size_t offset = path.find(L'\\'); offset != std::wstring_view::npos;
+                 offset = path.find(L'\\', offset + 1))
+                if (matchesAt(offset))
+                    return TRUE;
             break;
-        }
         }
     }
     return FALSE;
@@ -823,7 +828,7 @@ int CDuplicateCandidates::CompareFunc(CFoundFilesData* f1, CFoundFilesData* f2,
     if (bySize)
     {
         if (byName)
-            res = RegSetStrICmp(f1->Name, f2->Name);
+            res = f1->CompareName(*f2);
         else
             res = 0;
         if (res == 0)
@@ -847,7 +852,7 @@ int CDuplicateCandidates::CompareFunc(CFoundFilesData* f1, CFoundFilesData* f2,
     else
     {
         // byName && !bySize
-        res = RegSetStrICmp(f1->Name, f2->Name);
+        res = f1->CompareName(*f2);
     }
     if (byPath && res == 0)
         res = RegSetStrICmp(f1->Path, f2->Path);
@@ -920,6 +925,8 @@ LABEL_QuickSort:
 
 static std::string FindResultLabel(const char* directory, const char* name)
 {
+    if (!*directory || !*name)
+        return {}; // the legacy diagnostic cannot display this path losslessly
     std::string path(directory);
     if (path.back() != '\\')
         path.push_back('\\');
@@ -1728,7 +1735,7 @@ struct PendingFindDirectory
     bool IsLink;
 };
 
-static void SearchDirectory(const std::wstring& root, CMaskGroup* masksGroup,
+static void SearchDirectory(const std::wstring& root, const Salamander::LegacyFindMasks& masks,
                             BOOL includeSubDirs, CGrepData* data,
                             CDuplicateCandidates* duplicateCandidates, CFindIgnore* ignoreList)
 {
@@ -1740,14 +1747,8 @@ static void SearchDirectory(const std::wstring& root, CMaskGroup* masksGroup,
         return;
     }
 
-    std::string rootLabel;
-    if (!TryGetFindDirectoryLabel(directory, rootLabel))
-    {
-        ReportFindPathError(data, NULL, ERROR_NO_UNICODE_TRANSLATION, false);
-        return;
-    }
     const size_t rootLength = directory.size();
-    const int startPathLen = static_cast<int>(rootLabel.size() + (directory.back() != L'\\'));
+    const size_t startPathLen = rootLength + (directory.back() != L'\\');
     std::vector<PendingFindDirectory> pending{{L"", rootLength, false}};
     while (!pending.empty() && !data->StopSearch)
     {
@@ -1762,11 +1763,8 @@ static void SearchDirectory(const std::wstring& root, CMaskGroup* masksGroup,
         }
 
         std::string label;
-        if (!TryGetFindDirectoryLabel(directory, label))
-        {
-            ReportFindPathError(data, NULL, ERROR_NO_UNICODE_TRANSLATION, false);
-            continue;
-        }
+        // The ACP directory is reserved for legacy actions and diagnostics.
+        TryGetFindDirectoryLabel(directory, label);
         if (next.IsLink && !CanDescendFindLink(directory, next.ParentLength, rootLength))
         {
             ReportFindPathError(data, label.c_str(), ERROR_CANT_RESOLVE_FILENAME, false);
@@ -1774,10 +1772,11 @@ static void SearchDirectory(const std::wstring& root, CMaskGroup* masksGroup,
         }
         if (ignoreList != NULL)
         {
-            const std::string withSlash = directory.back() == L'\\' ? label : label + '\\';
-            if (ignoreList->Contains(withSlash.c_str(), startPathLen))
+            const std::wstring withSlash = directory.back() == L'\\' ? directory : directory + L'\\';
+            if (ignoreList->Contains(withSlash, startPathLen))
             {
-                FIND_LOG_ITEM log = {FLI_INFO, LoadStr(IDS_FINDLOG_SKIP), withSlash.c_str()};
+                const std::string ignored = label.empty() || label.back() == '\\' ? label : label + '\\';
+                FIND_LOG_ITEM log = {FLI_INFO, LoadStr(IDS_FINDLOG_SKIP), ignored.c_str()};
                 SendMessage(data->HWindow, WM_USER_ADDLOG, reinterpret_cast<WPARAM>(&log), 0);
                 continue;
             }
@@ -1800,14 +1799,13 @@ static void SearchDirectory(const std::wstring& root, CMaskGroup* masksGroup,
         {
             error = GetLastError();
             if (error != ERROR_FILE_NOT_FOUND && error != ERROR_NO_MORE_FILES)
-                ReportFindPathError(data, label.c_str(), error, true);
+                ReportFindPathError(data, label.c_str(), error, !label.empty());
             continue;
         }
         FindEnumeration enumeration{handle};
         data->SearchingText->Set(label.c_str());
         const size_t childBegin = pending.size();
         const std::u16string utf16Directory(directory.begin(), directory.end());
-        bool reportedAnsiLimit = false;
         do
         {
             if (data->NeedRefresh && GetTickCount() - data->FoundVisibleTick >= 500)
@@ -1827,16 +1825,11 @@ static void SearchDirectory(const std::wstring& root, CMaskGroup* masksGroup,
             if ((isDir && data->Grep) ||
                 !data->Criteria.Test(file.dwFileAttributes, &size, &file.ftLastWriteTime))
                 continue;
+            if (!masks.Matches(name))
+                continue;
             char ansiName[MAX_PATH];
             if (!TryFindTextToAnsi(name, ansiName, _countof(ansiName)))
-            {
-                if (!reportedAnsiLimit)
-                    ReportFindPathError(data, label.c_str(), ERROR_NO_UNICODE_TRANSLATION, false);
-                reportedAnsiLimit = true;
-                continue;
-            }
-            if (!masksGroup->AgreeMasks(ansiName, NULL))
-                continue;
+                ansiName[0] = '\0'; // no eligible path for ANSI result actions
             Salamander::LegacyFindUtf16Identity identity;
             Salamander::Utf16PathError pathError;
             if (!Salamander::LegacyFindUtf16Identity::TryCreate(utf16Directory,
@@ -1866,7 +1859,7 @@ static void SearchDirectory(const std::wstring& root, CMaskGroup* masksGroup,
     }
 }
 
-void RefineData(CMaskGroup* masksGroup, CGrepData* data)
+static void RefineData(const Salamander::LegacyFindMasks& masks, CGrepData* data)
 {
     int refineCount = data->FoundFilesListView->GetDataForRefineCount();
     int oldProgress = -1;
@@ -1896,8 +1889,8 @@ void RefineData(CMaskGroup* masksGroup, CGrepData* data)
         if (ok && !data->Criteria.Test(refineData->Attr, &refineData->Size, &refineData->LastWrite))
             ok = FALSE;
 
-        // file name (let the extension be resolved if ext==NULL)
-        if (ok && !masksGroup->AgreeMasks(refineData->Name, NULL))
+        const auto& name = refineData->UnicodeIdentity.Name();
+        if (ok && !masks.Matches(std::wstring(name.begin(), name.end())))
             ok = FALSE;
 
         // content
@@ -1991,19 +1984,7 @@ try
     if (data->Refine != 0)
     {
         if (data->Data->Count > 0)
-        {
-            CMaskGroup* mg = &data->Data->At(0)->MasksGroup;
-            int errorPos;
-            if (mg->PrepareMasks(errorPos))
-            {
-                RefineData(mg, data);
-            }
-            else
-            {
-                TRACE_E("PrepareMasks failed errorPos=" << errorPos);
-                data->StopSearch = TRUE;
-            }
-        }
+            RefineData(data->Data->At(0)->MasksGroup, data);
     }
     else
     {
@@ -2028,15 +2009,6 @@ try
             for (i = 0; i < data->Data->Count; i++)
             {
                 CSearchForData* query = data->Data->At(i);
-                CMaskGroup* mg = &query->MasksGroup;
-                int errorPos;
-                if (!mg->PrepareMasks(errorPos))
-                {
-                    TRACE_E("PrepareMasks failed errorPos=" << errorPos);
-                    data->StopSearch = TRUE;
-                    break;
-                }
-
                 // make a local copy of the ignore list, since it has to be processed anyway
                 // this also allows the user to edit the ignore list while the search is in progress
                 std::unique_ptr<CFindIgnore> ignoreList(new CFindIgnore);
@@ -2048,7 +2020,7 @@ try
                         ignoreList.reset();
                 }
 
-                SearchDirectory(query->Directory, mg, query->IncludeSubDirs, data,
+                SearchDirectory(query->Directory, query->MasksGroup, query->IncludeSubDirs, data,
                                 duplicateCandidates.get(), ignoreList.get());
                 if (data->StopSearch)
                     break;

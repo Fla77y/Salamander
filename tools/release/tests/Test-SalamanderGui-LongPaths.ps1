@@ -39,7 +39,7 @@ param(
     [switch]$UnicodeFindOnly,
     [ValidateSet('Baseline','Cancel','AdvancedInputs','ViewResults','ShellClipboard','ShellOpen','ShellProperties','ExternalEditor','RecycleRestore',
         'EncryptedFixture','UnicodeName','UnicodeResult',
-        'UnicodeDistinct','UnicodeFeatures','UnicodeSettings','UnicodeSettingsStorage','UnicodeRoot','LongRoot','LongDescendant','LongResult',
+        'UnicodeDistinct','UnicodeMasks','UnicodeFeatures','UnicodeSettings','UnicodeSettingsStorage','UnicodeRoot','UnicodeRootIgnore','LongRoot','LongDescendant','LongResult',
         'ExtendedLongRoot','LongDuplicates','DirectoryLinkCycle',
         'NearLimit','DefaultDialog','DefaultDialogShortcut','DefaultDialogLongRoot','DefaultDialogAltF7',
         'UnicodeFindCommand','UnicodeFindShortcut')]
@@ -1243,6 +1243,31 @@ public static class SalamanderGuiNative
         if (!LocalFileTimeToFileTime(in local, out utc))
             throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
         return DateTime.FromFileTimeUtc(utc);
+    }
+
+    [ComImport, Guid("618736E0-3C3D-11CF-810C-00AA00389B71"), InterfaceType(ComInterfaceType.InterfaceIsIDispatch)]
+    private interface IListViewAccessibility
+    {
+        [DispId(-5003)] // IAccessible::accName
+        string this[[MarshalAs(UnmanagedType.Struct)] object child] { [return: MarshalAs(UnmanagedType.BStr)] get; }
+    }
+
+    [DllImport("oleacc.dll", ExactSpelling = true)]
+    private static extern int AccessibleObjectFromWindow(IntPtr window, uint objectId, in Guid interfaceId,
+        [MarshalAs(UnmanagedType.Interface)] out IListViewAccessibility accessible);
+
+    public static string LegacyFindDisplayedName(IntPtr window, uint pid, int index)
+    {
+        IntPtr list = VerifiedChild(window, pid, 2510);
+        if (index < 0 || index >= LegacyFindResultCount(window, pid))
+            throw new ArgumentOutOfRangeException(nameof(index));
+
+        var interfaceId = typeof(IListViewAccessibility).GUID;
+        // OBJID_CLIENT exposes the ListView rows as 1-based MSAA children.
+        int result = AccessibleObjectFromWindow(list, unchecked((uint)-4), in interfaceId, out var accessible);
+        Marshal.ThrowExceptionForHR(result);
+        try { return accessible[index + 1]; }
+        finally { Marshal.ReleaseComObject(accessible); }
     }
 
     public static int LegacyFindResultCount(IntPtr window, uint pid)
@@ -3815,7 +3840,7 @@ try {
     [void][IO.Directory]::CreateDirectory($processTemp)
     if ($IsolatedConfiguration) {
         Initialize-IsolatedGuiConfiguration
-        if ($LegacyFindScenario -eq 'Baseline') {
+        if ($LegacyFindScenario -in 'Baseline','UnicodeRootIgnore') {
             . (Join-Path $PSScriptRoot 'LegacyFind-GuiCases.ps1')
             Initialize-LegacyFindBaseline
         }

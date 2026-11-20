@@ -877,14 +877,14 @@ if ($pluginDispatch -notmatch 'HasUnsupportedLegacyPluginSelection' -or
     throw 'F3: all legacy plugin menu paths must block unsafe disk identities.'
 }
 
-# Search roots must be transferred from the complete W control value and
-# rejected if the ACP round-trip loses characters or exceeds the buffer.
+# Search roots must be transferred from the complete W control value.
+# Any ANSI copy used by legacy actions still requires an exact round-trip.
 $findWorker = Get-Content -LiteralPath (Join-Path $toolsDir '..\..\src\find.cpp') -Raw
 $findQuery = Get-Content -LiteralPath (Join-Path $toolsDir '..\..\src\common\legacy_find_query.h') -Raw
 if ($findDialog1 -notmatch 'const std::wstring roots = ReadFindEdit\(lookIn\)' -or
     $findWorker -notmatch 'TryResolveLegacyFindDirectory\(root, directory, error\)' -or
     $findQuery -notmatch 'Utf16DiskPath::TryCreateAbsolute\(utf16, valid, pathError\)' -or
-    $findWorker -notmatch 'TryGetFindDirectoryLabel\(directory, label\)' -or
+    $findWorker -notmatch 'TryGetFindDirectoryLabel\(directory, label\);' -or
     $findWorker -notmatch 'IsExactAnsiName\(output, text\.c_str\(\)\)' -or
     $findWorker -notmatch 'FindFirstFileW\(extended\.c_str\(\), &file\)' -or
     $findDialog1 -notmatch 'ti\.ErrorOn\(IDC_FIND_LOOKIN\)') {

@@ -5,6 +5,7 @@
 #pragma once
 
 #include "common/legacy_find_utf16_identity.h"
+#include "common/legacy_find_masks.h"
 #include <vector>
 
 // structure for adding messages to the Find Log; sent as the message parameter
@@ -80,15 +81,16 @@ class CMenuBar;
 struct CSearchForData
 {
     std::wstring Directory;
-    CMaskGroup MasksGroup;
+    Salamander::LegacyFindMasks MasksGroup;
     BOOL IncludeSubDirs;
 
-    CSearchForData(std::wstring directory, const char* masks, BOOL includeSubDirs)
+    CSearchForData(std::wstring directory, const Salamander::LegacyFindMasks& masks, BOOL includeSubDirs)
         : Directory(std::move(directory)), MasksGroup(masks), IncludeSubDirs(includeSubDirs)
     {
     }
 };
 
+int CompareLegacyFindNames(std::wstring_view a, std::wstring_view b);
 bool TryFindTextToAnsi(const std::wstring& text, char* output, int capacity);
 bool TryLegacyFindWorkerRoot(const std::wstring& directory, char (&path)[MAX_PATH]);
 
@@ -255,7 +257,7 @@ public:
 
     // the following data are not saved; they are initialized in Prepare()
     CFindIgnoreItemType Type;
-    int Len;
+    std::wstring PreparedPath;
 
 public:
     CFindIgnoreItem();
@@ -287,7 +289,7 @@ public:
     // only items with 'Enabled' == TRUE are evaluated
     // returns FALSE if no such item is found
     // Note: the method must receive the full path with a trailing slash
-    BOOL Contains(const char* path, int startPathLen);
+    BOOL Contains(std::wstring_view path, size_t startPathLen);
 
     // adds the path only if it does not already exist in the list
     BOOL AddUnique(BOOL enabled, const char* path);
@@ -492,10 +494,8 @@ struct CFoundFilesData
     char* Name;
     char* Path;
 
-    // Original UTF-16 identity when supplied by native W enumeration.
-    // Empty for old ANSI-only results: never reconstruct it from a potentially
-    // lossy ACP display alias. Result file actions must be migrated to W APIs
-    // before this identity may be used to authorize them.
+    // Authoritative native identity. Name and Path are optional exact ACP
+    // projections for legacy actions; an empty field means no exact projection.
     Salamander::LegacyFindUtf16Identity UnicodeIdentity;
 
     bool TrySetUnicodeIdentity(std::u16string_view directory,
@@ -543,6 +543,7 @@ struct CFoundFilesData
     }
     BOOL Set(const char* path, const char* name, const CQuadWord& size, DWORD attr,
              const FILETIME* lastWrite, BOOL isDir);
+    int CompareName(const CFoundFilesData& other) const;
     bool CanUseLegacyPath() const;
     bool CopyLegacyFullPath(char (&path)[MAX_PATH]) const;
     // if 'i' refers to Name or Path, returns a pointer to the corresponding variable
@@ -730,6 +731,7 @@ protected:
                        //    CFindAdvancedDialog FindAdvanced;
     CFoundFilesListView* FoundFilesListView;
     char FoundFilesDataTextBuffer[MAX_PATH]; // for obtaining text from CFoundFilesData::GetText
+    std::wstring FoundFilesDataWideText; // storage for the owner-data notification
     CFindTBHeader* TBHeader;
     BOOL SearchInProgress;
     BOOL CanClose; // the window can be closed (we are not inside a method of this object)
@@ -817,6 +819,7 @@ protected:
 
     void StartSearch(WORD command);
     void StopSearch();
+    void UpdateSearchCaption(bool showCount);
 
     BOOL BuildSerchForData(); // fills the SearchForData list
 
