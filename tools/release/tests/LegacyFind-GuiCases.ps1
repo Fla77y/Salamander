@@ -1025,7 +1025,9 @@ if ($Target -cne $expected -or [IO.File]::ReadAllText($expected) -cne 'original 
     try {
         $editorKey.SetValue('Masks', '*.salfindtest')
         $editorKey.SetValue('Command', (Join-Path $PSHOME 'pwsh.exe'))
-        $editorKey.SetValue('Arguments', ('-NoProfile -NonInteractive -File "{0}" "$(FullName)"' -f $probe))
+        # The configured working directory already contains the script. Keep
+        # the full editor argument budget for the actual result under test.
+        $editorKey.SetValue('Arguments', '-NoProfile -NonInteractive -File editor-probe.ps1 "$(FullName)"')
         $editorKey.SetValue('Initial Directory', $root)
     }
     finally { $editorKey.Dispose() }
