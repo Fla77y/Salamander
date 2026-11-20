@@ -37,7 +37,7 @@ param(
     [switch]$ShortOperationsOnly,
     [switch]$TemporaryDirectoryDeletionOnly,
     [switch]$UnicodeFindOnly,
-    [ValidateSet('Baseline','Cancel','AdvancedInputs','ViewResults','ShellClipboard','ShellOpen','ShellProperties','ExternalEditor','RecycleRestore',
+    [ValidateSet('Baseline','Cancel','AdvancedInputs','ViewResults','ViewUnicode','ViewLong','ViewStale','ViewMixed','FocusUnicode','FocusLong','FocusStale','ShellClipboard','ShellOpen','ShellProperties','ExternalEditor','RecycleRestore',
         'EncryptedFixture','UnicodeName','UnicodeResult',
         'UnicodeDistinct','UnicodeMasks','UnicodeFeatures','UnicodeSettings','UnicodeSettingsStorage','UnicodeRoot','UnicodeRootIgnore','LongRoot','LongDescendant','LongResult',
         'ExtendedLongRoot','LongDuplicates','DirectoryLinkCycle',
@@ -1048,7 +1048,9 @@ public static class SalamanderGuiNative
         string prefix = expectedPath + " - ";
         foreach (TopLevelWindow window in GetProcessWindows(pid))
         {
-            if (!window.Visible || ClassName(window.Handle) != "Salamander's Viewer Window" ||
+            string className = ClassName(window.Handle);
+            if (!window.Visible || (className != "Salamander's Viewer Window" &&
+                                    className != "Salamander's Unicode Viewer Window") ||
                 (!window.Title.StartsWith(prefix, StringComparison.Ordinal) &&
                  !window.Title.StartsWith("[#] " + prefix, StringComparison.Ordinal)))
                 continue;
@@ -1111,7 +1113,7 @@ public static class SalamanderGuiNative
     public static void LegacyResultViewerCommand(IntPtr viewer, uint pid, string expectedPath, uint command)
     {
         if (viewer == IntPtr.Zero || FindLegacyResultViewer(pid, expectedPath) != viewer ||
-            (command != 0 && command != 6085 && command != 6086))
+            (command != 0 && command != 6062 && command != 6066 && command != 6085 && command != 6086))
             throw new InvalidOperationException("Unverified viewer or unsupported Find viewer command");
         uint message = command == 0 ? 0x0010u : 0x0111u; // WM_CLOSE or WM_COMMAND
         if (!PostMessageW(viewer, message, new UIntPtr(command), IntPtr.Zero))

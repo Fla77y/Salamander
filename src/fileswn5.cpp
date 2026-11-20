@@ -733,7 +733,7 @@ void CFilesWindow::FindFile(bool unicodeDialog)
 }
 
 void CFilesWindow::ViewFile(char* name, BOOL altView, DWORD handlerID, int enumFileNamesSourceUID,
-                            int enumFileNamesLastFileIndex)
+                            int enumFileNamesLastFileIndex, const wchar_t* wideFindPath)
 {
     CALL_STACK_MESSAGE6("CFilesWindow::ViewFile(%s, %d, %u, %d, %d)", name, altView, handlerID,
                         enumFileNamesSourceUID, enumFileNamesLastFileIndex);
@@ -973,7 +973,7 @@ void CFilesWindow::ViewFile(char* name, BOOL altView, DWORD handlerID, int enumF
     HANDLE lock = NULL;
     BOOL lockOwner = FALSE;
     ViewFileInt(HWindow, name, altView, handlerID, useDiskCache, lock, lockOwner, addToHistory,
-                enumFileNamesSourceUID, enumFileNamesLastFileIndex);
+                enumFileNamesSourceUID, enumFileNamesLastFileIndex, wideFindPath);
 
     if (useDiskCache)
     {
@@ -988,9 +988,71 @@ void CFilesWindow::ViewFile(char* name, BOOL altView, DWORD handlerID, int enumF
     }
 }
 
+static WINDOWPLACEMENT GetViewerStartPlacement()
+{
+    WINDOWPLACEMENT place{};
+    place.length = sizeof(WINDOWPLACEMENT);
+    GetWindowPlacement(MainWindow->HWindow, &place);
+    RECT monitorRect;
+    RECT workRect;
+    MultiMonGetClipRectByRect(&place.rcNormalPosition, &workRect, &monitorRect);
+    OffsetRect(&place.rcNormalPosition, workRect.left - monitorRect.left,
+               workRect.top - monitorRect.top);
+    if (place.showCmd == SW_MINIMIZE || place.showCmd == SW_SHOWMINIMIZED ||
+        place.showCmd == SW_SHOWMINNOACTIVE)
+        place.showCmd = SW_SHOWNORMAL;
+    return place;
+}
+
+static void ApplyInternalViewerPlacement(WINDOWPLACEMENT& place)
+{
+    if (Configuration.SavePosition && Configuration.WindowPlacement.length != 0)
+    {
+        place = Configuration.WindowPlacement;
+        RECT monitorRect;
+        RECT workRect;
+        MultiMonGetClipRectByRect(&place.rcNormalPosition, &workRect, &monitorRect);
+        OffsetRect(&place.rcNormalPosition, workRect.left - monitorRect.left,
+                   workRect.top - monitorRect.top);
+        MultiMonEnsureRectVisible(&place.rcNormalPosition, TRUE);
+    }
+}
+
+void CFilesWindow::ViewWideFindResult(const COpenWideFindViewerData& result, BOOL alternate)
+try
+{
+    auto* viewers = alternate ? MainWindow->AltViewerMasks : MainWindow->ViewerMasks;
+    for (int i = 0; i < viewers->Count; ++i)
+    {
+        const auto* viewer = viewers->At(i);
+        Salamander::LegacyFindMasks masks;
+        if (!masks.PrepareAnsiGroup(viewer->Masks->GetMasksString()) || !masks.Matches(result.Name))
+            continue;
+        if (viewer->ViewerType == VIEWER_INTERNAL)
+        {
+            WINDOWPLACEMENT place = GetViewerStartPlacement();
+            ApplyInternalViewerPlacement(place);
+            OpenViewer("", vtText,
+                       place.rcNormalPosition.left, place.rcNormalPosition.top,
+                       place.rcNormalPosition.right - place.rcNormalPosition.left,
+                       place.rcNormalPosition.bottom - place.rcNormalPosition.top,
+                       place.showCmd, FALSE, NULL, NULL, NULL,
+                       result.SourceUID, result.Index, result.Path);
+            return;
+        }
+        break; // the configured viewer needs an ANSI path
+    }
+    SalMessageBox(HWindow, LoadStr(IDS_SRCPATHUNICODEONLY), LoadStr(IDS_ERRORTITLE),
+                  MB_OK | MB_ICONWARNING);
+}
+catch (const std::bad_alloc&)
+{
+    TRACE_E(LOW_MEMORY);
+}
+
 BOOL ViewFileInt(HWND parent, const char* name, BOOL altView, DWORD handlerID, BOOL returnLock,
                  HANDLE& lock, BOOL& lockOwner, BOOL addToHistory, int enumFileNamesSourceUID,
-                 int enumFileNamesLastFileIndex)
+                 int enumFileNamesLastFileIndex, const wchar_t* wideFindPath)
 {
     BOOL success = FALSE;
     lock = NULL;
@@ -1019,23 +1081,7 @@ BOOL ViewFileInt(HWND parent, const char* name, BOOL altView, DWORD handlerID, B
     else
         tmpExt++;
 
-    // position for viewers
-    WINDOWPLACEMENT place;
-    place.length = sizeof(WINDOWPLACEMENT);
-    GetWindowPlacement(MainWindow->HWindow, &place);
-    // GetWindowPlacement respects the Taskbar, so if the Taskbar is at the top or left,
-    // the values are shifted by its dimensions. Perform correction.
-    RECT monitorRect;
-    RECT workRect;
-    MultiMonGetClipRectByRect(&place.rcNormalPosition, &workRect, &monitorRect);
-    OffsetRect(&place.rcNormalPosition, workRect.left - monitorRect.left,
-               workRect.top - monitorRect.top);
-
-    // if called, for example, from find and the main window is minimized,
-    // we do not want a minimized viewer
-    if (place.showCmd == SW_MINIMIZE || place.showCmd == SW_SHOWMINIMIZED ||
-        place.showCmd == SW_SHOWMINNOACTIVE)
-        place.showCmd = SW_SHOWNORMAL;
+    WINDOWPLACEMENT place = GetViewerStartPlacement();
 
     // find the correct viewer and launch it
     CViewerMasks* masks = (altView ? MainWindow->AltViewerMasks : MainWindow->ViewerMasks);
@@ -1184,19 +1230,7 @@ BOOL ViewFileInt(HWND parent, const char* name, BOOL altView, DWORD handlerID, B
 
         case VIEWER_INTERNAL:
         {
-            if (Configuration.SavePosition &&
-                Configuration.WindowPlacement.length != 0)
-            {
-                place = Configuration.WindowPlacement;
-                // GetWindowPlacement respects the Taskbar, so if the Taskbar is at the top or left,
-                // the values are shifted by its dimensions. Perform correction.
-                RECT monitorRect2;
-                RECT workRect2;
-                MultiMonGetClipRectByRect(&place.rcNormalPosition, &workRect2, &monitorRect2);
-                OffsetRect(&place.rcNormalPosition, workRect2.left - monitorRect2.left,
-                           workRect2.top - monitorRect2.top);
-                MultiMonEnsureRectVisible(&place.rcNormalPosition, TRUE);
-            }
+            ApplyInternalViewerPlacement(place);
 
             HANDLE lockAux = NULL;
             BOOL lockOwnerAux = FALSE;
@@ -1207,7 +1241,7 @@ BOOL ViewFileInt(HWND parent, const char* name, BOOL altView, DWORD handlerID, B
                            place.rcNormalPosition.bottom - place.rcNormalPosition.top,
                            place.showCmd,
                            returnLock, &lockAux, &lockOwnerAux, NULL,
-                           enumFileNamesSourceUID, enumFileNamesLastFileIndex))
+                           enumFileNamesSourceUID, enumFileNamesLastFileIndex, wideFindPath))
             {
                 success = TRUE;
                 if (returnLock && lockAux != NULL)

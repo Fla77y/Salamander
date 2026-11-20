@@ -5,6 +5,9 @@
 #include "precomp.h"
 
 #include "viewer.h"
+#include "common/win32_long_path.h"
+#include "common/legacy_find_masks.h"
+#include "common/win32_unicode_panel_name.h"
 #include "codetbl.h"
 
 #include "cfgdlg.h"
@@ -65,19 +68,14 @@ unsigned ThreadViewerMessageLoopBody(void* parameter)
     //  TRACE_I("MoresStanislav: ThreadViewerMessageLoopBody 3 succes="<<data->Success);
     //  CALL_STACK_MESSAGE1("MoresStanislav: ThreadViewerMessageLoopBody 3");
 
+    const DWORD exStyle = Configuration.AlwaysOnTop ? WS_EX_TOPMOST : 0;
+    const DWORD style = WS_OVERLAPPEDWINDOW | WS_VSCROLL | WS_HSCROLL;
     if (data->Success &&
-        view->CreateEx(Configuration.AlwaysOnTop ? WS_EX_TOPMOST : 0,
-                       CVIEWERWINDOW_CLASSNAME,
-                       LoadStr(IDS_VIEWERTITLE),
-                       WS_OVERLAPPEDWINDOW | WS_VSCROLL | WS_HSCROLL,
-                       data->Left,
-                       data->Top,
-                       data->Width,
-                       data->Height,
-                       NULL,
-                       ViewerMenu,
-                       HInstance,
-                       view) != NULL)
+        (view->StartupFindPath.empty()
+             ? view->CreateEx(exStyle, CVIEWERWINDOW_CLASSNAME, LoadStr(IDS_VIEWERTITLE), style,
+                              data->Left, data->Top, data->Width, data->Height, NULL, ViewerMenu, HInstance, view)
+             : view->CreateExW(exStyle, CVIEWERWINDOW_WIDECLASSNAME, LoadStrW(IDS_VIEWERTITLE), style,
+                               data->Left, data->Top, data->Width, data->Height, NULL, ViewerMenu, HInstance, view)) != NULL)
     {
         //    TRACE_I("MoresStanislav: ThreadViewerMessageLoopBody 4");
         //    CALL_STACK_MESSAGE1("MoresStanislav: ThreadViewerMessageLoopBody 4");
@@ -110,7 +108,9 @@ unsigned ThreadViewerMessageLoopBody(void* parameter)
     if (ok) // if the window was created, run the message loop
     {
         CALL_STACK_MESSAGE1("ThreadViewerMessageLoopBody::message_loop");
-        if (SalGetFullName(name))
+        if (!view->StartupFindPath.empty())
+            view->OpenWideFindFile(std::move(view->StartupFindPath));
+        else if (SalGetFullName(name))
             view->OpenFile(name, caption, wholeCaption);
 
         MSG msg;
@@ -159,7 +159,7 @@ DWORD WINAPI ThreadViewerMessageLoop(void* param)
 BOOL OpenViewer(const char* name, CViewType mode, int left, int top, int width, int height,
                 UINT showCmd, BOOL returnLock, HANDLE* lock, BOOL* lockOwner,
                 CSalamanderPluginViewerData* viewerData, int enumFileNamesSourceUID,
-                int enumFileNamesLastFileIndex)
+                int enumFileNamesLastFileIndex, const wchar_t* wideFindPath)
 {
     CALL_STACK_MESSAGE11("OpenViewer(%s, %d, %d, %d, %d, %d, %u, %d, , , , %d, %d)",
                          name, mode, left, top, width, height, showCmd, returnLock,
@@ -171,9 +171,21 @@ BOOL OpenViewer(const char* name, CViewType mode, int left, int top, int width, 
         mode = (intViewerData->Mode == 0) ? vtText : vtHex;
     }
     CViewerWindow* view = new CViewerWindow(NULL, mode, NULL, FALSE, ooStatic,
-                                            enumFileNamesSourceUID, enumFileNamesLastFileIndex);
+                                            enumFileNamesSourceUID, enumFileNamesLastFileIndex, wideFindPath != NULL);
     if (view != NULL)
     {
+        if (wideFindPath != NULL)
+        {
+            try
+            {
+                view->StartupFindPath.assign(wideFindPath);
+            }
+            catch (const std::bad_alloc&)
+            {
+                delete view;
+                return FALSE;
+            }
+        }
         view->InitFindDialog(GlobalFindDialog);
         if (returnLock)
         {
@@ -356,8 +368,7 @@ BOOL CViewerWindow::LoadBefore(HANDLE* hFile)
     HANDLE file;
     if (hFile == NULL || *hFile == NULL)
     {
-        file = HANDLES_Q(CreateFile(FileName, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
-                                    OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL));
+        file = OpenCurrentFile();
         if (hFile != NULL && file != INVALID_HANDLE_VALUE)
             *hFile = file;
     }
@@ -501,8 +512,7 @@ BOOL CViewerWindow::LoadBehind(HANDLE* hFile)
     HANDLE file;
     if (hFile == NULL || *hFile == NULL)
     {
-        file = HANDLES_Q(CreateFile(FileName, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING,
-                                    FILE_FLAG_SEQUENTIAL_SCAN, NULL));
+        file = OpenCurrentFile();
         if (hFile != NULL && file != INVALID_HANDLE_VALUE)
             *hFile = file;
     }
@@ -671,6 +681,8 @@ void CViewerWindow::OpenFile(const char* file, const char* caption, BOOL wholeCa
     CALL_STACK_MESSAGE3("CViewerWindow::OpenFile(%s, %s)", file, caption);
     char fileName[MAX_PATH];
     strcpy(fileName, file);
+    WideFindPath.clear();
+    ExtendedFindPath.clear();
 
     if (Caption != NULL)
     {
@@ -689,6 +701,53 @@ void CViewerWindow::OpenFile(const char* file, const char* caption, BOOL wholeCa
     FileName = (char*)malloc(strlen(fileName) + 1);
     if (FileName != NULL)
         strcpy(FileName, fileName);
+    ResetFileView();
+}
+
+bool CViewerWindow::OpenWideFindFile(std::wstring path)
+try
+{
+    std::wstring extended;
+    DWORD error;
+    if (!Salamander::TryMakeExtendedLengthPath(path.c_str(), extended, error))
+        return false;
+    char ansiPath[MAX_PATH];
+    const bool exact = WideCharToMultiByte(CP_ACP, 0, path.c_str(), -1, ansiPath, _countof(ansiPath), NULL, NULL) > 0 &&
+                       Salamander::IsExactAnsiName(ansiPath, path.c_str());
+    char* marker = DupStr(exact ? ansiPath : "");
+    if (marker == NULL)
+        return false;
+    if (FileName != NULL)
+        free(FileName);
+    FileName = marker;
+    if (Caption != NULL)
+    {
+        free(Caption);
+        Caption = NULL;
+    }
+    WholeCaption = FALSE;
+    WideFindPath = std::move(path);
+    ExtendedFindPath = std::move(extended);
+    ResetFileView();
+    return FileName != NULL;
+}
+catch (const std::bad_alloc&)
+{
+    TRACE_E(LOW_MEMORY);
+    return false;
+}
+
+HANDLE CViewerWindow::OpenCurrentFile()
+{
+    if (!ExtendedFindPath.empty())
+        return HANDLES_Q(CreateFileW(ExtendedFindPath.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                     NULL, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL));
+    return HANDLES_Q(CreateFileA(FileName, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                 NULL, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL));
+}
+
+void CViewerWindow::ResetFileView()
+{
     TooBigSelAction = 0;
     CanSwitchToHex = TRUE;
     CanSwitchQuietlyToHex = TRUE;
@@ -762,8 +821,7 @@ void CViewerWindow::FileChanged(HANDLE file, BOOL testOnlyFileSize, BOOL& fatalE
     BOOL close;
     if (file == NULL)
     {
-        file = HANDLES_Q(CreateFile(FileName, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE, NULL, OPEN_EXISTING,
-                                    FILE_FLAG_SEQUENTIAL_SCAN, NULL));
+        file = OpenCurrentFile();
         close = TRUE;
     }
     else
@@ -824,12 +882,20 @@ void CViewerWindow::FileChanged(HANDLE file, BOOL testOnlyFileSize, BOOL& fatalE
                     if (defViewMode == 0)
                     {
                         // the exceptions apply only when Auto-Select is active
-                        if (Configuration.TextModeMasks.AgreeMasks(namePart, NULL))
+                        const auto matchesMode = [&](CMaskGroup& group) {
+                            if (WideFindPath.empty())
+                                return group.AgreeMasks(namePart, NULL) != FALSE;
+                            const size_t slash = WideFindPath.rfind(L'\\');
+                            const auto leaf = std::wstring_view(WideFindPath).substr(slash + 1);
+                            Salamander::LegacyFindMasks masks;
+                            return masks.PrepareAnsiGroup(group.GetMasksString()) && masks.Matches(leaf);
+                        };
+                        if (matchesMode(Configuration.TextModeMasks))
                         {
                             defViewMode = 1;               // Text
                             CanSwitchQuietlyToHex = FALSE; // if we force Text mode, prompt before switching to Hex
                         }
-                        else if (Configuration.HexModeMasks.AgreeMasks(namePart, NULL))
+                        else if (matchesMode(Configuration.HexModeMasks))
                             defViewMode = 2; // Hex
                     }
                     else

@@ -808,6 +808,124 @@ function Test-LegacyFindShellClipboard {
     }
 }
 
+function Test-LegacyFindFocus {
+    param([string]$Fixture, [string]$Scenario)
+
+    $directory = $Fixture
+    if ($Scenario -eq 'FocusLong') {
+        foreach ($step in 1..3) {
+            $directory = [IO.Directory]::CreateDirectory((Join-Path $directory ("$step-" + ('x' * 78)))).FullName
+        }
+        Assert-True ($directory.Length -gt 260) 'Focus target directory exceeds MAX_PATH'
+    }
+    $name = if ($Scenario -eq 'FocusStale') { 'gone.txt' } else { 'focus-東京-😀.txt' }
+    $decoy = Join-Path $directory 'focus-大阪-😺.txt'
+    $target = Join-Path $directory $name
+    [IO.File]::WriteAllText($decoy, 'decoy')
+    [IO.File]::WriteAllText($target, 'target')
+    Set-LegacyFindQuery -SearchRoot $directory -Mask $name
+    Invoke-LegacyFindQuery -Expected 1 -Description 'Focus search identifies the intended result'
+    Assert-True ([string]::Equals((Read-LegacyFindResult -Index 0), $target, [StringComparison]::Ordinal)) (
+        'The selected Find row is the exact target')
+
+    $ownerPid = [uint32]$process.Id
+    if ($Scenario -eq 'FocusStale') {
+        $originalPanel = Read-PanelPath
+        [IO.File]::Delete($target)
+        [SalamanderGuiNative]::LegacyFindCommand($legacyWindow, $ownerPid, 2225, $true)
+        Assert-LegacyFindNotice -Owner $legacyWindow -Title 'Error' -ExpectedText "Some selected file or directory is not available.`nPress the Find Now button to refresh list of found items."
+        Assert-True ([string]::Equals((Read-PanelPath), $originalPanel, [StringComparison]::Ordinal)) (
+            'A stale result leaves the active panel where it was')
+    } else {
+        [SalamanderGuiNative]::LegacyFindCommand($legacyWindow, $ownerPid, 2225, $true)
+        Wait-Until {
+            if ([SalamanderGuiNative]::FindLegacyModal($legacyWindow, $ownerPid, 'Error') -ne [IntPtr]::Zero) {
+                throw 'Focus File rejected an existing exact Unicode result.'
+            }
+            return [string]::Equals((Read-PanelPath), $directory, [StringComparison]::OrdinalIgnoreCase)
+        } 'Focus File navigates the panel to the exact result directory'
+        Assert-True ([string]::Equals((Read-FocusedFullname -AllowVerifiedBackground), $target,
+            [StringComparison]::Ordinal)) 'Focus File selects the W-backed row instead of its ACP lookalike'
+    }
+    Assert-True ([IO.File]::ReadAllText($decoy) -ceq 'decoy') 'The similarly spelled decoy retains its original bytes'
+}
+
+function Assert-LegacyViewerContents {
+    param([IntPtr]$Viewer, [uint32]$OwnerPid, [string]$Path, [string]$Expected)
+
+    Set-ClipboardText 'Viewer has not copied any bytes'
+    $sequence = [SalamanderGuiNative]::GetClipboardSequenceNumber()
+    [SalamanderGuiNative]::LegacyResultViewerCommand($Viewer, $OwnerPid, $Path, 6066)
+    [SalamanderGuiNative]::LegacyResultViewerCommand($Viewer, $OwnerPid, $Path, 6062)
+    Wait-Until {
+        [SalamanderGuiNative]::GetClipboardSequenceNumber() -ne $sequence -and (Get-ClipboardText) -ceq $Expected
+    } 'Viewer copied the exact bytes from the named result'
+    Write-Host 'PASS: Viewer copied the exact bytes from the named result'
+}
+
+function Test-LegacyFindWideViewer {
+    param([string]$Fixture, [string]$Scenario)
+
+    $directory = $Fixture
+    if ($Scenario -eq 'ViewLong') {
+        foreach ($step in 1..3) {
+            $directory = [IO.Directory]::CreateDirectory((Join-Path $directory ("$step-" + ('x' * 78)))).FullName
+        }
+        $directory = [IO.Directory]::CreateDirectory((Join-Path $directory 'viewer-東京-😀')).FullName
+        Assert-True ($directory.Length -gt 260) 'Unicode viewer target directory exceeds MAX_PATH'
+    }
+    $firstName = if ($Scenario -eq 'ViewMixed') { 'focus-a.txt' } else { 'focus-東京-😀.txt' }
+    $first = Join-Path $directory $firstName
+    $second = Join-Path $directory 'focus-大阪-😺.txt'
+    [IO.File]::WriteAllText($first, 'first Unicode result')
+    [IO.File]::WriteAllText($second, 'second Unicode result')
+    Set-LegacyFindQuery -SearchRoot $directory -Mask 'focus-*.txt'
+    Invoke-LegacyFindQuery -Expected 2 -Description 'Viewer search finds both exact Unicode results'
+
+    $ownerPid = [uint32]$process.Id
+    [SalamanderGuiNative]::LegacyFindCommand($legacyWindow, $ownerPid, 2237, $false)
+    $shown = Read-LegacyFindResult -Index 0
+    if ($Scenario -eq 'ViewMixed') {
+        Assert-True ([string]::Equals($shown, $first, [StringComparison]::Ordinal)) (
+            'The mixed result list starts with the short ACP file')
+    }
+    $other = if ([string]::Equals($shown, $first, [StringComparison]::Ordinal)) { $second } else { $first }
+    Assert-True ([string]::Equals((Read-LegacyFindResult -Index 1), $other, [StringComparison]::Ordinal)) (
+        'The two rows keep their distinct UTF-16 names')
+    [SalamanderGuiNative]::SelectLegacyFindRow($legacyWindow, $ownerPid, 0)
+    if ($Scenario -eq 'ViewStale') {
+        [IO.File]::Delete($shown)
+        [SalamanderGuiNative]::LegacyFindCommand($legacyWindow, $ownerPid, 2221, $true)
+        Assert-LegacyFindNotice -Owner $legacyWindow -Title 'Error' -ExpectedText "Some selected file or directory is not available.`nPress the Find Now button to refresh list of found items."
+        Assert-True ([IO.File]::Exists($other)) 'A stale View result leaves the other file intact'
+        return
+    }
+
+    [SalamanderGuiNative]::LegacyFindCommand($legacyWindow, $ownerPid, 2221, $true)
+    $observed = @{ Viewer = [IntPtr]::Zero }
+    Wait-Until {
+        if ($process.HasExited) {
+            throw ('Salamander exited while opening Unicode View (0x{0:X8}).' -f $process.ExitCode)
+        }
+        if ([SalamanderGuiNative]::FindLegacyModal($legacyWindow, $ownerPid, 'Error') -ne [IntPtr]::Zero) {
+            throw 'View rejected an existing exact Unicode result.'
+        }
+        $observed.Viewer = [SalamanderGuiNative]::FindLegacyResultViewer($ownerPid, $shown)
+        return $observed.Viewer -ne [IntPtr]::Zero
+    } 'View opens the selected Unicode result in the internal viewer'
+    Assert-LegacyViewerContents $observed.Viewer $ownerPid $shown ([IO.File]::ReadAllText($shown))
+    [SalamanderGuiNative]::LegacyResultViewerCommand($observed.Viewer, $ownerPid, $shown, 6086)
+    Wait-Until { [SalamanderGuiNative]::FindLegacyResultViewer($ownerPid, $other) -eq $observed.Viewer } (
+        'Next File opens the distinct Unicode result in the same viewer')
+    Assert-LegacyViewerContents $observed.Viewer $ownerPid $other ([IO.File]::ReadAllText($other))
+    [SalamanderGuiNative]::LegacyResultViewerCommand($observed.Viewer, $ownerPid, $other, 6085)
+    Wait-Until { [SalamanderGuiNative]::FindLegacyResultViewer($ownerPid, $shown) -eq $observed.Viewer } (
+        'Previous File returns to the exact Unicode result')
+    [SalamanderGuiNative]::LegacyResultViewerCommand($observed.Viewer, $ownerPid, $shown, 0)
+    Wait-Until { -not [SalamanderGuiNative]::IsWindowVisible($observed.Viewer) } 'the test-owned Unicode viewer closed'
+    Write-Host 'PASS: Next and Previous preserve the exact Find result order'
+}
+
 function Test-LegacyFindViewer {
     param([string]$Fixture)
 
@@ -1286,6 +1404,14 @@ function Test-LegacyFindGui {
     }
     if ($Scenario -eq 'RecycleRestore') {
         Test-LegacyFindRecycleRestore -Fixture $fixture
+        return
+    }
+    if ($Scenario -in 'FocusUnicode','FocusLong','FocusStale') {
+        Test-LegacyFindFocus -Fixture $fixture -Scenario $Scenario
+        return
+    }
+    if ($Scenario -in 'ViewUnicode','ViewLong','ViewStale','ViewMixed') {
+        Test-LegacyFindWideViewer -Fixture $fixture -Scenario $Scenario
         return
     }
     if ($Scenario -eq 'ViewResults') {

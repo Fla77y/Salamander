@@ -20,12 +20,33 @@ BOOL ViewerActive(HWND hwnd)
 #define FAST_LEFTRIGHT max(1, (Width - BORDER_WIDTH) / CharWidth / 6)
 #define MAKEVIS_LEFTRIGHT max(0, (Width - BORDER_WIDTH) / CharWidth / 6)
 
+bool CViewerWindow::GetAdjacentWideFindFile(WORD command, int& index, std::wstring& path)
+try
+{
+    const bool previous = command == CM_PREVFILE || command == CM_PREVSELFILE || command == CM_LASTFILE;
+    const bool onlySelected = command == CM_PREVSELFILE || command == CM_NEXTSELFILE;
+    if (command == CM_FIRSTFILE || command == CM_LASTFILE)
+        index = -1;
+    const std::u16string current(WideFindPath.begin(), WideFindPath.end());
+    std::u16string next;
+    if (!GetWideFindFileForViewer(EnumFileNamesSourceUID, index, current, previous, onlySelected, next))
+        return false;
+    path.assign(next.begin(), next.end());
+    return true;
+}
+catch (const std::bad_alloc&)
+{
+    TRACE_E(LOW_MEMORY);
+    return false;
+}
+
 void CViewerWindow::SetViewerCaption()
+try
 {
     char caption[MAX_PATH + 300];
     if (Caption == NULL)
     {
-        if (FileName != NULL)
+        if (FileName != NULL && WideFindPath.empty())
             lstrcpyn(caption, FileName, MAX_PATH); // caption according to the file
         else
             caption[0] = 0;
@@ -49,7 +70,18 @@ void CViewerWindow::SetViewerCaption()
             sprintf(caption + strlen(caption), " - [%s]", codeName);
         }
     }
-    SetWindowText(HWindow, caption);
+    if (FileName != NULL && !WideFindPath.empty())
+    {
+        wchar_t suffix[_countof(caption)];
+        if (MultiByteToWideChar(CP_ACP, 0, caption, -1, suffix, _countof(suffix)) > 0)
+            SetWindowTextW(HWindow, (WideFindPath + L" - " + suffix).c_str());
+    }
+    else
+        SetWindowText(HWindow, caption);
+}
+catch (const std::bad_alloc&)
+{
+    TRACE_E(LOW_MEMORY);
 }
 
 //
@@ -881,6 +913,17 @@ CViewerWindow::WindowProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
         case CM_FIRSTFILE:
         case CM_LASTFILE:
         {
+            if (!WideFindPath.empty())
+            {
+                int index = EnumFileNamesLastFileIndex;
+                std::wstring path;
+                if (GetAdjacentWideFindFile(LOWORD(wParam), index, path))
+                {
+                    OpenWideFindFile(std::move(path));
+                    EnumFileNamesLastFileIndex = index;
+                }
+                return 0;
+            }
             BOOL ok = FALSE;
             BOOL srcBusy = FALSE;
             BOOL noMoreFiles = FALSE;
@@ -3062,59 +3105,76 @@ CViewerWindow::WindowProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
                     BOOL nextSelFile = FALSE;
                     BOOL firstLastFile = FALSE;
 
-                    BOOL ok = FALSE;
-                    BOOL srcBusy = FALSE;
-                    BOOL noMoreFiles = FALSE;
-                    char fileName[MAX_PATH];
-                    fileName[0] = 0;
-                    int enumFileNamesLastFileIndex = EnumFileNamesLastFileIndex;
-                    ok = GetPreviousFileNameForViewer(EnumFileNamesSourceUID,
-                                                      &enumFileNamesLastFileIndex,
-                                                      FileName, FALSE, TRUE,
-                                                      fileName, &noMoreFiles,
-                                                      &srcBusy, NULL);
-
-                    prevFile = ok || srcBusy;                     // only if a previous file exists (or Salamander is busy, then the user must try again later)
-                    firstLastFile = ok || srcBusy || noMoreFiles; // jumping to the first or last file works only if the source link is intact (or Salamander is busy, then the user must try again later)
-                    if (firstLastFile)
+                    if (!WideFindPath.empty())
                     {
-                        enumFileNamesLastFileIndex = EnumFileNamesLastFileIndex;
+                        int index = EnumFileNamesLastFileIndex;
+                        std::wstring path;
+                        prevFile = GetAdjacentWideFindFile(CM_PREVFILE, index, path);
+                        index = EnumFileNamesLastFileIndex;
+                        nextFile = GetAdjacentWideFindFile(CM_NEXTFILE, index, path);
+                        index = EnumFileNamesLastFileIndex;
+                        prevSelFile = GetAdjacentWideFindFile(CM_PREVSELFILE, index, path);
+                        index = EnumFileNamesLastFileIndex;
+                        nextSelFile = GetAdjacentWideFindFile(CM_NEXTSELFILE, index, path);
+                        index = EnumFileNamesLastFileIndex;
+                        firstLastFile = GetAdjacentWideFindFile(CM_FIRSTFILE, index, path);
+                    }
+                    else
+                    {
+                        BOOL ok = FALSE;
+                        BOOL srcBusy = FALSE;
+                        BOOL noMoreFiles = FALSE;
+                        char fileName[MAX_PATH];
+                        fileName[0] = 0;
+                        int enumFileNamesLastFileIndex = EnumFileNamesLastFileIndex;
                         ok = GetPreviousFileNameForViewer(EnumFileNamesSourceUID,
+                                                          &enumFileNamesLastFileIndex,
+                                                          FileName, FALSE, TRUE,
+                                                          fileName, &noMoreFiles,
+                                                          &srcBusy, NULL);
+
+                        prevFile = ok || srcBusy;                     // only if a previous file exists (or Salamander is busy, then the user must try again later)
+                        firstLastFile = ok || srcBusy || noMoreFiles; // jumping to the first or last file works only if the source link is intact (or Salamander is busy, then the user must try again later)
+                        if (firstLastFile)
+                        {
+                            enumFileNamesLastFileIndex = EnumFileNamesLastFileIndex;
+                            ok = GetPreviousFileNameForViewer(EnumFileNamesSourceUID,
+                                                              &enumFileNamesLastFileIndex,
+                                                              FileName, TRUE /* prefer selected */, TRUE,
+                                                              fileName, &noMoreFiles,
+                                                              &srcBusy, NULL);
+                            BOOL isSrcFileSel = FALSE;
+                            if (ok)
+                            {
+                                ok = IsFileNameForViewerSelected(EnumFileNamesSourceUID, enumFileNamesLastFileIndex,
+                                                                 fileName, &isSrcFileSel, &srcBusy);
+                                prevSelFile = ok && isSrcFileSel || srcBusy; // only if the previous file is actually selected (or Salamander is busy, then the user must try again later)
+                            }
+
+                            enumFileNamesLastFileIndex = EnumFileNamesLastFileIndex;
+                            ok = GetNextFileNameForViewer(EnumFileNamesSourceUID,
+                                                          &enumFileNamesLastFileIndex,
+                                                          FileName, FALSE, TRUE,
+                                                          fileName, &noMoreFiles,
+                                                          &srcBusy, NULL);
+                            nextFile = ok || srcBusy; // only if another file exists (or Salamander is busy, then the user must try again later)
+
+                            enumFileNamesLastFileIndex = EnumFileNamesLastFileIndex;
+                            ok = GetNextFileNameForViewer(EnumFileNamesSourceUID,
                                                           &enumFileNamesLastFileIndex,
                                                           FileName, TRUE /* prefer selected */, TRUE,
                                                           fileName, &noMoreFiles,
                                                           &srcBusy, NULL);
-                        BOOL isSrcFileSel = FALSE;
-                        if (ok)
-                        {
-                            ok = IsFileNameForViewerSelected(EnumFileNamesSourceUID, enumFileNamesLastFileIndex,
-                                                             fileName, &isSrcFileSel, &srcBusy);
-                            prevSelFile = ok && isSrcFileSel || srcBusy; // only if the previous file is actually selected (or Salamander is busy, then the user must try again later)
+                            isSrcFileSel = FALSE;
+                            if (ok)
+                            {
+                                ok = IsFileNameForViewerSelected(EnumFileNamesSourceUID, enumFileNamesLastFileIndex,
+                                                                 fileName, &isSrcFileSel, &srcBusy);
+                                nextSelFile = ok && isSrcFileSel || srcBusy; // only if the next file is actually selected (or Salamander is busy, then the user must try again later)
+                            }
                         }
 
-                        enumFileNamesLastFileIndex = EnumFileNamesLastFileIndex;
-                        ok = GetNextFileNameForViewer(EnumFileNamesSourceUID,
-                                                      &enumFileNamesLastFileIndex,
-                                                      FileName, FALSE, TRUE,
-                                                      fileName, &noMoreFiles,
-                                                      &srcBusy, NULL);
-                        nextFile = ok || srcBusy; // only if another file exists (or Salamander is busy, then the user must try again later)
-
-                        enumFileNamesLastFileIndex = EnumFileNamesLastFileIndex;
-                        ok = GetNextFileNameForViewer(EnumFileNamesSourceUID,
-                                                      &enumFileNamesLastFileIndex,
-                                                      FileName, TRUE /* prefer selected */, TRUE,
-                                                      fileName, &noMoreFiles,
-                                                      &srcBusy, NULL);
-                        isSrcFileSel = FALSE;
-                        if (ok)
-                        {
-                            ok = IsFileNameForViewerSelected(EnumFileNamesSourceUID, enumFileNamesLastFileIndex,
-                                                             fileName, &isSrcFileSel, &srcBusy);
-                            nextSelFile = ok && isSrcFileSel || srcBusy; // only if the next file is actually selected (or Salamander is busy, then the user must try again later)
-                        }
                     }
-
                     EnableMenuItem(othFilesMenu, CM_PREVFILE, MF_BYCOMMAND | (prevFile ? MF_ENABLED : MF_GRAYED));
                     EnableMenuItem(othFilesMenu, CM_NEXTFILE, MF_BYCOMMAND | (nextFile ? MF_ENABLED : MF_GRAYED));
                     EnableMenuItem(othFilesMenu, CM_PREVSELFILE, MF_BYCOMMAND | (prevSelFile ? MF_ENABLED : MF_GRAYED));

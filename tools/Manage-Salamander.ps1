@@ -13,7 +13,7 @@ $repository = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Provide
 $buildRoot = 'D:\Build\OpenSal'
 $configuration = 'Release'
 $validOptions = @('--update', '--build', '--test', '--setup', '--run',
-                  '--test-gui-large-unicode-copy', '--test-clipboard-snapshot',
+                  '--test-gui-large-unicode-copy', '--test-gui-legacy-find', '--test-clipboard-snapshot',
                   '--debug', '--release', '--all', '--build-delta', '--build-clean', '--test-all', '--test-gui', '--test-gui-max-path', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-recycle-restore', '--test-plugin-exports', '--test-plugin-load', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-unicode-find', '--test-gui-manual', '--test-gui-temp-delete', '--test-pictview', '--test-pictview-window', '--test-pictview-host', '--diagnose-gui', '--help', '-h', '/?')
 $requestedSet = [System.Collections.Generic.HashSet[string]]::new(
     [StringComparer]::OrdinalIgnoreCase)
@@ -38,8 +38,9 @@ Open Salamander – Verwaltung für Visual Studio 2026
   manage.cmd --test         Windows-Dateisystem-/Namens-Tests und Projekt-Regressionstests
   manage.cmd --test-all     Alle automatisierten Tests: --test und sämtliche GUI-Modi
                             (Release und Debug x64; --release/--debug begrenzt die GUI-Modi)
-                            Große Unicode-Kopien: separater isolierter Testbuild im Worktree
+                            Legacy-Suche und große Unicode-Kopien: isolierte Testbuilds im Worktree
   manage.cmd --test-gui-large-unicode-copy  32-MiB-Kopie, Pause/Abbruch, Zielkollision und gesperrte Quelle
+  manage.cmd --test-gui-legacy-find  Legacy-Suche (Strg+F), Filter, Unicode, Focus File und Viewer
   manage.cmd --test-clipboard-snapshot  Native Zwischenablage-Sicherung/-Wiederherstellung prüfen
   manage.cmd --setup        Debug- und Release-7z plus Inno-Setup-Pakete erzeugen
   manage.cmd --test-pictview  WIC-Decoder, GDI, Frames, Export, Clipboard, Transforms: MSVC x86/x64
@@ -76,7 +77,7 @@ Open Salamander – Verwaltung für Visual Studio 2026
   manage.cmd --help         Diese Hilfe anzeigen
 
 Mehrere Aktionen kombinieren:
-  manage.cmd --update --build --test --setup
+  manage.cmd --update --build --test-all --setup
   manage.cmd --build --test --run
   manage.cmd --build --test-all  Vollständige Suite auf beiden x64-Binaries
   manage.cmd --test-pictview  WIC-Tests lokal mit x86 und x64 kompilieren und ausführen
@@ -531,6 +532,11 @@ try {
         }
         $automatedGuiModes = @(Get-AutomatedGuiModes -RequestedSet $requestedSet)
         foreach ($guiMode in $automatedGuiModes) {
+            if ($requestedSet.Contains('--test-gui-legacy-find')) {
+                $legacyFindTest = Join-Path $repository 'tools\release\tests\Invoke-IsolatedLegacyFind.ps1'
+                Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $legacyFindTest,
+                                          '-Configuration', $guiMode)
+            }
             if ($requestedSet.Contains('--test-gui-large-unicode-copy')) {
                 $largeCopyTest = Join-Path $repository 'tools\release\tests\Invoke-IsolatedUnicodeCopy.ps1'
                 Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $largeCopyTest,

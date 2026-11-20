@@ -89,6 +89,13 @@ Run `UnicodeName`, `UnicodeResult`, `UnicodeDistinct`, `UnicodeMasks`,
 `UnicodeFeatures`, `UnicodeSettings`, `UnicodeRoot`, `UnicodeRootIgnore`,
 `LongRoot`, `LongDescendant`, `LongResult` and `NearLimit` separately in place of
 `Baseline`.
+Run `manage.cmd --test-gui-legacy-find` for the automatic suite in Release x64,
+or add `--debug` for Debug x64. `--test-all` runs both. The manager builds an
+instrumented executable under `.Build\isolated-legacy-find`. Packaging uses
+the regular build. `EncryptedFixture`, `RecycleRestore` and the Legacy Find
+`NearLimit` scenario are available through the direct GUI driver command
+above. The general near-limit native and GUI tests remain in `--test-all`.
+
 These are positive assertions for the target behavior. Failed assertions stay
 red until the corresponding production feature works. The name/result
 cases distinguish an exact Unicode name
@@ -311,6 +318,28 @@ acceptance on a suitable disposable Windows desktop.
   The Find UI contract, GUI-driver contract and the scoped Find root check
   in the package-helper script passed. The complete package-helper run
   stalled in the child-process TEMP isolation check.
+
+## Focus File and internal View
+
+- Focus File checks that the exact UTF-16 name and entry type still exist
+  before asking the active panel to navigate. The panel selects the caret
+  row by its original UTF-16 name. An exact ACP representation of the
+  directory is still required by the panel path contract. Long directories
+  with that representation use the existing long-path navigation.
+- The internal text/hex viewer can open the selected result through
+  `CreateFileW`. Viewer navigation continues to use the live Find results
+  and keeps their exact identities when moving between short ACP and
+  Unicode results. Configured external and plug-in viewers still require
+  compatible ANSI paths. Their viewer ABI remains unchanged.
+- The GUI cases cover ordinary Unicode filenames, long paths, an ACP
+  lookalike, a stale result, and transitions from an ACP name to a Unicode
+  name. The viewer cases include a long Unicode parent directory and check
+  exact displayed paths, actual copied content, and Next/Previous order.
+- All seven new GUI scenarios, the existing `ViewResults` scenario and the
+  120-check `Baseline` passed in Release x64 and Debug Win32 under
+  `C:\Test`. The GUI driver restored the clipboard after each run.
+  Regular Debug and Release core builds passed on Win32 and x64.
+  The Find UI and GUI driver contracts passed.
 
 ## 17 November 2026: alias-safe owned identities
 

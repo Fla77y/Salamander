@@ -53,3 +53,28 @@ foreach ($check in $checks.Keys) {
     if (-not $value) { throw "Legacy Ctrl+F feature contract missing: $check" }
 }
 Write-Host 'PASS: original Find dispatch, Advanced, regex, grep, filters and result contracts.'
+
+# Inspect the real manager CLI and dispatch, without executing a build or GUI.
+$managerPath = Join-Path $root 'tools\Manage-Salamander.ps1'
+$managerSource = Get-Content -LiteralPath $managerPath -Raw
+$registry = [regex]::Match($managerSource, '(?s)\$validOptions\s*=\s*@\((.*?)\)')
+if (!$registry.Groups[1].Value.Contains("'--test-gui-legacy-find'") -or
+    $managerSource -notmatch '(?s)\$requestedSet\.Contains\(''--test-gui-legacy-find''\).*?Invoke-IsolatedLegacyFind\.ps1.*?-Configuration'', \$guiMode') {
+    throw 'Legacy Find GUI scenarios must run through the automated manager dispatch.'
+}
+
+$driver = Get-Command -Name (Join-Path $PSScriptRoot 'Test-SalamanderGui-LongPaths.ps1')
+$driverCases = ($driver.Parameters['LegacyFindScenario'].Attributes |
+    Where-Object { $_ -is [System.Management.Automation.ValidateSetAttribute] }).ValidValues
+$runner = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'Invoke-IsolatedLegacyFind.ps1') -Raw
+if (!$runner.Contains("Parameters['LegacyFindScenario'].Attributes") -or
+    !$runner.Contains('-IsolatedConfiguration -LegacyFindScenario $case') -or
+    !$runner.Contains('if ($LASTEXITCODE -ne 0)')) {
+    throw 'The Legacy Find runner must discover driver scenarios, isolate config and propagate failures.'
+}
+foreach ($case in 'Baseline','UnicodeMasks','UnicodeRootIgnore','FocusLong','ViewMixed','ViewStale') {
+    if ($case -notin $driverCases -or $runner -match ("'{0}'" -f $case)) {
+        throw "Expected '$case' in the automatically discovered Legacy Find suite."
+    }
+}
+Write-Host 'PASS: --test-all dispatches isolated, automatically discovered Legacy Find GUI scenarios.'

@@ -993,6 +993,22 @@ CFoundFilesListView::WindowProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
         {
             HANDLES(EnterCriticalSection(&DataCriticalSection));
 
+            if (FileNamesEnumData.WideResult != NULL)
+            {
+                try
+                {
+                    FindWideViewerResult();
+                }
+                catch (const std::bad_alloc&)
+                {
+                    TRACE_E(LOW_MEMORY);
+                }
+                HANDLES(LeaveCriticalSection(&DataCriticalSection));
+                SetEvent(FileNamesEnumDone);
+                HANDLES(LeaveCriticalSection(&FileNamesEnumDataSect));
+                return 0;
+            }
+
             BOOL selExists = FALSE;
             if (FileNamesEnumData.PreferSelected) // if needed, check whether anything is selected
             {
@@ -1356,6 +1372,53 @@ static std::wstring WidenFindText(const char* text)
         return {};
     result.pop_back();
     return result;
+}
+
+void CFoundFilesListView::FindWideViewerResult()
+{
+    auto& request = FileNamesEnumData;
+    const int step = request.RequestType == fnertFindPrevious ? -1 : 1;
+    int index = request.LastFileIndex;
+    if (index < 0)
+        index = step > 0 ? -1 : Data.Count;
+    else if (index >= Data.Count || Data[index]->UnicodeIdentity.FullPath() != *request.WideLastFileName)
+    {
+        for (int candidate = 0; candidate < Data.Count; ++candidate)
+        {
+            if (Data[candidate]->UnicodeIdentity.FullPath() == *request.WideLastFileName)
+            {
+                index = candidate;
+                break;
+            }
+        }
+        index = (std::clamp)(index, 0, step > 0 ? (std::max)(0, Data.Count - 1) : Data.Count);
+    }
+
+    CDynString viewerMasks;
+    Salamander::LegacyFindMasks masks;
+    if (!MainWindow->GetViewersAssoc(VIEWER_INTERNAL, &viewerMasks) ||
+        !masks.PrepareAnsiGroup(viewerMasks.GetString()))
+        return;
+
+    const bool preferSelected = request.OnlySelected && ListView_GetSelectedCount(HWindow) > 1;
+    for (index += step; index >= 0 && index < Data.Count; index += step)
+    {
+        CFoundFilesData* file = Data[index];
+        const bool selected = request.OnlySelected &&
+                              (ListView_GetItemState(HWindow, index, LVIS_SELECTED) & LVIS_SELECTED);
+        if (file->IsDir || (preferSelected && !selected))
+            continue;
+        const auto& name = file->UnicodeIdentity.Name();
+        if (!masks.Matches(std::wstring(name.begin(), name.end())))
+            continue;
+        if (request.OnlySelected && !selected)
+            break;
+        *request.WideResult = file->UnicodeIdentity.FullPath();
+        request.LastFileIndex = index;
+        request.Found = TRUE;
+        return;
+    }
+    request.NoMoreFiles = TRUE;
 }
 
 static void TransferFindText(CTransferInfo& ti, int id, std::wstring& text, int limit,
@@ -2325,6 +2388,21 @@ void CFindDialog::UpdateListViewItems()
     }
 }
 
+static bool IsExactFindResult(const std::wstring& path, const std::wstring& name, bool directory)
+{
+    std::wstring extended;
+    DWORD error;
+    if (!Salamander::TryMakeExtendedLengthPath(path.c_str(), extended, error))
+        return false;
+    WIN32_FIND_DATAW found;
+    HANDLE handle = HANDLES_Q(FindFirstFileW(extended.c_str(), &found));
+    if (handle == INVALID_HANDLE_VALUE)
+        return false;
+    HANDLES(FindClose(handle));
+    return name == found.cFileName &&
+           ((found.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0) == directory;
+}
+
 void CFindDialog::OnFocusFile()
 {
     CALL_STACK_MESSAGE1("CFindDialog::FocusButton()");
@@ -2343,14 +2421,26 @@ void CFindDialog::OnFocusFile()
             return;
         }
     }
-    CFoundFilesData* data = FoundFilesListView->At(index);
-    if (!data->CanUseLegacyPath())
+    const CFoundFilesData* data = FoundFilesListView->At(index);
+    if (data->Path[0] == '\0')
     {
-        SalMessageBox(HWindow, LoadStr(IDS_TOOLONGNAME), LoadStr(IDS_ERRORTITLE),
+        SalMessageBox(HWindow, LoadStr(IDS_SRCPATHUNICODEONLY), LoadStr(IDS_ERRORTITLE),
                       MB_OK | MB_ICONWARNING);
         return;
     }
-    SendMessage(MainWindow->GetActivePanel()->HWindow, WM_USER_FOCUSFILE, (WPARAM)data->Name, (LPARAM)data->Path);
+
+    const auto& identity = data->UnicodeIdentity;
+    const std::wstring name(identity.Name().begin(), identity.Name().end());
+    const auto fullPath = identity.FullPath();
+    const std::wstring path(fullPath.begin(), fullPath.end());
+    const CFocusFindResultData request{data->Path, name.c_str(), data->IsDir != 0};
+    if (!IsExactFindResult(path, name, request.IsDirectory) ||
+        !SendMessage(MainWindow->GetActivePanel()->HWindow, WM_USER_FOCUSFINDRESULT,
+                                reinterpret_cast<WPARAM>(&request), 0))
+    {
+        SalMessageBox(HWindow, LoadStr(IDS_FOUNDITEMNOTFOUND), LoadStr(IDS_ERRORTITLE),
+                      MB_OK | MB_ICONEXCLAMATION);
+    }
 }
 
 BOOL CFindDialog::GetFocusedFile(char* buffer, int bufferLen, int* viewedIndex)
@@ -2415,9 +2505,11 @@ void CFindDialog::UpdateInternalViewerData()
 void CFindDialog::OnViewFile(BOOL alternate)
 {
     CALL_STACK_MESSAGE2("CFindDialog::OnViewFile(%d)", alternate);
-    char longName[MAX_PATH];
-    int viewedIndex = 0;
-    if (!GetFocusedFile(longName, MAX_PATH, &viewedIndex))
+    const int viewedIndex = ListView_GetNextItem(FoundFilesListView->HWindow, -1, LVNI_FOCUSED);
+    if (viewedIndex < 0)
+        return;
+    const auto* item = FoundFilesListView->At(viewedIndex);
+    if (item->IsDir)
         return;
 
     if (SalamanderBusy)
@@ -2431,11 +2523,37 @@ void CFindDialog::OnViewFile(BOOL alternate)
             return;
         }
     }
+    if (!item->CanUseLegacyPath())
+    {
+        const auto& identity = item->UnicodeIdentity;
+        const auto full = identity.FullPath();
+        const std::wstring widePath(full.begin(), full.end());
+        const std::wstring wideName(identity.Name().begin(), identity.Name().end());
+        if (!IsExactFindResult(widePath, wideName, false))
+        {
+            SalMessageBox(HWindow, LoadStr(IDS_FOUNDITEMNOTFOUND), LoadStr(IDS_ERRORTITLE),
+                          MB_OK | MB_ICONEXCLAMATION);
+            return;
+        }
+        UpdateInternalViewerData();
+        const COpenWideFindViewerData openData{widePath.c_str(), wideName.c_str(),
+                                             FoundFilesListView->EnumFileNamesSourceUID, viewedIndex};
+        SendMessage(MainWindow->GetActivePanel()->HWindow, WM_USER_VIEWFINDRESULTW,
+                    reinterpret_cast<WPARAM>(&openData), alternate);
+        return;
+    }
+
+    char longName[MAX_PATH];
+    if (!GetFocusedFile(longName, MAX_PATH, NULL))
+        return;
     UpdateInternalViewerData();
+    const auto full = item->UnicodeIdentity.FullPath();
+    const std::wstring widePath(full.begin(), full.end());
     COpenViewerData openData;
     openData.FileName = longName;
     openData.EnumFileNamesSourceUID = FoundFilesListView->EnumFileNamesSourceUID;
     openData.EnumFileNamesLastFileIndex = viewedIndex;
+    openData.WideFindPath = widePath.c_str();
     SendMessage(MainWindow->GetActivePanel()->HWindow, WM_USER_VIEWFILE, (WPARAM)(&openData), (LPARAM)alternate);
 }
 

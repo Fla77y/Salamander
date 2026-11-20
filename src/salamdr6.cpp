@@ -145,7 +145,9 @@ BOOL IsFileEnumSourcePanel(int srcUID, int* panel)
 BOOL GetFileNameForViewer(CFileNamesEnumRequestType requestType, int srcUID, int* lastFileIndex, const char* lastFileName,
                           BOOL preferSelected, BOOL onlyAssociatedExtensions, char* fileName,
                           BOOL* noMoreFiles, BOOL* srcBusy, CPluginInterfaceAbstract* plugin,
-                          BOOL* isFileSelected, BOOL select)
+                          BOOL* isFileSelected, BOOL select,
+                          const std::u16string* wideLast = NULL, std::u16string* wideResult = NULL,
+                          BOOL onlySelected = FALSE)
 {
     CALL_STACK_MESSAGE9("GetFileNameForViewer(%d, %d, %d, %s, %d, %d, %s, , , %d)",
                         requestType, srcUID, *lastFileIndex, lastFileName, preferSelected,
@@ -178,6 +180,9 @@ BOOL GetFileNameForViewer(CFileNamesEnumRequestType requestType, int srcUID, int
     FileNamesEnumData.SrcBusy = FALSE;
     FileNamesEnumData.IsFileSelected = FALSE;
     FileNamesEnumData.Select = select;
+    FileNamesEnumData.WideLastFileName = wideLast;
+    FileNamesEnumData.WideResult = wideResult;
+    FileNamesEnumData.OnlySelected = onlySelected;
     ResetEvent(FileNamesEnumDone);
     HWND hWnd = NULL;
     int i;
@@ -239,8 +244,21 @@ BOOL GetFileNameForViewer(CFileNamesEnumRequestType requestType, int srcUID, int
         }
     }
 
+    HANDLES(EnterCriticalSection(&FileNamesEnumDataSect));
+    FileNamesEnumData.WideLastFileName = NULL;
+    FileNamesEnumData.WideResult = NULL;
+    HANDLES(LeaveCriticalSection(&FileNamesEnumDataSect));
     HANDLES(LeaveCriticalSection(&FileNamesEnumSect));
     return ret;
+}
+
+bool GetWideFindFileForViewer(int srcUID, int& index, const std::u16string& last,
+                              bool previous, bool onlySelected, std::u16string& result)
+{
+    const auto request = previous ? fnertFindPrevious : fnertFindNext;
+    return GetFileNameForViewer(request, srcUID, &index, NULL, onlySelected,
+                                TRUE, NULL, NULL, NULL, NULL, NULL, FALSE,
+                                &last, &result, onlySelected) != FALSE;
 }
 
 BOOL GetNextFileNameForViewer(int srcUID, int* lastFileIndex, const char* lastFileName,

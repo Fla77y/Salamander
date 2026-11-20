@@ -15,7 +15,7 @@ namespace Salamander
 class LegacyFindMasks
 {
 public:
-    bool Prepare(std::wstring_view text, size_t& errorOffset)
+    bool Prepare(std::wstring_view text, size_t& errorOffset, bool expandBareWords = true)
     {
         Include.clear();
         Exclude.clear();
@@ -28,7 +28,7 @@ public:
             {
                 const size_t last = token.find_last_not_of(L' ');
                 token = token.substr(first, last - first + 1);
-                if (token.find_first_of(L"*?.") == std::wstring::npos)
+                if (expandBareWords && token.find_first_of(L"*?.") == std::wstring::npos)
                     token = L"*" + token + L"*"; // a bare word is a substring
                 group->push_back(token);
             }
@@ -70,9 +70,22 @@ public:
             return false;
         }
         if (Include.empty() && (separator != std::wstring_view::npos ||
-                                text.find_first_not_of(L' ') == std::wstring_view::npos))
+                                (expandBareWords && text.find_first_not_of(L' ') == std::wstring_view::npos)))
             Include.emplace_back(L"*");
         return true;
+    }
+
+    bool PrepareAnsiGroup(const char* text)
+    {
+        const int units = MultiByteToWideChar(CP_ACP, MB_ERR_INVALID_CHARS, text, -1, NULL, 0);
+        if (units <= 0)
+            return false;
+        std::wstring wide(units, L'\0');
+        if (MultiByteToWideChar(CP_ACP, MB_ERR_INVALID_CHARS, text, -1, wide.data(), units) != units)
+            return false;
+        wide.pop_back();
+        size_t errorOffset;
+        return Prepare(wide, errorOffset, false);
     }
 
     bool Matches(std::wstring_view name) const

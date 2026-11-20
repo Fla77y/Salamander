@@ -60,6 +60,49 @@ BOOL IsCustomEventGUID(LPARAM lParam, REFGUID guidEvent)
 // WindowProc
 //
 
+BOOL CFilesWindow::FocusFindResult(const CFocusFindResultData& result)
+{
+    const auto directory = [](std::string_view path) {
+        while (path.size() > 3 && path.back() == '\\')
+            path.remove_suffix(1);
+        return path;
+    };
+    const auto isTargetDirectory = [&]() {
+        const auto actual = directory(GetPath());
+        const auto requested = directory(result.Directory);
+        // Win32 drive letters are case-insensitive even on volumes with
+        // case-sensitive directories. Compare all other units exactly.
+        if (actual.size() >= 2 && requested.size() >= 2 && actual[1] == ':' && requested[1] == ':')
+            return LowerCase[actual.front()] == LowerCase[requested.front()] &&
+                   actual.substr(1) == requested.substr(1);
+        return actual == requested;
+    };
+
+    SetForegroundWindow(MainWindow->HWindow);
+    if (IsIconic(MainWindow->HWindow))
+        ShowWindow(MainWindow->HWindow, SW_RESTORE);
+    if ((!Is(ptDisk) || !isTargetDirectory()) &&
+        !ChangePathToDisk(MainWindow->HWindow, result.Directory))
+        return FALSE;
+    if (!Is(ptDisk) || !isTargetDirectory())
+        return FALSE;
+
+    auto* entries = result.IsDirectory ? Dirs : Files;
+    for (int i = 0; i < entries->Count; ++i)
+    {
+        std::wstring original;
+        if (UnicodeDiskNames.TryGetRow(entries->At(i).Name, original) && original == result.Name)
+        {
+            NextFocusName[0] = '\0';
+            DontClearNextFocusName = FALSE;
+            SetCaretIndex(result.IsDirectory ? i : Dirs->Count + i, FALSE);
+            UpdateWindow(MainWindow->HWindow);
+            return TRUE;
+        }
+    }
+    return FALSE;
+}
+
 LRESULT
 CFilesWindow::WindowProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
 {
@@ -809,6 +852,9 @@ CFilesWindow::WindowProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
         return 0;
     }
 
+    case WM_USER_FOCUSFINDRESULT:
+        return FocusFindResult(*reinterpret_cast<const CFocusFindResultData*>(wParam));
+
     case WM_USER_FOCUSFILE:
     {
         // We must bring the window to the front here because calling ChangeDir can
@@ -829,11 +875,15 @@ CFilesWindow::WindowProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
         return 0;
     }
 
+    case WM_USER_VIEWFINDRESULTW:
+        ViewWideFindResult(*reinterpret_cast<const COpenWideFindViewerData*>(wParam), (BOOL)lParam);
+        return 0;
+
     case WM_USER_VIEWFILE:
     {
         COpenViewerData* data = (COpenViewerData*)wParam;
         ViewFile(data->FileName, (BOOL)lParam, 0xFFFFFFFF, data->EnumFileNamesSourceUID,
-                 data->EnumFileNamesLastFileIndex);
+                 data->EnumFileNamesLastFileIndex, data->WideFindPath);
         return 0;
     }
 

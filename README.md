@@ -42,6 +42,7 @@ manage.cmd --build-delta
 manage.cmd --build
 manage.cmd --build-clean
 manage.cmd --build-delta --test
+manage.cmd --update --build --test-all --setup
 manage.cmd --build-clean --test-all
 manage.cmd --build-delta --setup
 ```
@@ -54,8 +55,17 @@ manage.cmd --build-delta --setup
 - `--build-clean` removes the two dedicated x64 build-output directories
   before building both configurations and recompiles HTML Help. It does not
   remove the Git workspace or the separately staged distribution packages.
-- `--test-all` executes the existing automated native and GUI test sequence.
-  GUI tests require an interactive unlocked Windows desktop.
+- `--test-all` executes the automated native and GUI tests, including the
+  original Ctrl+F search, Unicode and long paths, Focus File and View. GUI
+  runs use Release and Debug x64 and require an unlocked Windows desktop
+  with other Salamander instances closed. Use `--test-gui-legacy-find` for
+  the isolated Legacy Find suite alone. It runs the scenarios registered
+  in the GUI driver. The EFS, near-limit Legacy Find and Recycle Restore
+  scenarios can be run separately as documented in the
+  [Legacy Find migration record](docs/maintenance/Legacy-Find-UTF16-Migration.md).
+- `--update` requires a clean checkout and uses a fast-forward update on
+  the current branch. A failure in build or testing stops the combined
+  command before packaging.
 - `--setup` packages both configurations and verifies distribution content.
   If it is invoked without a preceding build mode, the packaging pipeline
   continues to rebuild both configurations itself.

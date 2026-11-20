@@ -14,6 +14,7 @@
 #include "gui.h"
 
 const char* CVIEWERWINDOW_CLASSNAME = "Salamander's Viewer Window";
+const wchar_t* CVIEWERWINDOW_WIDECLASSNAME = L"Salamander's Unicode Viewer Window";
 
 char* ViewerHistory[VIEWER_HISTORY_SIZE];
 
@@ -522,8 +523,8 @@ CViewerGoToOffsetDialog::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
 
 CViewerWindow::CViewerWindow(const char* fileName, CViewType type, const char* caption,
                              BOOL wholeCaption, CObjectOrigin origin,
-                             int enumFileNamesSourceUID, int enumFileNamesLastFileIndex)
-    : CWindow(origin), LineOffset(300, 100),
+                             int enumFileNamesSourceUID, int enumFileNamesLastFileIndex, BOOL unicodeWindow)
+    : CWindow(origin, unicodeWindow), LineOffset(300, 100),
       FindDialog(HLanguage, IDD_FINDSET, IDD_FINDSET)
 {
     // GDI variables
@@ -1535,6 +1536,15 @@ BOOL InitializeViewer()
                                                NULL))
     {
         TRACE_E("Unable to register window class for viewer.");
+        return FALSE;
+    }
+
+    if (!CViewerWindow::RegisterUniversalClassW(CS_DBLCLKS | CS_HREDRAW | CS_VREDRAW,
+                                                0, 0, LoadIcon(HInstance, MAKEINTRESOURCE(IDI_VIEWER)),
+                                                LoadCursor(NULL, IDC_ARROW), (HBRUSH)(COLOR_WINDOW + 1),
+                                                NULL, CVIEWERWINDOW_WIDECLASSNAME, NULL))
+    {
+        TRACE_E("Unable to register Unicode viewer window class.");
         return FALSE;
     }
 

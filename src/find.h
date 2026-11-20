@@ -580,6 +580,7 @@ public:
     void SortItems(int sortBy);
 
     void QuickSortDuplicates(int left, int right, BOOL byName);
+    void FindWideViewerResult();
     int CompareDuplicatesFunc(CFoundFilesData* f1, CFoundFilesData* f2, BOOL byName);
     void SetDifferentByGroup(); // sets the Different bit based on Group so that the Different bit alternates at group boundaries
 

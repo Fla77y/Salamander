@@ -1283,7 +1283,7 @@ public:
     void Convert(); // converts character sets and line endings
     // handlerID specifies which viewer/editor should open the file; 0xFFFFFFFF = no preference
     void ViewFile(char* name, BOOL altView, DWORD handlerID, int enumFileNamesSourceUID,
-                  int enumFileNamesLastFileIndex);           // name == NULL -> item under the cursor in the panel
+                  int enumFileNamesLastFileIndex, const wchar_t* wideFindPath = NULL);           // name == NULL -> item under the cursor in the panel
     void EditFile(char* name, DWORD handlerID = 0xFFFFFFFF); // name == NULL -> item under the cursor in the panel
     void EditNewFile();
     // fills a popup based on available viewers
@@ -1524,6 +1524,8 @@ public:
     // 'scroll' to partially (TRUE) or fully (FALSE) visible
     // forcePaint ensures repaint even when the index does not change
     void SetCaretIndex(int index, BOOL scroll, BOOL forcePaint = FALSE);
+    BOOL FocusFindResult(const CFocusFindResultData& result);
+    void ViewWideFindResult(const COpenWideFindViewerData& result, BOOL alternate);
     int GetCaretIndex();
 
     void SetDropTarget(int index);       // marks where files will be dropped
