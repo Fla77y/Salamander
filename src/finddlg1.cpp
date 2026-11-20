@@ -155,6 +155,29 @@ char* CFoundFilesData::GetText(int i, char* text, int fileNameFormat)
     return text;
 }
 
+bool CFoundFilesData::CanUseLegacyPath() const
+{
+    if (Path == NULL || Name == NULL || *Path == '\0' || *Name == '\0')
+        return false;
+    const size_t pathLength = strlen(Path);
+    const bool trailingSlash = Path[pathLength - 1] == '\\';
+    if (UnicodeIdentity.IsValid() && trailingSlash != (UnicodeIdentity.Directory().back() == u'\\'))
+        return false;
+    return pathLength < MAX_PATH &&
+           strlen(Name) < MAX_PATH - pathLength - !trailingSlash;
+}
+
+bool CFoundFilesData::CopyLegacyFullPath(char (&path)[MAX_PATH]) const
+{
+    if (!CanUseLegacyPath())
+        return false;
+    strcpy_s(path, Path);
+    if (path[strlen(path) - 1] != '\\')
+        strcat_s(path, "\\");
+    strcat_s(path, Name);
+    return true;
+}
+
 //****************************************************************************
 //
 // CFoundFilesListView
@@ -855,9 +878,12 @@ BOOL GetNextItemFromFind(int index, char* path, char* name, void* param)
     if (index >= 0 && index < data->Count)
     {
         CFoundFilesData* file = listView->At(data->Index[index]);
-        strcpy(path, file->Path);
-        strcpy(name, file->Name);
-        return TRUE;
+        if (file->CanUseLegacyPath())
+        {
+            strcpy(path, file->Path);
+            strcpy(name, file->Name);
+            return TRUE;
+        }
     }
     if (data->Index != NULL)
     {
@@ -966,7 +992,7 @@ CFoundFilesListView::WindowProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
                     else
                     {
                         selCount++;
-                        if (!Data[i]->IsDir)
+                        if (!Data[i]->IsDir && Data[i]->CanUseLegacyPath())
                             selExists = TRUE;
                         if (selCount > 1 && selExists)
                             break;
@@ -992,10 +1018,8 @@ CFoundFilesListView::WindowProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
                     BOOL ok = FALSE;
                     CFoundFilesData* f = (index >= 0 && index < count) ? Data[index] : NULL;
                     char fileName[MAX_PATH];
-                    if (f != NULL && f->Path != NULL && f->Name != NULL)
+                    if (f != NULL && f->CopyLegacyFullPath(fileName))
                     {
-                        lstrcpyn(fileName, f->Path, MAX_PATH);
-                        SalPathAppend(fileName, f->Name, MAX_PATH);
                         if (StrICmp(fileName, FileNamesEnumData.LastFileName) == 0)
                         {
                             ok = TRUE;
@@ -1008,10 +1032,8 @@ CFoundFilesListView::WindowProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
                         for (i = 0; i < count; i++)
                         {
                             f = Data[i];
-                            if (f->Path != NULL && f->Name != NULL)
+                            if (f->CopyLegacyFullPath(fileName))
                             {
-                                lstrcpyn(fileName, f->Path, MAX_PATH);
-                                SalPathAppend(fileName, f->Name, MAX_PATH);
                                 if (StrICmp(fileName, FileNamesEnumData.LastFileName) == 0)
                                     break;
                             }
@@ -1075,7 +1097,7 @@ CFoundFilesListView::WindowProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
                                 if (i != -1)
                                 {
                                     index = i;
-                                    if (!Data[index]->IsDir) // we only search for files
+                                    if (!Data[index]->IsDir && Data[index]->CanUseLegacyPath())
                                     {
                                         if (!onlyAssociatedExtensions || masks.AgreeMasks(Data[index]->Name, NULL))
                                         {
@@ -1089,7 +1111,7 @@ CFoundFilesListView::WindowProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
                             }
                             else
                             {
-                                if (!Data[index]->IsDir)
+                                if (!Data[index]->IsDir && Data[index]->CanUseLegacyPath())
                                 {
                                     if (!onlyAssociatedExtensions || masks.AgreeMasks(Data[index]->Name, NULL))
                                     {
@@ -1118,7 +1140,7 @@ CFoundFilesListView::WindowProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
                         while (index - 1 >= 0)
                         {
                             index--;
-                            if (!Data[index]->IsDir &&
+                            if (!Data[index]->IsDir && Data[index]->CanUseLegacyPath() &&
                                 (!preferSelected ||
                                  (ListView_GetItemState(HWindow, index, LVIS_SELECTED) & LVIS_SELECTED)))
                             {
@@ -1160,10 +1182,8 @@ CFoundFilesListView::WindowProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
             if (FileNamesEnumData.Found)
             {
                 CFoundFilesData* f = Data[index];
-                if (f->Path != NULL && f->Name != NULL)
+                if (f->CopyLegacyFullPath(FileNamesEnumData.FileName))
                 {
-                    lstrcpyn(FileNamesEnumData.FileName, f->Path, MAX_PATH);
-                    SalPathAppend(FileNamesEnumData.FileName, f->Name, MAX_PATH);
                     FileNamesEnumData.LastFileIndex = index;
                 }
                 else // should never happen
@@ -1759,20 +1779,6 @@ void CFindDialog::Validate(CTransferInfo& ti)
                       MB_OK | MB_ICONEXCLAMATION);
         ti.ErrorOn(IDC_FIND_LOOKIN);
         return;
-    }
-    for (const auto& root : parsed)
-    {
-        char ansiRoot[MAX_PATH];
-        if (!TryLegacyFindWorkerRoot(root, ansiRoot))
-        {
-            SalMessageBox(HWindow,
-                "The search root cannot be represented without Unicode "
-                "loss or truncation. Choose a shorter ANSI-compatible "
-                "directory. No search was started.",
-                LoadStr(IDS_ERRORTITLE), MB_OK | MB_ICONWARNING);
-            ti.ErrorOn(IDC_FIND_LOOKIN);
-            return;
-        }
     }
 }
 
@@ -2391,6 +2397,12 @@ void CFindDialog::OnFocusFile()
         }
     }
     CFoundFilesData* data = FoundFilesListView->At(index);
+    if (!data->CanUseLegacyPath())
+    {
+        SalMessageBox(HWindow, LoadStr(IDS_TOOLONGNAME), LoadStr(IDS_ERRORTITLE),
+                      MB_OK | MB_ICONWARNING);
+        return;
+    }
     SendMessage(MainWindow->GetActivePanel()->HWindow, WM_USER_FOCUSFILE, (WPARAM)data->Name, (LPARAM)data->Path);
 }
 
@@ -2404,6 +2416,12 @@ BOOL CFindDialog::GetFocusedFile(char* buffer, int bufferLen, int* viewedIndex)
         *viewedIndex = index;
 
     CFoundFilesData* data = FoundFilesListView->At(index);
+    if (!data->CanUseLegacyPath())
+    {
+        SalMessageBox(HWindow, LoadStr(IDS_TOOLONGNAME), LoadStr(IDS_ERRORTITLE),
+                      MB_OK | MB_ICONWARNING);
+        return FALSE;
+    }
     if (data->IsDir || !ValidateLegacyFindResult(data->Path, data->Name) ||
         buffer == NULL || bufferLen <= 0)
         return FALSE;
@@ -2593,6 +2611,16 @@ void CFindDialog::OnUserMenu()
     DWORD selectedCount = ListView_GetSelectedCount(FoundFilesListView->HWindow);
     if (selectedCount < 1)
         return;
+    int pathIndex = -1;
+    while ((pathIndex = ListView_GetNextItem(FoundFilesListView->HWindow, pathIndex, LVNI_SELECTED)) != -1)
+    {
+        if (!FoundFilesListView->At(pathIndex)->CanUseLegacyPath())
+        {
+            SalMessageBox(HWindow, LoadStr(IDS_TOOLONGNAME), LoadStr(IDS_ERRORTITLE),
+                          MB_OK | MB_ICONWARNING);
+            return;
+        }
+    }
 
     UserMenuIconBkgndReader.BeginUserMenuIconsInUse();
     CMenuPopup menu;
@@ -2727,6 +2755,20 @@ void CFindDialog::OnCopyNameToClipboard(CCopyNameToClipboardModeEnum mode)
     if (index < 0)
         return;
     CFoundFilesData* data = FoundFilesListView->At(index);
+    if (!data->CanUseLegacyPath())
+    {
+        const auto& identity = data->UnicodeIdentity;
+        if (mode == cntcmUNCName || !identity.IsValid())
+        {
+            SalMessageBox(HWindow, LoadStr(IDS_TOOLONGNAME), LoadStr(IDS_ERRORTITLE),
+                          MB_OK | MB_ICONWARNING);
+            return;
+        }
+        const auto text = mode == cntcmFullName ? identity.FullPath() :
+                         mode == cntcmFullPath ? identity.Directory() : identity.Name();
+        Salamander::TryCopyUnicodeNameToClipboard(HWindow, std::wstring(text.begin(), text.end()));
+        return;
+    }
     char buff[2 * MAX_PATH];
     buff[0] = 0;
     switch (mode)
@@ -4026,11 +4068,19 @@ MENU_TEMPLATE_ITEM FindLookInBrowseMenu[] =
 
                         // DT_PATH_ELLIPSIS does not work for some strings and can cause clipped text to be drawn
                         // PathCompactPath() requires a copy in a local buffer, but it does not clip the text
-                        char buff[2 * MAX_PATH];
-                        strncpy_s(buff, _countof(buff), item2->Path, _TRUNCATE);
-                        PathCompactPath(CacheBitmap->HMemDC, buff, r2.right - r2.left);
-                        DrawText(CacheBitmap->HMemDC, buff, -1, &r2,
-                                 DT_VCENTER | DT_LEFT | DT_NOPREFIX | DT_SINGLELINE);
+                        if (strlen(item2->Path) < MAX_PATH)
+                        {
+                            char buff[MAX_PATH];
+                            strcpy_s(buff, item2->Path);
+                            PathCompactPath(CacheBitmap->HMemDC, buff, r2.right - r2.left);
+                            DrawText(CacheBitmap->HMemDC, buff, -1, &r2,
+                                     DT_VCENTER | DT_LEFT | DT_NOPREFIX | DT_SINGLELINE);
+                        }
+                        else
+                        {
+                            DrawText(CacheBitmap->HMemDC, item2->Path, -1, &r2,
+                                     DT_VCENTER | DT_LEFT | DT_NOPREFIX | DT_SINGLELINE | DT_END_ELLIPSIS);
+                        }
                         //                DrawText(CacheBitmap->HMemDC, item2->Path, -1, &r2,
                         //                         DT_VCENTER | DT_LEFT | DT_NOPREFIX | DT_SINGLELINE | DT_PATH_ELLIPSIS);
                         SetTextColor(CacheBitmap->HMemDC, oldTextColor);

@@ -422,6 +422,37 @@ function Test-LegacyFindDuplicates {
     }
 }
 
+function Test-LegacyFindDirectoryLinkCycle {
+    param([string]$Fixture)
+
+    $needle = Join-Path $Fixture 'needle.txt'
+    $linkTarget = [IO.Directory]::CreateDirectory((Join-Path $root 'junction-target')).FullName
+    $loop = Join-Path $Fixture 'loop'
+    $forward = Join-Path $Fixture 'forward'
+    $junctions = [Collections.Generic.List[string]]::new()
+    [IO.File]::WriteAllText($needle, 'needle42')
+    [IO.File]::WriteAllText((Join-Path $linkTarget 'needle.txt'), 'needle99')
+    try {
+        New-Item -ItemType Junction -Path $loop -Target $Fixture | Out-Null
+        $junctions.Add($loop)
+        New-Item -ItemType Junction -Path $forward -Target $linkTarget | Out-Null
+        $junctions.Add($forward)
+        Set-LegacyFindQuery -SearchRoot $Fixture -Mask 'needle.txt' -Recursive $true
+        Invoke-LegacyFindQuery -Expected 2 -Description 'Search follows an ordinary junction and skips a cycle'
+        $results = @(Read-LegacyFindResult -Index 0; Read-LegacyFindResult -Index 1)
+        Assert-True ($results -ccontains $needle -and $results -ccontains (Join-Path $forward 'needle.txt')) (
+            'Junction traversal preserves both original result paths')
+    }
+    finally {
+        foreach ($junction in $junctions) {
+            if (([IO.File]::GetAttributes($junction) -band [IO.FileAttributes]::ReparsePoint) -eq 0) {
+                throw 'Refusing to remove a path that no longer identifies the test junction.'
+            }
+            [IO.Directory]::Delete($junction, $false)
+        }
+    }
+}
+
 function Test-LegacyFindResultActions {
     param([string]$Fixture)
 
@@ -1232,6 +1263,18 @@ function Test-LegacyFindGui {
         Test-LegacyFindSavedOptionsAndIgnore -Fixture $fixture
         return
     }
+    if ($Scenario -eq 'LongDuplicates') {
+        foreach ($index in 1..3) {
+            $fixture = [IO.Directory]::CreateDirectory((Join-Path $fixture ("dup$index-" + ('d' * 78)))).FullName
+        }
+        Assert-True ($fixture.Length -gt 260) 'Duplicate fixtures start beyond MAX_PATH'
+        Test-LegacyFindDuplicates -Fixture $fixture
+        return
+    }
+    if ($Scenario -eq 'DirectoryLinkCycle') {
+        Test-LegacyFindDirectoryLinkCycle -Fixture $fixture
+        return
+    }
 
     # Arrange each future contract independently so one failed assertion
     # cannot prevent the remaining scenarios from getting their own run.
@@ -1246,12 +1289,13 @@ function Test-LegacyFindGui {
             $directory = [IO.Directory]::CreateDirectory((Join-Path $fixture '東京-😀')).FullName
             $searchRoot = $directory
         }
-        { $_ -in @('LongRoot','LongDescendant') } {
+        { $_ -in @('LongRoot','LongDescendant','ExtendedLongRoot') } {
             foreach ($index in 1..3) {
                 $directory = [IO.Directory]::CreateDirectory((Join-Path $directory ("d$index-" + ('x' * 78)))).FullName
             }
             Assert-True ($directory.Length -gt 260) 'Test directory exceeds MAX_PATH'
             if ($Scenario -eq 'LongRoot') { $searchRoot = $directory }
+            if ($Scenario -eq 'ExtendedLongRoot') { $searchRoot = '\\?\' + $directory }
         }
         'LongResult' {
             $component = 'x' * (255 - $fixture.Length - 1)
@@ -1286,4 +1330,17 @@ function Test-LegacyFindGui {
     }
     Assert-True ((Read-LegacyFindResult -Index 0) -ceq (Join-Path $directory $name)) (
         "Result name and path preserve exact UTF-16 identity for $Scenario")
+    if ($Scenario -eq 'LongDescendant') {
+        Set-LegacyFindQuery -SearchRoot $searchRoot -Mask $name -Content 'needle42$' -Mode Regex
+        Invoke-LegacyFindQuery -Expected 1 -Description 'Intersect can grep a long result again' -Command 2289
+        Assert-True ((Read-LegacyFindResult -Index 0) -ceq (Join-Path $directory $name)) (
+            'Refining a long result preserves its exact path')
+    }
+    if ($Scenario -eq 'LongResult') {
+        [SalamanderGuiNative]::LegacyFindCommand($legacyWindow, [uint32]$process.Id, 2249, $true)
+        Assert-LegacyFindNotice -Owner $legacyWindow -Title 'Error' -ExpectedText (
+            'This search result cannot be identified safely by the legacy ANSI file and shell interfaces. No action was started.')
+        Assert-True ([IO.File]::ReadAllText((Join-Path $directory $name)) -ceq 'needle42') (
+            'Refused legacy Shell action preserves the exact long result')
+    }
 }

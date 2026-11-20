@@ -93,10 +93,47 @@ bool ParseRoots_WhenMissingUncServer_DoesNotTurnIntoCurrentDriveRoot()
     // Assert
     return parsed.size() == 1 && parsed.front() == query;
 }
+
+void ResolveRoots_WhenLongDriveOrExplicitUnc_PreservesTheIdentity()
+{
+    // Arrange
+    const std::wstring drive = L"C:\\Test\\" + std::wstring(180, L'x') +
+        L"\\" + std::wstring(180, L'y') + L"-\U0001F600";
+    const std::wstring unc = L"\\\\server\\share\\\u6771\u4EAC";
+    std::wstring resolved;
+    DWORD error = ERROR_INVALID_NAME;
+    // Act and assert
+    assert(Salamander::TryResolveLegacyFindDirectory(drive, resolved, error));
+    assert(resolved == drive && error == ERROR_SUCCESS);
+    resolved = L"\\\\?\\" + drive;
+    assert(Salamander::TryResolveLegacyFindDirectory(resolved, resolved, error));
+    assert(resolved == drive && error == ERROR_SUCCESS);
+    assert(Salamander::TryResolveLegacyFindDirectory(L"\\\\?\\UNC\\" + unc.substr(2), resolved, error));
+    assert(resolved == unc && error == ERROR_SUCCESS);
+}
+
+void ResolveRoots_WhenExtendedNamespaceIsInvalid_RejectsWithoutNormalizing()
+{
+    // Arrange
+    const std::wstring embeddedNull = std::wstring(L"C:\\data") + L'\0' + L"\\other";
+    const std::wstring inputs[]{L"\\\\?\\C:\\data\\..\\other", L"\\\\?\\\\\\server\\share",
+        L"\\\\?\\GLOBALROOT\\Device\\Volume", L"\\\\.\\C:\\", L"", embeddedNull};
+    std::wstring resolved;
+    DWORD error = ERROR_SUCCESS;
+    // Act and assert
+    for (const auto& input : inputs)
+    {
+        resolved = L"C:\\previous";
+        assert(!Salamander::TryResolveLegacyFindDirectory(input, resolved, error));
+        assert(resolved.empty() && error == ERROR_INVALID_NAME);
+    }
+}
 }
 
 int main()
 {
+    ResolveRoots_WhenLongDriveOrExplicitUnc_PreservesTheIdentity();
+    ResolveRoots_WhenExtendedNamespaceIsInvalid_RejectsWithoutNormalizing();
     ParseRoots_WhenEscapedAndSeparated_PreservesIndividualIdentities();
     ParseRoots_WhenPastMaxPath_PreservesEveryUtf16Unit();
     ParseRoots_WhenBlank_ReturnsNoRoots();

@@ -543,6 +543,8 @@ struct CFoundFilesData
     }
     BOOL Set(const char* path, const char* name, const CQuadWord& size, DWORD attr,
              const FILETIME* lastWrite, BOOL isDir);
+    bool CanUseLegacyPath() const;
+    bool CopyLegacyFullPath(char (&path)[MAX_PATH]) const;
     // if 'i' refers to Name or Path, returns a pointer to the corresponding variable
     // otherwise fills the buffer 'text' (must be at least 50 characters long) with the appropriate value
     // and returns a pointer to 'text'

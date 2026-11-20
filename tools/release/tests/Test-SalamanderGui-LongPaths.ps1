@@ -40,6 +40,7 @@ param(
     [ValidateSet('Baseline','Cancel','AdvancedInputs','ViewResults','ShellClipboard','ShellOpen','ShellProperties','ExternalEditor','RecycleRestore',
         'EncryptedFixture','UnicodeName','UnicodeResult',
         'UnicodeDistinct','UnicodeFeatures','UnicodeSettings','UnicodeSettingsStorage','UnicodeRoot','LongRoot','LongDescendant','LongResult',
+        'ExtendedLongRoot','LongDuplicates','DirectoryLinkCycle',
         'NearLimit','DefaultDialog','DefaultDialogShortcut','DefaultDialogLongRoot','DefaultDialogAltF7',
         'UnicodeFindCommand','UnicodeFindShortcut')]
     [string]$LegacyFindScenario,

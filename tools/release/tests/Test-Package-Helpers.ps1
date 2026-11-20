@@ -880,11 +880,13 @@ if ($pluginDispatch -notmatch 'HasUnsupportedLegacyPluginSelection' -or
 # Search roots must be transferred from the complete W control value and
 # rejected if the ACP round-trip loses characters or exceeds the buffer.
 $findWorker = Get-Content -LiteralPath (Join-Path $toolsDir '..\..\src\find.cpp') -Raw
+$findQuery = Get-Content -LiteralPath (Join-Path $toolsDir '..\..\src\common\legacy_find_query.h') -Raw
 if ($findDialog1 -notmatch 'const std::wstring roots = ReadFindEdit\(lookIn\)' -or
-    $findDialog1 -notmatch 'TryLegacyFindWorkerRoot\(root, ansiRoot\)' -or
-    $findWorker -notmatch 'TryFindTextToAnsi\(directory, path, _countof\(path\)\)' -or
+    $findWorker -notmatch 'TryResolveLegacyFindDirectory\(root, directory, error\)' -or
+    $findQuery -notmatch 'Utf16DiskPath::TryCreateAbsolute\(utf16, valid, pathError\)' -or
+    $findWorker -notmatch 'TryGetFindDirectoryLabel\(directory, label\)' -or
     $findWorker -notmatch 'IsExactAnsiName\(output, text\.c_str\(\)\)' -or
-    $findWorker -notmatch 'length \+ addSeparator \+ 1 >= _countof\(path\)' -or
+    $findWorker -notmatch 'FindFirstFileW\(extended\.c_str\(\), &file\)' -or
     $findDialog1 -notmatch 'ti\.ErrorOn\(IDC_FIND_LOOKIN\)') {
     throw 'F2: search root validation must not silently truncate or best-fit Unicode.'
 }

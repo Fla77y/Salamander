@@ -167,7 +167,7 @@ BOOL CFindDialog::ValidateSelectedLegacyFindResults()
     {
         const CFoundFilesData* item = FoundFilesListView->At(index);
         bool safe = false;
-        if (item->Path != NULL && item->Name != NULL && *item->Name != 0)
+        if (item->CanUseLegacyPath())
         {
             const size_t pathLen = strlen(item->Path);
             const size_t nameLen = strlen(item->Name);
@@ -1297,6 +1297,8 @@ BOOL CFindDialog::GetCommonPrefixPath(char* buffer, int bufferMax, int& commonPr
         if (index != -1)
         {
             CFoundFilesData* file = FoundFilesListView->At(index);
+            if (!file->CanUseLegacyPath())
+                return FALSE;
             if (path[0] == 0)
             {
                 lstrcpy(path, file->Path); // in the first step we only copy the path
@@ -1663,15 +1665,25 @@ void CFindDialog::OnOpen(BOOL onlyFocused)
         if (index != -1)
         {
             CFoundFilesData* file = FoundFilesListView->At(index);
+            char fullPath[MAX_PATH];
+            if (!file->CopyLegacyFullPath(fullPath))
+            {
+                SalMessageBox(HWindow, LoadStr(IDS_TOOLONGNAME), LoadStr(IDS_ERRORTITLE),
+                              MB_OK | MB_ICONWARNING);
+                return;
+            }
+            if (onlyFocused && !ValidateLegacyFindResult(file->Path, file->Name))
+            {
+                SalMessageBox(HWindow, LoadStr(IDS_FOUNDITEMNOTFOUND), LoadStr(IDS_ERRORTITLE),
+                              MB_OK | MB_ICONWARNING);
+                return;
+            }
             BOOL setWait = (GetCursor() != LoadCursor(NULL, IDC_WAIT)); // already waiting?
             HCURSOR oldCur;
             if (setWait)
                 oldCur = SetCursor(LoadCursor(NULL, IDC_WAIT));
 
-            char fullPath[MAX_PATH];
-            lstrcpy(fullPath, file->Path);
-            if (SalPathAppend(fullPath, file->Name, MAX_PATH))
-                MainWindow->FileHistory->AddFile(fhitOpen, 0, fullPath);
+            MainWindow->FileHistory->AddFile(fhitOpen, 0, fullPath);
 
             ExecuteAssociation(HWindow, file->Path, file->Name);
             if (setWait)
@@ -1935,7 +1947,7 @@ void CFindLogDialog::OnFocusFile()
 {
     CALL_STACK_MESSAGE1("CFindLogDialog::OnFocusFile()");
     const CFindLogItem* item = GetSelectedItem();
-    if (item == NULL)
+    if (item == NULL || item->Path == NULL || *item->Path == '\0' || strlen(item->Path) >= MAX_PATH)
         return;
 
     if (SalamanderBusy)
@@ -1973,7 +1985,8 @@ void CFindLogDialog::OnIgnore()
 {
     CALL_STACK_MESSAGE1("CFindLogDialog::OnIgnore()");
     const CFindLogItem* item = GetSelectedItem();
-    if (item == NULL)
+    if (item == NULL || item->Path == NULL || *item->Path == '\0' ||
+        strlen(item->Path) >= MAX_PATH || (item->Flags & FLI_IGNORE) == 0)
         return;
 
     CTruncatedString str;
@@ -1999,7 +2012,8 @@ CFindLogDialog::GetSelectedItem()
 void CFindLogDialog::EnableControls()
 {
     const CFindLogItem* item = GetSelectedItem();
-    BOOL path = item != NULL && item->Path != NULL && item->Path[0] != 0;
+    BOOL path = item != NULL && item->Path != NULL && item->Path[0] != 0 &&
+        strlen(item->Path) < MAX_PATH;
     TRACE_I("path=" << path);
     EnableWindow(GetDlgItem(HWindow, IDC_FINDLOG_FOCUS), path);
     EnableWindow(GetDlgItem(HWindow, IDC_FINDLOG_IGNORE), path && (item->Flags & FLI_IGNORE) != 0);

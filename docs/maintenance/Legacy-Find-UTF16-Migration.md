@@ -245,6 +245,45 @@ acceptance on a suitable disposable Windows desktop.
   checked for the core builds. Full manage.cmd, release packaging and
   PictView verification (A4, A5, A7) were outside this check.
 
+### Long paths in the original search worker
+
+- The Legacy worker resolves the root in UTF-16, enumerates directories
+  using `FindFirstFileW` and `FindNextFileW`, and opens content and duplicate
+  candidates using `CreateFileW`. The existing byte-based content engine
+  still applies the same grep, regex, hex, and Advanced predicates.
+- Results hold the exact UTF-16 directory and filename. Refinement retains
+  this identity, and the text clipboard publishes it for long paths. ANSI
+  Viewer, Shell, navigation and user-menu entry points check their path
+  capacity before receiving a result. The current mask and ignore-list
+  engines still require exact ACP text. Unsupported inputs are reported
+  without looking up an ANSI approximation.
+- On the committed build `efeb0f8`, `LongRoot` was rejected before
+  enumeration, and `LongDescendant` and `LongResult` yielded zero results.
+  On the new worker, all three passed in Release x64 and Debug Win32 with
+  exact clipboard checks. Intersect re-scanned a long result. The legacy
+  Shell guard refused a long result and its file bytes remained intact.
+- `ExtendedLongRoot` and `LongDuplicates` also passed on both architectures,
+  including MD5-based duplicate detection under long paths. Native path
+  tests verified explicit UNC spelling, the long drive path, failure
+  clearing, and rejection of device namespaces and extended dot segments.
+- Both builds followed a noncyclic directory junction and skipped a
+  junction back to a search ancestor. The checks used only test-owned
+  paths under C:\Test, and the harness removed the links individually.
+- The 120-check legacy baseline and the additional Advanced, cancellation,
+  viewer, Shell, recycle/restore, editor, and saved-settings scenarios
+  passed in both GUI configurations. The final targeted rerun covered the
+  long-root search, exact clipboard result, junctions, Shell clipboard, and
+  recycle/restore. Core builds and native path tests passed in Debug and
+  Release on both Win32 and x64.
+- Unicode name masks and non-ACP directory names, long-path result actions,
+  live UNC and near-namespace-limit acceptance, positive EFS, and plug-in
+  integration remain open.
+- The relevant Find, GUI-driver, and package-helper source contracts passed.
+  The GUI cases verify the relevant A0 and A6 workflows for this stage.
+  A1 and A2 remain partial, while A3 was verified for the core builds.
+  The full manage.cmd suite, release packaging, and PictView (A4, A5, A7)
+  were outside this check.
+
 ## 17 November 2026: alias-safe owned identities
 
 Verified on the uncommitted worktree changes based on
