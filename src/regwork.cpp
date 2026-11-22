@@ -5,6 +5,7 @@
 #include "precomp.h"
 
 #include "mainwnd.h"
+#include "common/saved_panel_path_registry.h"
 
 #include <string>
 
@@ -610,6 +611,32 @@ BOOL CRegistryWorkerThread::SetValue(HKEY key, const char* name, DWORD type, con
         return SetValueAux(MainWindow != NULL ? MainWindow->HWindow : NULL, key, name, type, data, dataSize, FALSE);
 }
 
+static BOOL SetPanelPathAux(HWND parent, HKEY key, const std::wstring& path)
+{
+    const LONG error = Salamander::WriteSavedPanelPath(key, path);
+    if (error == ERROR_SUCCESS)
+        return TRUE;
+    if (HLanguage == NULL)
+        MessageBox(parent, GetErrorText(error), "Error Saving Configuration", MB_OK | MB_ICONEXCLAMATION);
+    else
+        SalMessageBox(parent, GetErrorText(error), LoadStr(IDS_ERRORSAVECONFIG), MB_OK | MB_ICONEXCLAMATION);
+    return FALSE;
+}
+
+BOOL CRegistryWorkerThread::SetPanelPath(HKEY key, const std::wstring& path)
+{
+    CInUseHandler inUse;
+    if (!inUse.CanUseThread(this))
+        return SetPanelPathAux(MainWindow != NULL ? MainWindow->HWindow : NULL, key, path);
+
+    WorkType = rwtSetPanelPath;
+    LastWorkSuccess = FALSE;
+    Key = key;
+    Data = &path;
+    WaitForWorkDoneWithMessageLoop();
+    return LastWorkSuccess;
+}
+
 BOOL CRegistryWorkerThread::DeleteValue(HKEY key, const char* name)
 {
     CInUseHandler i;
@@ -697,6 +724,9 @@ CRegistryWorkerThread::Body()
                 break;
             case rwtSetValue:
                 LastWorkSuccess = SetValueAux(NULL, Key, Name, ValueType, Data, DataSize, FALSE);
+                break;
+            case rwtSetPanelPath:
+                LastWorkSuccess = SetPanelPathAux(NULL, Key, *static_cast<const std::wstring*>(Data));
                 break;
             case rwtDeleteValue:
                 LastWorkSuccess = DeleteValueAux(Key, Name);

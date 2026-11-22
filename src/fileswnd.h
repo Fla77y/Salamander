@@ -479,7 +479,8 @@ public:
 class CFilesWindowAncestor : public CWindow // the real object core - everything private ;-)
 {
 private:
-    std::string Path; // owned disk path; legacy plugin contracts remain bounded
+    std::string Path; // path used by legacy callers
+    std::wstring DiskPathW; // complete Unicode path used by native disk operations
     BOOL SuppressAutoRefresh; // TRUE if the user canceled directory listing during reading and chose temporary auto-refresh suppression
 
     CPanelType PanelType; // type of panel (disk, archive, plugin FS)
@@ -552,7 +553,8 @@ public:
     BOOL GetGeneralPath(char* buf, int bufSize, BOOL convertFSPathToExternal = FALSE);
 
     const char* GetPath() { return Path.c_str(); }
-    BOOL HasLongDiskPath() { return Is(ptDisk) && Path.size() >= MAX_PATH - 2; }
+    const std::wstring& GetDiskPathW() const { return DiskPathW; }
+    BOOL HasLongDiskPath() { return Is(ptDisk) && (Path.size() >= MAX_PATH - 2 || DiskPathW.size() >= MAX_PATH - 2); }
     BOOL Is(CPanelType type) { return type == PanelType; }
     CPanelType GetPanelType() { return PanelType; }
     BOOL GetMonitorChanges() { return MonitorChanges; }
@@ -566,7 +568,7 @@ public:
     CQuadWord GetZIPArchiveSize() { return ZIPArchiveSize; }
     BOOL GetSuppressAutoRefresh() { return SuppressAutoRefresh; }
 
-    void SetPath(const char* path);
+    void SetPath(const char* path, const std::wstring* nativePath = nullptr);
     void SetMonitorChanges(BOOL monitorChanges) { MonitorChanges = monitorChanges; }
     void SetPanelType(CPanelType type) { PanelType = type; }
     void SetZIPPath(const char* path);
@@ -1083,7 +1085,9 @@ public:
     BOOL ChangeLongPathToDisk(HWND parent, const char* path, int suggestedTopIndex,
                               const char* suggestedFocusName, BOOL* noChange,
                               BOOL refreshListBox, BOOL canForce, BOOL isRefresh,
-                              int* failReason, int tryCloseReason);
+                              int* failReason, int tryCloseReason, const std::wstring* nativePath = nullptr);
+    BOOL ChangeUnicodePathToDisk(HWND parent, const std::wstring& directory,
+                                 int suggestedTopIndex = -1, const char* suggestedFocusName = nullptr);
     BOOL ChangePathToDisk(HWND parent, const char* path, int suggestedTopIndex = -1,
                           const char* suggestedFocusName = NULL, BOOL* noChange = NULL,
                           BOOL refreshListBox = TRUE, BOOL canForce = FALSE, BOOL isRefresh = FALSE,

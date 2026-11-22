@@ -18,6 +18,7 @@
 #include "thumbnl.h"
 #include "geticon.h"
 #include "shiconov.h"
+#include "common/win32_unicode_panel_name.h"
 
 //
 // ****************************************************************************
@@ -51,6 +52,7 @@ CFilesWindowAncestor::CFilesWindowAncestor()
     char root[MAX_PATH];
     GetRootPath(root, buf);
     Path.assign(root);
+    Salamander::TryGetUnicodePanelDirectory(root, DiskPathW);
 
     OnlyDetachFSListing = FALSE;
     NewFSFiles = NULL;
@@ -82,16 +84,20 @@ CFilesWindowAncestor::CheckPath(BOOL echo, const char* path, DWORD err, BOOL pos
     CALL_STACK_MESSAGE5("CFilesWindowAncestor::CheckPath(%d, %s, 0x%X, %d, )", echo, path, err, postRefresh);
 
     parent = (parent == NULL) ? HWindow : parent;
+    const bool currentPath = path == NULL || path == GetPath();
     if (path == NULL)
         path = GetPath();
 
-    if (Is(ptDisk) && strlen(path) >= MAX_PATH - 2)
+    if (Is(ptDisk) && (currentPath ? HasLongDiskPath() : strlen(path) >= MAX_PATH - 2))
     {
         // The legacy SalCheckPath path recovery uses fixed ANSI buffers.
         // Long paths are checked through their exact, extended W identity.
         std::wstring extended;
         DWORD pathError = ERROR_SUCCESS;
-        if (!Salamander::TryMakeExtendedLengthPathFromAnsi(path, extended, pathError))
+        const bool valid = currentPath
+            ? Salamander::TryMakeExtendedLengthPath(GetDiskPathW().c_str(), extended, pathError)
+            : Salamander::TryMakeExtendedLengthPathFromAnsi(path, extended, pathError);
+        if (!valid)
             return pathError;
         const DWORD attributes = GetFileAttributesW(extended.c_str());
         if (attributes != INVALID_FILE_ATTRIBUTES &&
@@ -233,16 +239,22 @@ BOOL CFilesWindowAncestor::GetGeneralPath(char* buf, int bufSize, BOOL convertFS
     return ret;
 }
 
-void CFilesWindowAncestor::SetPath(const char* path)
+void CFilesWindowAncestor::SetPath(const char* path, const std::wstring* nativePath)
 {
     CALL_STACK_MESSAGE2("CFilesWindowAncestor::SetPath(%s)", path);
     // The caller may pass GetPath(), so keep an independent copy until
     // old path notifications are detached and storage is replaced.
-    const std::string newPath(path);
+    std::string newPath(path);
+    std::wstring widePath;
+    if (nativePath)
+        widePath = *nativePath;
+    else
+        Salamander::TryGetUnicodePanelDirectory(newPath.c_str(), widePath);
     if (SuppressAutoRefresh && (!Is(ptDisk) || !IsTheSamePath(newPath.c_str(), Path.c_str())))
         SuppressAutoRefresh = FALSE;
     DetachDirectory((CFilesWindow*)this);
-    Path = newPath;
+    Path.swap(newPath);
+    DiskPathW.swap(widePath);
     path = Path.c_str();
 
     //--- detection of file-based compression/encryption and FAT32
@@ -268,8 +280,8 @@ void CFilesWindowAncestor::SetPath(const char* path)
     {
         if (Path.size() >= MAX_PATH - 2)
         {
-            // Disk notifications and the legacy drive helper retain fixed
-            // buffers. Long-path panels use explicit refresh for now.
+            // The legacy drive helper takes a bounded path. Supply only the
+            // drive root here; the change monitor uses the full Unicode path.
             if (Path.size() >= 3 && Path[1] == ':' && Path[2] == '\\')
             {
                 char root[] = {Path[0], ':', '\\', 0};
@@ -315,13 +327,11 @@ void CFilesWindowAncestor::SetPath(const char* path)
         }
         }
 
-        // Long paths must not reach the bounded legacy change monitor.
-        // Refresh remains available explicitly through the panel.
-        if (SuppressAutoRefresh || Path.size() >= MAX_PATH - 2)
+        if (SuppressAutoRefresh)
             MonitorChanges = FALSE;
 
         if (MonitorChanges)
-            AddDirectory((CFilesWindow*)this, Path.c_str(), DriveType == DRIVE_REMOVABLE || DriveType == DRIVE_FIXED);
+            AddDirectory((CFilesWindow*)this, DriveType == DRIVE_REMOVABLE || DriveType == DRIVE_FIXED);
         else // if changes are not monitored, Snooper does not call SetAutomaticRefresh -> we do it here
         {
             ((CFilesWindow*)this)->SetAutomaticRefresh(FALSE, TRUE);

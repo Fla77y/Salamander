@@ -123,32 +123,25 @@ inline bool TryConvertUnicodePanelFindData(
 // remains owned by ReadDirectory, which closes it through FindClose exactly
 // as before. Error is returned via GetLastError for legacy handling.
 inline HANDLE FindFirstUnicodePanelFile(
-    const char* ansiSearchPath, WIN32_FIND_DATAA& legacy,
+    const std::wstring& directory, WIN32_FIND_DATAA& legacy,
     WIN32_FIND_DATAW& wide)
 {
-    if (ansiSearchPath == nullptr)
+    if (directory.empty())
     {
         SetLastError(ERROR_INVALID_PARAMETER);
         return INVALID_HANDLE_VALUE;
     }
 
-    const int chars = MultiByteToWideChar(
-        CP_ACP, MB_ERR_INVALID_CHARS, ansiSearchPath, -1, nullptr, 0);
-    if (chars <= 0)
-        return INVALID_HANDLE_VALUE;
-
-    std::wstring search(static_cast<std::size_t>(chars), L'\0');
-    if (MultiByteToWideChar(
-            CP_ACP, MB_ERR_INVALID_CHARS, ansiSearchPath, -1,
-            &search[0], chars) != chars)
-        return INVALID_HANDLE_VALUE;
+    std::wstring search = directory;
+    if (search.back() != L'\\')
+        search.push_back(L'\\');
+    search.push_back(L'*');
 
     // FindFirstFileW is not guaranteed to accept paths beyond MAX_PATH
-    // without an extended-length prefix. Keep the existing short-path
-    // behavior (including legacy callers with relative search patterns).
+    // without an extended-length prefix. Keep the existing short-path behavior.
     std::wstring extendedSearch;
     const wchar_t* searchPattern = search.c_str();
-    if (search.size() - 1 >= MAX_PATH)
+    if (search.size() >= MAX_PATH)
     {
         DWORD error = ERROR_SUCCESS;
         if (!TryMakeExtendedLengthPath(search.c_str(), extendedSearch, error))

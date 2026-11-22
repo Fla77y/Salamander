@@ -14,6 +14,7 @@
 #include <atomic>
 #include <cwchar>
 #include <functional>
+#include <limits>
 #include <mutex>
 #include <new>
 #include <string>
@@ -47,9 +48,41 @@ class UnicodeFindWindow
         Advanced,
         Close,
         Results,
-        Status
+        Status,
+        MinimumFileSize,
+        MaximumFileSize,
+        MinimumFileSizeLabel,
+        MaximumFileSizeLabel,
+        EarliestModifiedDate,
+        LatestModifiedDate,
+        EarliestModifiedDateLabel,
+        LatestModifiedDateLabel,
+        AttributesLabel,
+        AttributeArchive,
+        AttributeReadOnly,
+        AttributeHidden,
+        AttributeSystem,
+        AttributeCompressed,
+        AttributeEncrypted,
+        AttributeDirectory
     };
     static constexpr UINT WM_FIND_UPDATE = WM_APP + 191;
+    struct AttributeControl
+    {
+        ControlId id;
+        DWORD flag;
+        const wchar_t* caption;
+        int width;
+    };
+    static constexpr AttributeControl attributeControls_[] = {
+        {AttributeArchive, FILE_ATTRIBUTE_ARCHIVE, L"Archive", 73},
+        {AttributeReadOnly, FILE_ATTRIBUTE_READONLY, L"Read-only", 83},
+        {AttributeHidden, FILE_ATTRIBUTE_HIDDEN, L"Hidden", 73},
+        {AttributeSystem, FILE_ATTRIBUTE_SYSTEM, L"System", 75},
+        {AttributeCompressed, FILE_ATTRIBUTE_COMPRESSED, L"Compressed", 97},
+        {AttributeEncrypted, FILE_ATTRIBUTE_ENCRYPTED, L"Encrypted", 86},
+        {AttributeDirectory, FILE_ATTRIBUTE_DIRECTORY, L"Directory", 80},
+    };
 
     HWND window_ = nullptr;
     HWND root_ = nullptr;
@@ -84,6 +117,35 @@ class UnicodeFindWindow
         return result;
     }
 
+    bool ReadFileSizeBound(int id, std::optional<std::uint64_t>& bound) const
+    {
+        HWND edit = GetControl(id);
+        const int length = GetWindowTextLengthW(edit);
+        if (length == 0)
+            return true;
+        const auto text = ReadText(edit);
+        if (text.size() != static_cast<std::size_t>(length))
+            return false;
+        std::uint64_t bytes = 0;
+        for (const wchar_t character : text)
+        {
+            if (character < L'0' || character > L'9')
+                return false;
+            const auto digit = static_cast<std::uint64_t>(character - L'0');
+            if (bytes > ((std::numeric_limits<std::uint64_t>::max)() - digit) / 10)
+                return false;
+            bytes = bytes * 10 + digit;
+        }
+        bound = bytes;
+        return true;
+    }
+
+    bool ReadModifiedDateBound(int id, std::optional<unsigned int>& bound) const
+    {
+        HWND edit = GetControl(id);
+        return GetWindowTextLengthW(edit) <= 10 && ParseUnicodeFindDate(ReadText(edit), bound);
+    }
+
     static HWND Child(HWND parent, const wchar_t* cls, const wchar_t* text,
                       DWORD style, int id, DWORD extendedStyle = 0)
     {
@@ -110,13 +172,33 @@ class UnicodeFindWindow
         Child(window, L"STATIC", L"Named:", 0, 0);
         masks_ = Child(window, L"EDIT", L"*",
                        WS_TABSTOP | ES_AUTOHSCROLL, Masks, WS_EX_CLIENTEDGE);
-        Child(window, L"STATIC", L"Containing (UTF-8/UTF-16LE):", 0, 0);
+        Child(window, L"STATIC", L"Containing (UTF-8/UTF-16):", 0, 0);
         content_ = Child(window, L"EDIT", L"",
                          WS_TABSTOP | ES_AUTOHSCROLL, Content, WS_EX_CLIENTEDGE);
         Child(window, L"STATIC", L"Destination (full path):", 0, 0);
         target_ = Child(window, L"EDIT", L"", WS_TABSTOP | ES_AUTOHSCROLL,
                         Target, WS_EX_CLIENTEDGE);
         SendMessageW(target_, EM_LIMITTEXT, 32766, 0);
+        Child(window, L"STATIC", L"Minimum size (bytes):", 0, MinimumFileSizeLabel);
+        Child(window, L"EDIT", L"", WS_TABSTOP | ES_AUTOHSCROLL,
+              MinimumFileSize, WS_EX_CLIENTEDGE);
+        Child(window, L"STATIC", L"Maximum size (bytes):", 0, MaximumFileSizeLabel);
+        Child(window, L"EDIT", L"", WS_TABSTOP | ES_AUTOHSCROLL,
+              MaximumFileSize, WS_EX_CLIENTEDGE);
+        Child(window, L"STATIC", L"Modified from (YYYY-MM-DD):", 0, EarliestModifiedDateLabel);
+        Child(window, L"EDIT", L"", WS_TABSTOP | ES_AUTOHSCROLL,
+              EarliestModifiedDate, WS_EX_CLIENTEDGE);
+        Child(window, L"STATIC", L"Modified through (YYYY-MM-DD):", 0, LatestModifiedDateLabel);
+        Child(window, L"EDIT", L"", WS_TABSTOP | ES_AUTOHSCROLL,
+              LatestModifiedDate, WS_EX_CLIENTEDGE);
+        Child(window, L"STATIC", L"Attributes (checked = require, unchecked = exclude, mixed = ignore)",
+              0, AttributesLabel);
+        for (const auto& control : attributeControls_)
+        {
+            HWND attribute = Child(window, L"BUTTON", control.caption,
+                                   BS_AUTO3STATE | WS_TABSTOP, control.id);
+            SendMessageW(attribute, BM_SETCHECK, BST_INDETERMINATE, 0);
+        }
         recurse_ = Child(window, L"BUTTON", L"Include subdirectories",
                          BS_AUTOCHECKBOX | WS_TABSTOP, Recurse);
         SendMessageW(recurse_, BM_SETCHECK, BST_CHECKED, 0);
@@ -173,8 +255,7 @@ class UnicodeFindWindow
         const int labelWidth = 175;
         const int editX = inset + labelWidth;
         const int editWidth = contentWidth - labelWidth;
-        // Three rows of search controls plus a status line. The listview
-        // takes all remaining space and never overlaps the command buttons.
+        // The listview takes the remaining space below the search controls.
         MoveWindow(root_, editX, 12, editWidth, 24, TRUE);
         // The label windows need distinct identities: static id 0 is used
         // by more than one, so enumerate siblings in creation order below.
@@ -198,10 +279,25 @@ class UnicodeFindWindow
         MoveWindow(masks_, editX, 44, editWidth, 24, TRUE);
         MoveWindow(content_, editX, 76, editWidth, 24, TRUE);
         MoveWindow(target_, editX, 108, editWidth, 24, TRUE);
-        MoveWindow(recurse_, inset, 141, 195, 26, TRUE);
-        MoveWindow(includeDirs_, 222, 141, 235, 26, TRUE);
+        MoveWindow(GetControl(MinimumFileSizeLabel), inset, 140, labelWidth, 24, TRUE);
+        MoveWindow(GetControl(MinimumFileSize), editX, 140, 150, 24, TRUE);
+        MoveWindow(GetControl(MaximumFileSizeLabel), 355, 140, 190, 24, TRUE);
+        MoveWindow(GetControl(MaximumFileSize), 545, 140, 145, 24, TRUE);
+        MoveWindow(GetControl(EarliestModifiedDateLabel), inset, 172, labelWidth, 24, TRUE);
+        MoveWindow(GetControl(EarliestModifiedDate), editX, 172, 150, 24, TRUE);
+        MoveWindow(GetControl(LatestModifiedDateLabel), 355, 172, 190, 24, TRUE);
+        MoveWindow(GetControl(LatestModifiedDate), 545, 172, 145, 24, TRUE);
+        MoveWindow(GetControl(AttributesLabel), inset, 205, contentWidth, 20, TRUE);
+        int attributeX = inset;
+        for (const auto& control : attributeControls_)
+        {
+            MoveWindow(GetControl(control.id), attributeX, 225, control.width, 26, TRUE);
+            attributeX += control.width;
+        }
+        MoveWindow(recurse_, inset, 254, 195, 26, TRUE);
+        MoveWindow(includeDirs_, 222, 254, 235, 26, TRUE);
 
-        const int yButtons = 172;
+        const int yButtons = 285;
         const struct { int id; int w; } buttons[] = {
             {Find, 92}, {Cancel, 75}, {CopyPath, 112},
             {OpenFile, 72}, {Advanced, 155}, {Close, 72}
@@ -219,10 +315,10 @@ class UnicodeFindWindow
         x = inset;
         for (const auto& b : fileButtons)
         {
-            MoveWindow(GetControl(b.id), x, 210, b.w, 27, TRUE);
+            MoveWindow(GetControl(b.id), x, 323, b.w, 27, TRUE);
             x += b.w + 7;
         }
-        const int listTop = 251;
+        const int listTop = 364;
         const int statusHeight = 27;
         MoveWindow(results_, inset, listTop, contentWidth,
                    height > listTop + statusHeight + inset ?
@@ -308,10 +404,42 @@ class UnicodeFindWindow
         options.root = ReadText(root_);
         options.masks = ReadText(masks_);
         options.content = ReadText(content_);
+        if (!ReadFileSizeBound(MinimumFileSize, options.minimumFileSize) ||
+            !ReadFileSizeBound(MaximumFileSize, options.maximumFileSize))
+        {
+            SetWindowTextW(status_, L"Enter a non-negative whole number of bytes for file size, or leave it blank.");
+            return;
+        }
+        if (options.minimumFileSize && options.maximumFileSize &&
+            *options.minimumFileSize > *options.maximumFileSize)
+        {
+            SetWindowTextW(status_, L"Minimum file size exceeds maximum file size.");
+            return;
+        }
+        if (!ReadModifiedDateBound(EarliestModifiedDate, options.earliestModifiedDate) ||
+            !ReadModifiedDateBound(LatestModifiedDate, options.latestModifiedDate))
+        {
+            SetWindowTextW(status_, L"Enter a valid modification date as YYYY-MM-DD, or leave it blank.");
+            return;
+        }
+        if (options.earliestModifiedDate && options.latestModifiedDate &&
+            *options.earliestModifiedDate > *options.latestModifiedDate)
+        {
+            SetWindowTextW(status_, L"The first modification date is later than the last.");
+            return;
+        }
         options.includeSubdirectories =
             SendMessageW(recurse_, BM_GETCHECK, 0, 0) == BST_CHECKED;
         options.includeDirectories =
             SendMessageW(includeDirs_, BM_GETCHECK, 0, 0) == BST_CHECKED;
+        for (const auto& control : attributeControls_)
+        {
+            const LRESULT state = SendMessageW(GetControl(control.id), BM_GETCHECK, 0, 0);
+            if (state != BST_INDETERMINATE)
+                options.attributesMask |= control.flag;
+            if (state == BST_CHECKED)
+                options.attributesValue |= control.flag;
+        }
         options.maximumResults = 25000; // explicit cap, never silent truncation
         std::wstring validated;
         DWORD error = ERROR_SUCCESS;

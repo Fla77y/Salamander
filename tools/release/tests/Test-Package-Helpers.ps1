@@ -325,8 +325,8 @@ if ([string]::IsNullOrEmpty($pasteBlock) -or
     $pasteBlock -notmatch 'GlobalSize\(handle\)' -or
     $pasteBlock -notmatch 'while \(length < limit && text\[length\]' -or
     $pasteBlock -notmatch 'if \(length < limit\)' -or
-    $pasteBlock -notmatch 'Salamander::IsExactAnsiName\(ansi\.data\(\), value\.c_str\(\)\)' -or
-    $pasteBlock -notmatch 'if \(clipboardPath\.empty\(\) && !unicodeTextPresent\)' -or
+    $pasteBlock -notmatch 'unicodePath\.assign\(text \+ begin, length - begin\)' -or
+    $pasteBlock -notmatch 'if \(!unicodeTextPresent\)' -or
     $pasteBlock -notmatch 'clipboardPath\.assign\(text \+ begin, length - begin\)') {
     throw 'Clipboard navigation must reject incomplete Unicode and ANSI clipboard paths.'
 }
@@ -334,9 +334,12 @@ if ([string]::IsNullOrEmpty($pasteBlock) -or
 # WC_NO_BEST_FIT_CHARS is invalid when the active ANSI code page is
 # UTF-8 (ACP 65001). The exact Unicode round-trip identity check remains
 # mandatory; Win32's CP_ACP conversion itself must use supported flags.
-if ($pasteBlock -match 'WideCharToMultiByte\(CP_ACP,\s*WC_NO_BEST_FIT_CHARS' -or
-    $pasteBlock -notmatch 'WideCharToMultiByte\(CP_ACP,\s*0,' -or
-    $pasteBlock -notmatch 'Salamander::IsExactAnsiName') {
+$unicodeNameSource = Get-Content -LiteralPath (Join-Path $toolsDir '..\..\src\common\win32_unicode_panel_name.h') -Raw
+$ansiProjection = [regex]::Match($unicodeNameSource, '(?s)inline bool TryMakeExactAnsiPanelPath\((.*?)inline bool UnicodePanelPathAffected').Value
+if ($ansiProjection -match 'WideCharToMultiByte\(CP_ACP,\s*WC_NO_BEST_FIT_CHARS' -or
+    $ansiProjection -notmatch 'WideCharToMultiByte\(CP_ACP,\s*0,' -or
+    $ansiProjection -notmatch 'IsExactAnsiName' -or
+    $pasteBlock -notmatch 'TryMakeExactAnsiPanelPath\(unicodePath, clipboardPath\)') {
     throw 'Clipboard Unicode conversion must work with UTF-8 ACP and retain exact filename identity.'
 }
 
@@ -367,9 +370,8 @@ if ([string]::IsNullOrEmpty($filesActionBlock) -or
 }
 
 # CM_CLIPPASTE first checks for files, then falls back to clipboard text path
-# navigation. Reject actual file payloads on long targets, but NEVER display
-# a blocking dialog for plain CF_UNICODETEXT navigation. The second GUI
-# navigation to the long folder explicitly exercises this distinction.
+# navigation. Route supported file transfers to the Unicode transfer path.
+# Plain CF_UNICODETEXT must still reach the navigation fallback without a dialog.
 $pasteSource = Get-Content -LiteralPath (Join-Path $toolsDir '..\..\src\fileswn9.cpp') -Raw
 $pasteBlock = [regex]::Match($pasteSource,
     '(?s)BOOL CFilesWindow::ClipboardPaste\(BOOL onlyLinks, BOOL onlyTest, const char\* pastePath\)(.*?)BOOL CFilesWindow::ClipboardPasteToArcOrFS').Groups[1].Value
@@ -381,10 +383,12 @@ if ([string]::IsNullOrEmpty($pasteBlock) -or
     $pasteBlock -notmatch 'CFSTR_SHELLIDLIST' -or
     $pasteBlock -notmatch 'CFSTR_FILECONTENTS' -or
     $pasteBlock -notmatch 'IsFakeDataObject' -or
-    $pasteBlock -notmatch 'if \(!hasFilePayload\)' -or
-    $pasteBlock -notmatch 'return FALSE;' -or
+    $pasteBlock -notmatch 'if \(onlyTest \|\| !hasFilePayload\)' -or
+    $pasteBlock -notmatch 'return onlyTest && canTransfer;' -or
+    $pasteBlock -notmatch 'ReadUnicodeClipboardFiles\(' -or
+    $pasteBlock -notmatch 'TryTransferUnicodeClipboardFiles\(' -or
     $pasteBlock -notmatch 'return TRUE;') {
-    throw 'Long-target clipboard paste must distinguish file data from a text path and refuse only file transfers.'
+    throw 'Long-target clipboard paste must keep text navigation separate from Unicode file transfers.'
 }
 
 # Long plain-text clipboard paths must not be truncated to the old
@@ -396,7 +400,8 @@ $clipboardNav = [regex]::Match($pasteSource,
 if ([string]::IsNullOrEmpty($clipboardNav) -or
     $clipboardNav -notmatch 'GlobalSize\(handle\)' -or
     $clipboardNav -notmatch 'std::string clipboardPath' -or
-    $clipboardNav -notmatch 'IsExactAnsiName' -or
+    $clipboardNav -notmatch 'TryMakeExactAnsiPanelPath' -or
+    $clipboardNav -notmatch 'ChangeUnicodePathToDisk\(HWindow, unicodePath\)' -or
     $clipboardNav -notmatch 'clipboardPath\.size\(\) < 2 \* MAX_PATH' -or
     $clipboardNav -notmatch 'ChangeDir\(path\.c_str\(\)\)' -or
     $clipboardNav -notmatch 'driveAbsolute \|\| uncAbsolute') {
@@ -614,12 +619,13 @@ $panelLoad = [regex]::Match(
 if ([string]::IsNullOrEmpty($panelLoad) -or
     $panelLoad -notmatch 'ReadSavedPanelPath\(actKey, panelPath\)' -or
     $panelLoad -match 'GetValue\(actKey, PANEL_PATH_REG, REG_SZ, panelPath, MAX_PATH\)' -or
-    $startupSource -notmatch 'std::string leftPanelPath\(systemDirectory\)' -or
-    $startupSource -notmatch 'std::string rightPanelPath\(systemDirectory\)' -or
+    $startupSource -notmatch 'std::wstring leftPanelPath\(fallback\)' -or
+    $startupSource -notmatch 'std::wstring rightPanelPath\(fallback\)' -or
     $startupSource -notmatch 'RestoreSavedPanelPath\(LeftPanel, leftPanelPath\)' -or
     $startupSource -notmatch 'RestoreSavedPanelPath\(RightPanel, rightPanelPath\)' -or
-    $startupSource -notmatch 'if \(savedPath\.size\(\) >= static_cast<std::size_t>\(MAX_PATH - 2\)\)' -or
-    $startupSource -notmatch 'ChangePathToDisk\(panel->HWindow, savedPath\.c_str\(\)\)') {
+    $startupSource -notmatch 'if \(savedPath\.size\(\) >= MAX_PATH - 2 \|\|' -or
+    $startupSource -notmatch 'ChangeUnicodePathToDisk\(panel->HWindow, savedPath\)' -or
+    $startupSource -notmatch 'RegistryWorkerThread\.SetPanelPath\(actKey, panelPath\)') {
     throw 'Saved panel paths must load dynamically and use the long-path navigation branch.'
 }
 Write-Host 'PASS: saved panel paths use dynamic configuration storage and long-path startup navigation.'

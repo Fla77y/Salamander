@@ -8,6 +8,7 @@
 #include "fileswnd.h"
 #include "mainwnd.h"
 #include "snooper.h"
+#include "common/win32_long_directory.h"
 
 CWindowArray WindowArray(10, 5);
 CObjectArray ObjectArray(10, 5);
@@ -564,23 +565,32 @@ void TerminateThread()
     HANDLES(DeleteCriticalSection(&SafeFindCloseCS));
 }
 
-void AddDirectory(CFilesWindow* win, const char* path, BOOL registerDevNotification)
+static HANDLE OpenDirectoryWatcher(const CFilesWindow* panel)
 {
+    std::wstring watchPath;
+    DWORD error = ERROR_SUCCESS;
+    if (!Salamander::TryMakeUnicodeDirectoryWatchPath(panel->GetDiskPathW(), watchPath, error))
+    {
+        SetLastError(error);
+        return INVALID_HANDLE_VALUE;
+    }
+    HANDLE watcher = FindFirstChangeNotificationW(watchPath.c_str(), FALSE,
+        FILE_NOTIFY_CHANGE_FILE_NAME | FILE_NOTIFY_CHANGE_DIR_NAME | FILE_NOTIFY_CHANGE_ATTRIBUTES |
+        FILE_NOTIFY_CHANGE_SIZE | FILE_NOTIFY_CHANGE_LAST_WRITE);
+    if (watcher != INVALID_HANDLE_VALUE)
+        HANDLES_ADD(__htChangeNotification, __hoFindFirstChangeNotification, watcher);
+    return watcher;
+}
+
+void AddDirectory(CFilesWindow* win, BOOL registerDevNotification)
+{
+    const char* path = win->GetPath();
     CALL_STACK_MESSAGE3("AddDirectory(, %s, %d)", path, registerDevNotification);
     SetEvent(WantDataEvent);                       // ask the snooper to release the DataUsageMutex
     WaitForSingleObject(DataUsageMutex, INFINITE); // wait for it
     SetEvent(WantDataEvent);                       // the snooper can resume waiting on DataUsageMutex
                                                    //--- the data now belong to the main thread; the snooper is waiting
-    // if the path ends with a space or dot, we must append '\\'; otherwise FindFirstChangeNotification
-    // trims trailing spaces and dots and thus works with a different path
-    char pathCopy[3 * MAX_PATH];
-    MakeCopyWithBackslashIfNeeded(path, pathCopy);
-    HANDLE h = HANDLES_Q(FindFirstChangeNotification(path, FALSE,
-                                                     FILE_NOTIFY_CHANGE_FILE_NAME |
-                                                         FILE_NOTIFY_CHANGE_DIR_NAME |
-                                                         FILE_NOTIFY_CHANGE_ATTRIBUTES |
-                                                         FILE_NOTIFY_CHANGE_SIZE |
-                                                         FILE_NOTIFY_CHANGE_LAST_WRITE));
+    HANDLE h = OpenDirectoryWatcher(win);
     if (h != INVALID_HANDLE_VALUE)
     {
         win->SetAutomaticRefresh(TRUE);
@@ -683,8 +693,9 @@ DWORD WINAPI ThreadFindCloseChangeNotification(void* param)
     return ThreadFindCloseChangeNotificationEH(param);
 }
 
-void ChangeDirectory(CFilesWindow* win, const char* newPath, BOOL registerDevNotification)
+void ChangeDirectory(CFilesWindow* win, BOOL registerDevNotification)
 {
+    const char* newPath = win->GetPath();
     CALL_STACK_MESSAGE3("ChangeDirectory(, %s, %d)", newPath, registerDevNotification);
     SetEvent(WantDataEvent);                       // ask the snooper to release the DataUsageMutex
     WaitForSingleObject(DataUsageMutex, INFINITE); // wait for it
@@ -713,16 +724,7 @@ void ChangeDirectory(CFilesWindow* win, const char* newPath, BOOL registerDevNot
             SetEvent(SafeFindCloseStart);                    // start the cleanup
             WaitForSingleObject(SafeFindCloseFinished, 200); // 200 ms timeout for closing the handle
 
-            // if the path ends with a space or dot, we must append '\\'; otherwise FindFirstChangeNotification
-            // trims trailing spaces and dots and thus works with a different path
-            char newPathCopy[3 * MAX_PATH];
-            MakeCopyWithBackslashIfNeeded(newPath, newPathCopy);
-            ObjectArray[i] = HANDLES_Q(FindFirstChangeNotification(newPath, FALSE,
-                                                                   FILE_NOTIFY_CHANGE_FILE_NAME |
-                                                                       FILE_NOTIFY_CHANGE_DIR_NAME |
-                                                                       FILE_NOTIFY_CHANGE_ATTRIBUTES |
-                                                                       FILE_NOTIFY_CHANGE_SIZE |
-                                                                       FILE_NOTIFY_CHANGE_LAST_WRITE));
+            ObjectArray[i] = OpenDirectoryWatcher(win);
             if ((HANDLE)ObjectArray[i] == INVALID_HANDLE_VALUE)
             {
                 win->SetAutomaticRefresh(FALSE);
@@ -743,16 +745,7 @@ void ChangeDirectory(CFilesWindow* win, const char* newPath, BOOL registerDevNot
     //---  not found -> add it
     if (i == WindowArray.Count)
     {
-        // if the path ends with a space or dot, we must append '\\'; otherwise FindFirstChangeNotification
-        // trims trailing spaces and dots and thus works with a different path
-        char newPathCopy[3 * MAX_PATH];
-        MakeCopyWithBackslashIfNeeded(newPath, newPathCopy);
-        HANDLE h = HANDLES_Q(FindFirstChangeNotification(newPath, FALSE,
-                                                         FILE_NOTIFY_CHANGE_FILE_NAME |
-                                                             FILE_NOTIFY_CHANGE_DIR_NAME |
-                                                             FILE_NOTIFY_CHANGE_ATTRIBUTES |
-                                                             FILE_NOTIFY_CHANGE_SIZE |
-                                                             FILE_NOTIFY_CHANGE_LAST_WRITE));
+        HANDLE h = OpenDirectoryWatcher(win);
         if (h != INVALID_HANDLE_VALUE)
         {
             win->SetAutomaticRefresh(TRUE);

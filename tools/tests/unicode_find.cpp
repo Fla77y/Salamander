@@ -19,7 +19,8 @@ static bool MakeDirectory(const std::wstring& fullPath)
            CreateDirectoryW(extended.c_str(), nullptr) != 0;
 }
 
-static bool WriteFixture(const std::wstring& fullPath, const void* bytes, DWORD length)
+static bool WriteFixture(const std::wstring& fullPath, const void* bytes, DWORD length,
+                         const FILETIME* modified = nullptr)
 {
     std::wstring extended;
     DWORD error = ERROR_SUCCESS;
@@ -30,7 +31,8 @@ static bool WriteFixture(const std::wstring& fullPath, const void* bytes, DWORD 
     if (file == INVALID_HANDLE_VALUE)
         return false;
     DWORD written = 0;
-    const bool ok = WriteFile(file, bytes, length, &written, nullptr) && written == length;
+    const bool ok = WriteFile(file, bytes, length, &written, nullptr) && written == length &&
+        (!modified || SetFileTime(file, nullptr, nullptr, modified));
     CloseHandle(file);
     return ok;
 }
@@ -45,6 +47,12 @@ static bool RemoveFixture(const std::wstring& fullPath, bool directory)
 
 int main()
 {
+    if (!Salamander::UnicodeFindWildcardMatch(L"?.txt", L"\U0001F600.txt", false) ||
+        !Salamander::UnicodeFindWildcardMatch(L"*?X.txt", L"prefix\U0001F600x.TXT", false) ||
+        Salamander::UnicodeFindWildcardMatch(L"??.txt", L"\U0001F600.txt", false) ||
+        Salamander::UnicodeFindWildcardMatch(L"*?X.txt", L"prefix\U0001F600x.TXT", true))
+        return std::puts("FAIL: supplementary characters in filename masks"), 1;
+
     wchar_t temp[MAX_PATH] = {};
     const DWORD count = GetTempPathW(MAX_PATH, temp);
     if (count == 0 || count >= MAX_PATH)
@@ -68,9 +76,25 @@ int main()
     const std::wstring fileA = long3 + L"\\" + nameA;
     const std::wstring fileB = nested + L"\\" + nameB;
     const std::wstring fileC = long3 + L"\\" + nameC;
-    if (!WriteFixture(fileA, utf8, sizeof(utf8) - 1) ||
-        !WriteFixture(fileB, utf16, sizeof(utf16) - sizeof(wchar_t)) ||
-        !WriteFixture(fileC, "other", 5))
+    const auto localTimestamp = [](WORD month, WORD day, FILETIME& timestamp) {
+        SYSTEMTIME local{};
+        local.wYear = 2024;
+        local.wMonth = month;
+        local.wDay = day;
+        local.wHour = 23;
+        local.wMinute = 59;
+        SYSTEMTIME utc{};
+        TIME_ZONE_INFORMATION rules{};
+        return GetTimeZoneInformationForYear(local.wYear, nullptr, &rules) &&
+            TzSpecificLocalTimeToSystemTime(&rules, &local, &utc) &&
+            SystemTimeToFileTime(&utc, &timestamp);
+    };
+    FILETIME before{}, on{}, after{};
+    if (!localTimestamp(2, 28, before) || !localTimestamp(2, 29, on) ||
+        !localTimestamp(3, 1, after) ||
+        !WriteFixture(fileA, utf8, sizeof(utf8) - 1, &before) ||
+        !WriteFixture(fileB, utf16, sizeof(utf16) - sizeof(wchar_t), &on) ||
+        !WriteFixture(fileC, "other", 5, &after))
         return std::puts("FAIL: write Unicode Find fixtures"), 1;
 
     // Arrange: source root is beyond MAX_PATH, with UTF-16 names that may
@@ -109,6 +133,69 @@ int main()
         error != ERROR_MORE_DATA || !hits.empty())
         return std::puts("FAIL: W result memory cap"), 1;
     options.maximumResultUtf16Units = 8 * 1024 * 1024;
+
+    // Size bounds are inclusive. Filtering directory results must not stop
+    // recursion to the matching file below a directory with a size of zero.
+    options.masks = L"*";
+    options.includeDirectories = true;
+    options.minimumFileSize = sizeof(utf16) - sizeof(wchar_t);
+    options.maximumFileSize = options.minimumFileSize;
+    hits.clear();
+    if (!Salamander::SearchUnicodeDirectory(options, collect, nullptr, error) ||
+        hits.size() != 1 || hits[0].FullPath() != fileB)
+        return std::puts("FAIL: exact size on a nested Unicode path"), 1;
+
+    options.minimumFileSize.reset();
+    options.maximumFileSize = 0;
+    hits.clear();
+    if (!Salamander::SearchUnicodeDirectory(options, collect, nullptr, error) || !hits.empty())
+        return std::puts("FAIL: maximum size alone excludes files and directories"), 1;
+
+    options.minimumFileSize = 1;
+    if (Salamander::SearchUnicodeDirectory(options, collect, nullptr, error) ||
+        error != ERROR_INVALID_PARAMETER || !hits.empty())
+        return std::puts("FAIL: inverted file-size range must be rejected"), 1;
+    options.minimumFileSize.reset();
+    options.maximumFileSize.reset();
+    options.includeDirectories = false;
+    options.masks = L"*.txt";
+
+    if (Salamander::ParseUnicodeFindDate(L"2023-02-29", options.earliestModifiedDate) ||
+        Salamander::ParseUnicodeFindDate(L"2024-2-29", options.earliestModifiedDate) ||
+        !Salamander::ParseUnicodeFindDate(L"2024-02-29", options.earliestModifiedDate))
+        return std::puts("FAIL: modification date validation"), 1;
+    options.latestModifiedDate = options.earliestModifiedDate;
+    hits.clear();
+    if (!Salamander::SearchUnicodeDirectory(options, collect, nullptr, error) ||
+        hits.size() != 1 || hits[0].FullPath() != fileB)
+        return std::puts("FAIL: inclusive local leap-day filter on a long Unicode path"), 1;
+
+    options.maximumFileSize = 5;
+    hits.clear();
+    if (!Salamander::SearchUnicodeDirectory(options, collect, nullptr, error) || !hits.empty())
+        return std::puts("FAIL: date and file size must both match"), 1;
+    options.maximumFileSize.reset();
+
+    if (!Salamander::ParseUnicodeFindDate(L"", options.latestModifiedDate) ||
+        !Salamander::SearchUnicodeDirectory(options, collect, nullptr, error) || hits.size() != 2)
+        return std::puts("FAIL: earliest modification date without upper bound"), 1;
+    options.earliestModifiedDate.reset();
+
+    std::wstring extendedFileB;
+    if (!Salamander::TryMakeExtendedLengthPath(fileB.c_str(), extendedFileB, error) ||
+        !SetFileAttributesW(extendedFileB.c_str(), FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_ARCHIVE))
+        return std::puts("FAIL: set attributes on nested Unicode fixture"), 1;
+    options.attributesMask = FILE_ATTRIBUTE_HIDDEN | FILE_ATTRIBUTE_READONLY;
+    options.attributesValue = FILE_ATTRIBUTE_HIDDEN;
+    hits.clear();
+    if (!Salamander::SearchUnicodeDirectory(options, collect, nullptr, error) ||
+        hits.size() != 1 || hits[0].FullPath() != fileB)
+        return std::puts("FAIL: required and excluded attributes on a long Unicode path"), 1;
+    options.attributesValue = 0;
+    hits.clear();
+    if (!Salamander::SearchUnicodeDirectory(options, collect, nullptr, error) || hits.size() != 2)
+        return std::puts("FAIL: exclude hidden files without stopping recursion"), 1;
+    options.attributesMask = 0;
 
     options.includeSubdirectories = false;
     hits.clear();
@@ -177,6 +264,40 @@ int main()
         !RemoveFixture(utf16BoundaryFile, false))
         return std::puts("FAIL: cleanup cross-buffer fixtures"), 1;
 
+    // UTF-16BE begins with a BOM and splits a surrogate pair across blocks.
+    const auto utf16BeFile = long3 + L"\\boundary_\U0001F600.txt";
+    std::vector<unsigned char> utf16BePayload{0xfe, 0xff};
+    while (utf16BePayload.size() < 65534)
+    {
+        utf16BePayload.push_back(0);
+        utf16BePayload.push_back('x');
+    }
+    const unsigned char bigEndianSmile[] = {0xd8, 0x3d, 0xde, 0x00};
+    utf16BePayload.insert(utf16BePayload.end(), bigEndianSmile,
+                          bigEndianSmile + sizeof(bigEndianSmile));
+    if (!WriteFixture(utf16BeFile, utf16BePayload.data(),
+                      static_cast<DWORD>(utf16BePayload.size())))
+        return std::puts("FAIL: prepare cross-buffer UTF-16BE fixture"), 1;
+    options.content = L"\U0001F600";
+    options.masks = L"boundary_?.txt";
+    hits.clear();
+    if (!Salamander::SearchUnicodeDirectory(options, collect, nullptr, error) ||
+        hits.size() != 1 || hits[0].FullPath() != utf16BeFile)
+        return std::puts("FAIL: cross-buffer UTF-16BE supplementary character"), 1;
+
+    // The same bytes at an odd offset in a UTF-16 file are not a match.
+    const auto unalignedFile = long3 + L"\\boundary_\U0001F601.txt";
+    const unsigned char unaligned[] = {0xfe, 0xff, 0, 0xd8, 0x3d, 0xde, 0, 0};
+    if (!WriteFixture(unalignedFile, unaligned, sizeof(unaligned)))
+        return std::puts("FAIL: prepare unaligned UTF-16 fixture"), 1;
+    hits.clear();
+    if (!Salamander::SearchUnicodeDirectory(options, collect, nullptr, error) ||
+        hits.size() != 1 || hits[0].FullPath() != utf16BeFile)
+        return std::puts("FAIL: reject a UTF-16 match at an odd byte offset"), 1;
+    if (!RemoveFixture(utf16BeFile, false) || !RemoveFixture(unalignedFile, false))
+        return std::puts("FAIL: cleanup UTF-16BE fixtures"), 1;
+    options.masks = L"*.txt";
+
     options.includeSubdirectories = true;
     options.content = L"unique needle";
     hits.clear();
@@ -205,5 +326,5 @@ int main()
         !RemoveFixture(long2, true) || !RemoveFixture(long1, true) ||
         !RemoveFixture(root, true))
         return std::puts("FAIL: fixture cleanup"), 1;
-    return std::puts("PASS: Unicode Find long-path, UTF-8/UTF-16 content, identities, recursion, cancellation"), 0;
+    return std::puts("PASS: Unicode Find long paths, filters, UTF-8/UTF-16 content, identities, recursion, cancellation"), 0;
 }

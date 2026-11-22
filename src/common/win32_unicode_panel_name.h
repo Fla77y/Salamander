@@ -9,6 +9,7 @@
 
 #include <windows.h>
 #include <string>
+#include <string_view>
 #include <cwchar>
 #include <vector>
 #include <unordered_map>
@@ -257,6 +258,51 @@ inline bool TryGetUnicodePanelDirectory(const char* ansiDirectory,
     }
     unicodeDirectory.pop_back();
     return true;
+}
+
+inline bool TryMakeExactAnsiPanelPath(const std::wstring& path, std::string& ansi)
+{
+    ansi.clear();
+    if (path.empty() || path.find(L'\0') != std::wstring::npos)
+        return false;
+
+    // CP_ACP can be UTF-8, which does not accept WC_NO_BEST_FIT_CHARS.
+    const int bytes = WideCharToMultiByte(CP_ACP, 0, path.c_str(), -1, nullptr, 0, nullptr, nullptr);
+    if (bytes <= 1)
+        return false;
+    std::string encoded(static_cast<std::size_t>(bytes), '\0');
+    if (WideCharToMultiByte(CP_ACP, 0, path.c_str(), -1, encoded.data(), bytes, nullptr, nullptr) != bytes ||
+        !IsExactAnsiName(encoded.c_str(), path.c_str()))
+        return false;
+    encoded.pop_back();
+    ansi.swap(encoded);
+    return true;
+}
+
+inline bool UnicodePanelPathAffected(std::wstring_view changed, std::wstring_view panel,
+                                     bool includeSubdirectories)
+{
+    if (!changed.empty() && changed.back() == L'\\')
+        changed.remove_suffix(1);
+    if (!panel.empty() && panel.back() == L'\\')
+        panel.remove_suffix(1);
+    if (changed.empty() || panel.empty())
+        return false;
+
+    const auto equals = [](std::wstring_view first, std::wstring_view second) {
+        return first.size() == second.size() &&
+            CompareStringOrdinal(first.data(), static_cast<int>(first.size()),
+                                 second.data(), static_cast<int>(second.size()), TRUE) == CSTR_EQUAL;
+    };
+    if (equals(changed, panel))
+        return true;
+    if (includeSubdirectories && changed.size() < panel.size() &&
+        panel[changed.size()] == L'\\' && equals(changed, panel.substr(0, changed.size())))
+        return true;
+
+    // A change below the panel can alter the timestamp displayed for a child.
+    const auto separator = changed.find_last_of(L'\\');
+    return separator != std::wstring_view::npos && equals(changed.substr(0, separator), panel);
 }
 
 // Win32 takes ownership of the allocated memory only after a successful

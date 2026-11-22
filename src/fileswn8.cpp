@@ -171,8 +171,8 @@ BOOL CFilesWindow::TryUnicodeSingleFileRecycle()
         return FALSE; // ambiguous or missing identity
 
     const std::string panelPath(GetPath());
-    std::wstring directory;
-    if (!Salamander::TryGetUnicodePanelDirectory(panelPath.c_str(), directory))
+    const std::wstring directory = GetDiskPathW();
+    if (directory.empty())
         return FALSE;
 
     Salamander::Utf16PathError validationError;
@@ -269,11 +269,9 @@ BOOL CFilesWindow::TryUnicodeMultiFileTransfer(CActionType type, CFilesWindow* t
 
     const std::string sourcePanelPath(GetPath());
     const std::string targetPanelPath(target->GetPath());
-    std::wstring sourceDirectory, targetDirectory;
-    if (!Salamander::TryGetUnicodePanelDirectory(
-            sourcePanelPath.c_str(), sourceDirectory) ||
-        !Salamander::TryGetUnicodePanelDirectory(
-            targetPanelPath.c_str(), targetDirectory))
+    const std::wstring sourceDirectory = GetDiskPathW();
+    const std::wstring targetDirectory = target->GetDiskPathW();
+    if (sourceDirectory.empty() || targetDirectory.empty())
         return FALSE;
 
     Salamander::Utf16PathError validationError;
@@ -541,11 +539,9 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
 
     const std::string sourcePanelPath(GetPath());
     const std::string targetPanelPath(target->GetPath());
-    std::wstring sourceDirectory, targetDirectory;
-    if (!Salamander::TryGetUnicodePanelDirectory(
-            sourcePanelPath.c_str(), sourceDirectory) ||
-        !Salamander::TryGetUnicodePanelDirectory(
-            targetPanelPath.c_str(), targetDirectory))
+    const std::wstring sourceDirectory = GetDiskPathW();
+    const std::wstring targetDirectory = target->GetDiskPathW();
+    if (sourceDirectory.empty() || targetDirectory.empty())
         return FALSE;
 
     Salamander::Utf16PathError validationError;
@@ -713,11 +709,9 @@ BOOL CFilesWindow::TryUnicodeSingleDirectoryMove(CActionType type, CFilesWindow*
 
     const std::string sourcePanelPath(GetPath());
     const std::string targetPanelPath(target->GetPath());
-    std::wstring sourceDirectory, targetDirectory;
-    if (!Salamander::TryGetUnicodePanelDirectory(
-            sourcePanelPath.c_str(), sourceDirectory) ||
-        !Salamander::TryGetUnicodePanelDirectory(
-            targetPanelPath.c_str(), targetDirectory))
+    const std::wstring sourceDirectory = GetDiskPathW();
+    const std::wstring targetDirectory = target->GetDiskPathW();
+    if (sourceDirectory.empty() || targetDirectory.empty())
         return FALSE;
 
     Salamander::Utf16PathError validationError;

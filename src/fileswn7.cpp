@@ -11,6 +11,7 @@
 #include "dialogs.h"
 #include "zip.h"
 #include "pack.h"
+#include "common/win32_unicode_panel_name.h"
 
 //
 // ****************************************************************************
@@ -2019,7 +2020,13 @@ void CFilesWindow::AcceptChangeOnPathNotification(const char* path, BOOL includi
                         path, includingSubdirs);
 
     BOOL refresh = FALSE;
-    if ((Is(ptDisk) || Is(ptZIPArchive)) && (!AutomaticRefresh || GetNetworkDrive()))
+    if (Is(ptDisk) && (HasLongDiskPath() || strlen(path) >= MAX_PATH))
+    {
+        std::wstring changedPath;
+        refresh = Salamander::TryGetUnicodePanelDirectory(path, changedPath) &&
+                  Salamander::UnicodePanelPathAffected(changedPath, GetDiskPathW(), includingSubdirs != FALSE);
+    }
+    else if ((Is(ptDisk) || Is(ptZIPArchive)) && (!AutomaticRefresh || GetNetworkDrive()))
     {
         // test the equality of paths or at least their prefix (we only care about disk paths,
         // FS paths in 'path' are automatically excluded because they can never match GetPath())
@@ -2040,13 +2047,6 @@ void CFilesWindow::AcceptChangeOnPathNotification(const char* path, BOOL includi
             // that subdirectory, but perhaps it will be fixed eventually, so refresh proactively)
             refresh = StrICmp(path1, path2) == 0;
         }
-        if (refresh)
-        {
-            HANDLES(EnterCriticalSection(&TimeCounterSection));
-            int t1 = MyTimeCounter++;
-            HANDLES(LeaveCriticalSection(&TimeCounterSection));
-            PostMessage(HWindow, WM_USER_REFRESH_DIR, 0, t1);
-        }
     }
     else
     {
@@ -2059,7 +2059,14 @@ void CFilesWindow::AcceptChangeOnPathNotification(const char* path, BOOL includi
         }
     }
 
-    if (Is(ptDisk) && !refresh &&           // only disks have free space (archives do not and FS is handled elsewhere)
+    if (refresh)
+    {
+        HANDLES(EnterCriticalSection(&TimeCounterSection));
+        int t1 = MyTimeCounter++;
+        HANDLES(LeaveCriticalSection(&TimeCounterSection));
+        PostMessage(HWindow, WM_USER_REFRESH_DIR, 0, t1);
+    }
+    else if (Is(ptDisk) &&                  // only disks have free space (archives do not and FS is handled elsewhere)
         HasTheSameRootPath(path, GetPath()) // same root -> possible change in free disk space size
 
         /* && (!AutomaticRefresh ||  // commented out because notifications do not arrive for subdirectory changes on auto-refreshed paths causing the free space info to remain invalid

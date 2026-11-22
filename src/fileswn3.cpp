@@ -317,7 +317,7 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
         // Primary disk listing is W-based. Each emitted CFileData Name
         // allocation is bound to this exact source record, not its ACP alias.
         search = Salamander::FindFirstUnicodePanelFile(
-            fileName.data(), fileData, wideFileData);
+            GetDiskPathW(), fileData, wideFileData);
         if (search != INVALID_HANDLE_VALUE)
             HANDLES_ADD(__htFindFile, __hoFindFirstFile, search);
         if (search == INVALID_HANDLE_VALUE)
@@ -997,8 +997,8 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
         // file operations. Best-fit conversion can turn Unicode characters
         // into ordinary ASCII without any visible '?' marker, so scanning
         // only suspicious ANSI names is insufficient.
-        std::wstring unicodeDirectory;
-        if (Salamander::TryGetUnicodePanelDirectory(GetPath(), unicodeDirectory))
+        const auto& unicodeDirectory = GetDiskPathW();
+        if (!unicodeDirectory.empty())
         {
             DWORD unicodeError = ERROR_SUCCESS;
             if (!UnicodeDiskNames.Load(unicodeDirectory.c_str(), unicodeError))

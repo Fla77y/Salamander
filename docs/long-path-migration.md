@@ -487,6 +487,14 @@ require the following phases. Do not remove current `MAX_PATH` checks.
 
 ## Phase 2: Owned Unicode and long-path representation
 
+Disk panels keep an owned UTF-16 path alongside the legacy path. The native
+listing, directory monitor, search and file operations read the UTF-16 copy.
+Directory monitoring uses the full extended path on Windows when needed.
+Long directory navigation accepts the original UTF-16 row or clipboard path.
+The existing `Path` registry value is read and written as UTF-16, including
+paths saved by earlier versions. The panel still requires an exact legacy
+code-page representation before opening a path for its remaining ANSI callers.
+
 Introduce a dedicated UTF-16, dynamically sized representation for
 **filesystem paths** at the core boundary. Keep filenames (single components)
 and full absolute paths distinct; reject invalid input and respect the
@@ -510,6 +518,16 @@ Guard error paths, cancellation, partial copies, source/destination identity,
 reparse loops and permissions before enabling operations on long paths.
 
 ## Phase 4: Shell and plug-in compatibility
+
+`Ctrl+V` into a long disk-panel path accepts a Unicode `CF_HDROP`
+copy of up to 16 regular files and 16 MiB total using the native copy path.
+The operation checks all destination names before copying, preserves the
+source files and refuses overwrites. A cut selection can move one regular file
+atomically within the same volume. A multiple selection, cross-volume move,
+link creation, directories, reparse points and virtual clipboard items still
+require separate integration.
+Internal change notifications retain the full path when refreshing disk
+panels. The legacy plug-in notification interface still receives short paths.
 
 Audit shell integration, drag-and-drop, recycle bin, shortcut targets,
 archivers, viewer plug-ins, file operations, localization and persistence.
@@ -696,8 +714,14 @@ The original advanced Find dialog remains available via the
 
 The new implementation includes a W enumeration and dynamically owned
 directory/name paths, recursive name masks with optional exclusions, W list
-results, literal content scanning in UTF-8 and UTF-16LE (including across
-64-KiB blocks), cancellation, and no-overwrite W copy/move/rename actions.
+results, and literal content scanning in UTF-8, UTF-16LE and UTF-16BE
+across 64-KiB blocks. The `?` wildcard matches a supplementary Unicode
+character as one position. The search supports inclusive file size bounds in bytes and last-modified date
+bounds in local calendar days (`YYYY-MM-DD`), required or excluded file
+attributes, cancellation, and no-overwrite W copy/move/rename actions.
+Blank filter fields leave that bound open. A size
+filter excludes directory results. Both filters still search subdirectories
+when recursion is enabled.
 The selected result is rechecked before file actions. Clipboard paths use
 CF_UNICODETEXT; recycle is supported only for short fixed-local-drive files
 by the existing IFileOperation adapter and never silently becomes permanent
@@ -711,7 +735,7 @@ units, recursion, mask exclusions, UTF-8/UTF-16LE search, matches across
 64-KiB read blocks, cancellation, and rejection of relative paths.
 
 IMPORTANT: Full legacy feature parity is still incomplete. Advanced
-date/size/attribute filters, duplicate grouping, regular-expression grep,
+duplicate grouping, regular-expression grep,
 result refinement, shell context menu and drag-and-drop, and additional
 content encodings are not yet implemented in the new W search. The legacy
 dialog keeps them for short exact-ACP paths. Do not advertise these advanced
@@ -812,7 +836,7 @@ Remaining separate work is not disguised as a passing test:
 - Exercise plug-in and shell callback boundaries with each supported
   plug-in, including 7-Zip, Checksum, File Comparator and Batch Renamer.
   Existing static source gates and ABI checks are not real GUI integration.
-- Evaluate advanced search feature parity (date/size filters, duplicates,
+- Evaluate advanced search feature parity (duplicates,
   regex, refine, additional content encodings) as a separate migration
   rather than claiming that the native W search already implements them.
 - Verify local release/setup packages on a clean Windows host and check

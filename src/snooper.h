@@ -9,8 +9,8 @@
     extern HANDLE RefreshFinishedEvent;
     extern int SnooperSuspended;
 
-    void AddDirectory(CFilesWindow* win, const char* path, BOOL registerDevNotification);                           // add a new directory for the snooper
-    void ChangeDirectory(CFilesWindow* win, const char* newPath, BOOL registerDevNotification);                     // change of the specified directory
+    void AddDirectory(CFilesWindow* win, BOOL registerDevNotification);                                            // add the panel's current directory to the snooper
+    void ChangeDirectory(CFilesWindow* win, BOOL registerDevNotification);                                         // update the directory monitored for the panel
     void DetachDirectory(CFilesWindow* win, BOOL waitForHandleClosure = FALSE, BOOL closeDevNotifification = TRUE); // no need to search anymore
 
     BOOL InitializeThread();

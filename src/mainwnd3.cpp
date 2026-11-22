@@ -5,6 +5,7 @@
 #include "precomp.h"
 
 #include <shlwapi.h>
+#include <new>
 #undef PathIsPrefix // otherwise conflicts with CSalamanderGeneral::PathIsPrefix
 
 #include "htmlhelp.h"
@@ -512,12 +513,15 @@ void CMainWindow::PostChangeOnPathNotification(const char* path, BOOL includingS
     HANDLES(EnterCriticalSection(&DispachChangeNotifCS));
 
     // add this notification to the array (for later processing)
-    CChangeNotifData data;
-    lstrcpyn(data.Path, path, MAX_PATH);
-    data.IncludingSubdirs = includingSubdirs;
-    ChangeNotifArray.Add(data);
-    if (!ChangeNotifArray.IsGood())
-        ChangeNotifArray.ResetState(); // ignore errors (at worst we won't refresh)
+    try
+    {
+        ChangeNotifArray.push_back({path, includingSubdirs});
+    }
+    catch (const std::bad_alloc&)
+    {
+        HANDLES(LeaveCriticalSection(&DispachChangeNotifCS));
+        return;
+    }
 
     // post a request to distribute path change notifications
     HANDLES(EnterCriticalSection(&TimeCounterSection));
@@ -4496,25 +4500,18 @@ MENU_TEMPLATE_ITEM AddToSystemMenu[] =
                 NeedToResentDispachChangeNotif = TRUE;
             else
             {
-                char path[MAX_PATH];
-                BOOL includingSubdirs;
+                std::string path;
+                BOOL includingSubdirs = FALSE;
                 BOOL ok = TRUE;
                 while (1)
                 {
                     HANDLES(EnterCriticalSection(&DispachChangeNotifCS));
-                    if (ChangeNotifArray.Count > 0)
+                    if (!ChangeNotifArray.empty())
                     {
-                        CChangeNotifData* item = &ChangeNotifArray[ChangeNotifArray.Count - 1];
-                        strcpy(path, item->Path);
-                        includingSubdirs = item->IncludingSubdirs;
-                        ChangeNotifArray.Delete(ChangeNotifArray.Count - 1);
-                        if (!ChangeNotifArray.IsGood())
-                        {
-                            ChangeNotifArray.ResetState();
-                            ChangeNotifArray.DestroyMembers();
-                            ChangeNotifArray.ResetState();
-                            ok = FALSE;
-                        }
+                        auto& item = ChangeNotifArray.back();
+                        path.swap(item.Path);
+                        includingSubdirs = item.IncludingSubdirs;
+                        ChangeNotifArray.pop_back();
                     }
                     else
                         ok = FALSE;
@@ -4528,19 +4525,23 @@ MENU_TEMPLATE_ITEM AddToSystemMenu[] =
 
                     if (ok) // dispatch a change notification for 'path' with 'includingSubdirs'
                     {
-                        // dispatch the notification to all loaded plugins
-                        Plugins.AcceptChangeOnPathNotification(path, includingSubdirs);
+                        // The legacy plug-in ABI cannot safely consume long paths.
+                        const bool legacyPath = path.size() < MAX_PATH;
+                        if (legacyPath)
+                            Plugins.AcceptChangeOnPathNotification(path.c_str(), includingSubdirs);
 
-                        if (GetNonActivePanel() != NULL) // non-active panel first (due to timestamps of subdirectory changes on NTFS)
+                        CFilesWindow* inactive = GetNonActivePanel();
+                        if (inactive != NULL && (legacyPath || inactive->Is(ptDisk)))
                         {
-                            GetNonActivePanel()->AcceptChangeOnPathNotification(path, includingSubdirs);
+                            inactive->AcceptChangeOnPathNotification(path.c_str(), includingSubdirs);
                         }
-                        if (GetActivePanel() != NULL) // then the active panel
+                        CFilesWindow* active = GetActivePanel();
+                        if (active != NULL && (legacyPath || active->Is(ptDisk)))
                         {
-                            GetActivePanel()->AcceptChangeOnPathNotification(path, includingSubdirs);
+                            active->AcceptChangeOnPathNotification(path.c_str(), includingSubdirs);
                         }
 
-                        if (DetachedFSList->Count > 0)
+                        if (legacyPath && DetachedFSList->Count > 0)
                         {
                             // to optimize plugin entry/exit, the EnterPlugin/LeavePlugin section
                             // is moved out here (it is not inside the interface encapsulation)
@@ -4549,7 +4550,7 @@ MENU_TEMPLATE_ITEM AddToSystemMenu[] =
                             for (i = 0; i < DetachedFSList->Count; i++)
                             {
                                 CPluginFSInterfaceEncapsulation* fs = DetachedFSList->At(i);
-                                fs->AcceptChangeOnPathNotification(fs->GetPluginFSName(), path, includingSubdirs);
+                                fs->AcceptChangeOnPathNotification(fs->GetPluginFSName(), path.c_str(), includingSubdirs);
                             }
                             LeavePlugin();
                         }

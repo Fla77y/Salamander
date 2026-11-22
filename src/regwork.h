@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <string>
+
 // helper functions for convenient work with the Registry that avoid LOAD/SAVE configuration messages on errors
 BOOL OpenKeyAux(HWND parent, HKEY hKey, const char* name, HKEY& openedKey, BOOL quiet = TRUE);
 BOOL CreateKeyAux(HWND parent, HKEY hKey, const char* name, HKEY& createdKey, BOOL quiet = TRUE);
@@ -30,6 +32,7 @@ enum CRegistryWorkType
     rwtGetValue,
     rwtGetValue2,
     rwtSetValue,
+    rwtSetPanelPath,
     rwtDeleteValue,
     rwtGetSize,
 };
@@ -107,6 +110,8 @@ public:
     // For strings you can pass 'dataSize' == -1, the string length is calculated using the strlen function
     // returns success
     BOOL SetValue(HKEY key, const char* name, DWORD type, const void* data, DWORD dataSize);
+
+    BOOL SetPanelPath(HKEY key, const std::wstring& path);
 
     // deletes value 'name' from key 'key'; returns TRUE on success
     BOOL DeleteValue(HKEY key, const char* name);

@@ -168,7 +168,7 @@ CFilesWindow::WindowProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
         case DBT_DEVICEQUERYREMOVEFAILED:
         {
             //          TRACE_I("WM_DEVICECHANGE: DBT_DEVICEQUERYREMOVEFAILED");
-            ChangeDirectory(this, GetPath(), MyGetDriveType(GetPath()) == DRIVE_REMOVABLE);
+            ChangeDirectory(this, (HasLongDiskPath() ? GetPathDriveType() : MyGetDriveType(GetPath())) == DRIVE_REMOVABLE);
             return TRUE;
         }
 
@@ -476,7 +476,7 @@ CFilesWindow::WindowProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
             if (err == ERROR_SUCCESS)
             {
                 if (GetMonitorChanges()) // the snooper might have removed it from the list
-                    ChangeDirectory(this, GetPath(), MyGetDriveType(GetPath()) == DRIVE_REMOVABLE);
+                    ChangeDirectory(this, (HasLongDiskPath() ? GetPathDriveType() : MyGetDriveType(GetPath())) == DRIVE_REMOVABLE);
             }
             else
             {

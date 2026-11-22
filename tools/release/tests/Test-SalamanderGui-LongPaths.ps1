@@ -75,6 +75,8 @@ public static class SalamanderGuiNative
     private static extern bool CloseClipboard();
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr SetClipboardData(uint format, IntPtr handle);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+    private static extern uint RegisterClipboardFormat(string name);
     [DllImport("kernel32.dll", SetLastError = true)]
     private static extern IntPtr GlobalAlloc(uint flags, UIntPtr bytes);
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -86,21 +88,40 @@ public static class SalamanderGuiNative
 
     public static void SetClipboardUnicodeText(IntPtr owner, string value)
     {
-        if (owner == IntPtr.Zero) throw new ArgumentException("Owner HWND is required.", "owner");
         if (String.IsNullOrEmpty(value) || value.IndexOf('\0') >= 0)
             throw new ArgumentException("Expected nonempty UTF-16 text without embedded nulls.", "value");
         char[] characters = (value + "\0").ToCharArray();
-        int byteCount = checked(characters.Length * sizeof(char));
-        IntPtr memory = GlobalAlloc(0x0002, new UIntPtr((uint)byteCount)); // GMEM_MOVEABLE
-        if (memory == IntPtr.Zero) throw new InvalidOperationException("GlobalAlloc failed for clipboard text.");
+        byte[] bytes = new byte[checked(characters.Length * sizeof(char))];
+        Buffer.BlockCopy(characters, 0, bytes, 0, bytes.Length);
+        SetClipboardBytes(owner, 13, bytes); // CF_UNICODETEXT
+    }
+
+    public static void SetClipboardFileDrop(IntPtr owner, string path, bool cut)
+    {
+        if (String.IsNullOrEmpty(path) || path.IndexOf('\0') >= 0)
+            throw new ArgumentException("Expected a nonempty file path.", "path");
+        const int headerSize = 20;
+        byte[] names = Encoding.Unicode.GetBytes(path + "\0\0");
+        byte[] bytes = new byte[headerSize + names.Length];
+        bytes[0] = headerSize; // DROPFILES.pFiles
+        bytes[16] = 1; // DROPFILES.fWide
+        Buffer.BlockCopy(names, 0, bytes, headerSize, names.Length);
+        SetClipboardBytes(owner, 15, bytes, cut); // CF_HDROP
+    }
+
+    private static void SetClipboardBytes(IntPtr owner, uint format, byte[] bytes, bool cut = false)
+    {
+        if (owner == IntPtr.Zero) throw new ArgumentException("Owner HWND is required.", "owner");
+        IntPtr memory = GlobalAlloc(0x0002, new UIntPtr((uint)bytes.Length)); // GMEM_MOVEABLE
+        if (memory == IntPtr.Zero) throw new InvalidOperationException("GlobalAlloc failed for clipboard data.");
         bool clipboardOpened = false;
         bool transferred = false;
         try
         {
             IntPtr destination = GlobalLock(memory);
             if (destination == IntPtr.Zero)
-                throw new InvalidOperationException("GlobalLock failed for clipboard text.");
-            try { Marshal.Copy(characters, 0, destination, characters.Length); }
+                throw new InvalidOperationException("GlobalLock failed for clipboard data.");
+            try { Marshal.Copy(bytes, 0, destination, bytes.Length); }
             finally { GlobalUnlock(memory); }
 
             // Another process may briefly hold the clipboard (Windows error 5).
@@ -127,13 +148,41 @@ public static class SalamanderGuiNative
                     " attempts; last Win32 error " + openError);
             if (!EmptyClipboard())
                 throw new InvalidOperationException("EmptyClipboard failed: " + Marshal.GetLastWin32Error());
-            if (SetClipboardData(13, memory) == IntPtr.Zero) // CF_UNICODETEXT
-                throw new InvalidOperationException("SetClipboardData(CF_UNICODETEXT) failed: " + Marshal.GetLastWin32Error());
+            if (SetClipboardData(format, memory) == IntPtr.Zero)
+                throw new InvalidOperationException("SetClipboardData failed for format " + format + ": " + Marshal.GetLastWin32Error());
             transferred = true; // Windows owns the HGLOBAL now.
+            if (cut)
+                SetClipboardCutEffect();
         }
         finally
         {
             if (clipboardOpened) CloseClipboard();
+            if (!transferred) GlobalFree(memory);
+        }
+    }
+
+    private static void SetClipboardCutEffect()
+    {
+        uint format = RegisterClipboardFormat("Preferred DropEffect");
+        if (format == 0)
+            throw new InvalidOperationException("RegisterClipboardFormat failed for cut effect.");
+        IntPtr memory = GlobalAlloc(0x0002, new UIntPtr(sizeof(uint)));
+        if (memory == IntPtr.Zero)
+            throw new InvalidOperationException("GlobalAlloc failed for cut effect.");
+        bool transferred = false;
+        try
+        {
+            IntPtr address = GlobalLock(memory);
+            if (address == IntPtr.Zero)
+                throw new InvalidOperationException("GlobalLock failed for cut effect.");
+            try { Marshal.WriteInt32(address, 2); } // DROPEFFECT_MOVE
+            finally { GlobalUnlock(memory); }
+            if (SetClipboardData(format, memory) == IntPtr.Zero)
+                throw new InvalidOperationException("SetClipboardData failed for cut effect.");
+            transferred = true;
+        }
+        finally
+        {
             if (!transferred) GlobalFree(memory);
         }
     }
@@ -659,6 +708,14 @@ public static class SalamanderGuiNative
         SendChecked(window, 0x0111, new UIntPtr((uint)id), button);
     }
 
+    public static void SetFindCheckState(IntPtr window, uint pid, int id, uint state)
+    {
+        IntPtr child = VerifiedChild(window, pid, id);
+        SendChecked(child, 0x00F1, new UIntPtr(state), IntPtr.Zero); // BM_SETCHECK
+        if (SendChecked(child, 0x00F0, UIntPtr.Zero, IntPtr.Zero).ToInt64() != state)
+            throw new InvalidOperationException("Find checkbox did not retain the requested state");
+    }
+
     public static void PostFindButton(IntPtr window, uint pid, int id)
     {
         IntPtr button = VerifiedChild(window, pid, id);
@@ -881,7 +938,7 @@ public sealed class SalamanderGuiClipboardOwner : IDisposable
     private readonly object gate = new object();
     private IntPtr window = IntPtr.Zero;
     private uint nativeThreadId;
-    private string pendingText;
+    private Action<IntPtr> pendingWrite;
     private Exception pendingError;
     private Exception startupError;
     private bool disposed;
@@ -969,8 +1026,7 @@ public sealed class SalamanderGuiClipboardOwner : IDisposable
                 {
                     try
                     {
-                        SalamanderGuiNative.SetClipboardUnicodeText(
-                            window, pendingText);
+                        pendingWrite(window);
                     }
                     catch (Exception error) { pendingError = error; }
                     finally { completed.Set(); }
@@ -1021,11 +1077,21 @@ public sealed class SalamanderGuiClipboardOwner : IDisposable
     {
         if (String.IsNullOrEmpty(text))
             throw new ArgumentException("Expected nonempty clipboard text.", "text");
+        Publish(owner => SalamanderGuiNative.SetClipboardUnicodeText(owner, text));
+    }
+
+    public void SetFileDrop(string path, bool cut = false)
+    {
+        Publish(owner => SalamanderGuiNative.SetClipboardFileDrop(owner, path, cut));
+    }
+
+    private void Publish(Action<IntPtr> write)
+    {
         lock (gate)
         {
             if (disposed || !thread.IsAlive || window == IntPtr.Zero)
                 throw new ObjectDisposedException("SalamanderGuiClipboardOwner");
-            pendingText = text;
+            pendingWrite = write;
             pendingError = null;
             completed.Reset();
             if (!PostThreadMessage(nativeThreadId, WM_SET_CLIPBOARD,
@@ -1951,6 +2017,37 @@ function Test-UnicodeFindGui {
     # Act / Assert: recursive enumeration, two original W names, two
     # different content encodings and empty-result handling.
     Start-FindQuery -Mask '*.txt' -Content '' -ExpectedCount 2
+    $fileSize = [string]$findUtf8Bytes.Length
+    [SalamanderGuiNative]::SetFindText($script:findWindow, [uint32]$process.Id, 5119, $fileSize)
+    [SalamanderGuiNative]::SetFindText($script:findWindow, [uint32]$process.Id, 5120, $fileSize)
+    Start-FindQuery -Mask '*.txt' -Content '' -ExpectedCount 1
+    Select-VerifiedFindResult -ExpectedPath $findUtf8Path
+    [SalamanderGuiNative]::SetFindText($script:findWindow, [uint32]$process.Id, 5120, '18446744073709551616')
+    [SalamanderGuiNative]::ClickFindButton($script:findWindow, [uint32]$process.Id, 5107)
+    Assert-True ([SalamanderGuiNative]::ReadFindText($script:findWindow, [uint32]$process.Id, 5118) -like
+        'Enter a non-negative whole number*') 'Unicode Find rejects a file size beyond the unsigned 64-bit range'
+    [SalamanderGuiNative]::SetFindText($script:findWindow, [uint32]$process.Id, 5119, '')
+    [SalamanderGuiNative]::SetFindText($script:findWindow, [uint32]$process.Id, 5120, '')
+    [SalamanderGuiNative]::SetFindText($script:findWindow, [uint32]$process.Id, 5123, '2024-02-29')
+    [SalamanderGuiNative]::SetFindText($script:findWindow, [uint32]$process.Id, 5124, '2024-02-29')
+    Start-FindQuery -Mask '*.txt' -Content '' -ExpectedCount 1
+    Select-VerifiedFindResult -ExpectedPath $findUtf16Path
+    [SalamanderGuiNative]::SetFindText($script:findWindow, [uint32]$process.Id, 5124, '2024-02-30')
+    [SalamanderGuiNative]::ClickFindButton($script:findWindow, [uint32]$process.Id, 5107)
+    Assert-True ([SalamanderGuiNative]::ReadFindText($script:findWindow, [uint32]$process.Id, 5118) -like
+        'Enter a valid modification date*') 'Unicode Find rejects an invalid calendar date'
+    [SalamanderGuiNative]::SetFindText($script:findWindow, [uint32]$process.Id, 5123, '')
+    [SalamanderGuiNative]::SetFindText($script:findWindow, [uint32]$process.Id, 5124, '')
+    $originalAttributes = [IO.File]::GetAttributes($findUtf16Path)
+    [IO.File]::SetAttributes($findUtf16Path, $originalAttributes -bor [IO.FileAttributes]::Hidden)
+    [SalamanderGuiNative]::SetFindCheckState($script:findWindow, [uint32]$process.Id, 5130, 1)
+    Start-FindQuery -Mask '*.txt' -Content '' -ExpectedCount 1
+    Select-VerifiedFindResult -ExpectedPath $findUtf16Path
+    [SalamanderGuiNative]::SetFindCheckState($script:findWindow, [uint32]$process.Id, 5130, 0)
+    Start-FindQuery -Mask '*.txt' -Content '' -ExpectedCount 1
+    Select-VerifiedFindResult -ExpectedPath $findUtf8Path
+    [SalamanderGuiNative]::SetFindCheckState($script:findWindow, [uint32]$process.Id, 5130, 2)
+    [IO.File]::SetAttributes($findUtf16Path, $originalAttributes)
     Start-FindQuery -Mask '*.txt' -Content 'unique-utf8-probe' -ExpectedCount 1
     Select-VerifiedFindResult -ExpectedPath $findUtf8Path
 
@@ -2227,11 +2324,10 @@ function Save-FailureScreenshot {
     try {
         # Save only the app window; other desktop windows may contain private data.
         if ($null -eq $process -or $process.HasExited) { return }
-        $shotWindow = $mainWindowHandle
-        $foreground = [SalamanderGuiNative]::GetForegroundWindow()
+        $shotWindow = [SalamanderGuiNative]::GetForegroundWindow()
         [uint32]$ownerPid = 0
-        [void][SalamanderGuiNative]::GetWindowThreadProcessId($foreground, [ref]$ownerPid)
-        if ($ownerPid -eq [uint32]$process.Id) { $shotWindow = $foreground }
+        [void][SalamanderGuiNative]::GetWindowThreadProcessId($shotWindow, [ref]$ownerPid)
+        if ($ownerPid -ne [uint32]$process.Id) { return }
         $b = [SalamanderGuiNative+GuiRect]::new()
         if (-not [SalamanderGuiNative]::GetWindowRect($shotWindow, [ref]$b)) { return }
         $width = $b.Right - $b.Left
@@ -2307,6 +2403,8 @@ try {
         $findUtf16Bytes = [Text.Encoding]::Unicode.GetBytes('source unique-utf16-probe 大阪 😀')
         [IO.File]::WriteAllBytes($findUtf8Path, $findUtf8Bytes)
         [IO.File]::WriteAllBytes($findUtf16Path, $findUtf16Bytes)
+        [IO.File]::SetLastWriteTime($findUtf8Path, [datetime]::new(2024, 2, 28, 23, 59, 0))
+        [IO.File]::SetLastWriteTime($findUtf16Path, [datetime]::new(2024, 2, 29, 23, 59, 0))
     }
     if ($BaselineOnly) {
         # The baseline must also demonstrate that the automated keystroke
@@ -2487,7 +2585,28 @@ try {
     # A visible top-level window is not evidence that startup has finished.
     # Do not begin clipboard navigation or keyboard simulation until the
     # launched GUI process has reached its initial input-idle state.
-    if (-not $process.WaitForInputIdle(10000)) {
+    try {
+        $inputIdle = $process.WaitForInputIdle(10000)
+    }
+    catch {
+        $process.Refresh()
+        $waitError = $_.Exception.Message
+        [uint32]$owner = 0
+        [IntPtr]$probeResult = [IntPtr]::Zero
+        $windowThread = [SalamanderGuiNative]::GetWindowThreadProcessId($mainWindowHandle, [ref]$owner)
+        $inputIdle = -not $process.HasExited -and $windowThread -ne 0 -and $owner -eq $process.Id -and
+            [SalamanderGuiNative]::SendMessageTimeout($mainWindowHandle, [uint32]0,
+                [UIntPtr]::Zero, [IntPtr]::Zero, [uint32]0x0002,
+                [uint32]5000, [ref]$probeResult) -ne [IntPtr]::Zero
+        if (-not $inputIdle) {
+            $exitStatus = if ($process.HasExited) { "exit code $($process.ExitCode)" } else { 'process still running' }
+            $windowSummary = Get-ProcessWindowSummary -OwnerProcessId ([uint32]$process.Id)
+            throw ("Cannot verify startup responsiveness for PID {0} ({1}): {2}. Owned windows: {3}" -f
+                $process.Id, $exitStatus, $waitError, $windowSummary)
+        }
+        Write-Host 'GUI startup: verified WM_NULL response from the owned window after WaitForInputIdle failed.'
+    }
+    if (-not $inputIdle) {
         throw "Test Salamander did not become input-idle within 10 seconds (PID $($process.Id))."
     }
     $process.Refresh()
@@ -3239,6 +3358,33 @@ try {
     $longTargetFile = Join-Path $deep $shortSourceName
     Wait-Until { Test-Content $longTargetFile } 'F5 short source into long target'
     Assert-True ((Test-Content $longTargetFile) -and (Test-Content $shortSourceFile)) 'F5 short-to-long bytes intact at both paths'
+
+    $clipboardName = 'clipboard-東京-😀.txt'
+    $clipboardSource = Join-Path $destination $clipboardName
+    $clipboardTarget = Join-Path $deep $clipboardName
+    [IO.File]::WriteAllBytes($clipboardSource, $payload)
+    Go-ToPath $deep
+    Restore-FilePanelFocus -ExpectedPath $deep
+    $script:clipboardOwner.SetFileDrop($clipboardSource)
+    Send-Keys '^v'
+    Wait-Until {
+        $dialog = Get-TestDialog
+        if ($dialog) { throw "Unicode clipboard paste displayed an error: $dialog" }
+        (Test-Content $clipboardTarget) -and (Test-Content $clipboardSource)
+    } 'CF_HDROP copies a Unicode filename into a long panel path without changing the source'
+
+    $cutName = 'clipboard-cut-大阪-😀.txt'
+    $cutSource = Join-Path $destination $cutName
+    $cutTarget = Join-Path $deep $cutName
+    [IO.File]::WriteAllBytes($cutSource, $payload)
+    Restore-FilePanelFocus -ExpectedPath $deep
+    $script:clipboardOwner.SetFileDrop($cutSource, $true)
+    Send-Keys '^v'
+    Wait-Until {
+        $dialog = Get-TestDialog
+        if ($dialog) { throw "Unicode clipboard move displayed an error: $dialog" }
+        (Test-Content $cutTarget) -and -not [IO.File]::Exists($cutSource)
+    } 'CF_HDROP moves a cut Unicode file into a long same-volume path without changing its bytes'
 
     # ACT + ASSERT: a maximum-size single path component is not a long
     # absolute path. The filename must be preserved exactly, not truncated.

@@ -24,6 +24,7 @@
 #include "pwdmngr.h"
 #include "common/legacy_default_directory_registry.h"
 #include "common/saved_panel_path_registry.h"
+#include "common/win32_unicode_panel_name.h"
 
 //
 // ConfigVersion - version number of the loaded configuration
@@ -1360,7 +1361,11 @@ void CMainWindow::SavePanelConfig(CFilesWindow* panel, HKEY hSalamander, const c
         DWORD value;
         value = panel->HeaderLineVisible;
         SetValue(actKey, PANEL_HEADER_REG, REG_DWORD, &value, sizeof(DWORD));
-        SetValue(actKey, PANEL_PATH_REG, REG_SZ, panel->GetPath(), -1);
+        const std::wstring panelPath = panel->GetDiskPathW();
+        if (panelPath.empty())
+            SetValue(actKey, PANEL_PATH_REG, REG_SZ, panel->GetPath(), -1);
+        else
+            RegistryWorkerThread.SetPanelPath(actKey, panelPath);
         value = panel->GetViewTemplateIndex();
         SetValue(actKey, PANEL_VIEW_REG, REG_DWORD, &value, sizeof(DWORD));
         value = panel->SortType;
@@ -2398,7 +2403,7 @@ void CMainWindow::SaveConfig(HWND parent)
     }
 }
 
-void CMainWindow::LoadPanelConfig(std::string& panelPath, CFilesWindow* panel, HKEY hSalamander, const char* reg)
+void CMainWindow::LoadPanelConfig(std::wstring& panelPath, CFilesWindow* panel, HKEY hSalamander, const char* reg)
 {
     HKEY actKey;
     if (OpenKey(hSalamander, reg, actKey))
@@ -2533,13 +2538,15 @@ void LoadIconOvrlsInfo(const char* root)
 // Restore fixed-size legacy paths through the established recovery procedure.
 // Long paths must bypass it: the panel's extended-length navigation already
 // validates the complete path and never truncates it to MAX_PATH.
-static BOOL RestoreSavedPanelPath(CFilesWindow* panel, const std::string& savedPath)
+static BOOL RestoreSavedPanelPath(CFilesWindow* panel, const std::wstring& savedPath)
 {
-    if (savedPath.size() >= static_cast<std::size_t>(MAX_PATH - 2))
-        return panel->ChangePathToDisk(panel->HWindow, savedPath.c_str());
+    std::string legacy;
+    if (savedPath.size() >= MAX_PATH - 2 ||
+        !Salamander::TryMakeExactAnsiPanelPath(savedPath, legacy) || legacy.size() >= MAX_PATH - 2)
+        return panel->ChangeUnicodePathToDisk(panel->HWindow, savedPath);
 
     char legacyPath[MAX_PATH];
-    lstrcpyn(legacyPath, savedPath.c_str(), MAX_PATH);
+    lstrcpyn(legacyPath, legacy.c_str(), MAX_PATH);
     DWORD error, lastError;
     BOOL pathInvalid, cut;
     BOOL tryNet = TRUE;
@@ -3819,8 +3826,12 @@ BOOL CMainWindow::LoadConfig(BOOL importingOldConfig, const CCommandLineParams* 
 
         char systemDirectory[MAX_PATH];
         GetSystemDirectory(systemDirectory, MAX_PATH);
-        std::string leftPanelPath(systemDirectory);
-        std::string rightPanelPath(systemDirectory);
+        wchar_t wideSystemDirectory[MAX_PATH] = {};
+        const UINT systemDirectoryLength = GetSystemDirectoryW(wideSystemDirectory, MAX_PATH);
+        const std::wstring fallback = systemDirectoryLength > 0 && systemDirectoryLength < MAX_PATH
+            ? wideSystemDirectory : LeftPanel->GetDiskPathW();
+        std::wstring leftPanelPath(fallback);
+        std::wstring rightPanelPath(fallback);
         char sysDefDir[MAX_PATH];
         lstrcpyn(sysDefDir, DefaultDir[LowerCase[systemDirectory[0]] - 'a'], MAX_PATH);
         LoadPanelConfig(leftPanelPath, LeftPanel, salamander, SALAMANDER_LEFTP_REG);

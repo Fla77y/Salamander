@@ -24,6 +24,7 @@ extern "C"
 }
 #include "salshlib.h"
 #include "shellib.h"
+#include "common/win32_unicode_panel_name.h"
 
 //
 // ****************************************************************************
@@ -41,7 +42,7 @@ void CFilesWindow::HandsOff(BOOL off)
         }
         else
         {
-            ChangeDirectory((CFilesWindow*)this, GetPath(), MyGetDriveType(GetPath()) == DRIVE_REMOVABLE);
+            ChangeDirectory(this, (HasLongDiskPath() ? GetPathDriveType() : MyGetDriveType(GetPath())) == DRIVE_REMOVABLE);
             HANDLES(EnterCriticalSection(&TimeCounterSection));
             int t1 = MyTimeCounter++;
             HANDLES(LeaveCriticalSection(&TimeCounterSection));
@@ -90,53 +91,52 @@ void CFilesWindow::Execute(int index)
 
             const CFileData& dir = Dirs->At(index);
             const bool up = index == 0 && strcmp(dir.Name, "..") == 0;
-            std::string requested(GetPath());
+            std::wstring requested(GetDiskPathW());
             std::string focusName;
-            bool valid = true;
+            bool valid = !requested.empty();
 
-            if (up)
+            if (valid && up)
             {
                 // The parent path and the name to refocus are owned before
                 // ChangePathToDisk closes or replaces the current listing.
-                while (requested.size() > 3 && requested.back() == '\\')
+                while (requested.size() > 3 && requested.back() == L'\\')
                     requested.pop_back();
-                const std::size_t slash = requested.find_last_of('\\');
-                if (slash == std::string::npos || slash < 2 ||
+                const std::size_t slash = requested.find_last_of(L'\\');
+                if (slash == std::wstring::npos || slash < 2 ||
                     slash + 1 >= requested.size())
                     valid = false;
                 else
                 {
-                    focusName = requested.substr(slash + 1);
+                    Salamander::TryMakeExactAnsiPanelPath(requested.substr(slash + 1), focusName);
                     requested.resize(slash == 2 ? 3 : slash);
                     // Never escape a UNC share into a server-only path.
                     if (requested.size() > 2 &&
-                        requested[0] == '\\' && requested[1] == '\\')
+                        requested[0] == L'\\' && requested[1] == L'\\')
                     {
-                        const std::size_t serverEnd = requested.find('\\', 2);
-                        if (serverEnd == std::string::npos ||
+                        const std::size_t serverEnd = requested.find(L'\\', 2);
+                        if (serverEnd == std::wstring::npos ||
                             serverEnd + 1 >= requested.size())
                             valid = false;
                     }
                 }
             }
-            else
+            else if (valid)
             {
                 std::wstring originalName;
                 if ((dir.Attr & FILE_ATTRIBUTE_REPARSE_POINT) != 0 ||
-                    !UnicodeDiskNames.TryGetRow(dir.Name, originalName) ||
-                    !Salamander::IsExactAnsiName(dir.Name, originalName.c_str()))
-                    valid = false; // refuse ambiguous or lossy ACP directory aliases
+                    !UnicodeDiskNames.TryGetRow(dir.Name, originalName))
+                    valid = false;
                 else
                 {
-                    if (requested.back() != '\\')
-                        requested.push_back('\\');
-                    requested.append(dir.Name);
+                    if (requested.back() != L'\\')
+                        requested.push_back(L'\\');
+                    requested.append(originalName);
                 }
             }
 
             if (valid)
-                ChangePathToDisk(HWindow, requested.c_str(), -1,
-                                 up ? focusName.c_str() : NULL);
+                ChangeUnicodePathToDisk(HWindow, requested, -1,
+                                        focusName.empty() ? nullptr : focusName.c_str());
             else
                 MessageBoxW(HWindow,
                             L"The directory cannot be navigated without losing "
@@ -1736,7 +1736,7 @@ void CFilesWindow::InvalidateChangesInPanelWeHaveNewListing()
 BOOL CFilesWindow::ChangeLongPathToDisk(HWND parent, const char* path, int suggestedTopIndex,
                                        const char* suggestedFocusName, BOOL* noChange,
                                        BOOL refreshListBox, BOOL canForce, BOOL isRefresh,
-                                       int* failReason, int tryCloseReason)
+                                       int* failReason, int tryCloseReason, const std::wstring* nativePath)
 {
     if (failReason != NULL)
         *failReason = CHPPFR_INVALIDPATH;
@@ -1745,10 +1745,19 @@ BOOL CFilesWindow::ChangeLongPathToDisk(HWND parent, const char* path, int sugge
     if (path == NULL)
         return FALSE;
 
-    std::wstring extended;
+    const std::string legacyPath(path); // The current panel can replace its path during callbacks.
+    std::wstring directory, extended;
     DWORD error = ERROR_SUCCESS;
-    if (!Salamander::TryMakeExtendedLengthPathFromAnsi(path, extended, error))
+    if (nativePath)
+        directory = *nativePath;
+    else if (Is(ptDisk) && path == GetPath())
+        directory = GetDiskPathW();
+    else
+        Salamander::TryGetUnicodePanelDirectory(path, directory);
+    if (directory.empty() || !Salamander::TryMakeExtendedLengthPath(directory.c_str(), extended, error))
     {
+        if (error == ERROR_SUCCESS)
+            error = ERROR_NO_UNICODE_TRANSLATION;
         SalMessageBox(parent, GetErrorText(error), LoadStr(IDS_ERRORCHANGINGDIR),
                       MB_OK | MB_ICONEXCLAMATION);
         return FALSE;
@@ -1794,16 +1803,17 @@ BOOL CFilesWindow::ChangeLongPathToDisk(HWND parent, const char* path, int sugge
     }
 
     // An input pointer can alias GetPath(); SetPath may reallocate it.
-    const char requestedDrive = path[0];
-    const char requestedSeparator = path[1];
-    const BOOL samePath = Is(ptDisk) && lstrcmpiA(GetPath(), path) == 0;
+    const char requestedDrive = legacyPath[0];
+    const char requestedSeparator = legacyPath[1];
+    const BOOL samePath = Is(ptDisk) &&
+        CompareStringOrdinal(GetDiskPathW().c_str(), -1, directory.c_str(), -1, TRUE) == CSTR_EQUAL;
     if (!HasLongDiskPath())
         RefreshPathHistoryData();
     if (!isRefresh)
         MainWindow->CancelPanelsUI();
     CloseCurrentPath(parent, FALSE, detachFS, samePath, isRefresh, !samePath);
     SetPanelType(ptDisk);
-    SetPath(path);
+    SetPath(legacyPath.c_str(), &directory);
     if (noChange != NULL)
         *noChange = FALSE;
 
@@ -1822,6 +1832,23 @@ BOOL CFilesWindow::ChangeLongPathToDisk(HWND parent, const char* path, int sugge
     if (requestedSeparator == ':')
         ChangePathToDisk(parent, root, -1, NULL, NULL, TRUE, FALSE, FALSE);
     return FALSE;
+}
+
+BOOL CFilesWindow::ChangeUnicodePathToDisk(HWND parent, const std::wstring& directory,
+                                          int suggestedTopIndex, const char* suggestedFocusName)
+{
+    std::string legacyPath;
+    if (!Salamander::TryMakeExactAnsiPanelPath(directory, legacyPath))
+    {
+        MessageBoxW(parent, L"This directory cannot yet be opened by all parts of the file panel "
+                    L"because its name is outside the active Windows code page.",
+                    L"Change Directory", MB_OK | MB_ICONWARNING);
+        return FALSE;
+    }
+    if (directory.size() >= MAX_PATH - 2 || legacyPath.size() >= MAX_PATH - 2 || HasLongDiskPath())
+        return ChangeLongPathToDisk(parent, legacyPath.c_str(), suggestedTopIndex, suggestedFocusName,
+                                    nullptr, TRUE, FALSE, FALSE, nullptr, FSTRYCLOSE_CHANGEPATH, &directory);
+    return ChangePathToDisk(parent, legacyPath.c_str(), suggestedTopIndex, suggestedFocusName);
 }
 
 BOOL CFilesWindow::ChangePathToDisk(HWND parent, const char* path, int suggestedTopIndex,

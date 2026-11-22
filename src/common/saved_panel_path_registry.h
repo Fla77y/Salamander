@@ -3,7 +3,7 @@
 #pragma once
 
 #include <windows.h>
-#include <cstring>
+#include <cwchar>
 #include <string>
 
 namespace Salamander
@@ -15,37 +15,49 @@ enum class SavedPanelPathStatus
     Invalid
 };
 
-// Reads a saved ANSI panel path without imposing the legacy MAX_PATH limit.
+inline constexpr wchar_t SavedPanelPathValue[] = L"Path";
+inline constexpr DWORD MaxSavedPanelPathUnits = 32767;
+
+inline LONG WriteSavedPanelPath(HKEY key, const std::wstring& path)
+{
+    if (!key || path.size() < 3 || path.size() >= MaxSavedPanelPathUnits ||
+        path.find(L'\0') != std::wstring::npos)
+        return ERROR_INVALID_PARAMETER;
+    return RegSetValueExW(key, SavedPanelPathValue, 0, REG_SZ,
+                         reinterpret_cast<const BYTE*>(path.c_str()),
+                         static_cast<DWORD>((path.size() + 1) * sizeof(wchar_t)));
+}
+
+// REG_SZ already stores UTF-16, including when older builds wrote it via A APIs.
 // Invalid values never modify the fallback or truncate the stored path.
-inline SavedPanelPathStatus ReadSavedPanelPath(HKEY key, std::string& destination)
+inline SavedPanelPathStatus ReadSavedPanelPath(HKEY key, std::wstring& destination)
 {
     if (key == nullptr)
         return SavedPanelPathStatus::Invalid;
 
     DWORD type = REG_NONE;
     DWORD bytes = 0;
-    LONG result = RegQueryValueExA(key, "Path", nullptr, &type, nullptr, &bytes);
+    LONG result = RegQueryValueExW(key, SavedPanelPathValue, nullptr, &type, nullptr, &bytes);
     if (result == ERROR_FILE_NOT_FOUND)
         return SavedPanelPathStatus::Missing;
 
-    // The extended-length Win32 path limit is 32767 UTF-16 code units;
-    // permit two bytes per unit in a legacy multibyte ANSI value.
-    constexpr DWORD MaxRegistryPathBytes = 2 * 32767 + 1;
+    constexpr DWORD MaxRegistryPathBytes = MaxSavedPanelPathUnits * sizeof(wchar_t);
     if (result != ERROR_SUCCESS || type != REG_SZ ||
-        bytes < 4 || bytes > MaxRegistryPathBytes)
+        bytes < 4 * sizeof(wchar_t) || bytes > MaxRegistryPathBytes || bytes % sizeof(wchar_t))
         return SavedPanelPathStatus::Invalid;
 
-    std::string candidate(bytes, '\0');
+    std::wstring candidate(bytes / sizeof(wchar_t), L'\0');
     DWORD capacity = bytes;
-    result = RegQueryValueExA(key, "Path", nullptr, &type,
-                              reinterpret_cast<LPBYTE>(&candidate[0]), &capacity);
+    result = RegQueryValueExW(key, SavedPanelPathValue, nullptr, &type,
+                              reinterpret_cast<LPBYTE>(candidate.data()), &capacity);
+    const auto units = capacity / sizeof(wchar_t);
     if (result != ERROR_SUCCESS || type != REG_SZ ||
-        capacity < 4 || capacity > bytes ||
-        candidate[capacity - 1] != '\0' ||
-        memchr(candidate.data(), '\0', capacity - 1) != nullptr)
+        units < 4 || capacity > bytes || capacity % sizeof(wchar_t) ||
+        candidate[units - 1] != L'\0' ||
+        std::wmemchr(candidate.data(), L'\0', units - 1) != nullptr)
         return SavedPanelPathStatus::Invalid;
 
-    candidate.resize(capacity - 1);
+    candidate.resize(units - 1);
     destination.swap(candidate);
     return SavedPanelPathStatus::Loaded;
 }

@@ -5,6 +5,7 @@
 #pragma once
 
 #include <string>
+#include <vector>
 
 #define HOT_PATHS_COUNT 30
 
@@ -325,11 +326,9 @@ enum CMainWindowsHitTestEnum
 
 struct CChangeNotifData
 {
-    char Path[MAX_PATH];
+    std::string Path;
     BOOL IncludingSubdirs;
 };
-
-typedef TDirectArray<CChangeNotifData> CChangeNotifArray;
 
 //
 // ****************************************************************************
@@ -448,7 +447,7 @@ public:
     BOOL CaptionIsActive; // is the main window caption active?
 
     // variables related to sending notifications about path changes (both FS and disk paths)
-    CChangeNotifArray ChangeNotifArray;    // array of messages about path changes
+    std::vector<CChangeNotifData> ChangeNotifArray;
     CRITICAL_SECTION DispachChangeNotifCS; // critical section for work with ChangeNotifArray
     int LastDispachChangeNotifTime;        // time of the last message dispatch
     BOOL NeedToResentDispachChangeNotif;   // TRUE = WM_USER_DISPACHCHANGENOTIF must be posted again
@@ -534,7 +533,7 @@ public:
     void SaveConfig(HWND parent = NULL); // parent: NULL = MainWindow->HWindow
     BOOL LoadConfig(BOOL importingOldConfig, const CCommandLineParams* cmdLineParams);
     void SavePanelConfig(CFilesWindow* panel, HKEY hSalamander, const char* reg);
-    void LoadPanelConfig(std::string& panelPath, CFilesWindow* panel, HKEY hSalamander, const char* reg);
+    void LoadPanelConfig(std::wstring& panelPath, CFilesWindow* panel, HKEY hSalamander, const char* reg);
     void DeleteOldConfigurations(BOOL* deleteConfigurations, BOOL autoImportConfig,
                                  const char* autoImportConfigFromKey, BOOL doNotDeleteImportedCfg);
 

@@ -5,6 +5,7 @@
 #include "../../src/common/win32_long_path.h"
 #include "../../src/common/win32_long_directory.h"
 #include "../../src/common/win32_unicode_file_ops.h"
+#include "../../src/common/win32_unicode_clipboard_files.h"
 #include "../../src/common/win32_unicode_panel_name.h"
 
 #include <windows.h>
@@ -50,6 +51,14 @@ bool Reject(const std::wstring& input, DWORD expectedError)
 
 int main()
 {
+    std::string legacyProjection;
+    const std::wstring unicodeNavigation = L"C:\\folder_\u6771\u4EAC_\U0001F600";
+    const bool exactNavigation = Salamander::TryMakeExactAnsiPanelPath(unicodeNavigation, legacyProjection);
+    if (GetACP() == CP_UTF8 ? (!exactNavigation ||
+                             !Salamander::IsExactAnsiName(legacyProjection.c_str(), unicodeNavigation.c_str()))
+                           : (exactNavigation || !legacyProjection.empty()))
+        return Fail("panel navigation permits only an exact Windows code page projection");
+
     // Arrange / Act / Assert: syntactic transformation and invalid paths.
     std::wstring result;
     if (!Convert(L"C:\\folder\\name.txt", result) || result != L"\\\\?\\C:\\folder\\name.txt")
@@ -142,6 +151,45 @@ int main()
         directories.push_back(current);
     }
 
+    const auto nativeDirectory = current + L"\\\u6771\u4EAC_\U0001F600";
+    const auto nativeFile = nativeDirectory + L"\\\u0141\U0001F642.txt";
+    std::wstring nativeDirectoryExtended, nativeFileExtended;
+    if (!Convert(nativeDirectory, nativeDirectoryExtended) ||
+        !Convert(nativeFile, nativeFileExtended) ||
+        !CreateDirectoryW(nativeDirectoryExtended.c_str(), nullptr))
+        return Fail("create the native Unicode panel directory");
+    std::wstring watchPath;
+    if (!Salamander::TryMakeUnicodeDirectoryWatchPath(nativeDirectory, watchPath, error) ||
+        watchPath != nativeDirectoryExtended)
+        return Fail("prepare the complete Unicode notification path");
+    HANDLE watcher = FindFirstChangeNotificationW(watchPath.c_str(), FALSE, FILE_NOTIFY_CHANGE_FILE_NAME);
+    if (watcher == INVALID_HANDLE_VALUE)
+        return Fail("monitor the native Unicode panel directory past MAX_PATH");
+    HANDLE nativeFixture = CreateFileW(nativeFileExtended.c_str(), GENERIC_WRITE, 0,
+                                       nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (nativeFixture == INVALID_HANDLE_VALUE)
+        return Fail("create the native Unicode panel file");
+    CloseHandle(nativeFixture);
+    const DWORD watched = WaitForSingleObject(watcher, 5000);
+    FindCloseChangeNotification(watcher);
+    if (watched != WAIT_OBJECT_0)
+        return Fail("long-path directory monitoring reports a change");
+    WIN32_FIND_DATAA legacyRow{};
+    WIN32_FIND_DATAW nativeRow{};
+    HANDLE listing = Salamander::FindFirstUnicodePanelFile(nativeDirectory + L"\\", legacyRow, nativeRow);
+    if (listing == INVALID_HANDLE_VALUE)
+        return Fail("list the native Unicode panel directory past MAX_PATH");
+    bool foundNativeName = false;
+    do
+    {
+        if (wcscmp(nativeRow.cFileName, L"\u0141\U0001F642.txt") == 0)
+            foundNativeName = true;
+    } while (Salamander::FindNextUnicodePanelFile(listing, legacyRow, nativeRow));
+    FindClose(listing);
+    if (!foundNativeName || !DeleteFileW(nativeFileExtended.c_str()) ||
+        !RemoveDirectoryW(nativeDirectoryExtended.c_str()))
+        return Fail("native panel listing preserves Unicode in both directory and file name");
+
     // Act: create, write, read, enumerate, delete using explicit W APIs and
     // an extended-length path without changing Windows registry policy.
     std::wstring filename = current + L"\\Größe_東京_😀.txt";
@@ -199,6 +247,79 @@ int main()
     if (!distinctWriteOk)
         return Fail("write second distinct Unicode name");
 
+    const auto notificationPath = current + L"\\\u00C4nderung";
+    const auto notificationPanel = current + L"\\\u00E4nderung";
+    if (current.size() <= MAX_PATH ||
+        !Salamander::UnicodePanelPathAffected(notificationPath, notificationPanel + L"\\", false) ||
+        !Salamander::UnicodePanelPathAffected(notificationPath, notificationPanel + L"\\child", true) ||
+        !Salamander::UnicodePanelPathAffected(notificationPath + L"\\child", notificationPanel, false) ||
+        Salamander::UnicodePanelPathAffected(notificationPath, notificationPanel + L"-sibling", true) ||
+        Salamander::UnicodePanelPathAffected(notificationPath, notificationPanel + L"\\child", false))
+        return Fail("change notifications compare complete Unicode path components");
+
+    // A clipboard snapshot can mix ordinary absolute and extended paths.
+    DROPFILES drop{};
+    drop.pFiles = sizeof(drop);
+    drop.fWide = TRUE;
+    std::wstring dropNames = result;
+    dropNames.push_back(L'\0');
+    dropNames += distinctName;
+    dropNames.append(2, L'\0');
+    std::vector<unsigned char> dropBytes(sizeof(drop) + dropNames.size() * sizeof(wchar_t));
+    std::memcpy(dropBytes.data(), &drop, sizeof(drop));
+    std::memcpy(dropBytes.data() + sizeof(drop), dropNames.data(), dropNames.size() * sizeof(wchar_t));
+    std::vector<Salamander::Utf16DiskPath> pastedFiles;
+    if (Salamander::TryReadUnicodeClipboardFiles(dropBytes.data(), dropBytes.size() - sizeof(wchar_t),
+                                                  pastedFiles, error) || !pastedFiles.empty())
+        return Fail("incomplete clipboard file list must be rejected atomically");
+    if (!Salamander::TryReadUnicodeClipboardFiles(dropBytes.data(), dropBytes.size(), pastedFiles, error) ||
+        pastedFiles.size() != 2 || pastedFiles[0].Value() != std::u16string(filename.begin(), filename.end()))
+        return Fail("clipboard snapshot preserves the exact source paths");
+
+    const auto pastePath = current + L"\\paste-target";
+    std::wstring extendedPaste;
+    Salamander::Utf16DiskPath pasteTarget;
+    if (!Convert(pastePath, extendedPaste) || !CreateDirectoryW(extendedPaste.c_str(), nullptr) ||
+        !OwnPath(pastePath, pasteTarget))
+        return Fail("create long clipboard copy target");
+    std::size_t copied = 0;
+    if (Salamander::UnicodeClipboardTransferEffect(DROPEFFECT_COPY | DROPEFFECT_MOVE) != DROPEFFECT_NONE ||
+        Salamander::UnicodeClipboardTransferEffect(DROPEFFECT_MOVE | DROPEFFECT_SCROLL) != DROPEFFECT_MOVE ||
+        !Salamander::TryTransferUnicodeClipboardFiles(pastedFiles, pasteTarget, DROPEFFECT_COPY, copied, error) || copied != 2)
+        return Fail("copy both Unicode clipboard files into a long directory");
+
+    const auto firstCopy = extendedPaste + filename.substr(filename.find_last_of(L'\\'));
+    const auto secondCopy = extendedPaste + distinctName.substr(distinctName.find_last_of(L'\\'));
+    HANDLE clipboardCopyHandle = CreateFileW(firstCopy.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+                                            OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (clipboardCopyHandle == INVALID_HANDLE_VALUE)
+        return Fail("open clipboard copy by its exact Unicode name");
+    const bool copiedExactly = ReadFile(clipboardCopyHandle, actual, sizeof(actual), &read, nullptr) &&
+        read == sizeof(payload) && std::memcmp(actual, payload, sizeof(payload)) == 0;
+    CloseHandle(clipboardCopyHandle);
+    if (!copiedExactly || !DeleteFileW(firstCopy.c_str()) ||
+        Salamander::TryTransferUnicodeClipboardFiles(pastedFiles, pasteTarget, DROPEFFECT_COPY, copied, error) ||
+        copied != 0 || error != ERROR_FILE_EXISTS ||
+        GetFileAttributesW(firstCopy.c_str()) != INVALID_FILE_ATTRIBUTES)
+        return Fail("clipboard copy preserves bytes and checks all collisions before writing");
+    if (Salamander::TryTransferUnicodeClipboardFiles(pastedFiles, pasteTarget, DROPEFFECT_MOVE, copied, error) ||
+        copied != 0 || error != ERROR_NOT_SUPPORTED || GetFileAttributesW(result.c_str()) == INVALID_FILE_ATTRIBUTES)
+        return Fail("multi-file cut must leave every source intact");
+    const std::vector<Salamander::Utf16DiskPath> secondFileOnly{pastedFiles[1]};
+    if (Salamander::TryTransferUnicodeClipboardFiles(secondFileOnly, pasteTarget, DROPEFFECT_MOVE, copied, error) ||
+        copied != 0 || error != ERROR_FILE_EXISTS || GetFileAttributesW(extendedDistinct.c_str()) == INVALID_FILE_ATTRIBUTES)
+        return Fail("cut must preserve the source on collision");
+    const std::vector<Salamander::Utf16DiskPath> firstFileOnly{pastedFiles[0]};
+    if (!Salamander::TryTransferUnicodeClipboardFiles(firstFileOnly, pasteTarget, DROPEFFECT_MOVE, copied, error) ||
+        copied != 1 || GetFileAttributesW(result.c_str()) != INVALID_FILE_ATTRIBUTES ||
+        GetFileAttributesW(firstCopy.c_str()) == INVALID_FILE_ATTRIBUTES ||
+        !MoveFileW(firstCopy.c_str(), result.c_str()))
+        return Fail("move one cut file atomically to a long Unicode destination");
+    if (GetFileAttributesW(result.c_str()) == INVALID_FILE_ATTRIBUTES ||
+        GetFileAttributesW(extendedDistinct.c_str()) == INVALID_FILE_ATTRIBUTES ||
+        !DeleteFileW(secondCopy.c_str()) || !RemoveDirectoryW(extendedPaste.c_str()))
+        return Fail("clipboard copy retains both sources and cleans up its test fixture");
+
     // Maximum-length single filename (255 UTF-16 code units) beneath a
     // long path. This must remain distinct from the total path limit.
     const std::wstring maxName = L"東京" + std::wstring(249, L'a') + L".txt";
@@ -217,30 +338,12 @@ int main()
     // Arrange: the disk panel uses an ACP search-pattern adapter. Its
     // current input can be represented in ACP, but exceeds MAX_PATH.
     // Act: enumerate it through the real panel FindFirst adapter.
-    std::string longPanelPattern;
-    const std::wstring longWidePattern = current + L"\\*";
-    const int patternBytes = WideCharToMultiByte(
-        CP_ACP, 0, longWidePattern.c_str(), -1,
-        nullptr, 0, nullptr, nullptr);
-    if (patternBytes <= 0)
-        return Fail("encode long panel search pattern");
-    longPanelPattern.resize(static_cast<std::size_t>(patternBytes), '\0');
-    if (WideCharToMultiByte(CP_ACP, 0, longWidePattern.c_str(), -1,
-                            &longPanelPattern[0], patternBytes,
-                            nullptr, nullptr) != patternBytes)
-        return Fail("encode long panel search pattern without truncation");
-    longPanelPattern.pop_back();
-    // CP_ACP may be UTF-8: WC_NO_BEST_FIT_CHARS is not valid for that
-    // code page. Verify exact identity by round-trip instead.
-    if (!Salamander::IsExactAnsiName(longPanelPattern.c_str(),
-                                     longWidePattern.c_str()))
-        return Fail("long panel search pattern must not narrow lossy Unicode");
-    if (longPanelPattern.size() <= MAX_PATH)
-        return Fail("panel search pattern must exceed MAX_PATH");
+    if (current.size() <= MAX_PATH)
+        return Fail("panel directory must exceed MAX_PATH");
     WIN32_FIND_DATAA panelAnsiData = {};
     WIN32_FIND_DATAW panelWideData = {};
     HANDLE panelFind = Salamander::FindFirstUnicodePanelFile(
-        longPanelPattern.c_str(), panelAnsiData, panelWideData);
+        current, panelAnsiData, panelWideData);
     // Assert: the adapter must use a W extended-length search internally.
     if (panelFind == INVALID_HANDLE_VALUE)
         return Fail("W-backed panel enumeration of a long directory");

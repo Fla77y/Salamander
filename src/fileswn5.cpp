@@ -707,8 +707,8 @@ void CFilesWindow::FindFile()
         // names in ANSI MAX_PATH buffers. Use a separate W-owned result model
         // for physical disk search, retaining the advanced legacy dialog
         // as an explicit option only for representable short roots.
-        std::wstring wideRoot;
-        if (!Salamander::TryGetUnicodePanelDirectory(GetPath(), wideRoot))
+        const auto& wideRoot = GetDiskPathW();
+        if (wideRoot.empty())
         {
             MessageBoxW(HWindow,
                         L"The current panel path cannot be converted to a "
@@ -2438,8 +2438,8 @@ void CFilesWindow::RenameFile(int specialIndex)
             return;
         }
 
-        std::wstring directory;
-        if (!Salamander::TryGetUnicodePanelDirectory(GetPath(), directory))
+        const std::wstring directory = GetDiskPathW();
+        if (directory.empty())
         {
             SalMessageBox(HWindow, GetErrorText(ERROR_INVALID_NAME),
                           LoadStr(IDS_ERRORRENAMINGFILE), MB_OK | MB_ICONEXCLAMATION);
@@ -2490,9 +2490,8 @@ void CFilesWindow::RenameFile(int specialIndex)
             CFilesWindow* otherPanel = MainWindow->GetNonActivePanel();
             if (otherPanel != NULL && otherPanel->Is(ptDisk))
             {
-                std::wstring otherDirectory;
-                if (!Salamander::TryGetUnicodePanelDirectory(
-                        otherPanel->GetPath(), otherDirectory))
+                const auto& otherDirectory = otherPanel->GetDiskPathW();
+                if (otherDirectory.empty())
                     return;
 
                 const std::wstring currentFolder(

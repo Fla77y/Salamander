@@ -23,6 +23,26 @@ struct LongDirectoryEntry
     FILETIME lastWrite = {};
 };
 
+inline bool TryMakeUnicodeDirectoryWatchPath(const std::wstring& directory,
+                                             std::wstring& watchPath, DWORD& error)
+{
+    watchPath.clear();
+    error = ERROR_INVALID_PARAMETER;
+    if (directory.empty())
+        return false;
+
+    // The unprefixed Win32 API trims trailing dots/spaces. A final separator
+    // preserves the actual directory name, as in the legacy watcher.
+    std::wstring path = directory;
+    if (path.back() <= L' ' || path.back() == L'.')
+        path.push_back(L'\\');
+    if (path.size() >= MAX_PATH)
+        return TryMakeExtendedLengthPath(path.c_str(), watchPath, error);
+    watchPath.swap(path);
+    error = ERROR_SUCCESS;
+    return true;
+}
+
 // Enumerates one absolute filesystem directory. The existing Salamander panel
 // data model is still ANSI; callers must not truncate these entries to fit it.
 // An empty directory is a successful result with zero entries.

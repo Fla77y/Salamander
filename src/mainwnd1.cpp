@@ -281,7 +281,7 @@ BOOL CHotPathItems::Load1_52(HKEY hKey)
 // CMainWindow
 //
 
-CMainWindow::CMainWindow() : ChangeNotifArray(3, 5)
+CMainWindow::CMainWindow()
 {
     HANDLES(InitializeCriticalSection(&DispachChangeNotifCS));
     LastDispachChangeNotifTime = 0;
