@@ -8231,7 +8231,8 @@ unsigned ThreadWorkerBody(void* parameter)
                             Salamander::TryCompleteUnicodeMoveAfterCopy(
                                 widePaths->TypedSource, widePaths->TypedTarget,
                                 widePaths->SourceIdentity, widePaths->TargetIdentity,
-                                finalizeError);
+                                finalizeError, dlgData.CancelWorker,
+                                dlgData.WorkerNotSuspended);
                         if (!finished)
                         {
                             Error = TRUE;
