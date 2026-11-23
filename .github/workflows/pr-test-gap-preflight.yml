@@ -41,6 +41,7 @@ jobs:
             'Test-GuiConfig-Isolation.ps1',
             'Test-PluginCoverageInventory.ps1',
             'Test-TestGapTracker.ps1',
+            'Test-VS2026-ProjectMetadata.ps1',
             'Test-ProductVersion.ps1'
           )
           foreach ($test in $tests) {
