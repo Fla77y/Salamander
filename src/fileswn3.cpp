@@ -18,6 +18,7 @@
 #include "zip.h"
 #include "shiconov.h"
 #include "common/utf16_disk_path.h"
+#include "common/win32_unicode_panel_name.h"
 
 #include <vector>
 
@@ -130,14 +131,19 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
         }
         UseThumbnails = readThumbnails;
 
-        if (!HasLongDiskPath())
-            SetCurrentDirectory(GetPath()); // preserve legacy optimization for short paths
+        // A short Unicode parent can still be lossy in CP_ACP. It must not
+        // become the process working directory or a plug-in/icon loader path.
+        const bool needsNativeDirectory =
+            HasLongDiskPath() ||
+            !Salamander::IsExactAnsiName(GetPath(), GetDiskPathW().c_str());
+        if (!needsNativeDirectory)
+            SetCurrentDirectory(GetPath()); // preserve optimization for exact short paths
 
 #ifndef _WIN64
         BOOL isWindows64BitDir = Windows64Bit && WindowsDirectory[0] != 0 && IsTheSamePath(GetPath(), WindowsDirectory);
 #endif // _WIN64
 
-        if (!HasLongDiskPath())
+        if (!needsNativeDirectory)
             RefreshDiskFreeSpace(FALSE);
 
         Files->SetDeleteData(TRUE);
@@ -157,7 +163,7 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
 
         //--- getting drive type (we will not bother network drives with getting shares)
         UINT drvType = MyGetDriveType(GetPath());
-        BOOL testShares = !HasLongDiskPath() && drvType != DRIVE_REMOTE;
+        BOOL testShares = !needsNativeDirectory && drvType != DRIVE_REMOTE;
         if (testShares)
             Shares.PrepareSearch(GetPath());
         switch (drvType)
@@ -195,7 +201,7 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
         }
         }
 
-        if (HasLongDiskPath())
+        if (needsNativeDirectory)
         {
             // Legacy icon/thumbnail loaders build MAX_PATH-sized ANSI paths.
             // Use the built-in icon types until those asynchronous loaders
@@ -903,7 +909,7 @@ BOOL CFilesWindow::ReadDirectory(HWND parent, BOOL isRefresh)
             upDir = FALSE;
             *(fileNameEnd - 1) = 0; // it's not logical, but times ".." are from current directory
             if (!UNCRootUpDir)
-                search = HasLongDiskPath() ? INVALID_HANDLE_VALUE :
+                search = needsNativeDirectory ? INVALID_HANDLE_VALUE :
             HANDLES_Q(FindFirstFile(fileName.data(), &fileData));
             else
                 search = INVALID_HANDLE_VALUE;
