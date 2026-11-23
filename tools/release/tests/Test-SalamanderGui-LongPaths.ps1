@@ -302,6 +302,24 @@ public static class SalamanderGuiNative
             return false;
         return !String.Equals(name, new String(roundTrip, 0, units - 1), StringComparison.Ordinal);
     }
+    // Compare the entire Win32 path after a CP_ACP round-trip, not only
+    // the selected leaf. Unicode parents can be lossy even for ASCII files.
+    public static bool HasLossyAnsiPanelPath(string path)
+    {
+        if (String.IsNullOrEmpty(path)) return true;
+        int bytes = WideCharToMultiByte(0, 0, path, -1, null, 0, IntPtr.Zero, IntPtr.Zero);
+        if (bytes <= 1) return true;
+        byte[] encoded = new byte[bytes];
+        if (WideCharToMultiByte(0, 0, path, -1, encoded, bytes, IntPtr.Zero, IntPtr.Zero) != bytes)
+            return true;
+        int units = MultiByteToWideChar(0, 0, encoded, bytes, null, 0);
+        if (units <= 1) return true;
+        char[] roundTrip = new char[units];
+        if (MultiByteToWideChar(0, 0, encoded, bytes, roundTrip, units) != units)
+            return true;
+        return !String.Equals(path, new String(roundTrip, 0, units - 1), StringComparison.Ordinal);
+    }
+
     public static string GetLegacyFilenameAliasHex(string name)
     {
         if (String.IsNullOrEmpty(name)) throw new ArgumentException("Missing filename", "name");
@@ -3901,6 +3919,7 @@ try {
         [void][IO.Directory]::CreateDirectory($destination)
         [void][IO.Directory]::CreateDirectory($moveDir)
         $unicodeParent = Join-Path $source 'parent_東京_😀'
+        Assert-True ($unicodeParent.Length -lt 250) 'Unicode parent stays below MAX_PATH'
         [void][IO.Directory]::CreateDirectory($unicodeParent)
         $parentSourceName = 'plain-child.txt'
         $parentSourceFile = Join-Path $unicodeParent $parentSourceName
@@ -4533,6 +4552,11 @@ try {
     }
 
     if ($ShortUnicodeParentOnly) {
+        if (-not [SalamanderGuiNative]::HasLossyAnsiPanelPath($unicodeParent)) {
+            Write-Host 'SKIP: the current Windows ANSI code page preserves this complete Unicode parent path.'
+            $passed = $true
+            return
+        }
         # Test a short UTF-16 parent directory with a plain ASCII leaf:
         # name-only checks are insufficient to protect ANSI file actions.
         Send-Keys '{TAB}'
