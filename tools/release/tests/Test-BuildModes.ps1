@@ -152,11 +152,27 @@ try {
     if (Test-Path -LiteralPath $stale) { throw 'Clean build retained an obsolete artifact.' }
     Assert-Equal (($targets | Select-Object -Last 2) -join ',') '/t:Rebuild,/t:Rebuild' 'Clean target selection'
 
-    # Arrange/Act/Assert: destructive clean must reject the repository as a build root.
-    $rejected = $false
-    try { Assert-BuildDirectory -Repository $repositoryRoot -BuildRoot $repositoryRoot }
-    catch { $rejected = $true }
-    if (-not $rejected) { throw 'Unsafe build root was accepted.' }
+    # Arrange: only the dedicated .Build directory may live inside the checkout.
+    $localBuildRoot = Join-Path $repositoryRoot '.Build'
+    # Act / Assert: the repository-local output and the legacy external output are valid.
+    Assert-BuildDirectory -Repository $repositoryRoot -BuildRoot $localBuildRoot
+    Assert-BuildDirectory -Repository $repositoryRoot -BuildRoot $buildRoot
+
+    # Arrange: clean/rebuild must never target source, ancestors or nested output roots.
+    $unsafeRoots = @(
+        $repositoryRoot,
+        (Split-Path -Parent $repositoryRoot),
+        (Join-Path $repositoryRoot 'src'),
+        (Join-Path $localBuildRoot 'nested')
+    )
+    foreach ($unsafeRoot in $unsafeRoots) {
+        # Act
+        $rejected = $false
+        try { Assert-BuildDirectory -Repository $repositoryRoot -BuildRoot $unsafeRoot }
+        catch { $rejected = $true }
+        # Assert
+        if (-not $rejected) { throw "Unsafe build root was accepted: $unsafeRoot" }
+    }
 }
 finally {
     foreach ($directory in @($buildRoot, $repositoryRoot)) {
@@ -178,6 +194,22 @@ if (-not $sharedBuild.Contains('/t:Build') -or -not $sharedBuild.Contains('/t:Re
 if (-not $manager.Contains("'--build-delta'") -or -not $manager.Contains("'--build-clean'") -or
     -not $manager.Contains('Build-Setups -AlreadyBuilt:')) {
     throw 'Management CLI must wire incremental and clean modes to packaging.'
+}
+
+# Arrange: repository build output must be excluded from Git, without hiding sources.
+# Act
+& git -C $repository check-ignore --quiet -- '.Build/salamander/Debug_x64/salamand.exe'
+# Assert
+if ($LASTEXITCODE -ne 0) { throw 'Repository-local .Build output is not Git-ignored.' }
+
+# Arrange: both entry points must calculate the build directory from their checkout.
+# Act / Assert
+if (-not $manager.Contains("Join-Path `$repository '.Build'") -or
+    -not $pipeline.Contains("Join-Path `$repository '.Build'")) {
+    throw 'Manager and standalone packager must default to repository-local .Build.'
+}
+if (-not $pipeline.Contains('Assert-BuildDirectory -Repository $repository -BuildRoot $buildRootFull')) {
+    throw 'Standalone package pipeline must retain the guarded build-root contract.'
 }
 
 # Arrange/Act/Assert: self-updating must not continue with a stale loaded
