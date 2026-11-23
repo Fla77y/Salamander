@@ -87,9 +87,49 @@ VM-Snapshots bleiben ausdrücklich kontrollierte **Opt-in**-Prüfungen.
 Bei nicht erstellbarer 32.700er-Fixture den Win32-Fehler protokollieren;
 eine kürzere Fixture erfüllt den Grenzfall **nicht**.
 
+## Arbeitsfortschritt M0 – erste Teilaufgaben (23. November 2026)
+
+**Arbeitsbranch:** work/test-gap-m0-a0-up01 (auf bugfix/v5.2).
+Dies ist **kein** neuer grüner Testreferenzstand.
+Es wurden keine GUI-/Win32-Tests für diese neuen Dateien ausgeführt.
+
+- **A0-01, TEILBELEGT:** Neues
+  [Legacy-Verhaltens-/Konfigurationsinventar](Legacy-Verhalten-und-Konfiguration-5.2.md)
+  ordnet die bestehenden F2/F3/F5/F6/F8-, Ctrl+F-, Plugin- und
+  Konfigurationsbelege zu. Eine eigenständige Source-Regression
+  (**Test-LegacyUiSurfaceInventory.ps1**) schützt die derzeit **107**
+  expliziten Win32-Dialogressourcen und **4** Acceleratorgruppen
+  sowie kritische F2–F8-/Find-Kommandos gegen unbemerkten Wegfall.
+  Die Referenz ist der *grüne 5.2-Quellstand*, **nicht** eine
+  Original-5.0-UI-Vergleichsmessung; A0 bleibt offen.
+- **A0-02, TEILBELEGT:** Die nachgewiesenen 5.2-/5.0-Registry-Wurzeln,
+  Versionsmigration 105, vorhandenen Quell-/GUI-Tests und die noch
+  erforderlichen isolierten 5.0→5.2→5.0-Snapshots sind im
+  [Legacy-Verhaltensinventar](Legacy-Verhalten-und-Konfiguration-5.2.md)
+  einzeln erfasst. **Kein** echter VM-/Rollback-Test neu ausgeführt.
+- **UP-01, TEILBELEGT:** Die tatsächliche Solution enthält **35**
+  gleichnamige Top-Level-Plugin-Projekte; unter src/plugins liegen
+  **36** Plugin-Quellordner (ohne shared). **winscp** ist derzeit
+  nur als Quellordner gefunden, nicht als Projekt in der Lösung.
+  [Inventar und Abnahmematrix](Plugin-Inventar-und-Testmatrix-5.2.md),
+  machine-readable **plugin-source-inventory-baseline.json**,
+  read-only Build-/Staging-Report und **12 Operationsslots je Modul**
+  wurden ergänzt. **Test-PluginCoverageInventory.ps1** prüft
+  Quellvollständigkeit, falsche SPL-Pfade, doppelte Solution-Plugins
+  und den Report mit test-eigenen Dateien. Build-/Releasebestand und
+  reale Plugin-Funktionen sind **noch nicht nachgewiesen**.
+- Beide neuen PowerShell-Regressionsskripte sind für
+  **manage.cmd --test / --test-all** registriert. Sie sind statisch
+  integriert, **noch nicht tatsächlich unter Windows ausgeführt**.
+
+**Nächster Schritt nach dieser Quellbasis:** Neue Regressionen auf
+Windows ausführen; anschließend tatsächliche Built-/Staged-/Shipped-SPLs
+auf dem **selben** Commit nachweisen, pro Modul Funktionen
+und Unicode-/Langpfad-Grenzen klassifizieren.
+
 ## 3. A0 – Unveränderte Originalfunktionen und Benutzeroberfläche
 
-### [ ] A0-01 – Vollständiger Legacy-Verhaltenskatalog (**P0**, OFFEN)
+### [ ] A0-01 – Vollständiger Legacy-Verhaltenskatalog (**P0**, TEILBELEGT)
 - **Lücke:** Bisherige GUI-Szenarien beweisen nicht die Funktionsparität aller
   Menüs, Kommandos, Einstellungen, Tastenkombinationen und Plugins.
 - **Arbeit:** Version 5.0/Altverhalten gegen 5.2 inventarisieren;
@@ -113,7 +153,7 @@ eine kürzere Fixture erfüllt den Grenzfall **nicht**.
 
 ## 4. A1/A2 – Unicode und lange Pfade im gesamten Produkt
 
-### [ ] UP-01 – Vollständiges Produktions-/Plugin-Inventar (**P0**, OFFEN)
+### [ ] UP-01 – Vollständiges Produktions-/Plugin-Inventar (**P0**, TEILBELEGT)
 - **Lücke:** Keine lückenlose Prüfung jedes tatsächlich ausgelieferten
   Plugins und jedes UTF-16-/ANSI-Übergangs.
 - **Arbeit:** Aus Solution/Projektdateien, gebauter `.spl`-Liste und
