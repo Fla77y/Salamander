@@ -106,7 +106,7 @@ try {
     }
 }
 finally {
-    $results | Export-Csv -LiteralPath $summary -NoTypeInformation -Encoding utf8
+    $results | Export-Csv -LiteralPath $summary -Encoding utf8
     Write-Host "ViewUnicode repeatability summary: $summary"
     $results | Format-Table Iteration, Configuration, ExitCode, DurationSeconds, SurvivingProcesses -AutoSize |
         Out-String | Write-Host
