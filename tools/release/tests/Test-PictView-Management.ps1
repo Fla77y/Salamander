@@ -155,8 +155,8 @@ foreach ($imageFormat in @('Bmp','Png','Jpeg','Gif','Tiff','Ico')) {
 if (-not $hostText.Contains('[string]$ImageFormat') -or
     -not $hostText.Contains('$bitmap.Save($fixture, $imageCodec)') -or
     -not $hostText.Contains('[IO.File]::WriteAllBytes($fixture, $iconBytes)') -or
-    -not $managerText.Contains("'-ImageFormat', $imageFormat") -or
-    -not $managerText.Contains("if ($requestedSet.Contains('--test-pictview-host'))")) {
+    -not $managerText.Contains('''-ImageFormat'', $imageFormat') -or
+    -not $managerText.Contains('if ($requestedSet.Contains(''--test-pictview-host''))')) {
     throw 'PictView format host acceptance must use F3 with a real single-image fixture.'
 }
 Write-Host 'PASS: opt-in PictView F3 host smoke covers BMP, PNG, JPEG, GIF, TIFF and ICO.'
