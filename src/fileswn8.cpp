@@ -466,15 +466,28 @@ BOOL CFilesWindow::TryUnicodeMultiFileTransfer(CActionType type, CFilesWindow* t
     }
 
     std::size_t completed = 0;
+    bool attemptedCrossVolumeCopy = false;
     BeginSuspendMode();
     BeginStopRefresh();
     for (const Transfer& item : transfers)
     {
-        const bool succeeded = type == atCopy
+        bool succeeded = type == atCopy
             ? Salamander::TryCopyUnicodeFileNoOverwrite(
                 item.source, item.destination, error)
             : Salamander::TryMoveUnicodeFileNoOverwrite(
                 item.source, item.destination, error);
+        if (!succeeded && type == atMove && error == ERROR_NOT_SAME_DEVICE)
+        {
+            // The batch was preflighted as <=16 MiB total. For a different
+            // volume reuse the same identity-pinned, no-overwrite W transfer
+            // used by the clipboard. A failure may leave a published copy;
+            // never delete it without verifying the exact source again.
+            attemptedCrossVolumeCopy = true;
+            std::size_t moved = 0;
+            succeeded = Salamander::TryTransferUnicodeClipboardFiles(
+                {item.source}, targetDir, DROPEFFECT_MOVE, moved, error) &&
+                moved == 1;
+        }
         if (!succeeded)
             break;
         ++completed;
@@ -491,13 +504,21 @@ BOOL CFilesWindow::TryUnicodeMultiFileTransfer(CActionType type, CFilesWindow* t
 
     if (completed != transfers.size())
     {
-        wchar_t message[260];
-        swprintf_s(message, _countof(message),
-                   L"Unicode transfer stopped after %zu of %zu files "
-                   L"(Win32 error %lu). Earlier operations may have "
-                   L"completed. Refresh both panels; no existing "
-                   L"destination was overwritten.",
-                   completed, transfers.size(), error);
+        wchar_t message[380];
+        if (attemptedCrossVolumeCopy)
+            swprintf_s(message, _countof(message),
+                       L"Unicode transfer stopped after %zu of %zu files "
+                       L"(Win32 error %lu). A cross-volume copy may have "
+                       L"completed without source deletion. Inspect both "
+                       L"locations; no existing target was overwritten.",
+                       completed, transfers.size(), error);
+        else
+            swprintf_s(message, _countof(message),
+                       L"Unicode transfer stopped after %zu of %zu files "
+                       L"(Win32 error %lu). Earlier operations may have "
+                       L"completed. Refresh both panels; no existing "
+                       L"destination was overwritten.",
+                       completed, transfers.size(), error);
         MessageBoxW(HWindow, message, L"Partial Unicode batch transfer",
                     MB_OK | MB_ICONWARNING);
     }
