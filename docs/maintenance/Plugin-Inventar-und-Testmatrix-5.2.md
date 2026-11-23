@@ -39,6 +39,32 @@ Die Pfade aus **einem tatsächlich ausgeführten, aktuellen Build** verwenden, n
 
     pwsh -NoProfile -File .\tools\release\Invoke-PluginCoverageInventory.ps1 -BuiltDirectory '<frische-Build-Ausgabe>' -StagedDirectory '<frische-Staging-Ausgabe>' -ReportRoot (Join-Path $env:TEMP 'Salamander-Evidence') -RequireMatchingPayloads
 
+**PKG-01 – verschärfter Vorabvertrag (23.11.2026, noch nicht ausgeführt):**
+`-RequireMatchingPayloads` weist jetzt auch **zwei leere** SPL-Ausgabebäume
+zurück; mindestens ein wirklich gebautes und gestagtes SPL-Paar muss
+übereinstimmen. Über `-RequiredShippedModules` können bestimmte erwartete
+Module verbindlich vorgegeben werden. Fehlende, veränderte, doppelt
+angegebene oder ungültig benannte Pflichtmodule führen zum Abbruch.
+
+Die Paketpipeline ruft die Prüfung **für Debug und Release unmittelbar nach
+dem Staging und vor Archiv-/Installer-Erstellung** auf. Gegenwärtige
+Mindestmenge, gestützt auf die bereits bestehenden binären Plugin-
+Vertragstests: `7zip`, `checksum`, `filecomp`, `renamer`, `pictview`.
+Das ist **keine abschließende Positivliste** aller auszuliefernden Plugins.
+Beispiel für dieselbe Prüfung außerhalb der Paketpipeline:
+
+```powershell
+pwsh -NoProfile -File .\tools\release\Invoke-PluginCoverageInventory.ps1 `
+  -BuiltDirectory '<fresh-build-root>' -StagedDirectory '<fresh-stage-root>' `
+  -RequireMatchingPayloads `
+  -RequiredShippedModules 7zip,checksum,filecomp,renamer,pictview
+```
+
+Für leere Bäume, fehlende Pflichtmodule und doppelte Namen existieren neue
+synthetische Negativtests. Ein Windows-Ausführungsergebnis dieser neuen
+Prüfungen liegt noch nicht vor; die volle 35-Modul-Matrix, Nicht-SPL-Dateien
+und die saubere VM bleiben eigenständige offene Gates.
+
 **Zusätzliche SHA-256-Kontrolle:** Bei expliziter Angabe beider Verzeichnisse
 berechnet das Inventar für tatsächlich vorhandene SPL-Dateien zwei
 SHA-256-Hashes und klassifiziert **MATCH**, **HASH_MISMATCH**,
