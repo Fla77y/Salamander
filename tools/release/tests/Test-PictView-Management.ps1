@@ -100,6 +100,8 @@ Write-Host "PASS: PictView WIC codec regressions cover all $($testedExtensions.C
 foreach ($required in @(
     'TestDecodeFailuresAreAtomic',
     'TestInvalidFrameDoesNotReturnPixels',
+    'TestAnimatedGifFrameNavigation',
+    'second animated GIF frame has green pixels',
     'truncated WIC image',
     'missing WIC image',
     'invalid WIC filename',
