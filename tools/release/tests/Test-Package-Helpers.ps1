@@ -834,13 +834,20 @@ if ($multiTransfer -notmatch 'UnicodePanelNameCache' -or
     $multiTransfer -match 'ResolveUnicodePanelFileName\(') {
     throw 'F7: Unicode batch transfers must resolve alias uniqueness from bounded phase snapshots.'
 }
-# F2: until search results themselves own W identities, the legacy dialog
-# must reject a too-long starting directory rather than silently searching
-# a different truncated prefix.
-if ($findDialog1 -notmatch 'InitRootTooLong\s*=\s*TRUE' -or
-    $findDialog1 -notmatch 'if \(InitRootTooLong\)' -or
-    $findSearch -notmatch 'void SearchDirectory\(char \(&path\)\[MAX_PATH\]') {
-    throw 'F2: the legacy search-root limitation must fail explicitly.'
+# F2: the original Find dialog now searches full UTF-16 roots rather than
+# falling back to MAX_PATH ANSI buffers. Its Look in control must accept a
+# 32700-unit path (including escaped separators), but over-capacity initial
+# roots must still be rejected explicitly rather than silently truncated.
+$findHeader = Get-Content -LiteralPath (Join-Path $toolsDir '..\..\src\find.h') -Raw
+if ($findHeader -notmatch '(?m)^#define LOOKIN_TEXT_LEN\s+65536\b' -or
+    $findDialog1 -notmatch 'InitRootTooLong\s*=\s*Data\.LookInText\.size\(\)\s*>=\s*LOOKIN_TEXT_LEN' -or
+    $findDialog1 -notmatch 'if \(InitRootTooLong\)\s*Data\.LookInText\.clear\(\);' -or
+    $findDialog1 -notmatch 'void CFindDialog::StartSearch\(WORD command\)(?s:.*?)if \(InitRootTooLong\)' -or
+    $findSearch -notmatch 'static void SearchDirectory\(const std::wstring& root,' -or
+    $findSearch -notmatch 'TryResolveLegacyFindDirectory\(root, directory, error\)' -or
+    $findSearch -notmatch 'FindFirstFileW\(extended\.c_str\(\), &file\)' -or
+    $findSearch -notmatch 'FindNextFileW\(handle, &file\)') {
+    throw 'F2: legacy Find must search full UTF-16 roots and explicitly reject over-capacity input.'
 }
 
 # F6: copied files must be fully staged before atomic, no-replace publication.
