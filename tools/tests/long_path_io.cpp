@@ -47,6 +47,40 @@ bool Reject(const std::wstring& input, DWORD expectedError)
     return !Salamander::TryMakeExtendedLengthPath(input.c_str(), result, error) &&
            error == expectedError && result.empty();
 }
+
+// Observe which CopyFileExW callback handle refuses metadata queries. This
+// diagnostic never cancels copying or changes the production copy callback.
+struct CopyHandleProbe
+{
+    DWORD callbacks = 0;
+    bool sourceFailed = false;
+    bool destinationFailed = false;
+    DWORD sourceError = ERROR_SUCCESS;
+    DWORD destinationError = ERROR_SUCCESS;
+    DWORD sourceStream = 0;
+    DWORD destinationStream = 0;
+};
+
+DWORD CALLBACK ProbeCopyHandles(LARGE_INTEGER, LARGE_INTEGER, LARGE_INTEGER, LARGE_INTEGER,
+                                DWORD stream, DWORD, HANDLE source, HANDLE destination, LPVOID context)
+{
+    auto& probe = *static_cast<CopyHandleProbe*>(context);
+    ++probe.callbacks;
+    BY_HANDLE_FILE_INFORMATION sourceInfo{}, destinationInfo{};
+    if (!GetFileInformationByHandle(source, &sourceInfo) && !probe.sourceFailed)
+    {
+        probe.sourceFailed = true;
+        probe.sourceError = GetLastError();
+        probe.sourceStream = stream;
+    }
+    if (!GetFileInformationByHandle(destination, &destinationInfo) && !probe.destinationFailed)
+    {
+        probe.destinationFailed = true;
+        probe.destinationError = GetLastError();
+        probe.destinationStream = stream;
+    }
+    return PROGRESS_CONTINUE;
+}
 } // namespace
 
 int main()
@@ -316,6 +350,23 @@ int main()
     if (!Convert(pastePath, extendedPaste) || !CreateDirectoryW(extendedPaste.c_str(), nullptr) ||
         !OwnPath(pastePath, pasteTarget))
         return Fail("create long clipboard copy target");
+    // CopyFileExW chooses access rights for the callback handles. A separate
+    // disposable copy exposes those rights without changing the production
+    // identity-verification callback or its fail-closed behavior.
+    CopyHandleProbe handleProbe;
+    const auto probePath = extendedPaste + L"\\copy-handle-metadata-probe.tmp";
+    const BOOL probeCopied = CopyFileExW(result.c_str(), probePath.c_str(),
+        ProbeCopyHandles, &handleProbe, nullptr, COPY_FILE_FAIL_IF_EXISTS);
+    const DWORD probeCopyError = probeCopied ? ERROR_SUCCESS : GetLastError();
+    if (probeCopied && !DeleteFileW(probePath.c_str()))
+        return Fail("remove disposable CopyFileExW metadata probe");
+    if (!probeCopied || handleProbe.callbacks == 0)
+    {
+        std::fprintf(stderr, "FAIL: CopyFileExW handle probe (copyError=%lu, callbacks=%lu)\n",
+                     probeCopyError, handleProbe.callbacks);
+        return 1;
+    }
+
     std::size_t copied = 0;
     // Arrange / Assert: unsupported ambiguous drop effects must not trigger
     // an actual transfer or obscure its error when the copy below fails.
@@ -336,6 +387,14 @@ int main()
                      "FAIL: copy both Unicode clipboard files into a long directory "
                      "(transferSucceeded=%d, operationError=%lu, copied=%zu/2, GetLastError=%lu)\n",
                      transferSucceeded ? 1 : 0, error, copied, nativeError);
+        std::fprintf(stderr,
+                     "DIAGNOSTIC: CopyFileExW callback metadata "
+                     "(callbacks=%lu, sourceDenied=%d, sourceError=%lu, sourceStream=%lu, "
+                     "destinationDenied=%d, destinationError=%lu, destinationStream=%lu)\n",
+                     handleProbe.callbacks, handleProbe.sourceFailed ? 1 : 0,
+                     handleProbe.sourceError, handleProbe.sourceStream,
+                     handleProbe.destinationFailed ? 1 : 0,
+                     handleProbe.destinationError, handleProbe.destinationStream);
         return 1;
     }
 
