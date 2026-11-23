@@ -223,7 +223,13 @@ BOOL CFilesWindow::ClipboardPaste(BOOL onlyLinks, BOOL onlyTest, const char* pas
     // CM_CLIPPASTE tries file paste first, then uses ClipboardPastePath()
     // when the clipboard contains plain text. Keep the two operations distinct.
     const DWORD clipboardSequence = GetClipboardSequenceNumber();
-    const bool longTarget = HasLongDiskPath() || (pastePath != NULL && strlen(pastePath) >= MAX_PATH);
+    // Even a short destination parent can be an irreversible ACP alias.
+    // Never hand its bytes to the legacy clipboard/file-drop operation.
+    const bool lossyPanelDirectory =
+        Is(ptDisk) &&
+        !Salamander::IsExactAnsiName(GetPath(), GetDiskPathW().c_str());
+    const bool longTarget = HasLongDiskPath() || lossyPanelDirectory ||
+                            (pastePath != NULL && strlen(pastePath) >= MAX_PATH);
     bool longSource = false;
     if (!longTarget && Is(ptDisk) && !onlyLinks && !onlyTest && IsClipboardFormatAvailable(CF_HDROP))
     {
@@ -2174,7 +2180,9 @@ BOOL CFilesWindow::CopyFocusedNameToClipboard(CCopyFocusedNameModeEnum mode)
     // A Windows ACP best-fit mapping may silently change a disk name
     // without producing '?'. Consult the complete per-listing UTF-16
     // identity index, not a character heuristic.
-    if (Is(ptDisk) && (HasLongDiskPath() || UnicodeDiskNames.IsUnsafeAnsiName(focusedItem->Name)))
+    if (Is(ptDisk) && (HasLongDiskPath() ||
+                       !Salamander::IsExactAnsiName(GetPath(), GetDiskPathW().c_str()) ||
+                       UnicodeDiskNames.IsUnsafeAnsiName(focusedItem->Name)))
     {
         // The W primary enumeration binds the original UTF-16 name to the
         // row's heap-backed Name pointer. This remains unambiguous when
@@ -2304,7 +2312,9 @@ BOOL CFilesWindow::CopyCurrentPathToClipboard()
 {
     CALL_STACK_MESSAGE1("CFilesWindow::CopyCurrentPathToClipboard()");
 
-    if (HasLongDiskPath())
+    if (Is(ptDisk) &&
+        (HasLongDiskPath() ||
+         !Salamander::IsExactAnsiName(GetPath(), GetDiskPathW().c_str())))
     {
         return Salamander::TryCopyUnicodeNameToClipboard(MainWindow->HWindow, GetDiskPathW());
     }
