@@ -58,37 +58,13 @@ if ($RequireMatchingPayloads) {
         throw 'No matching staged SPL payloads; refusing an empty build/stage comparison.'
     }
 
-    # The source tree is an inventory, not an authoritative shipping list:
-    # optional projects and source-only plugins must not become mandatory
-    # merely because their directories exist.
+    # Only names explicitly designated for shipping become mandatory here;
+    # source folders without a project can remain intentionally unshipped.
     $required = [Collections.Generic.HashSet[string]]::new(
         [StringComparer]::OrdinalIgnoreCase)
     foreach ($name in $RequiredShippedModules) {
         if ([string]::IsNullOrWhiteSpace($name) -or
-            $name -cnotmatch '^[A-Za-z0-9][A-Za-z0-9_-]*}
-
-$inventory | Select-Object Plugin,SourceDirectory,SolutionProject,BuiltModule,StagedModule,PayloadStatus,Capabilities | Format-Table -AutoSize | Out-String | Write-Host
-
-$sourceOnly = @($inventory | Where-Object {
-    $_.SourceDirectory -and -not $_.SolutionProject
-})
-$noBuild = @($inventory | Where-Object {
-    $_.SolutionProject -and $_.BuiltModule -eq 'ABSENT'
-})
-Write-Host "Inventory: $($inventory.Count) modules, $($operations.Count) operation slots; source-only=$($sourceOnly.Count), project-without-build=$($noBuild.Count)."
-Write-Warning 'NOT_ASSESSED / NOT_TESTED entries are open tests, never PASS results.'
-
-if (-not [string]::IsNullOrWhiteSpace($ReportRoot)) {
-    # Never overwrite an existing report, even if the caller chooses a
-    # non-disposable parent. The GUID directory is owned by this invocation.
-    $report = Join-Path $ReportRoot (
-        'Salamander-PluginCoverage-' + [Guid]::NewGuid().ToString('N'))
-    [void][IO.Directory]::CreateDirectory($report)
-    $inventory | Export-Csv -LiteralPath (Join-Path $report 'plugins.csv') -NoTypeInformation -Encoding UTF8
-    $operations | Export-Csv -LiteralPath (Join-Path $report 'operations.csv') -NoTypeInformation -Encoding UTF8
-    Write-Host "Generated read-only inventory reports: $report"
-}
-) {
+            $name -cnotmatch '^[A-Za-z0-9][A-Za-z0-9_-]*$') {
             throw "Invalid required plug-in name: '$name'"
         }
         if (-not $required.Add($name)) {
