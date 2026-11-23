@@ -41,8 +41,10 @@ try {
         throw 'Refusing to reuse an existing registry test key.'
     }
 
-    $digest = New-IsolatedLegacyConfigCanary -TestConfigurationKey $root
+    # The GUID namespace belongs to this invocation even if seeding fails
+    # halfway through; cleanup must then remove that partial fixture.
     $created = $true
+    $digest = New-IsolatedLegacyConfigCanary -TestConfigurationKey $root
     if ($digest -cnotmatch '^[0-9A-F]{64}$') {
         throw 'Legacy registry canary SHA-256 fingerprint is invalid.'
     }
