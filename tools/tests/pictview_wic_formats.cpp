@@ -227,20 +227,20 @@ const FormatCase kFormats[] = {
 
 // A rejected read must clear output from the preceding successful decode.
 // This includes an explicitly reset frame count for callers reusing it.
-bool TestInvalidFrameDoesNotReturnPixels(const std::wstring& path)
+bool TestInvalidFrameDoesNotReturnPixels(const std::wstring& path, UINT expectedFrames = 1)
 {
     pictview::wic::DecodedImage image;
     UINT frameCount = 0;
     HRESULT hr = pictview::wic::DecodeFrame(path.c_str(), 0, image, &frameCount);
-    if (FAILED(hr) || frameCount != 1 || image.bgra.empty())
+    if (FAILED(hr) || frameCount != expectedFrames || image.bgra.empty())
     {
         std::fprintf(stderr, "FAIL: prepare out-of-range WIC frame regression\n");
         return false;
     }
 
-    // Act / Assert: all test images have exactly one frame.
+    // Act / Assert: the first nonexistent frame must fail for this image.
     frameCount = 99;
-    hr = pictview::wic::DecodeFrame(path.c_str(), 1, image, &frameCount);
+    hr = pictview::wic::DecodeFrame(path.c_str(), expectedFrames, image, &frameCount);
     if (SUCCEEDED(hr) || frameCount != 0 || image.width != 0 ||
         image.height != 0 || image.stride != 0 || !image.bgra.empty())
     {
@@ -333,7 +333,7 @@ bool TestAnimatedGifFrameNavigation(TestFixture& fixture)
     if (!first || !second)
         std::fprintf(stderr, "FAIL: second animated GIF frame has green pixels\n");
     return first && second && ReadFixtureBytes(path, after) && before == after &&
-           TestInvalidFrameDoesNotReturnPixels(path);
+           TestInvalidFrameDoesNotReturnPixels(path, 2);
 }
 
 bool TestFormat(TestFixture& fixture, const FormatCase& format)
