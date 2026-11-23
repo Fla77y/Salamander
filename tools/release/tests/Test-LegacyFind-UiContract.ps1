@@ -130,4 +130,27 @@ if ($viewerCopyAssert -notmatch '(?s)catch\s*\{.*?if \(\$_.Exception.Message -cn
 }
 Write-Host 'PASS: failed Viewer Copy distinguishes unchanged clipboard, mismatched text and lost viewer without replay.'
 
+
+# QA-03: the targeted ViewUnicode reliability runner must preserve per-run
+# logs, a machine-readable summary, binary identity, and orphan detection.
+# A single successful rerun does not establish stability.
+$reliabilityPath = Join-Path $PSScriptRoot 'Invoke-LegacyViewerReliability.ps1'
+if (-not (Test-Path -LiteralPath $reliabilityPath -PathType Leaf)) {
+    throw 'QA-03 ViewUnicode repeatability runner missing.'
+}
+$reliabilitySource = Get-Content -LiteralPath $reliabilityPath -Raw
+foreach ($required in @(
+    '[ValidateRange(1, 20)]', 'Build-IsolatedGuiTest.ps1',
+    'Get-FileHash -LiteralPath $binary', 'Get-Process salamand',
+    '-IsolatedConfiguration', '-LegacyFindScenario ViewUnicode',
+    'Tee-Object -FilePath $log', 'Export-Csv -LiteralPath $summary',
+    'SurvivingProcesses', 'SourceSha', 'BinarySha256',
+    'if ($failed -or $orphaned)', 'exit 1'
+)) {
+    if (-not $reliabilitySource.Contains($required)) {
+        throw "QA-03 repeatability runner lacks contract: $required"
+    }
+}
+Write-Host 'PASS: targeted ViewUnicode reliability runner records independent pass/fail evidence.'
+
 Write-Host 'PASS: --test-all dispatches isolated, automatically discovered Legacy Find GUI scenarios.'
