@@ -20,6 +20,8 @@ namespace Salamander
 // one to an unconverted A API fails instead of accessing a best-fit alias.
 struct WorkerCopyPaths
 {
+    Utf16DiskPath TypedSource;
+    Utf16DiskPath TypedTarget;
     std::wstring Source;
     std::wstring Target;
     std::wstring SourceExtended;
@@ -96,6 +98,8 @@ public:
         try
         {
             std::unique_ptr<WorkerCopyPaths> pair(new WorkerCopyPaths);
+            pair->TypedSource = source;
+            pair->TypedTarget = target;
             pair->Source.assign(source.Value().begin(), source.Value().end());
             pair->Target.assign(target.Value().begin(), target.Value().end());
             if (!TryMakeExtendedLengthPath(pair->Source.c_str(), pair->SourceExtended, error) ||
