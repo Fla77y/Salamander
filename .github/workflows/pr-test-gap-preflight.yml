@@ -10,6 +10,12 @@ on:
       - 'tools/release/**'
       - 'docs/maintenance/**'
       - '.github/workflows/pr-test-gap-preflight.yml'
+  pull_request:
+    branches: ["**"]
+    paths:
+      - 'tools/release/**'
+      - 'docs/maintenance/**'
+      - '.github/workflows/pr-test-gap-preflight.yml'
   workflow_dispatch:
 
 permissions:
