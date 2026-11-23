@@ -1125,6 +1125,29 @@ if ($driverText -notmatch 'FindUnicodeNotice' -or
 }
 Write-Host 'PASS: Unicode Find GUI scenarios cover shell/legacy/recycle refusals, stale hits and active worker cancellation.'
 
+# A successful W-shell recycle of a GUID-scoped disposable file is
+# supported on some Windows configurations. It must be verified by exact
+# Recycle Bin identity; refusal must preserve bytes. The automatic suite must
+# not run the opt-in shell Restore verb.
+foreach ($required in @(
+    'findRecyclePath', 'findRecycleBytes',
+    'File moved to the Recycle Bin.',
+    'Find-VerifiedRecycledFixtureItem -RecycleFolder',
+    'Recycle unsupported or refused',
+    'Unicode Find recycle refusal preserves test file bytes',
+    'Unicode Find recycling preserves unrelated original file bytes'
+)) {
+    if (-not $findGui.Contains($required)) {
+        throw "Unicode Find recycle acceptance lacks safety contract: $required"
+    }
+}
+if ($findGui.Contains('Restore-VerifiedRecycledFixtureItem')) {
+    throw 'The automatic Unicode Find GUI scenario must not invoke the opt-in Recycle Bin restore verb.'
+}
+Write-Host 'PASS: Unicode Find accepts only verified Recycle Bin transfer or byte-preserving refusal.'
+
+
+
 
 # Explicit acceptance gates must remain separate from --test-all until the
 # native shell-restore and built plug-in checks have passed on real Windows.
