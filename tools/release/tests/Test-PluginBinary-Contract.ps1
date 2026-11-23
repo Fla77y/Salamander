@@ -39,6 +39,7 @@ if ([string]::IsNullOrWhiteSpace($dumpbin)) {
 $requiredExports = @('SalamanderPluginEntry', 'SalamanderPluginGetReqVer')
 $requiredPluginNames = @('7zip', 'checksum', 'filecomp', 'renamer', 'pictview')
 $inventory = @(Get-SalamanderPluginInventory -Repository $repository -BuiltDirectory $BuildDirectory)
+Assert-SalamanderBuiltPluginCompleteness -Inventory $inventory
 $builtPlugins = @($inventory | Where-Object { $_.BuiltModule -ceq 'PRESENT' })
 if ($builtPlugins.Count -eq 0) {
     throw 'No built SPL binaries available for ABI verification.'
