@@ -870,13 +870,50 @@ function Test-LegacyFindFocus {
 function Assert-LegacyViewerContents {
     param([IntPtr]$Viewer, [uint32]$OwnerPid, [string]$Path, [string]$Expected)
 
-    Set-ClipboardText 'Viewer has not copied any bytes'
+    $sentinel = 'Viewer has not copied any bytes'
+    Set-ClipboardText $sentinel
     $sequence = [SalamanderGuiNative]::GetClipboardSequenceNumber()
     [SalamanderGuiNative]::LegacyResultViewerCommand($Viewer, $OwnerPid, $Path, 6066)
     [SalamanderGuiNative]::LegacyResultViewerCommand($Viewer, $OwnerPid, $Path, 6062)
-    Wait-Until {
-        [SalamanderGuiNative]::GetClipboardSequenceNumber() -ne $sequence -and (Get-ClipboardText) -ceq $Expected
-    } 'Viewer copied the exact bytes from the named result'
+
+    $lastSequence = $sequence
+    $clipboardKind = 'not-read'
+    $observedLength = -1
+    try {
+        Wait-Until {
+            $lastSequence = [SalamanderGuiNative]::GetClipboardSequenceNumber()
+            if ($lastSequence -eq $sequence) { return $false }
+            $actual = Get-ClipboardText
+            $observedLength = $actual.Length
+            if ($actual -ceq $Expected) {
+                $clipboardKind = 'expected'
+                return $true
+            }
+            $clipboardKind = if ($actual -ceq $sentinel) { 'sentinel' }
+                             elseif ($actual.Length -eq 0) { 'empty' }
+                             else { 'different' }
+            return $false
+        } 'Viewer copied the exact bytes from the named result'
+    }
+    catch {
+        if ($_.Exception.Message -cne 'Timeout waiting for Viewer copied the exact bytes from the named result') {
+            throw
+        }
+        # Window ownership is verified again only for diagnostics. Never
+        # replay Copy/Select All or expose the clipboard text in the log.
+        $viewerStillMatches = 'unknown'
+        try {
+            $matched = [SalamanderGuiNative]::FindLegacyResultViewer($OwnerPid, $Path)
+            $viewerStillMatches = [string]($matched -eq $Viewer)
+        }
+        catch {
+            $viewerStillMatches = 'lookup-failed'
+        }
+        $clipboardChanged = $lastSequence -ne $sequence
+        throw ('Viewer Copy timed out: ClipboardSequenceChanged={0}; ClipboardTextKind={1}; ' +
+               'ObservedUtf16Length={2}; ExpectedUtf16Length={3}; ViewerStillMatches={4}.') -f
+            $clipboardChanged, $clipboardKind, $observedLength, $Expected.Length, $viewerStillMatches
+    }
     Write-Host 'PASS: Viewer copied the exact bytes from the named result'
 }
 
