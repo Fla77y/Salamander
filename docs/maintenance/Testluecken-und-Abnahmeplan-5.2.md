@@ -311,6 +311,18 @@ Paketintegration `680615300407e66b58fb970819511bbba2d1d314`,
 Sidecar-Abgleich `46b18fe15004ec24b2f58506382ce6e8167a7872`,
 ABI-Vollständigkeit `6a17556190825538faacd2ed22e202acdfd7c651`.
 
+**PKG-01 – versteckte Plugin-Payloads (zusätzlicher Negativfall):**
+Der SPL-Scanner und der Vergleich der gebauten Laufzeitbegleitdateien
+berücksichtigen jetzt ausdrücklich auch Dateien mit `Hidden`-Attribut
+(`Get-ChildItem -Force`). Ein synthetisch verstecktes Stage-SPL
+muss in der Inventarliste als `MISSING_BUILT` erscheinen und darf
+nicht unbemerkt den Paketvertrag passieren. Die Registry-Canary-
+Skripte wurden ebenfalls in die zentrale PowerShell-Parserprüfung
+aufgenommen. **Nur statisch kontrolliert, Windows-Test ausstehend.**
+Commits `3033bf3eabbe380137fcb773ffcd579f88f2f2e4`,
+`b334aed524174a39110da4146408744871faa740`,
+`9489c961c9152cc3a6fad80a51b5554f611cae98`.
+
 **Nächster Schritt nach dieser Quellbasis:** Neue Regressionen auf
 Windows ausführen; anschließend tatsächliche Built-/Staged-/Shipped-SPLs
 auf dem **selben** Commit nachweisen, pro Modul Funktionen
