@@ -515,6 +515,40 @@ Quellentfernung sowie Zielkollision ohne Überschreibung.
 Fehlt das zweite Volume, meldet er `SKIP`, nicht `PASS`.
 **Ausführung unter Windows noch offen.**
 
+**Weitere C++-Implementierung (24.11.2026, noch ohne Windows-Build):**
+\`TryUnicodeSingleDirectoryCopy\` führt einen eindeutig über die
+UTF-16-Verzeichnisliste identifizierten Einzelordner durch die
+bereits vorhandene stagingbasierte \`TryTransferUnicodeClipboardFiles\`-
+Routine. Nur Unicode-/Langpfadfälle werden umgeleitet; gewöhnliche
+kurze ANSI-Verzeichnisoperationen behalten den ursprünglichen Dialog
+und die vollständige Altlogik. Der synchrone Weg bleibt auf
+16 MiB Dateiinhalte und maximal 1.024 Verzeichniseinträge begrenzt;
+nicht veröffentlichte Temp-Verzeichnisse müssen bei Fehlern
+gegebenenfalls geprüft werden. Ein eindeutig auflösbares,
+im ANSI-Panel nicht exakt darstellbares Unicode-Verzeichnis kann
+nun auch per F6 auf demselben Volume verschoben werden; die
+individuelle W-Verifikation der Identität bleibt erforderlich.
+GUI-Regression: der bestehende isolierte
+\`-ShortUnicodeDirectoryRenameOnly\`-Fall führt jetzt F2,
+native F5-Verzeichniskopie und F6-Verzeichnisverschiebung aus.
+Produkt-Commit \`070f480d5370ff68711693d13882a4207aa69a4a\`.
+
+Bei bis zu 16 vorab geprüften regulären Dateien und insgesamt
+maximal 16 MiB kann Unicode-F6 im Mehrfachtransfer den
+Copy-and-Delete-Fallback für verschiedene Volumes verwenden,
+mit expliziter Teiltransferdiagnose. Ein optionaler echter
+Zwei-Volume-Nativtest prüft zwei Dateien, identische Bytes und
+die vollständige Batch-Zielkollisionsprüfung.
+Produkt-Commit \`3526dfc7d44b72cb2da5fd3932a4df24a7dcf503\`,
+Test-Commit \`e9cc1610c72861313495026cc401fa5a8f82cd8e\`.
+
+**Noch offen:** große asynchrone Cross-Volume-F6-Moves,
+unbegrenzte Mehrfachauswahlen, große Verzeichnisbäume,
+kompletter Progress-/Abbruch-/Masken-/ACL-/ADS-Vertrag,
+echte GUI-/MSVC-Ausführung der neuen Änderungen. Alle
+nicht abgedeckten Fälle bleiben fail-closed und UP-04
+**TEILBELEGT**.
+
 ### [ ] UP-04 – Kopieren/Bewegen über Volume- und Worker-Grenzen (**P0**, TEILBELEGT)
 - **Lücke:** F5/F6 mit 263 UTF-16-Einheiten und >17 MiB Same-Volume-Move
   bestanden; das beweist **keinen** Cross-Volume-Move großer Dateien.
@@ -536,6 +570,31 @@ Fehlt das zweite Volume, meldet er `SKIP`, nicht `PASS`.
 - **Abnahme:** Verlustfreie Pfadidentität, kein Ausbrechen aus test-eigenen
   Wurzeln, bounded recursion, korrekte Fehlermeldungen/kein Hängen;
   echter SMB-Nachweis getrennt vom rein synthetischen UNC-Pfadtest.
+
+**F8-Hauptprogrammkorrektur (24.11.2026, Windows-Test ausstehend):**
+Eindeutig aufgelöste Unicode-Dateien folgen nun auch im
+nativen Dateipfad der bestehenden Umschaltregel für
+Papierkorb versus permanentes Löschen. Der permanente
+W-F8-Pfad merkt sich vor dem Bestätigungsdialog die
+Win32-Dateiidentität und führt die Löschung über
+\`TryDeleteUnicodeFileWithIdentity\` mit unmittelbar vor
+\`FileDispositionInfo\` geprüfter Volume-/File-ID durch.
+Die ursprüngliche Quelle darf zwischen Bestätigung und
+Ausführung nicht unter gleichem Namen ausgetauscht werden.
+Ein nativer Regressionstest verschiebt die ursprüngliche
+Datei, setzt einen anderen Inode unter denselben UTF-16-Namen
+und verlangt \`ERROR_FILE_INVALID\` statt Löschung.
+Ein eigener GUID-isolierter GUI-Test
+\`-ShortUnicodePermanentDeleteOnly\` ist in
+\`manage.cmd --test-all\` für Debug/Release x64 aufgenommen;
+bei aktiver Recycle-Policy prüft er zusätzlich das explizite
+Shift+F8-Verhalten. Änderungen: \`8f0c1370792631b3abb275e04bc9b4176b28da1b\`,
+\`bd3d268f43c7f5d801ab250f54e540e389301e05\`,
+\`b77035cf4db75c59a9752f9f0aeb440cde65b3d1\`,
+\`27c8fe5afc57357bbe4f4068ee3e1d3374bb9f30\`.
+**Nicht als bestanden markieren:** RecycleMasks (Modus 2),
+Unicode-Multifile-F8, Shell-Open/Properties/externes Editieren,
+Netzwerk- und Vollintegrationsfälle sind weiterhin offen.
 
 ### [ ] UP-06 – Shell, Zwischenablage, externe Programme, Dateiattribute (**P1**, OFFEN)
 - **Fälle:** Datei-Eigenschaften, Öffnen, Drag/Drop, Viewer/Editor,
