@@ -743,6 +743,10 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
         (destinationAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0 ||
         (destinationAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0)
         return FALSE;
+    BY_HANDLE_FILE_INFORMATION sourceIdentity{};
+    if (!Salamander::TryReadUnicodeRegularFileIdentity(
+            source, sourceIdentity, error))
+        return FALSE;
 
     // A synchronous operation without progress/cancel must not block the UI
     // for a large file. Larger items require the migrated async engine.
@@ -794,6 +798,21 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
         return TRUE;
     }
 
+    // A different process may replace the selected filename while the modal
+    // confirmation is open. Never act on the replacement, even if its name,
+    // size and timestamps appear unchanged.
+    BY_HANDLE_FILE_INFORMATION currentIdentity{};
+    if (!Salamander::TryReadUnicodeRegularFileIdentity(
+            source, currentIdentity, error) ||
+        !Salamander::UnicodeFileOperationsDetail::IsSameRegularFile(
+            sourceIdentity, currentIdentity))
+    {
+        MessageBoxW(HWindow, L"The selected Unicode file identity changed. "
+                    L"No transfer was started.", L"Unicode transfer",
+                    MB_OK | MB_ICONWARNING);
+        return TRUE;
+    }
+
     // A different process may replace a regular file with a junction,
     // symlink or larger object while the confirmation dialog is open.
     WIN32_FILE_ATTRIBUTE_DATA currentAttributes = {};
@@ -840,7 +859,8 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
                 script->SetSpeedLimit(TRUE, criteria.SpeedLimit);
             script->UnicodeCopyNotificationPath = targetPanelPath;
             if (!PrepareUnicodeFileCopy(script.get(), source, destination, currentAttributes,
-                                        criteria.IgnoreADS, error, type == atMove))
+                                        criteria.IgnoreADS, error, type == atMove,
+                                        &sourceIdentity))
             {
                 MessageBoxW(HWindow, GetErrorTextW(error), L"Unicode copy", MB_OK | MB_ICONWARNING);
                 return TRUE;
@@ -878,8 +898,10 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
     BeginSuspendMode();
     BeginStopRefresh();
     bool succeeded = (type == atCopy)
-        ? Salamander::TryCopyUnicodeFileNoOverwrite(source, destination, error)
-        : Salamander::TryMoveUnicodeFileNoOverwrite(source, destination, error);
+        ? Salamander::TryCopyUnicodeFileNoOverwrite(
+              source, destination, error, &sourceIdentity)
+        : Salamander::TryMoveUnicodeFileNoOverwrite(
+              source, destination, error, &sourceIdentity);
     bool crossVolumeCopyAttempted = false;
     bool crossVolumeRequiresWorker = false;
     if (!succeeded && type == atMove && error == ERROR_NOT_SAME_DEVICE)
