@@ -93,6 +93,20 @@ eine kürzere Fixture erfüllt den Grenzfall **nicht**.
 Dies ist **kein** neuer grüner Testreferenzstand.
 Es wurden keine GUI-/Win32-Tests für diese neuen Dateien ausgeführt.
 
+- **A0-01, statischer Originalquellenvergleich:** Das ursprüngliche
+  5.0-GitHub-Commit `3945ecf7a655b2dbb0a50e189a2682e1e336352e`
+  wurde unabhängig vom 5.2-Referenzstand geprüft. Alle **107**
+  ursprünglichen Win32-Dialogdefinitionen in `src/lang/lang.rc`
+  sind bis auf das neue UTF-8-BOM unverändert; `lang.rh` ist
+  identisch. Sämtliche **89** ursprünglichen Haupt-Acceleratorzeilen
+  sind erhalten, ergänzt wurde nur `Alt+Shift+F7` für die separate
+  Unicode-Suche. `pictview.rc`/`.rh` sind identisch, **nicht**
+  die PictView-Funktionalität. 89 Legacy-Shortcuts wurden
+  dem maschinenlesbaren UI-Quellbaseline hinzugefügt und werden
+  durch eine Negativregression gegen F5-Binding-Entfernung
+  geschützt. **Kein** Windows-/PowerShell- oder echter
+  Original-5.0-GUI-Lauf wurde dadurch ersetzt.
+
 - **A0-01, TEILBELEGT:** Neues
   [Legacy-Verhaltens-/Konfigurationsinventar](Legacy-Verhalten-und-Konfiguration-5.2.md)
   ordnet die bestehenden F2/F3/F5/F6/F8-, Ctrl+F-, Plugin- und
