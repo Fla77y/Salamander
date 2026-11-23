@@ -75,6 +75,28 @@ synthetische Negativtests. Ein Windows-Ausführungsergebnis dieser neuen
 Prüfungen liegt noch nicht vor; die volle 35-Modul-Matrix, Nicht-SPL-Dateien
 und die saubere VM bleiben eigenständige offene Gates.
 
+**Vollständigkeits-Gate für die Solution (PKG-01):**
+Für die beiden Paketvarianten verlangt das Pipeline-Skript nun
+zusätzlich \`-RequireSolutionPluginPayloads\`. Damit müssen alle
+derzeit **35** als Hauptprojekt in der Solution deklarierten
+Plugin-SPLs in Build und Stage vorhanden und SHA-256-identisch
+sein. Eine in Build *und* Stage fehlende Datei wird nicht länger
+mit \`NOT_SHIPPED\` übersprungen; unbekannte gestagte SPLs ohne
+Solution-Zugehörigkeit werden zurückgewiesen. Source-only
+\`winscp\` bleibt unverändert außerhalb dieser Liste, bis es
+einen realen Hauptprojekt-/Distributionsvertrag gibt.
+Die Zahl 35 wird aus dem jeweiligen Solution-Quellbestand
+abgeleitet, nicht in der Paketpipeline hart codiert.
+Die zusätzlichen Negativtests sind vorbereitet, **auf diesem
+neuen HEAD aber noch nicht unter Windows ausgeführt**.
+
+Der vom Nutzer bereitgestellte grüne Clean-Build-/Testlauf vom
+23.11.2026 belegt auf dem **älteren** Commit
+\`2be91b27032a2f4cb4619a606b42b0af7c8ea6c1\` exakt
+35 unterschiedliche SPL-Buildausgaben jeweils für Debug und
+Release x64. Er enthält keine danach erstellten Änderungen
+und keine Ausführung von \`--setup\`.
+
 **Zusätzliche SHA-256-Kontrolle:** Bei expliziter Angabe beider Verzeichnisse
 berechnet das Inventar für tatsächlich vorhandene SPL-Dateien zwei
 SHA-256-Hashes und klassifiziert **MATCH**, **HASH_MISMATCH**,
