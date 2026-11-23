@@ -479,6 +479,29 @@ if (-not $wideWorkerPaths.Contains('CaptureTargetIdentity') -or
     throw 'Cross-volume Unicode F6 must retain W source/target identities and the existing progress worker.'
 }
 
+# The visible row name is not a sufficient destructive-file identity:
+# capture the actual Win32 volume/file index BEFORE each modal F6 dialog,
+# retain it in the worker token and reject a substituted file on first open.
+$clipboardTransferSource = Get-Content -LiteralPath (
+    Join-Path $toolsDir '..\..\src\common\win32_unicode_clipboard_files.h') -Raw
+foreach ($required in @('TryReadUnicodeRegularFileIdentity(',
+                        'TryMoveUnicodeFileNoOverwrite(',
+                        '&sourceIdentity', '&item.sourceIdentity',
+                        'IsSameRegularFile(')) {
+    if (-not $filesActionSource.Contains($required) -and
+        -not $wideFileOps.Contains($required)) {
+        throw "Unicode F6 no longer binds pre-dialog source identity: $required"
+    }
+}
+if (-not $wideWorkerSource.Contains('paths->SourceIdentity = *expectedSource;') -or
+    -not $wideWorkerIo.Contains('!SameIdentity(Current->SourceIdentity, information)') -or
+    -not $wideWorkerIo.Contains('share & ~(FILE_SHARE_WRITE | FILE_SHARE_DELETE)') -or
+    -not $clipboardTransferSource.Contains('expectedSources->size() != files.size()') -or
+    -not $clipboardTransferSource.Contains('(*expectedSources)[fileIndex]') -or
+    -not $filesActionSource.Contains('type == atMove ? FALSE : criteria.IgnoreADS')) {
+    throw 'Destructive Unicode F6 must reject file replacement, concurrent writers and ADS omission.'
+}
+
 # Unicode F8 must respect the user's exact Recycle Bin configuration.
 # Refusing a non-fixed drive when recycle is selected is safer than silently
 # switching to permanent deletion. The actual W deletion uses a pinned ID.
