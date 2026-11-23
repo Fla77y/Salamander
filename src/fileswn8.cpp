@@ -15,6 +15,7 @@
 #include "mapi.h"
 #include "common/legacy_disk_name_safety.h"
 #include "common/win32_unicode_file_ops.h"
+#include "common/win32_unicode_clipboard_files.h"
 #include "common/win32_unicode_directory_delete.h"
 #include "common/win32_unicode_recycle.h"
 
@@ -718,18 +719,47 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
     // paths are owned UTF-16 values; no pointer to panel entry survives.
     BeginSuspendMode();
     BeginStopRefresh();
-    const bool succeeded = (type == atCopy)
+    bool succeeded = (type == atCopy)
         ? Salamander::TryCopyUnicodeFileNoOverwrite(source, destination, error)
         : Salamander::TryMoveUnicodeFileNoOverwrite(source, destination, error);
+    bool crossVolumeCopyAttempted = false;
+    if (!succeeded && type == atMove && error == ERROR_NOT_SAME_DEVICE)
+    {
+        // Reuse the existing Unicode clipboard transfer transaction instead
+        // of sending an ACP alias through the old F6 engine. It pins the
+        // source identity, stages the copy without overwriting, verifies the
+        // destination and deletes only the original handle. A failed delete
+        // may leave both files; never silently remove the published copy.
+        crossVolumeCopyAttempted = true;
+        const ULONGLONG currentBytes =
+            (static_cast<ULONGLONG>(currentAttributes.nFileSizeHigh) << 32) |
+            currentAttributes.nFileSizeLow;
+        if (currentBytes > MaxSynchronousTransferBytes)
+            error = ERROR_FILE_TOO_LARGE; // No unbounded UI-thread copy.
+        else
+        {
+            std::size_t completed = 0;
+            succeeded = Salamander::TryTransferUnicodeClipboardFiles(
+                {source}, targetDir, DROPEFFECT_MOVE, completed, error) &&
+                completed == 1;
+        }
+    }
     EndStopRefresh();
     EndSuspendMode();
 
     if (!succeeded)
     {
-        wchar_t detail[160];
-        swprintf_s(detail, _countof(detail),
-                   L"The Unicode operation failed (Win32 error %lu). "
-                   L"Existing destination files were not overwritten.", error);
+        wchar_t detail[320];
+        if (crossVolumeCopyAttempted)
+            swprintf_s(detail, _countof(detail),
+                       L"Cross-volume Unicode move failed (Win32 error %lu). "
+                       L"Check both locations: the verified destination copy "
+                       L"may exist even if deletion of the source failed. "
+                       L"No existing destination was overwritten.", error);
+        else
+            swprintf_s(detail, _countof(detail),
+                       L"The Unicode operation failed (Win32 error %lu). "
+                       L"Existing destination files were not overwritten.", error);
         MessageBoxW(HWindow, detail, L"Unicode transfer", MB_OK | MB_ICONWARNING);
         return TRUE;
     }
