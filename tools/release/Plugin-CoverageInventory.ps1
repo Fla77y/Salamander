@@ -32,7 +32,7 @@ function Get-SplInventory {
             throw "Duplicate $Description SPL module: $($file.FullName)"
         }
     }
-    return $modules
+    return ,$modules
 }
 
 function Get-SalamanderPluginInventory {
