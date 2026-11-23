@@ -521,9 +521,15 @@ reparse loops and permissions before enabling operations on long paths.
 
 `Ctrl+V` into a long disk-panel path accepts a Unicode `CF_HDROP`
 copy of up to 16 regular files and 16 MiB total using the native copy path.
-The operation checks all destination names before copying, preserves the
-source files and refuses overwrites. A cut selection can move one regular file
-atomically within the same volume. A multiple selection, cross-volume move,
+The operation checks all destination names before copying, keeps the source
+files open, and compares their identities to the handles opened by Win32's
+copy engine. It verifies the temporary copy again before renaming it by
+handle. An unexpected file at the staging path cannot be published or
+removed by this operation. It preserves source files and
+refuses overwrites. A cut selection can move one regular file
+atomically within the same volume. The move uses the same open file handle for
+source validation and rename, and refuses a destination created in the
+meantime. A multiple selection, cross-volume move,
 link creation, directories, reparse points and virtual clipboard items still
 require separate integration.
 Internal change notifications retain the full path when refreshing disk

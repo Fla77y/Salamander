@@ -80,6 +80,43 @@ inline bool TryReadUnicodeClipboardFiles(const void* data, std::size_t bytes,
     return false; // Missing final list terminator.
 }
 
+// Keep the validated file open until the transfer completes. A copy also
+// prevents writes while its size and identity are used by the copy engine.
+inline HANDLE OpenUnicodeClipboardSource(const std::wstring& path, DWORD effect,
+                                         BY_HANDLE_FILE_INFORMATION& info, DWORD& error)
+{
+    const bool moving = effect == DROPEFFECT_MOVE;
+    HANDLE source = CreateFileW(path.c_str(), moving ? DELETE | FILE_READ_ATTRIBUTES : GENERIC_READ,
+        moving ? FILE_SHARE_READ | FILE_SHARE_WRITE : FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+        FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+    if (source == INVALID_HANDLE_VALUE)
+    {
+        error = GetLastError();
+        return source;
+    }
+
+    if (!GetFileInformationByHandle(source, &info))
+        error = GetLastError();
+    else if (info.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT))
+        error = ERROR_NOT_SUPPORTED;
+    else if (!moving && !info.nFileIndexHigh && !info.nFileIndexLow)
+        error = ERROR_FILE_INVALID;
+    else
+    {
+        error = ERROR_SUCCESS;
+        return source;
+    }
+    CloseHandle(source);
+    return INVALID_HANDLE_VALUE;
+}
+
+inline bool RenameUnicodeClipboardSource(HANDLE source, const Utf16DiskPath& destination, DWORD& error)
+{
+    std::wstring target;
+    return UnicodeFileOperationsDetail::TryGetExtendedPath(destination, target, error) &&
+        UnicodeFileOperationsDetail::TryRenameOpenFileNoOverwrite(source, target, error);
+}
+
 inline bool TryTransferUnicodeClipboardFiles(const std::vector<Utf16DiskPath>& files,
                                              const Utf16DiskPath& directory, DWORD effect,
                                              std::size_t& completed, DWORD& error)
@@ -97,11 +134,22 @@ inline bool TryTransferUnicodeClipboardFiles(const std::vector<Utf16DiskPath>& f
     }
     constexpr ULONGLONG maxSynchronousBytes = 16ULL * 1024 * 1024;
     ULONGLONG totalBytes = 0;
+    struct SourceGuard
+    {
+        std::vector<HANDLE> handles;
+        ~SourceGuard()
+        {
+            for (HANDLE handle : handles)
+                CloseHandle(handle);
+        }
+    } sources;
+    sources.handles.reserve(files.size());
 
     struct Destination
     {
         std::wstring name;
         Utf16DiskPath path;
+        BY_HANDLE_FILE_INFORMATION sourceInfo{};
     };
     std::vector<Destination> destinations;
     destinations.reserve(files.size());
@@ -110,31 +158,27 @@ inline bool TryTransferUnicodeClipboardFiles(const std::vector<Utf16DiskPath>& f
         std::wstring source;
         if (!UnicodeFileOperationsDetail::TryGetExtendedPath(file, source, error))
             return false;
-        WIN32_FILE_ATTRIBUTE_DATA attributes{};
-        if (!GetFileAttributesExW(source.c_str(), GetFileExInfoStandard, &attributes))
-        {
-            error = GetLastError();
+        Destination target;
+        const HANDLE handle = OpenUnicodeClipboardSource(source, effect, target.sourceInfo, error);
+        if (handle == INVALID_HANDLE_VALUE)
             return false;
-        }
-        if (attributes.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT))
+        sources.handles.push_back(handle);
+        if (effect == DROPEFFECT_COPY)
         {
-            error = ERROR_NOT_SUPPORTED;
-            return false;
+            const ULONGLONG bytes = (static_cast<ULONGLONG>(target.sourceInfo.nFileSizeHigh) << 32) |
+                                    target.sourceInfo.nFileSizeLow;
+            if (bytes > maxSynchronousBytes - totalBytes)
+            {
+                error = ERROR_FILE_TOO_LARGE;
+                return false;
+            }
+            totalBytes += bytes;
         }
-        const ULONGLONG bytes = (static_cast<ULONGLONG>(attributes.nFileSizeHigh) << 32) |
-                                attributes.nFileSizeLow;
-        if (effect == DROPEFFECT_COPY && bytes > maxSynchronousBytes - totalBytes)
-        {
-            error = ERROR_FILE_TOO_LARGE;
-            return false;
-        }
-        totalBytes += bytes;
 
         const auto& absolute = file.Value();
         const auto component = std::u16string_view(absolute).substr(absolute.find_last_of(u'\\') + 1);
         Utf16FileName name;
         Utf16PathError pathError;
-        Destination target;
         if (!Utf16FileName::TryCreate(component, name, pathError) ||
             !directory.TryAppend(name, target.path, pathError))
         {
@@ -167,8 +211,9 @@ inline bool TryTransferUnicodeClipboardFiles(const std::vector<Utf16DiskPath>& f
     for (std::size_t index = 0; index < files.size(); ++index)
     {
         const bool success = effect == DROPEFFECT_MOVE
-            ? TryMoveUnicodeFileNoOverwrite(files[index], destinations[index].path, error)
-            : TryCopyUnicodeFileNoOverwrite(files[index], destinations[index].path, error);
+            ? RenameUnicodeClipboardSource(sources.handles[index], destinations[index].path, error)
+            : TryCopyUnicodeFileNoOverwrite(files[index], destinations[index].path, error,
+                                           &destinations[index].sourceInfo);
         if (!success)
             return false;
         ++completed;

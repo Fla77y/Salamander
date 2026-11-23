@@ -9,7 +9,10 @@
 #include <windows.h>
 #include <string>
 #include <atomic>
+#include <cstddef>
+#include <cstring>
 #include <cwchar>
+#include <vector>
 
 namespace Salamander
 {
@@ -32,6 +35,106 @@ inline bool TryGetExtendedPath(const Utf16DiskPath& path,
     const std::wstring widePath(path.Value().begin(), path.Value().end());
     return TryMakeExtendedLengthPath(widePath.c_str(), extended, error);
 }
+
+struct CopyIdentityCheck
+{
+    const BY_HANDLE_FILE_INFORMATION* expected;
+    BY_HANDLE_FILE_INFORMATION staging{};
+    DWORD error = ERROR_SUCCESS;
+    bool verified = false;
+};
+
+inline bool HasRegularFileIdentity(const BY_HANDLE_FILE_INFORMATION& info)
+{
+    return (info.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) == 0 &&
+        (info.nFileIndexHigh || info.nFileIndexLow);
+}
+
+inline bool IsSameRegularFile(const BY_HANDLE_FILE_INFORMATION& expected,
+                              const BY_HANDLE_FILE_INFORMATION& actual)
+{
+    return HasRegularFileIdentity(actual) &&
+        actual.dwVolumeSerialNumber == expected.dwVolumeSerialNumber &&
+        actual.nFileIndexHigh == expected.nFileIndexHigh &&
+        actual.nFileIndexLow == expected.nFileIndexLow;
+}
+
+inline DWORD CALLBACK VerifyCopyHandles(LARGE_INTEGER, LARGE_INTEGER, LARGE_INTEGER, LARGE_INTEGER,
+                                        DWORD, DWORD reason, HANDLE source, HANDLE destination, LPVOID data)
+{
+    auto& check = *static_cast<CopyIdentityCheck*>(data);
+    if (check.verified && reason != CALLBACK_STREAM_SWITCH)
+        return PROGRESS_CONTINUE;
+
+    BY_HANDLE_FILE_INFORMATION actual{}, staging{};
+    if (!GetFileInformationByHandle(source, &actual) || !GetFileInformationByHandle(destination, &staging))
+        check.error = GetLastError();
+    else if (!IsSameRegularFile(*check.expected, actual) || !HasRegularFileIdentity(staging) ||
+             (check.verified && !IsSameRegularFile(check.staging, staging)))
+        check.error = ERROR_FILE_INVALID;
+    else
+    {
+        check.staging = staging;
+        check.verified = true;
+        return PROGRESS_CONTINUE;
+    }
+    return PROGRESS_CANCEL;
+}
+
+inline bool TryRenameOpenFileNoOverwrite(HANDLE file, const std::wstring& target, DWORD& error)
+{
+    FILE_RENAME_INFO info{}; // ReplaceIfExists and RootDirectory stay unset.
+    info.FileNameLength = static_cast<DWORD>(target.size() * sizeof(wchar_t));
+    constexpr auto headerBytes = offsetof(FILE_RENAME_INFO, FileName);
+    std::vector<unsigned char> buffer(headerBytes + info.FileNameLength + sizeof(wchar_t));
+    memcpy(buffer.data(), &info, headerBytes);
+    memcpy(buffer.data() + headerBytes, target.c_str(), info.FileNameLength + sizeof(wchar_t));
+    if (!SetFileInformationByHandle(file, FileRenameInfo, buffer.data(), static_cast<DWORD>(buffer.size())))
+    {
+        error = GetLastError();
+        return false;
+    }
+    error = ERROR_SUCCESS;
+    return true;
+}
+
+inline bool PublishVerifiedCopy(const std::wstring& temporary, const std::wstring& destination,
+                                const BY_HANDLE_FILE_INFORMATION& expected, DWORD& error)
+{
+    const HANDLE staged = CreateFileW(temporary.c_str(), DELETE | FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES,
+        FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+    if (staged == INVALID_HANDLE_VALUE)
+    {
+        error = GetLastError();
+        return false;
+    }
+    struct HandleGuard { HANDLE handle; ~HandleGuard() { CloseHandle(handle); } } guard{staged};
+    BY_HANDLE_FILE_INFORMATION actual{};
+    if (!GetFileInformationByHandle(staged, &actual))
+    {
+        error = GetLastError();
+        return false;
+    }
+    if (!IsSameRegularFile(expected, actual))
+    {
+        error = ERROR_FILE_INVALID;
+        return false;
+    }
+
+    if (TryRenameOpenFileNoOverwrite(staged, destination, error))
+        return true;
+
+    // Delete only the verified staging object and retain the rename error.
+    if (actual.dwFileAttributes & FILE_ATTRIBUTE_READONLY)
+    {
+        FILE_BASIC_INFO basic{};
+        basic.FileAttributes = FILE_ATTRIBUTE_NORMAL;
+        SetFileInformationByHandle(staged, FileBasicInfo, &basic, sizeof(basic));
+    }
+    FILE_DISPOSITION_INFO remove{TRUE};
+    SetFileInformationByHandle(staged, FileDispositionInfo, &remove, sizeof(remove));
+    return false;
+}
 } // namespace UnicodeFileOperationsDetail
 
 // All operations use fully qualified validated UTF-16 paths and reject an
@@ -40,7 +143,8 @@ inline bool TryGetExtendedPath(const Utf16DiskPath& path,
 // progress, cancellation, policy, ACL and plugin integration still need migration.
 inline bool TryCopyUnicodeFileNoOverwrite(const Utf16DiskPath& source,
                                           const Utf16DiskPath& destination,
-                                          DWORD& error)
+                                          DWORD& error,
+                                          const BY_HANDLE_FILE_INFORMATION* expectedSource = nullptr)
 {
     std::wstring sourcePath, destinationPath;
     if (!UnicodeFileOperationsDetail::TryGetExtendedPath(source, sourcePath, error) ||
@@ -82,9 +186,14 @@ inline bool TryCopyUnicodeFileNoOverwrite(const Utf16DiskPath& source,
             error = ERROR_FILENAME_EXCED_RANGE;
             return false;
         }
-        if (!CopyFileW(sourcePath.c_str(), temporary.c_str(), TRUE))
+        UnicodeFileOperationsDetail::CopyIdentityCheck check{expectedSource};
+        const BOOL copied = expectedSource
+            ? CopyFileExW(sourcePath.c_str(), temporary.c_str(), UnicodeFileOperationsDetail::VerifyCopyHandles,
+                          &check, nullptr, COPY_FILE_FAIL_IF_EXISTS)
+            : CopyFileW(sourcePath.c_str(), temporary.c_str(), TRUE);
+        if (!copied)
         {
-            error = GetLastError();
+            error = check.error != ERROR_SUCCESS ? check.error : GetLastError();
             if (error == ERROR_FILE_EXISTS || error == ERROR_ALREADY_EXISTS)
                 continue; // Never delete a candidate we did not create.
             // A failure does not prove that this process created the
@@ -92,6 +201,16 @@ inline bool TryCopyUnicodeFileNoOverwrite(const Utf16DiskPath& source,
             // entry of the same name immediately before CopyFileW. Never
             // delete an unowned path. No final destination was published.
             return false;
+        }
+
+        if (expectedSource)
+        {
+            if (!check.verified)
+            {
+                error = ERROR_FILE_INVALID;
+                return false;
+            }
+            return UnicodeFileOperationsDetail::PublishVerifiedCopy(temporary, destinationPath, check.staging, error);
         }
 
         if (MoveFileExW(temporary.c_str(), destinationPath.c_str(), 0))

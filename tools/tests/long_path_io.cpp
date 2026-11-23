@@ -243,9 +243,27 @@ int main()
     const bool distinctWriteOk = WriteFile(distinctFile, distinctPayload,
                                            sizeof(distinctPayload), &distinctWritten, nullptr) &&
                                  distinctWritten == sizeof(distinctPayload);
+    DWORD filesystemFlags = 0;
+    const bool hasNamedStreams = GetVolumeInformationByHandleW(distinctFile, nullptr, 0, nullptr,
+        nullptr, &filesystemFlags, nullptr, 0) && (filesystemFlags & FILE_NAMED_STREAMS);
     CloseHandle(distinctFile);
     if (!distinctWriteOk)
         return Fail("write second distinct Unicode name");
+
+    const wchar_t streamSuffix[] = L":opensal-clipboard";
+    const char streamPayload[] = "clipboard named stream";
+    if (hasNamedStreams)
+    {
+        HANDLE stream = CreateFileW((result + streamSuffix).c_str(), GENERIC_WRITE, 0, nullptr,
+                                    CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (stream == INVALID_HANDLE_VALUE)
+            return Fail("create a named stream on the clipboard source");
+        const bool wroteStream = WriteFile(stream, streamPayload, sizeof(streamPayload), &written, nullptr) &&
+            written == sizeof(streamPayload);
+        CloseHandle(stream);
+        if (!wroteStream)
+            return Fail("write the clipboard named-stream fixture");
+    }
 
     const auto notificationPath = current + L"\\\u00C4nderung";
     const auto notificationPanel = current + L"\\\u00E4nderung";
@@ -290,6 +308,19 @@ int main()
 
     const auto firstCopy = extendedPaste + filename.substr(filename.find_last_of(L'\\'));
     const auto secondCopy = extendedPaste + distinctName.substr(distinctName.find_last_of(L'\\'));
+    if (hasNamedStreams)
+    {
+        HANDLE stream = CreateFileW((firstCopy + streamSuffix).c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+                                    OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (stream == INVALID_HANDLE_VALUE)
+            return Fail("open the copied named stream");
+        char streamContents[sizeof(streamPayload)] = {};
+        const bool copiedStream = ReadFile(stream, streamContents, sizeof(streamContents), &read, nullptr) &&
+            read == sizeof(streamContents) && std::memcmp(streamContents, streamPayload, sizeof(streamContents)) == 0;
+        CloseHandle(stream);
+        if (!copiedStream)
+            return Fail("source identity check must preserve named streams");
+    }
     HANDLE clipboardCopyHandle = CreateFileW(firstCopy.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
                                             OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (clipboardCopyHandle == INVALID_HANDLE_VALUE)
@@ -309,12 +340,96 @@ int main()
     if (Salamander::TryTransferUnicodeClipboardFiles(secondFileOnly, pasteTarget, DROPEFFECT_MOVE, copied, error) ||
         copied != 0 || error != ERROR_FILE_EXISTS || GetFileAttributesW(extendedDistinct.c_str()) == INVALID_FILE_ATTRIBUTES)
         return Fail("cut must preserve the source on collision");
+
+    BY_HANDLE_FILE_INFORMATION copySourceInfo{};
+    HANDLE copySourceHandle = Salamander::OpenUnicodeClipboardSource(
+        result, DROPEFFECT_COPY, copySourceInfo, error);
+    if (copySourceHandle == INVALID_HANDLE_VALUE)
+        return Fail("open and hold the expected clipboard copy source");
+    Salamander::Utf16DiskPath wrongCopyTarget;
+    const bool refusesDifferentSource = OwnPath(pastePath + L"\\wrong-source.txt", wrongCopyTarget) &&
+        !Salamander::TryCopyUnicodeFileNoOverwrite(pastedFiles[1], wrongCopyTarget, error, &copySourceInfo) &&
+        error == ERROR_FILE_INVALID;
+    CloseHandle(copySourceHandle);
+    WIN32_FIND_DATAW unexpectedStaging{};
+    HANDLE staging = FindFirstFileW((extendedPaste + L"\\.opensal-copy-*.tmp").c_str(), &unexpectedStaging);
+    if (staging != INVALID_HANDLE_VALUE)
+        FindClose(staging);
+    if (!refusesDifferentSource || staging != INVALID_HANDLE_VALUE ||
+        GetFileAttributesW((extendedPaste + L"\\wrong-source.txt").c_str()) != INVALID_FILE_ATTRIBUTES)
+        return Fail("a different opened source must not publish a copy or leave a staging file");
+
+    const auto stagingPath = extendedPaste + L"\\staging-identity.tmp";
+    const auto originalStagingPath = extendedPaste + L"\\original-staging.tmp";
+    const auto unpublishedPath = extendedPaste + L"\\unpublished.txt";
+    if (!CopyFileW(result.c_str(), stagingPath.c_str(), TRUE))
+        return Fail("create a verified staging file");
+    HANDLE stagingFile = CreateFileW(stagingPath.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ, nullptr,
+                                     OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (stagingFile == INVALID_HANDLE_VALUE)
+        return Fail("read the verified staging file identity");
+    BY_HANDLE_FILE_INFORMATION stagingIdentity{};
+    const bool readStagingIdentity = GetFileInformationByHandle(stagingFile, &stagingIdentity) != FALSE;
+    CloseHandle(stagingFile);
+    if (!readStagingIdentity || !MoveFileW(stagingPath.c_str(), originalStagingPath.c_str()) ||
+        !CopyFileW(extendedDistinct.c_str(), stagingPath.c_str(), TRUE))
+        return Fail("substitute a different file at the staging path");
+    if (Salamander::UnicodeFileOperationsDetail::PublishVerifiedCopy(stagingPath, unpublishedPath, stagingIdentity, error) ||
+        error != ERROR_FILE_INVALID || GetFileAttributesW(stagingPath.c_str()) == INVALID_FILE_ATTRIBUTES ||
+        GetFileAttributesW(unpublishedPath.c_str()) != INVALID_FILE_ATTRIBUTES ||
+        !DeleteFileW(stagingPath.c_str()))
+        return Fail("replacement staging file must neither be published nor removed");
+
+    if (!SetFileAttributesW(originalStagingPath.c_str(), FILE_ATTRIBUTE_READONLY))
+        return Fail("make the owned staging file read-only");
+    if (Salamander::UnicodeFileOperationsDetail::PublishVerifiedCopy(originalStagingPath, secondCopy, stagingIdentity, error) ||
+        GetFileAttributesW(originalStagingPath.c_str()) != INVALID_FILE_ATTRIBUTES)
+        return Fail("late destination collision cleans up only the verified read-only staging file");
+
+    BY_HANDLE_FILE_INFORMATION cutSourceInfo{};
+    HANDLE cutSourceHandle = Salamander::OpenUnicodeClipboardSource(
+        result, DROPEFFECT_MOVE, cutSourceInfo, error);
+    if (cutSourceHandle == INVALID_HANDLE_VALUE)
+        return Fail("hold the exact cut source open across validation and rename");
+    const bool pathRenameBlocked = !MoveFileW(result.c_str(), firstCopy.c_str());
+    Salamander::Utf16DiskPath occupiedTarget;
+    const bool rejectsLateCollision = OwnPath(pastePath + distinctName.substr(distinctName.find_last_of(L'\\')), occupiedTarget) &&
+        !Salamander::RenameUnicodeClipboardSource(cutSourceHandle, occupiedTarget, error);
+    CloseHandle(cutSourceHandle);
+    HANDLE occupiedFile = CreateFileW(secondCopy.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+                                     OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (occupiedFile == INVALID_HANDLE_VALUE)
+        return Fail("open the late-collision target by its original name");
+    char retainedPayload[sizeof(distinctPayload)] = {};
+    const bool retainsTarget = ReadFile(occupiedFile, retainedPayload, sizeof(retainedPayload), &read, nullptr) &&
+        read == sizeof(retainedPayload) && std::memcmp(retainedPayload, distinctPayload, sizeof(retainedPayload)) == 0;
+    CloseHandle(occupiedFile);
+    if (!pathRenameBlocked || !rejectsLateCollision ||
+        !retainsTarget || GetFileAttributesW(result.c_str()) == INVALID_FILE_ATTRIBUTES)
+        return Fail("cut source cannot be renamed by path while held, and handle rename preserves a late collision");
+
     const std::vector<Salamander::Utf16DiskPath> firstFileOnly{pastedFiles[0]};
     if (!Salamander::TryTransferUnicodeClipboardFiles(firstFileOnly, pasteTarget, DROPEFFECT_MOVE, copied, error) ||
         copied != 1 || GetFileAttributesW(result.c_str()) != INVALID_FILE_ATTRIBUTES ||
         GetFileAttributesW(firstCopy.c_str()) == INVALID_FILE_ATTRIBUTES ||
         !MoveFileW(firstCopy.c_str(), result.c_str()))
         return Fail("move one cut file atomically to a long Unicode destination");
+
+    const auto emptySourcePath = current + L"\\empty_\U0001F600.txt";
+    const auto emptyTargetPath = extendedPaste + L"\\empty_\U0001F600.txt";
+    std::wstring emptySourceExtended;
+    Salamander::Utf16DiskPath emptyOwned;
+    if (!Convert(emptySourcePath, emptySourceExtended) || !OwnPath(emptySourcePath, emptyOwned))
+        return Fail("prepare an empty Unicode clipboard source");
+    HANDLE emptyFile = CreateFileW(emptySourceExtended.c_str(), GENERIC_WRITE, 0, nullptr,
+                                   CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (emptyFile == INVALID_HANDLE_VALUE)
+        return Fail("create the empty Unicode clipboard source");
+    CloseHandle(emptyFile);
+    if (!Salamander::TryTransferUnicodeClipboardFiles({emptyOwned}, pasteTarget, DROPEFFECT_COPY, copied, error) ||
+        copied != 1 || !DeleteFileW(emptyTargetPath.c_str()) || !DeleteFileW(emptySourceExtended.c_str()))
+        return Fail("prove source identity even when copying an empty file");
+
     if (GetFileAttributesW(result.c_str()) == INVALID_FILE_ATTRIBUTES ||
         GetFileAttributesW(extendedDistinct.c_str()) == INVALID_FILE_ATTRIBUTES ||
         !DeleteFileW(secondCopy.c_str()) || !RemoveDirectoryW(extendedPaste.c_str()))
