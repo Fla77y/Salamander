@@ -317,9 +317,13 @@ function Assert-StagedBuiltPlugins {
         }
     }
 
-    foreach ($file in @(Get-ChildItem -LiteralPath $stageRoot -Recurse -File -Filter '*.spl')) {
-        $relative = [IO.Path]::GetRelativePath($stageRoot, $file.FullName).Replace('\', '/')
-        if (-not $expected.Contains($relative)) {
+    foreach ($file in @(Get-ChildItem -LiteralPath $Stage -Recurse -File -Filter '*.spl')) {
+        $relative = [IO.Path]::GetRelativePath($Stage, $file.FullName).Replace('\', '/')
+        if (-not $relative.StartsWith('plugins/', [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Unbuilt SPL outside the distribution plug-in tree: $relative"
+        }
+        $pluginRelative = $relative.Substring('plugins/'.Length)
+        if (-not $expected.Contains($pluginRelative)) {
             throw "Unbuilt plug-in unexpectedly included in distribution: $relative"
         }
     }
