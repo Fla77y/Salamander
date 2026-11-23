@@ -67,6 +67,9 @@ try {
         (Join-Path $fakePlugins 'alpha\vcxproj'),
         (Join-Path $fakePlugins 'beta\vcxproj'),
         (Join-Path $build 'plugins\alpha'),
+        # Beta is intentionally absent as a binary at first, not as a folder.
+        # A later positive test writes beta.spl into this same fixture.
+        (Join-Path $build 'plugins\beta'),
         (Join-Path $build 'plugins\rogue'),
         (Join-Path $stage 'plugins\alpha'),
         (Join-Path $stage 'plugins\beta')
