@@ -1389,6 +1389,51 @@ int main()
         std::puts("PASS: real two-volume Unicode move, exact bytes and no-overwrite");
     }
 
+    // A delayed F8 confirmation must never delete a different file
+    // substituted at the same Unicode path. Verify the opened file identity
+    // atomically with the final disposition request.
+    const std::wstring deleteProbe = current + L"\\delete-identity-東京.txt";
+    const std::wstring movedProbe = current + L"\\delete-original-東京.txt";
+    std::wstring deleteProbeExtended, movedProbeExtended;
+    Salamander::Utf16DiskPath ownedDeleteProbe;
+    if (!OwnPath(deleteProbe, ownedDeleteProbe) ||
+        !Convert(deleteProbe, deleteProbeExtended) ||
+        !Convert(movedProbe, movedProbeExtended))
+        return Fail("prepare Unicode F8 identity fixture");
+    HANDLE deleteProbeFile = CreateFileW(
+        deleteProbeExtended.c_str(), GENERIC_WRITE | FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (deleteProbeFile == INVALID_HANDLE_VALUE)
+        return Fail("create Unicode F8 identity fixture");
+    BY_HANDLE_FILE_INFORMATION originalIdentity{};
+    const bool originalIdentified =
+        GetFileInformationByHandle(deleteProbeFile, &originalIdentity) != FALSE;
+    CloseHandle(deleteProbeFile);
+    if (!originalIdentified ||
+        !MoveFileExW(deleteProbeExtended.c_str(), movedProbeExtended.c_str(), 0))
+        return Fail("move original Unicode F8 identity out of the way");
+    deleteProbeFile = CreateFileW(
+        deleteProbeExtended.c_str(), GENERIC_WRITE, 0,
+        nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (deleteProbeFile == INVALID_HANDLE_VALUE)
+        return Fail("create unrelated replacement at old Unicode filename");
+    CloseHandle(deleteProbeFile);
+
+    if (Salamander::TryDeleteUnicodeFileWithIdentity(
+            ownedDeleteProbe, originalIdentity, operationError) ||
+        operationError != ERROR_FILE_INVALID ||
+        GetFileAttributesW(deleteProbeExtended.c_str()) == INVALID_FILE_ATTRIBUTES)
+        return Fail("F8 cannot delete unrelated replacement file at same path");
+    if (!DeleteFileW(deleteProbeExtended.c_str()) ||
+        !MoveFileExW(movedProbeExtended.c_str(), deleteProbeExtended.c_str(), 0))
+        return Fail("restore original Unicode F8 fixture name");
+    if (!Salamander::TryDeleteUnicodeFileWithIdentity(
+            ownedDeleteProbe, originalIdentity, operationError) ||
+        operationError != ERROR_SUCCESS ||
+        GetFileAttributesW(deleteProbeExtended.c_str()) != INVALID_FILE_ATTRIBUTES)
+        return Fail("F8 deletes original file only after identity revalidation");
+
     if (!DeleteFileW(extendedDistinct.c_str()))
         return Fail("DeleteFileW distinct Unicode filename");
     if (!DeleteFileW(extendedMaxFile.c_str()))
