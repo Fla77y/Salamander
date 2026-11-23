@@ -224,6 +224,33 @@ EndProject
     [IO.File]::WriteAllBytes($buildBeta, [byte[]](7,8,9))
     [IO.File]::WriteAllBytes($stageBeta, [byte[]](7,8,9))
 
+    # PKG-01: a correct SPL alone is insufficient if its compiled
+    # language resources or native helper DLLs disappear during staging.
+    $buildLang = Join-Path $build 'plugins\alpha\lang\english.slg'
+    $stageLang = Join-Path $stage 'plugins\alpha\lang\english.slg'
+    [void][IO.Directory]::CreateDirectory((Split-Path -Parent $buildLang))
+    [void][IO.Directory]::CreateDirectory((Split-Path -Parent $stageLang))
+    [IO.File]::WriteAllBytes($buildLang, [byte[]](10,20,30))
+    [IO.File]::WriteAllBytes($stageLang, [byte[]](10,20,30))
+    $buildHelper = Join-Path $build 'plugins\alpha\dep.dll'
+    $stageHelper = Join-Path $stage 'plugins\alpha\dep.dll'
+    [IO.File]::WriteAllBytes($buildHelper, [byte[]](4,5,6))
+    [IO.File]::WriteAllBytes($stageHelper, [byte[]](4,5,6))
+    & $invoker -Repository $fake -BuiltDirectory $build -StagedDirectory $stage -RequireMatchingPayloads -RequireSolutionPluginPayloads
+
+    [IO.File]::Delete($stageLang)
+    Assert-InventoryRejected -Action {
+        & $invoker -Repository $fake -BuiltDirectory $build -StagedDirectory $stage -RequireMatchingPayloads -RequireSolutionPluginPayloads
+    } -Reason 'compiled plugin language missing from stage' -ExpectedError 'Missing staged plug-in runtime sidecar'
+    [IO.File]::WriteAllBytes($stageLang, [byte[]](10,20,30))
+
+    [IO.File]::WriteAllBytes($stageHelper, [byte[]](4,5,7))
+    Assert-InventoryRejected -Action {
+        & $invoker -Repository $fake -BuiltDirectory $build -StagedDirectory $stage -RequireMatchingPayloads -RequireSolutionPluginPayloads
+    } -Reason 'native dependency modified after build' -ExpectedError 'Plug-in runtime sidecar SHA-256 mismatch'
+    [IO.File]::WriteAllBytes($stageHelper, [byte[]](4,5,6))
+    & $invoker -Repository $fake -BuiltDirectory $build -StagedDirectory $stage -RequireMatchingPayloads -RequireSolutionPluginPayloads
+
     # A completeness request without byte-integrity comparison is invalid.
     Assert-InventoryRejected -Action {
         & $invoker -Repository $fake -BuiltDirectory $build -StagedDirectory $stage -RequireSolutionPluginPayloads
