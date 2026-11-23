@@ -426,7 +426,8 @@ void FreeScript(COperations* script);
 BOOL PrepareUnicodeFileCopy(COperations* script, const Salamander::Utf16DiskPath& source,
                             const Salamander::Utf16DiskPath& target,
                             const WIN32_FILE_ATTRIBUTE_DATA& attributes, BOOL ignoreADS, DWORD& error,
-                            BOOL moveAfterCopy = FALSE);
+                            BOOL moveAfterCopy = FALSE,
+                            const BY_HANDLE_FILE_INFORMATION* expectedSource = nullptr);
 
 //
 // File information classes and Io Status block (see NTDDK.H)
