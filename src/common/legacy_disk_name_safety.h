@@ -17,6 +17,18 @@ inline bool IsLossyAnsiDiskName(const char* name) noexcept
     return name != nullptr && std::strchr(name, '?') != nullptr;
 }
 
+// Legacy Win32 ANSI file operations need a separator plus the source name
+// below MAX_PATH. Avoid adding lengths before testing (size_t may overflow).
+// The result describes the *full* path, not just a long parent directory or
+// a lossy ANSI filename. F5/F6 must use an owned UTF-16 row in this case.
+inline bool ExceedsLegacyDiskPathLimit(std::size_t directoryBytes,
+                                       std::size_t filenameBytes,
+                                       std::size_t maxPath) noexcept
+{
+    return maxPath == 0 || directoryBytes >= maxPath ||
+           filenameBytes >= maxPath - directoryBytes - 1;
+}
+
 struct LegacyDiskEntryView
 {
     const char* name;
