@@ -97,6 +97,7 @@ $scriptFiles = @(
     (Join-Path $toolsDir 'tests\Test-LegacyConfig-Canary.ps1'),
     (Join-Path $toolsDir 'tests\LegacyFind-GuiCases.ps1'),
     (Join-Path $toolsDir 'tests\Test-LegacyFind-UiContract.ps1'),
+    (Join-Path $toolsDir 'tests\Invoke-LegacyViewerReliability.ps1'),
     (Join-Path $toolsDir 'tests\Test-GuiConfig-Isolation.ps1'),
     (Join-Path $toolsDir '..\Manage-Salamander.ps1'),
     (Join-Path $toolsDir 'tests\Test-ReleaseChecksumManifest.ps1'),
