@@ -70,8 +70,16 @@ foreach ($command in @(
 $withoutFind = [regex]::new(
     '(?m)^\s*IDD_FIND\s+DIALOGEX?[^\r\n]*').Replace($dialogRc, '', 1)
 $idsWithoutFind = @(Get-ResourceIdentifiers -Source $withoutFind -Pattern $dialogPattern)
-if ('IDD_FIND' -in $idsWithoutFind) {
-    throw 'Resource inventory collector failed to detect removal of IDD_FIND.'
+$rejected = $false
+try {
+    Assert-ResourceIds -Expected $baseline.dialogResourceNames -Actual $idsWithoutFind -Category 'Win32 dialogs'
+}
+catch {
+    if ($_.Exception.Message -notmatch 'Win32 dialogs IDs differ') { throw }
+    $rejected = $true
+}
+if (-not $rejected) {
+    throw 'Missing IDD_FIND was not rejected by the actual resource contract.'
 }
 Write-Host "PASS: $($dialogs.Count) Win32 dialog resources, $($accelerators.Count) accelerator groups and critical legacy shortcuts are source-characterized."
 Write-Host 'NOTE: Original 5.0 visual and interactive UI parity remains open (A0-01).'
