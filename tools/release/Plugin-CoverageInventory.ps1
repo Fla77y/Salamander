@@ -207,3 +207,18 @@ function Assert-SalamanderPluginSidecarParity {
     }
     Write-Host "PASS: $($sidecars.Count) compiled plug-in runtime sidecars match the distribution stage."
 }
+
+# Source/Solution completeness is part of the binary ABI test contract.
+# A successful check of only the binaries that happened to build is not
+# sufficient evidence for every currently declared Solution plug-in.
+function Assert-SalamanderBuiltPluginCompleteness {
+    [CmdletBinding()]
+    param([Parameter(Mandatory)][object[]]$Inventory)
+
+    $missing = @($Inventory | Where-Object {
+        $_.SolutionProject -and $_.BuiltModule -cne 'PRESENT'
+    } | ForEach-Object Plugin | Sort-Object)
+    if ($missing.Count -gt 0) {
+        throw "Missing built Solution plug-in binaries: $($missing -join ', ')"
+    }
+}
