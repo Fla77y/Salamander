@@ -515,7 +515,7 @@ Quellentfernung sowie Zielkollision ohne Überschreibung.
 Fehlt das zweite Volume, meldet er `SKIP`, nicht `PASS`.
 **Ausführung unter Windows noch offen.**
 
-**Weitere C++-Implementierung (24.11.2026, noch ohne Windows-Build):**
+**Weitere C++-Implementierung (23.11.2026, noch ohne Windows-Build):**
 `TryUnicodeSingleDirectoryCopy` führt einen eindeutig über die
 UTF-16-Verzeichnisliste identifizierten Einzelordner durch die
 bereits vorhandene stagingbasierte `TryTransferUnicodeClipboardFiles`-
@@ -571,7 +571,7 @@ nicht abgedeckten Fälle bleiben fail-closed und UP-04
   Wurzeln, bounded recursion, korrekte Fehlermeldungen/kein Hängen;
   echter SMB-Nachweis getrennt vom rein synthetischen UNC-Pfadtest.
 
-**F8-Hauptprogrammkorrektur (24.11.2026, Windows-Test ausstehend):**
+**F8-Hauptprogrammkorrektur (23.11.2026, Windows-Test ausstehend):**
 Eindeutig aufgelöste Unicode-Dateien folgen nun auch im
 nativen Dateipfad der bestehenden Umschaltregel für
 Papierkorb versus permanentes Löschen. Der permanente
@@ -637,7 +637,7 @@ Testprogramm **noch** Windows-GUI-Abnahme. UP-07 bleibt
 TEILBELEGT; echte UNC-/EFS-/Near-Limit-Aktionen und
 LongPathsEnabled-Matrix sind weiterhin offen.
 
-**Weitere Hauptprogramm-Korrektur (24.11.2026, Windows-Test offen):**
+**Weitere Hauptprogramm-Korrektur (23.11.2026, Windows-Test offen):**
 Nicht nur überlange Pfade, sondern auch kurze Verzeichnisse mit
 verlustbehafteter ANSI-Projektion müssen die UTF-16-Identität bewahren.
 Das betrifft selbst Dateinamen, die nur aus ASCII bestehen.
