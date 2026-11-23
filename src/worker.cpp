@@ -8551,10 +8551,16 @@ BOOL PrepareUnicodeFileCopy(COperations* script, const Salamander::Utf16DiskPath
                             const WIN32_FILE_ATTRIBUTE_DATA& attributes, BOOL ignoreADS, DWORD& error,
                             BOOL moveAfterCopy)
 {
-    if (script == NULL || script->Count != 0 ||
+    if (script == NULL ||
         (attributes.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0)
     {
         error = ERROR_INVALID_PARAMETER;
+        return FALSE;
+    }
+    const bool firstOperation = script->Count == 0;
+    if (!firstOperation && script->IsCopyOperation == (moveAfterCopy != FALSE))
+    {
+        error = ERROR_INVALID_PARAMETER; // no mixed Copy/Move worker script
         return FALSE;
     }
     Salamander::WorkerCopyPaths* paths = script->UnicodeCopyPaths.Add(source, target, error);
@@ -8644,18 +8650,27 @@ BOOL PrepareUnicodeFileCopy(COperations* script, const Salamander::Utf16DiskPath
         error = ERROR_NOT_ENOUGH_MEMORY;
         return FALSE;
     }
-    script->TotalSize = operation.Size;
-    script->TotalFileSize = operation.FileSize + adsSize;
-    script->FilesCount = 1;
-    script->IsCopyOperation = moveAfterCopy ? FALSE : TRUE;
-    script->IsCopyOrMoveOperation = script->ShowStatus = TRUE;
-    script->WaitInQueueSubject = DupStr(LoadStr(moveAfterCopy ? IDS_MOVE : IDS_COPY));
-    script->WaitInQueueFrom = DupStr(operation.SourceName);
-    script->WaitInQueueTo = DupStr(operation.TargetName);
-    if (script->WaitInQueueSubject == NULL || script->WaitInQueueFrom == NULL || script->WaitInQueueTo == NULL)
+    if (firstOperation)
     {
-        error = ERROR_NOT_ENOUGH_MEMORY;
-        return FALSE;
+        script->TotalSize = operation.Size;
+        script->TotalFileSize = operation.FileSize + adsSize;
+        script->FilesCount = 1;
+        script->IsCopyOperation = moveAfterCopy ? FALSE : TRUE;
+        script->IsCopyOrMoveOperation = script->ShowStatus = TRUE;
+        script->WaitInQueueSubject = DupStr(LoadStr(moveAfterCopy ? IDS_MOVE : IDS_COPY));
+        script->WaitInQueueFrom = DupStr(operation.SourceName);
+        script->WaitInQueueTo = DupStr(operation.TargetName);
+        if (script->WaitInQueueSubject == NULL || script->WaitInQueueFrom == NULL || script->WaitInQueueTo == NULL)
+        {
+            error = ERROR_NOT_ENOUGH_MEMORY;
+            return FALSE;
+        }
+    }
+    else
+    {
+        script->TotalSize += operation.Size;
+        script->TotalFileSize += operation.FileSize + adsSize;
+        ++script->FilesCount;
     }
 #ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
     char gated[2];
