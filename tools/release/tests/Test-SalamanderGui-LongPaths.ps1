@@ -3422,6 +3422,10 @@ function Test-UnicodeFindGui {
             [Linq.Enumerable]::SequenceEqual[byte](
                 [IO.File]::ReadAllBytes($findRecyclePath), $findRecycleBytes)) (
             'Unicode Find recycle refusal preserves test file bytes')
+        # Do not let this extra rejected candidate change later search counts.
+        [IO.File]::Delete($findRecyclePath)
+        Assert-True (-not [IO.File]::Exists($findRecyclePath)) (
+            'Unicode Find refused recycle fixture removed without altering unrelated files')
     }
     else {
         throw ("Unexpected Unicode Find recycle status '{0}' (disposableExists={1})." -f
