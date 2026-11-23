@@ -64,6 +64,8 @@ try {
         $fakeSolution, (Join-Path $fakePlugins 'alpha'),
         (Join-Path $fakePlugins 'beta'), (Join-Path $fakePlugins 'winscp'),
         (Join-Path $fakePlugins 'shared'),
+        (Join-Path $fakePlugins 'alpha\vcxproj'),
+        (Join-Path $fakePlugins 'beta\vcxproj'),
         (Join-Path $build 'plugins\alpha'),
         (Join-Path $build 'plugins\rogue'),
         (Join-Path $stage 'plugins\alpha'),
@@ -80,10 +82,21 @@ Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "lang_alpha", "..\plugins\al
 EndProject
 '@
     [IO.File]::WriteAllText((Join-Path $fakeSolution 'salamand.sln'), $solutionText)
+    $alphaProject = Join-Path $fakePlugins 'alpha\vcxproj\alpha.vcxproj'
+    $betaProject = Join-Path $fakePlugins 'beta\vcxproj\beta.vcxproj'
+    [IO.File]::WriteAllText($alphaProject, '<Project />')
+    [IO.File]::WriteAllText($betaProject, '<Project />')
     [IO.File]::WriteAllBytes((Join-Path $build 'plugins\alpha\alpha.spl'), [byte[]](1,2,3))
     [IO.File]::WriteAllBytes((Join-Path $build 'plugins\rogue\rogue.spl'), [byte[]](4,5,6))
     [IO.File]::WriteAllBytes((Join-Path $stage 'plugins\alpha\alpha.spl'), [byte[]](1,2,3))
     [IO.File]::WriteAllBytes((Join-Path $stage 'plugins\beta\beta.spl'), [byte[]](7,8,9))
+
+    # RED: a solution declaration does not prove its vcxproj file exists.
+    [IO.File]::Delete($alphaProject)
+    Assert-InventoryRejected -Action {
+        Get-SalamanderPluginInventory -Repository $fake
+    } -Reason 'declared vcxproj is absent' -ExpectedError 'Declared Salamander plug-in project missing'
+    [IO.File]::WriteAllText($alphaProject, '<Project />')
 
     $inventory = @(Get-SalamanderPluginInventory -Repository $fake -BuiltDirectory $build -StagedDirectory $stage)
     Assert-EquivalentNames -Expected @('alpha','beta','winscp','rogue') -Actual @($inventory | ForEach-Object Plugin) -Description 'Merged inventory'
