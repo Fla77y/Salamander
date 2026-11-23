@@ -71,6 +71,19 @@ int main()
     if (SelectionContainsLossyDiskName(selected.size(), 1, 1, selectedItem))
         return Fail("lossless ASCII name must remain safe");
 
+    // Regression: the user's ordinary CP1252 audiobook has a 109-byte
+    // directory and a 153-byte name. The *full* path (263 bytes) crosses
+    // MAX_PATH even though neither component does, and its alias is lossless.
+    // F5/F6 must therefore resolve the original UTF-16 row, not TryGetLossy.
+    if (!Salamander::ExceedsLegacyDiskPathLimit(109, 153, 260) ||
+        !Salamander::ExceedsLegacyDiskPathLimit(109, 150, 260) ||
+        Salamander::ExceedsLegacyDiskPathLimit(109, 149, 260) ||
+        Salamander::ExceedsLegacyDiskPathLimit(0, 20, 260) ||
+        !Salamander::ExceedsLegacyDiskPathLimit(259, 0, 260) ||
+        !Salamander::ExceedsLegacyDiskPathLimit(300, 153, 260) ||
+        !Salamander::ExceedsLegacyDiskPathLimit(static_cast<std::size_t>(-1), 1, 260))
+        return Fail("long leaf in a short ANSI folder must use the original UTF-16 row");
+
     std::puts("PASS: fail-closed ANSI disk name operation selection, focus and batch semantics");
     return 0;
 }
