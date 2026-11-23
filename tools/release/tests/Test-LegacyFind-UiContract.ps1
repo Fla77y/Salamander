@@ -78,6 +78,21 @@ if ([string]::IsNullOrEmpty($duplicateCase) -or $barrierAt -lt 0 -or
     throw 'Legacy Find duplicate GUI test must synchronize modal owner dispatch before reading results.'
 }
 
+# A failed row-selection preflight must identify whether the row vanished or
+# the keyboard modifier guard prevented injecting navigation keys. Do not
+# weaken that guard merely to make flaky integration tests pass.
+$driverText = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'Test-SalamanderGui-LongPaths.ps1') -Raw
+$selectInterop = [regex]::Match($driverText,
+    '(?s)public static void SelectLegacyFindRow\(.*?\r?\n    \}').Value
+foreach ($required in @('LegacyFindResultCount(window, pid)', 'shiftState',
+    'controlState', 'altState', '0x8000', 'resultCount=', 'shift=0x',
+    'control=0x', 'alt=0x')) {
+    if (-not $selectInterop.Contains($required)) {
+        throw "Legacy Find selection preflight lacks diagnostic contract: $required"
+    }
+}
+Write-Host 'PASS: Legacy Find result selection preserves its modifier guard and diagnoses rejected indexes.'
+
 $driver = Get-Command -Name (Join-Path $PSScriptRoot 'Test-SalamanderGui-LongPaths.ps1')
 $driverCases = ($driver.Parameters['LegacyFindScenario'].Attributes |
     Where-Object { $_ -is [System.Management.Automation.ValidateSetAttribute] }).ValidValues
