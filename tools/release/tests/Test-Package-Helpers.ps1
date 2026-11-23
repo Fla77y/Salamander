@@ -609,7 +609,7 @@ exit /b 0
     # because checking only the stage root misses the real regression.
     $nestedPlugin = Join-Path $stage 'plugins\pictview'
     New-Item -ItemType Directory -Path $nestedPlugin -Force | Out-Null
-    foreach ($extension in @('.pdb', '.lib', '.exp')) {
+    foreach ($extension in @('.pdb', '.lib', '.exp', '.obj', '.pch', '.idb', '.ilk', '.tlog', '.lastbuildstate')) {
         $intermediate = Join-Path $nestedPlugin ('pictview' + $extension)
         Set-Content -LiteralPath $intermediate -Value 'test fixture' -Encoding ascii
         Assert-Throws {
