@@ -39,10 +39,25 @@ if ($source -notmatch "Contains\('--test-gui-large-unicode-copy'\)" -or
     $source -notmatch 'Test-ClipboardSnapshot.ps1') {
     throw 'Management dispatch is missing an isolated GUI or clipboard test invocation.'
 }
+# Arrange: the Unicode-copy runner delegates MSBuild to the shared,
+# guarded isolated-GUI builder (also used by the Legacy Find GUI suite).
 $runner = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Invoke-IsolatedUnicodeCopy.ps1'))
-foreach ($required in @('OpenSalamanderIsolatedGuiTest=true', '/getProperty:OutDir,IntDir',
-    '-IsolatedConfiguration', '-LargeUnicodeCopyOnly', '-LargeUnicodeCopyCase',
+$builder = [IO.File]::ReadAllText((Join-Path $PSScriptRoot 'Build-IsolatedGuiTest.ps1'))
+
+# Act/Assert: dispatch must retain its private output name, configuration and
+# all four real GUI acceptance cases.
+foreach ($required in @('Build-IsolatedGuiTest.ps1', '-Configuration $Configuration',
+    "-OutputName 'isolated-unicode-copy'", '-IsolatedConfiguration',
+    '-LargeUnicodeCopyOnly', '-LargeUnicodeCopyCase',
     "'Copy', 'Cancel', 'Collision', 'LockedSource'")) {
     if (-not $runner.Contains($required)) { throw "Isolated runner missing contract: $required" }
+}
+
+# Act/Assert: delegation must not weaken test instrumentation or allow the
+# MSBuild intermediate/output paths to escape the isolated build root.
+foreach ($required in @('OpenSalamanderIsolatedGuiTest=true', '/getProperty:OutDir,IntDir',
+    'Properties.OutDir', 'Properties.IntDir', 'ReparsePoint',
+    'OPENSAL_BUILD_DIR', 'UserRootDir=', 'Isolated GUI build failed')) {
+    if (-not $builder.Contains($required)) { throw "Shared isolated GUI builder missing contract: $required" }
 }
 Write-Host 'PASS: --test-all includes native regressions, four isolated large-copy GUI cases and native clipboard snapshot tests.'
