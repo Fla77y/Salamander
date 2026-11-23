@@ -27,6 +27,7 @@ param(
     [switch]$ShortUnicodeOnly,
     [switch]$ShortUnicodeRenameOnly,
     [switch]$ShortUnicodeRecycleOnly,
+    [switch]$ShortUnicodePermanentDeleteOnly,
     [switch]$VerifyRecycleRestore,
     [switch]$PluginLoadSmokeOnly,
     [switch]$WicViewerVerified,
@@ -3929,7 +3930,7 @@ try {
         -not $ShortUnicodeTransferOnly -and -not $ShortUnicodeTransferCollisionOnly -and
         -not $ShortUnicodeMultiSelectOnly -and
         -not $ShortUnicodeDirectoryRenameOnly -and
-        -not $ShortUnicodeRecycleOnly -and
+        -not $ShortUnicodeRecycleOnly -and -not $ShortUnicodePermanentDeleteOnly -and
         -not $ShortUnicodeUnsafeOperationsOnly -and -not $ShortOperationsOnly -and
         -not $UnicodeFindOnly -and -not $LegacyFindScenario -and -not $MaximumPathOnly -and
         -not $LargeUnicodeCopyOnly -and
@@ -4514,6 +4515,37 @@ try {
         Assert-True (Test-Content $bestFitFile) 'Best-fit Unicode file content remains intact'
         $passed = $true
         Write-Host 'PASS: Unicode GUI filename round-trip survives non-question-mark ANSI best-fit mapping.'
+        return
+    }
+
+    if ($ShortUnicodePermanentDeleteOnly) {
+        Send-Keys '{END}'
+        Assert-True ((Read-FocusedFilename) -ceq $utfName) 'Permanent F8 exact Unicode source identified'
+        Send-Keys '{F8}'
+        $observed = @{ Dialog = $null }
+        Wait-Until {
+            $observed.Dialog = Get-TestDialog
+            return -not [string]::IsNullOrEmpty($observed.Dialog)
+        } 'F8 Unicode delete/recycle policy prompt'
+        if ($observed.Dialog -notmatch 'Delete Unicode file') {
+            # The per-user Recycle Bin policy is intentionally not changed
+            # by this test. Shift+F8 inverts it to permanent deletion.
+            Send-Keys '{ESC}'
+            Assert-True (Test-Content $unicodeShortFile) 'Cancelled recycling leaves exact Unicode bytes'
+            Send-Keys '+{F8}'
+            Wait-Until {
+                $observed.Dialog = Get-TestDialog
+                if ($observed.Dialog -match 'legacy ANSI file-operation engine') {
+                    throw "Unicode permanent F8 fell into legacy ANSI refusal: $($observed.Dialog)"
+                }
+                return $observed.Dialog -match 'Delete Unicode file'
+            } 'Shift+F8 native Unicode permanent deletion confirmation'
+        }
+        Assert-True (Test-Content $unicodeShortFile) 'Permanent F8 source intact before confirmation'
+        Send-Keys '{ENTER}'
+        Wait-Until { -not [IO.File]::Exists($unicodeShortFile) } 'Permanent F8 removes the exact Unicode fixture'
+        $passed = $true
+        Write-Host 'PASS: permanent F8 deletes exactly the intended UTF-16 file without ANSI conversion.'
         return
     }
 
