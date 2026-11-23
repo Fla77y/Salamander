@@ -3896,6 +3896,8 @@ try {
         [IO.Directory]::CreateDirectory($moveDir) | Out-Null
     }
     if ($ShortUnicodeDirectoryRenameOnly) {
+        [void][IO.Directory]::CreateDirectory($destination)
+        [void][IO.Directory]::CreateDirectory($moveDir)
         $unicodeDirectoryName = 'Ordner_東京_😀'
         $renamedUnicodeDirectoryName = 'Verschoben_大阪_😀'
         $unicodeDirectoryPath = Join-Path $source $unicodeDirectoryName
@@ -4591,6 +4593,51 @@ try {
         Wait-Until { [IO.Directory]::Exists($renamedDirectory) -and
             -not [IO.Directory]::Exists($unicodeDirectoryPath) } 'Unicode F2 directory rename'
         Assert-True (Test-Content (Join-Path $renamedDirectory 'child.txt')) 'Unicode F2 directory child bytes retained'
+
+        # Regression: the original short-path Unicode directory must support
+        # F5, not just F2. All paths remain inside the disposable fixture.
+        Send-Keys '{TAB}'
+        Go-ToPath $destination
+        Send-Keys '{TAB}'
+        Assert-True ((Read-PanelPath) -ceq $source) 'Unicode F5 source directory verified'
+        Focus-DirectoryRow -Name $renamedUnicodeDirectoryName
+        Send-Keys '{F5}'
+        Wait-Until {
+            $dialog = Get-TestDialog
+            if ($dialog -match 'legacy ANSI file-operation engine|native Unicode file operation') {
+                throw "Unicode directory F5 incorrectly rejected: $dialog"
+            }
+            return $dialog -match 'Copy this Unicode directory'
+        } 'Unicode directory F5 native confirmation'
+        Send-Keys '{ENTER}'
+        $copiedDirectory = Join-Path $destination $renamedUnicodeDirectoryName
+        Wait-Until {
+            (Test-Content (Join-Path $copiedDirectory 'child.txt')) -and
+            [IO.Directory]::Exists($renamedDirectory)
+        } 'Unicode directory F5 copies exact nested bytes'
+
+        # F6 must move the original subtree, leaving the separately copied
+        # destination intact. No ANSI alias may reach the legacy F6 engine.
+        Send-Keys '{TAB}'
+        Go-ToPath $moveDir
+        Send-Keys '{TAB}'
+        Assert-True ((Read-PanelPath) -ceq $source) 'Unicode F6 directory source verified'
+        Focus-DirectoryRow -Name $renamedUnicodeDirectoryName
+        Send-Keys '{F6}'
+        Wait-Until {
+            $dialog = Get-TestDialog
+            if ($dialog -match 'legacy ANSI file-operation engine|native Unicode file operation') {
+                throw "Unicode directory F6 incorrectly rejected: $dialog"
+            }
+            return $dialog -match 'Move this directory and its entire contents within the same volume'
+        } 'Unicode directory F6 native confirmation'
+        Send-Keys '{ENTER}'
+        $movedDirectory = Join-Path $moveDir $renamedUnicodeDirectoryName
+        Wait-Until {
+            (Test-Content (Join-Path $movedDirectory 'child.txt')) -and
+            -not [IO.Directory]::Exists($renamedDirectory)
+        } 'Unicode directory F6 moves exact nested bytes'
+        Assert-True (Test-Content (Join-Path $copiedDirectory 'child.txt')) 'F6 retains independent F5 copy'
         $passed = $true
         Write-Host 'PASS: Unicode F2 directory rename preserves nested contents.'
         return
