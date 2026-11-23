@@ -264,6 +264,11 @@ function Run-Tests {
 
     # A0/UP-01: fail when a plug-in source/project silently disappears and
     # exercise the read-only inventory's missing/rogue-module cases.
+    # MGMT-03: do not silently remove an A0-A7 test gap or mark it passed
+    # without a specific tested commit and execution log.
+    $gapTrackerContract = Join-Path $repository 'tools\release\tests\Test-TestGapTracker.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $gapTrackerContract)
+
     $pluginCoverageInventory = Join-Path $repository 'tools\release\tests\Test-PluginCoverageInventory.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $pluginCoverageInventory)
 
