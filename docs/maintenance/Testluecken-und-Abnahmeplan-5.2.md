@@ -728,6 +728,27 @@ kein separat versionierter vollständiger Transcript-Dateipfad
 oder Binär-SHA256 vor. QA-03 bleibt offen, bis Wiederholung,
 Fehlerrate und derselbe SHA im Volltest dokumentiert sind.
 
+**QA-03 – wiederholbare `ViewUnicode`-Evidenz (23.11.2026,
+VORBEREITET):** `Invoke-LegacyViewerReliability.ps1` baut
+einmalig die isolierte Debug-/Release-x64-Binärdatei, notiert
+Source-SHA und Binär-SHA256 und führt danach standardmäßig
+fünf unabhängige `ViewUnicode`-Fälle mit jeweils eigener
+GUID-Konfiguration aus. Vollständige Konsolenlogs je Lauf
+und `Summary.csv` dokumentieren Exitcode, Dauer und
+verbliebene Prozesse. Ein fehlerhafter Lauf führt zum
+Gesamtergebnis FAIL; bei einem übrig gebliebenen Salamander-
+Prozess wird ohne Beenden fremder Prozesse abgebrochen.
+Parserprüfung und statischer Quellvertrag sind eingebunden.
+Ein einzelner erfolgreicher Lauf ist **kein** Nachweis der
+Wiederholbarkeit; der neue Runner wurde noch **nicht**
+unter Windows ausgeführt.
+
+Aufruf auf unverändertem Checkout:
+
+```powershell
+pwsh -NoProfile -File .\tools\release\tests\Invoke-LegacyViewerReliability.ps1 -Configuration Debug -Iterations 5
+```
+
 ### [ ] QA-04 – Umgebungs-/Locale-Matrix (**P1**, OFFEN)
 - **Fälle:** Windows 11 Build, CP1252 und nichtwesteuropäische
   ACP, LongPathsEnabled ein/aus, 100/125/200 %-DPI,
