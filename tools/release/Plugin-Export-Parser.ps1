@@ -20,3 +20,46 @@ function Test-PeNamedExport {
                '(?:[ \t]+=[ \t]+\S+(?:[ \t]+\([^\r\n]*\))?)?[ \t]*\r?$'
     return [regex]::IsMatch($Report, $pattern)
 }
+
+
+# Read the public names declared in a linker module-definition file.
+# Supports legacy one-line "EXPORTS Foo" and conventional EXPORTS sections
+# with ordinals, PRIVATE flags and internal aliases. This is source evidence,
+# not a guarantee that the linker produced the corresponding PE export.
+function Test-ModuleDefinitionExport {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$Definition,
+        [Parameter(Mandatory)][string]$Name
+    )
+
+    if ([string]::IsNullOrWhiteSpace($Name)) { return $false }
+    $inExports = $false
+    foreach ($rawLine in ($Definition -split '\r?\n')) {
+        # .def semicolon comments must never count as declarations.
+        $line = ($rawLine -split ';', 2)[0].Trim()
+        if ($line.Length -eq 0) { continue }
+
+        if ($line -match '^EXPORTS(?:\s+(.*))?$') {
+            $inExports = $true
+            $candidate = [string]$Matches[1]
+        }
+        elseif (-not $inExports) { continue }
+        elseif ($line -match '^(LIBRARY|NAME|DESCRIPTION|VERSION|SECTIONS|STACKSIZE|HEAPSIZE)(\s|$)') {
+            $inExports = $false
+            continue
+        }
+        else {
+            $candidate = $line
+        }
+
+        if ([string]::IsNullOrWhiteSpace($candidate)) { continue }
+        $token = [regex]::Match($candidate.Trim(), '^(?<public>[^\s=]+)(?:\s|=|$)')
+        if ($token.Success -and
+            [string]::Equals($token.Groups['public'].Value,
+                             $Name, [StringComparison]::Ordinal)) {
+            return $true
+        }
+    }
+    return $false
+}
