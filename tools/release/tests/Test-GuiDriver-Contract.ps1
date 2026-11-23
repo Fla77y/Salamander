@@ -1113,7 +1113,7 @@ if ($driverText -notmatch 'FindUnicodeNotice' -or
     $findGui -notmatch 'Assert-FindNotice -ExpectedText' -or
     $findGui -notmatch 'Refused shell open preserves long-path file content' -or
     $findGui -notmatch 'Legacy advanced Find refusal preserves' -or
-    $findGui -notmatch 'Unicode Find refuses long-path recycling' -or
+    $findGui -notmatch 'Unicode Find recycle refusal preserves test file bytes' -or
     $findGui -notmatch 'modified result before file operations' -or
     $findGui -notmatch '5108' -or
     $findGui -notmatch 'Search cancelled:' -or
