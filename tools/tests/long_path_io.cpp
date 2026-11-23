@@ -1568,7 +1568,61 @@ int main()
     CloseHandle(verifiedTarget);
     if (!workerSameBytes || !DeleteFileW(targetForWorker.c_str()))
         return Fail("finalized Unicode background move retained original data");
-    std::puts("PASS: cross-volume worker finalizer rejects changed source/target identity and preserves exact bytes");
+    std::puts("PASS: worker move finalizer rejects changed identity and differing bytes without removing the source");
+
+    // The modal F6 may be left open while a different process replaces the
+    // selected filename. Copy and Move must compare the PRE-dialog file ID,
+    // even when the new file has the same filename, size, and exact contents.
+    const std::wstring staleSourceName = current + L"\\stale-source-東京.bin";
+    const std::wstring staleTargetName = current + L"\\stale-target-大阪.bin";
+    const std::wstring staleOriginalName = current + L"\\stale-original-識別.bin";
+    std::wstring staleSourcePath, staleTargetPath, staleOriginalPath;
+    Salamander::Utf16DiskPath staleSource, staleTarget;
+    if (!Convert(staleSourceName, staleSourcePath) ||
+        !Convert(staleTargetName, staleTargetPath) ||
+        !Convert(staleOriginalName, staleOriginalPath) ||
+        !OwnPath(staleSourceName, staleSource) ||
+        !OwnPath(staleTargetName, staleTarget))
+        return Fail("prepare same-name Unicode identity substitution paths");
+    HANDLE staleHandle = CreateFileW(staleSourcePath.c_str(), GENERIC_WRITE, 0,
+                                     nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (staleHandle == INVALID_HANDLE_VALUE)
+        return Fail("create pre-dialog Unicode source");
+    DWORD staleCount = 0;
+    const bool wroteStale = WriteFile(staleHandle, workerPayload,
+                                     sizeof(workerPayload), &staleCount, nullptr) &&
+                            staleCount == sizeof(workerPayload);
+    CloseHandle(staleHandle);
+    BY_HANDLE_FILE_INFORMATION expectedBeforeDialog{};
+    if (!wroteStale || !Salamander::TryReadUnicodeRegularFileIdentity(
+            staleSource, expectedBeforeDialog, operationError))
+        return Fail("capture real pre-dialog W source identity");
+    if (!MoveFileExW(staleSourcePath.c_str(), staleOriginalPath.c_str(), 0) ||
+        !CopyFileW(staleOriginalPath.c_str(), staleSourcePath.c_str(), TRUE))
+        return Fail("substitute same-byte source under original Unicode filename");
+    if (Salamander::TryMoveUnicodeFileNoOverwrite(
+            staleSource, staleTarget, operationError, &expectedBeforeDialog) ||
+        operationError != ERROR_FILE_INVALID ||
+        GetFileAttributesW(staleSourcePath.c_str()) == INVALID_FILE_ATTRIBUTES ||
+        GetFileAttributesW(staleTargetPath.c_str()) != INVALID_FILE_ATTRIBUTES)
+        return Fail("same-volume Unicode F6 must reject post-dialog file replacement");
+    std::size_t staleCompleted = 0;
+    const std::vector<BY_HANDLE_FILE_INFORMATION> expectedStale{expectedBeforeDialog};
+    if (Salamander::TryTransferUnicodeClipboardFiles(
+            {staleSource}, pasteTarget, DROPEFFECT_MOVE,
+            staleCompleted, operationError, &expectedStale) ||
+        staleCompleted != 0 || operationError != ERROR_FILE_INVALID)
+        return Fail("synchronous Unicode cross-volume/same-volume move must reject stale selection");
+    if (!DeleteFileW(staleSourcePath.c_str()) ||
+        !MoveFileExW(staleOriginalPath.c_str(), staleSourcePath.c_str(), 0))
+        return Fail("restore exactly the originally selected source identity");
+    if (!Salamander::TryMoveUnicodeFileNoOverwrite(
+            staleSource, staleTarget, operationError, &expectedBeforeDialog) ||
+        operationError != ERROR_SUCCESS ||
+        GetFileAttributesW(staleSourcePath.c_str()) != INVALID_FILE_ATTRIBUTES ||
+        !DeleteFileW(staleTargetPath.c_str()))
+        return Fail("original W file ID can be moved safely once restored");
+    std::puts("PASS: pre-dialog Unicode file ID prevents same-name substitution in F6 and clipboard move");
 
     if (!DeleteFileW(extendedDistinct.c_str()))
         return Fail("DeleteFileW distinct Unicode filename");
