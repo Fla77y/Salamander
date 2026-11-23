@@ -254,6 +254,11 @@ function Run-Tests {
 
     # Guard the original, fully featured Ctrl+F dialog while its worker and
     # result identities are migrated away from ANSI/MAX_PATH.
+    # A0-01: protect current Win32 dialog and keyboard resource IDs
+    # against silent removal. This is not a 5.0 visual parity test.
+    $legacyUiInventoryTest = Join-Path $repository 'tools\release\tests\Test-LegacyUiSurfaceInventory.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $legacyUiInventoryTest)
+
     $legacyFindContract = Join-Path $repository 'tools\release\tests\Test-LegacyFind-UiContract.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $legacyFindContract)
 
