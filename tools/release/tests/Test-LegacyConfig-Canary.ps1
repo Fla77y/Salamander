@@ -56,6 +56,34 @@ try {
     finally { $newVersion.Dispose() }
 
     Assert-IsolatedLegacyConfigPreserved -TestConfigurationKey $root -ExpectedDigest $digest
+    # A0-02 RED: registry names containing record separators or newlines
+    # must not inject ambiguous records into the canonical snapshot.
+    $separatorName = "Pipe|and`nnewline"
+    $canary = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey(
+        "$root\\Config1\\Configuration\\LegacyCanary", $true)
+    try {
+        $canary.SetValue($separatorName, 'unchanged',
+            [Microsoft.Win32.RegistryValueKind]::String)
+    }
+    finally { $canary.Dispose() }
+    $snapshotEntries = [Collections.Generic.List[string]]::new()
+    $snapshotRoot = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey("$root\\Config1", $false)
+    try {
+        Add-RegistryCanarySnapshot -Key $snapshotRoot -RelativePath 'Config1' -Entries $snapshotEntries
+    }
+    finally { $snapshotRoot.Dispose() }
+    if (@($snapshotEntries | Where-Object { $_.Contains("`n") }).Count -gt 0) {
+        throw 'Registry canary snapshot contains unescaped record separators.'
+    }
+    Assert-Rejected -Action {
+        Assert-IsolatedLegacyConfigPreserved -TestConfigurationKey $root -ExpectedDigest $digest
+    } -ExpectedText 'configuration changed'
+    $canary = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey(
+        "$root\\Config1\\Configuration\\LegacyCanary", $true)
+    try { $canary.DeleteValue($separatorName) }
+    finally { $canary.Dispose() }
+    Assert-IsolatedLegacyConfigPreserved -TestConfigurationKey $root -ExpectedDigest $digest
+
     Assert-Rejected -Action {
         $null = New-IsolatedLegacyConfigCanary -TestConfigurationKey $root
     } -ExpectedText 'overwrite an existing isolated'
@@ -102,6 +130,25 @@ try {
     } -ExpectedText 'configuration changed'
     [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKey(
         "$root\Config1\Configuration\UnexpectedKey", $false)
+
+    # A numeric-looking REG_SZ must not be accepted as REG_DWORD 105.
+    $newVersion = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey(
+        "$root\\Config0\\Version", $true)
+    try {
+        $newVersion.SetValue('Configuration', '105',
+            [Microsoft.Win32.RegistryValueKind]::String)
+    }
+    finally { $newVersion.Dispose() }
+    Assert-Rejected -Action {
+        Assert-IsolatedLegacyConfigPreserved -TestConfigurationKey $root -ExpectedDigest $digest
+    } -ExpectedText 'REG_DWORD'
+    $newVersion = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey(
+        "$root\\Config0\\Version", $true)
+    try {
+        $newVersion.SetValue('Configuration', 105,
+            [Microsoft.Win32.RegistryValueKind]::DWord)
+    }
+    finally { $newVersion.Dispose() }
 
     # Config0 must have its own version number; a downgraded or missing
     # current version must fail even while every 5.0 value remains intact.
