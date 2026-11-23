@@ -69,9 +69,36 @@ erhöhen; nicht jede Definition ist zwingend im Produkt erreichbar.
 | Vertrag | Verifizierte Quelle/Test | Noch auszuführen |
 | --- | --- | --- |
 | Produktversion 5.2 hat eigene Konfigurationswurzel, 5.0 bleibt separat | `src/mainwnd2.cpp`: `THIS_CONFIG_VERSION=105`, `SalamanderConfigurationRoots` (5.2 vor 5.0). `Test-ProductVersion.ps1` sichert den Quellvertrag ab | Sauberer 5.0-Benutzerzustand, echter Migrationstest, erneuter Start |
-| Originale Version-5.0-Daten nicht überschreiben/löschen | Quellvertrag für eigenständigen 5.2-Root; keine vollständige Registry-Diff-Ausführung | Export **vor/nach** 5.2-Start, Wert-/Typvergleich, Rollback und Neustart 5.0 |
+| Originale Version-5.0-Daten nicht überschreiben/löschen | Quellvertrag für getrennte Wurzeln; neuer GUID-isolierter 5.0-Registry-Canary mit vollständigem Schlüssel-/Typ-/Wert-SHA-256 vor/nach echtem 5.2-Start in der Legacy-Find-Baseline (noch nicht ausgeführt) | Echter 5.0-Bestand, Migration/Import, Rollback und Neustart 5.0 separat in VM prüfen |
 | Unicode-Historien, Find-Optionen, Plugin-Konfiguration | `LegacyFind-GuiCases.ps1` (`UnicodeSettingsStorage`) und Plugin-Konfigurationsquelle | Kombinationen, Mehrfachstart, Fehler-/Abbruchfall der Migration |
 | Installations-/Deinstallationsverhalten | `tools/release/Release-5.2-Gates.md` | Getrennte saubere Windows-11-Snapshots gemäß PKG-04 |
+
+### Neuer isolierter A0-02-Regressionstest (vorbereitet, nicht ausgeführt)
+
+`LegacyConfig-Canary.ps1` erzeugt unter
+`HKCU\Software\Open Salamander\CodexTests\<GUID>\Config1`
+eine synthetische Konfiguration mit **Original-Version 104** sowie
+Unicode- und binären Werten. Das Modul bildet daraus einen SHA-256-
+Fingerabdruck **aller** Schlüssel, Wertnamen, Typen und Inhalte;
+neue/gelöschte Schlüssel und Änderungen werden erkannt.
+
+`Test-LegacyConfig-Canary.ps1` führt negative Registry-Fixtures aus:
+ungültiger Zielroot, wiederholtes Seeding, geänderte Unicode-/Binärdaten,
+neu hinzugefügter Schlüssel und falsche 5.2-Versionsnummer. Es räumt
+ausschließlich seinen GUID-eigenen Root ab und ist durch `manage.cmd --test`
+registriert.
+
+Im realen, bestehenden `LegacyFindScenario=Baseline` wird der alte
+`Config1`-Snapshot **vor** dem Start der isolierten 5.2-GUI erzeugt und
+**nach** der vollständigen Upgrade-/GUI-Bereitschaft mit dem
+vorherigen Fingerabdruck verglichen. Außerdem muss der neue `Config0`
+die **Versionsnummer 105** haben. Der ursprüngliche Registry-Root
+der installierten Version 5.0 wird **nie gelesen oder beschrieben**.
+
+**Grenze:** Dieser Test beweist nur die Nichtveränderung einer synthetischen
+alten Konfiguration beim 5.2-Start. Ein 5.0→5.2-Datenimport, tatsächliche
+5.0-Plugin-Einstellungen, 5.0-VM-Neustart und Rollback bleiben
+**nicht abgedeckt**; A0-02 ist deshalb weiterhin TEILBELEGT.
 
 **Sicherheitsvorgabe:** Test-Skripte dürfen nie ungefragt die reale
 Benutzerkonfiguration `HKCU\Software\Open Salamander\5.0` verändern oder
