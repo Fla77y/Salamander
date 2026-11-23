@@ -173,7 +173,17 @@ EndProject
         & $invoker -Repository $fake -BuiltDirectory $build -RequireMatchingPayloads
     } -Reason 'missing stage under strict integrity mode' -ExpectedError '-RequireMatchingPayloads requires'
 
+    # UP-02: an ABI audit over "whatever was built" cannot silently skip
+    # a Solution plug-in absent from the build output.
+    Assert-InventoryRejected -Action {
+        $builtOnly = @(Get-SalamanderPluginInventory -Repository $fake -BuiltDirectory $build)
+        Assert-SalamanderBuiltPluginCompleteness -Inventory $builtOnly
+    } -Reason 'missing built Solution module in ABI audit' -ExpectedError 'Missing built Solution plug-in binaries: beta'
+
     [IO.File]::WriteAllBytes((Join-Path $build 'plugins\beta\beta.spl'), [byte[]](7,8,9))
+    Assert-SalamanderBuiltPluginCompleteness -Inventory @(
+        Get-SalamanderPluginInventory -Repository $fake -BuiltDirectory $build)
+
     [void][IO.Directory]::CreateDirectory((Join-Path $stage 'plugins\rogue'))
     [IO.File]::WriteAllBytes((Join-Path $stage 'plugins\rogue\rogue.spl'), [byte[]](4,5,6))
     & $invoker -Repository $fake -BuiltDirectory $build -StagedDirectory $stage -RequireMatchingPayloads
