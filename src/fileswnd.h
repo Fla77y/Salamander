@@ -1332,9 +1332,9 @@ public:
     // Bounded multi-selection of ordinary Unicode disk files; any unsupported
     // selection remains behind the legacy ANSI fail-closed operation gate.
     BOOL TryUnicodeMultiFileTransfer(CActionType type, CFilesWindow* target);
-    // Only an explicitly configured recycle operation may handle a lossy
-    // UTF-16 filename; permanent F8 and unsupported entries remain blocked.
-    BOOL TryUnicodeSingleFileRecycle();
+    // Preserve F8 Recycle Bin policy; on permanent deletion revalidate
+    // the original UTF-16 file identity before marking it for removal.
+    BOOL TryUnicodeSingleFileDelete();
     void FilesAction(CActionType type, CFilesWindow* target = NULL, int countSizeMode = 0);
     void PluginFSFilesAction(CPluginFSActionType type);
     void CreateDir(CFilesWindow* target);
