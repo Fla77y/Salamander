@@ -187,6 +187,34 @@ Implementierung `10dca3ebc467ca3ede0c56edd6f52f1a7fdfd8bb`; Testpfad-Korrektur `
 **Statisch geprüft, Windows-/PowerShell-Ausführung ausstehend; kein PASS.**
 Die reale 5.0-Import-/Löschsemantik bleibt ausdrücklich offen.
 
+**UP-01 / PKG-01 – Integritäts-Gate verschärft (23.11.2026,
+VORBEREITET):** Der Aufruf `Invoke-PluginCoverageInventory.ps1
+-RequireMatchingPayloads` lehnt jetzt den vorher zulässigen
+Fehlzustand "Build und Stage enthalten keine SPL-Datei" ab.
+Mit `-RequiredShippedModules` ist ein namentlicher Mindestbestand
+prüfbar; fehlende oder falsch typisierte Namen werden nicht stillschweigend
+als `NOT_SHIPPED` akzeptiert. Synthetische Negativfälle liegen in
+`Test-PluginCoverageInventory.ps1` vor. Der Paketaufbau vergleicht
+vor Erstellung der Debug-/Release-Archive und Installer die Byte-Hashes
+und verlangt derzeit die fünf über vorhandene Exporttests belegten
+Pflichtmodule 7zip, checksum, filecomp, renamer und pictview.
+**Nicht belegt:** vollständige Produkt-/Plugin-Positivliste, reale
+Windows-Ausführung, alle 35 Moduloperationen, finale Paketinhaltstests.
+Code: `fbf71c384b0156d1871e3ad0534b0ec355e15211`,
+`0588db60722e7e3479b21793c7d1b0b01f63a353`,
+`b708605f045c5d10ef67f7e5fa233a674597b4be`,
+`c979aa6a505ae479c8d341abc248c5f758c37788`.
+
+**BUILD-02 / MGMT-03 – Windows-CI-Vorprüfung vorbereitet:**
+Das branchgebundene Workflow-Skript
+`.github/workflows/pr-test-gap-preflight.yml`
+(Commit `ea23d4aefe03db8d85aaa0643a563ee9ca521dc5`)
+führt sechs isolierte Quell-/Registry-Vertragstests auf einem
+Windows-Runner aus. **Zum Zeitpunkt dieser Eintragung existiert
+kein abrufbarer Erfolgsnachweis für den aktuellen Commit.**
+Die vollständigen Visual-Studio-2026-, GUI-, Plugin-Host- und
+VM-Abnahmeprüfungen werden hierdurch nicht ersetzt.
+
 **Nächster Schritt nach dieser Quellbasis:** Neue Regressionen auf
 Windows ausführen; anschließend tatsächliche Built-/Staged-/Shipped-SPLs
 auf dem **selben** Commit nachweisen, pro Modul Funktionen
