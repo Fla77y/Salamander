@@ -119,7 +119,16 @@ inline HANDLE OpenRaw(const char* name, DWORD access, DWORD share, LPSECURITY_AT
     // between the attribute probe and CreateFile; a source hard link must
     // never be truncated by CREATE_ALWAYS before its identity is checked.
     const bool truncate = disposition == CREATE_ALWAYS || disposition == TRUNCATE_EXISTING;
-    const DWORD safeDisposition = disposition == CREATE_ALWAYS ? OPEN_ALWAYS :
+    // Unicode F6 is a no-overwrite operation. The destination may appear
+    // after the panel preflight. Its very first write open must create a NEW
+    // file, never open/truncate a file owned by another process.
+    const bool firstMoveTargetWrite =
+        Current->CaptureTargetIdentity && Current->TargetToken == name &&
+        !Current->HasTargetIdentity &&
+        (access & (GENERIC_WRITE | FILE_WRITE_DATA | FILE_APPEND_DATA |
+                   FILE_WRITE_ATTRIBUTES | WRITE_DAC | WRITE_OWNER)) != 0;
+    const DWORD safeDisposition = firstMoveTargetWrite ? CREATE_NEW :
+        disposition == CREATE_ALWAYS ? OPEN_ALWAYS :
         disposition == TRUNCATE_EXISTING ? OPEN_EXISTING : disposition;
     HANDLE file = CreateFileW(path, access, share, security, safeDisposition,
         attributes | FILE_FLAG_OPEN_REPARSE_POINT, templateFile);
