@@ -116,6 +116,18 @@ Es wurden keine GUI-/Win32-Tests für diese neuen Dateien ausgeführt.
   sowie kritische F2–F8-/Find-Kommandos gegen unbemerkten Wegfall.
   Die Referenz ist der *grüne 5.2-Quellstand*, **nicht** eine
   Original-5.0-UI-Vergleichsmessung; A0 bleibt offen.
+- **A0-02, neue Regression vorbereitet:** Ein echtes Registry-
+  Negativtestskript `Test-LegacyConfig-Canary.ps1` erstellt ausschließlich
+  eigene GUID-Schlüssel und erkennt geänderte Unicode-/Binärwerte,
+  zusätzliche Schlüssel und falsche Versionsnummern.
+  Der bestehende **isolierte Legacy-Find-Baseline-GUI-Test** seedet vor
+  dem 5.2-Prozessstart eine synthetische 5.0-Config1 mit Version 104
+  und prüft nach der GUI-Initialisierung den vollständigen
+  Registry-SHA-256 sowie die neue Config0-Version 105.
+  Beide neuen Prüfungen sind unter `--test` bzw. `--test-all`
+  registriert, aber **auf diesem Commit noch nicht unter Windows
+  ausgeführt**. Der echte 5.0-Import samt Rollback bleibt offen.
+
 - **A0-02, TEILBELEGT:** Die nachgewiesenen 5.2-/5.0-Registry-Wurzeln,
   Versionsmigration 105, vorhandenen Quell-/GUI-Tests und die noch
   erforderlichen isolierten 5.0→5.2→5.0-Snapshots sind im
