@@ -136,7 +136,18 @@ inline HANDLE OpenRaw(const char* name, DWORD access, DWORD share, LPSECURITY_AT
         !Current->HasTargetIdentity &&
         (access & (GENERIC_WRITE | FILE_WRITE_DATA | FILE_APPEND_DATA |
                    FILE_WRITE_ATTRIBUTES | WRITE_DAC | WRITE_OWNER)) != 0;
+    const bool existingMoveTargetWrite =
+        Current->CaptureTargetIdentity && Current->TargetToken == name &&
+        Current->HasTargetIdentity &&
+        (access & (GENERIC_WRITE | FILE_WRITE_DATA | FILE_APPEND_DATA |
+                   FILE_WRITE_ATTRIBUTES | WRITE_DAC | WRITE_OWNER)) != 0;
+    // A retry must not CREATE a new file at the original destination if the
+    // worker-owned target disappeared. Reopen only that exact object, then
+    // confirm its identity before writing or truncating it.
     const DWORD safeDisposition = firstMoveTargetWrite ? CREATE_NEW :
+        existingMoveTargetWrite &&
+            (disposition == CREATE_ALWAYS || disposition == OPEN_ALWAYS)
+            ? OPEN_EXISTING :
         disposition == CREATE_ALWAYS ? OPEN_ALWAYS :
         disposition == TRUNCATE_EXISTING ? OPEN_EXISTING : disposition;
     HANDLE file = CreateFileW(path, access, share, security, safeDisposition,
