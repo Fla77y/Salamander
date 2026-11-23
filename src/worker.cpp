@@ -8196,18 +8196,17 @@ unsigned ThreadWorkerBody(void* parameter)
                     }
                 }
                 CopyIo::Scope pathScope(widePaths);
-                pd.Operation = opStrCopying;
+                const bool unicodeMoveAfterCopy =
+                    (op->OpFlags & OPFL_UTF16_MOVE_AFTER_COPY) != 0;
+                pd.Operation = unicodeMoveAfterCopy ? opStrMoving : opStrCopying;
                 pd.Source = op->SourceName;
-                pd.Preposition = opStrCopyingPrep;
+                pd.Preposition = unicodeMoveAfterCopy ? opStrMovingPrep : opStrCopyingPrep;
                 pd.Target = op->TargetName;
                 SetProgressDialog(hProgressDlg, &pd, dlgData);
 
                 SetProgress(hProgressDlg, 0, CaclProg(totalDone, script->TotalSize), dlgData);
 
                 BOOL lantasticCheck = widePaths == NULL && IsLantasticDrive(op->TargetName, lastLantasticCheckRoot, lastIsLantasticPath);
-
-                const bool unicodeMoveAfterCopy =
-                    (op->OpFlags & OPFL_UTF16_MOVE_AFTER_COPY) != 0;
                 BOOL skipped = FALSE;
                 Error = !DoCopyFile(op, hProgressDlg, buffer, script, totalDone,
                                     clearReadonlyMask, unicodeMoveAfterCopy ? &skipped : NULL,
