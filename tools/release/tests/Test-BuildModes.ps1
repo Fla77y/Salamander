@@ -154,6 +154,12 @@ try {
 
     # Arrange/Act/Assert: destructive clean must reject the repository as a build root.
     $rejected = $false
+    # Arrange / Act / Assert: the repository-owned .Build directory is the only allowed internal root.
+    Assert-BuildDirectory -Repository $repositoryRoot -BuildRoot (Join-Path $repositoryRoot '.Build')
+    $nestedBuildRootRejected = $false
+    try { Assert-BuildDirectory -Repository $repositoryRoot -BuildRoot (Join-Path $repositoryRoot 'other-build') }
+    catch { $nestedBuildRootRejected = $true }
+    if (-not $nestedBuildRootRejected) { throw 'An arbitrary repository subdirectory was accepted as BuildRoot.' }
     try { Assert-BuildDirectory -Repository $repositoryRoot -BuildRoot $repositoryRoot }
     catch { $rejected = $true }
     if (-not $rejected) { throw 'Unsafe build root was accepted.' }
