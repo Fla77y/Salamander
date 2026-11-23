@@ -137,7 +137,7 @@ foreach ($configuration in @('Debug', 'Release')) {
     # creating either a portable archive or an installer.
     & (Join-Path $PSScriptRoot 'Invoke-PluginCoverageInventory.ps1') `
         -Repository $repository -BuiltDirectory $variantPaths[$configuration] `
-        -StagedDirectory $stage -RequireMatchingPayloads `
+        -StagedDirectory $stage -RequireMatchingPayloads -RequireSolutionPluginPayloads `
         -RequiredShippedModules @('7zip','checksum','filecomp','renamer','pictview')
     Test-DistributionStage -Stage $stage -Configuration $configuration -DumpbinExe $dumpbinExe
 
