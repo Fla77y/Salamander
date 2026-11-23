@@ -380,11 +380,13 @@ inline bool CopyUnicodeClipboardTree(const Utf16DiskPath& source, const Utf16Dis
 
 inline bool TryTransferUnicodeClipboardFiles(const std::vector<Utf16DiskPath>& files,
                                              const Utf16DiskPath& directory, DWORD effect,
-                                             std::size_t& completed, DWORD& error)
+                                             std::size_t& completed, DWORD& error,
+                                             const std::vector<BY_HANDLE_FILE_INFORMATION>* expectedSources = nullptr)
 {
     completed = 0;
     error = ERROR_INVALID_PARAMETER;
-    if (files.empty() || files.size() > 16)
+    if (files.empty() || files.size() > 16 ||
+        (expectedSources != nullptr && expectedSources->size() != files.size()))
         return false;
     if (effect != DROPEFFECT_COPY && effect != DROPEFFECT_MOVE)
     {
@@ -439,8 +441,9 @@ inline bool TryTransferUnicodeClipboardFiles(const std::vector<Utf16DiskPath>& f
     };
     std::vector<Destination> destinations;
     destinations.reserve(files.size());
-    for (const auto& file : files)
+    for (std::size_t fileIndex = 0; fileIndex < files.size(); ++fileIndex)
     {
+        const auto& file = files[fileIndex];
         std::wstring source;
         if (!UnicodeFileOperationsDetail::TryGetExtendedPath(file, source, error))
             return false;
@@ -448,6 +451,17 @@ inline bool TryTransferUnicodeClipboardFiles(const std::vector<Utf16DiskPath>& f
         const HANDLE handle = OpenUnicodeClipboardSource(source, effect, target.sourceInfo, error, false, true);
         if (handle == INVALID_HANDLE_VALUE)
             return false;
+        // A GUI operation can retain the exact file ID selected before its
+        // modal confirmation; never copy/delete a different file later
+        // substituted at the same path, even with identical bytes.
+        if (expectedSources != nullptr &&
+            !UnicodeFileOperationsDetail::IsSameRegularFile(
+                (*expectedSources)[fileIndex], target.sourceInfo))
+        {
+            CloseHandle(handle);
+            error = ERROR_FILE_INVALID;
+            return false;
+        }
         sources.handles.push_back(handle);
         if (effect == DROPEFFECT_MOVE)
         {
