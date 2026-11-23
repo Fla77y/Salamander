@@ -149,3 +149,25 @@ PNG/BMP/JPEG/TIFF copy-export, and supported CF_DIB clipboard operations.
 It does not replace the old proprietary codec ecosystem or timed GIF playback,
 print/capture, metadata/color management and historical editing/menu UI.
 Do not advertise full legacy PictView compatibility.
+
+## 23 November 2026: additional format/host regression gates
+
+After the passing `--test-all` baseline at `37a5cc595e45c37b32ad8460148717d975bc600b`,
+a new native MSVC x86/x64 test was added for all **13 currently advertised**
+viewer/thumbnail extensions (BMP/DIB/PNG/JPEG/JPE/GIF/TIFF/ICO/JXR/WDP/HDP),
+Unicode filenames, actual decoded BGRA pixels, and PNG decoding through an
+extended-length path. The test uses the production `WicImageDecoder` and is
+registered in `Invoke-PictViewTests.ps1` and the PictView Windows CI workflow.
+A static contract requires future `AddViewer`/`SetThumbnailLoader` extension
+lists to match the native format test matrix.
+
+The explicitly opt-in real Salamander F3 host smoke now exercises BMP, PNG,
+JPEG, GIF, TIFF and ICO in separate verified child processes. These changes
+have not yet passed a new Windows run; do not count them as executed evidence.
+JPEG XR support depends on an installed WIC codec and must not silently skip
+when an advertised extension cannot be encoded/decoded.
+
+Neither test establishes historical PictView feature parity, complete legacy
+plug-in ABI Unicode support, thumbnail host behavior or clean-VM package
+acceptance. See `docs/maintenance/test-coverage-audit-2026-11-23.md` for the
+requirement-by-requirement open gates.
