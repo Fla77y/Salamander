@@ -21,7 +21,10 @@ function Add-RegistryCanarySnapshot {
         [Parameter(Mandatory)][Collections.Generic.List[string]]$Entries
     )
 
-    $Entries.Add("KEY|$RelativePath")
+    # Registry key/value names may contain pipes and newlines. Encode names
+    # before joining records so distinct snapshots cannot share a digest.
+    $pathToken = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($RelativePath))
+    $Entries.Add("KEY|$pathToken")
     foreach ($name in @($Key.GetValueNames() | Sort-Object -CaseSensitive)) {
         $kind = $Key.GetValueKind($name)
         $value = $Key.GetValue($name, $null,
@@ -36,7 +39,8 @@ function Add-RegistryCanarySnapshot {
             [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes(
                 [Convert]::ToString($value, [Globalization.CultureInfo]::InvariantCulture)))
         }
-        $Entries.Add("VALUE|$RelativePath|$name|$kind|$serialized")
+        $nameToken = [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($name))
+        $Entries.Add("VALUE|$pathToken|$nameToken|$kind|$serialized")
     }
 
     foreach ($child in @($Key.GetSubKeyNames() | Sort-Object -CaseSensitive)) {
@@ -123,6 +127,10 @@ function Assert-IsolatedLegacyConfigPreserved {
         throw 'Missing isolated 5.2 configuration version.'
     }
     try {
+        $actualKind = $version.GetValueKind('Configuration')
+        if ($actualKind -ne [Microsoft.Win32.RegistryValueKind]::DWord) {
+            throw "Expected independent 5.2 configuration version as REG_DWORD; found $actualKind."
+        }
         $actualVersion = [int]$version.GetValue('Configuration', 0)
     }
     finally { $version.Dispose() }
