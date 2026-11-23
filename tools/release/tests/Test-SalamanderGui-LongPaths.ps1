@@ -4566,6 +4566,25 @@ try {
         Assert-True ((Read-PanelPath) -ceq $unicodeParent) 'Original Unicode source parent verified'
         Send-Keys '{END}'
         Assert-True ((Read-FocusedFilename) -ceq $parentSourceName) 'ASCII file in Unicode parent selected'
+        Assert-True ((Read-FocusedFullname) -ceq $parentSourceFile) 'Unicode parent copied as an exact UTF-16 full name'
+
+        # F2 must preserve the Unicode parent even when the leaf is ASCII.
+        $renamedParentSourceName = 'renamed-child.txt'
+        $renamedParentSourceFile = Join-Path $unicodeParent $renamedParentSourceName
+        Set-ClipboardText $renamedParentSourceName
+        Send-Keys '{F2}'
+        Start-Sleep -Milliseconds 250
+        Send-Keys '^a'
+        Send-Keys '^v'
+        Send-Keys '{ENTER}'
+        Wait-Until {
+            (Test-Content $renamedParentSourceFile) -and
+            -not [IO.File]::Exists($parentSourceFile)
+        } 'F2 retains exact Unicode parent and ASCII leaf bytes'
+        $parentSourceName = $renamedParentSourceName
+        $parentSourceFile = $renamedParentSourceFile
+        Send-Keys '{END}'
+        Assert-True ((Read-FocusedFullname) -ceq $parentSourceFile) 'F2 updated full name without ACP loss'
         Send-Keys '{F5}'
         Wait-Until {
             $dialog = Get-TestDialog
