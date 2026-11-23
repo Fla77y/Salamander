@@ -352,12 +352,14 @@ function Test-DistributionStage {
     } else {
         # Defense in depth: also check nested plug-in directories. The
         # staging filter alone must not define the Release safety contract.
+        $forbiddenBuildExtensions = @('.pdb', '.lib', '.exp', '.obj', '.pch',
+                                     '.idb', '.ilk', '.tlog', '.lastbuildstate')
         $buildArtifacts = @(Get-ChildItem -LiteralPath $Stage -Recurse -File |
-            Where-Object { $_.Extension -in @('.pdb', '.lib', '.exp') })
+            Where-Object { $_.Extension -in $forbiddenBuildExtensions })
         if ($buildArtifacts.Count -ne 0) {
             $examples = @($buildArtifacts | Select-Object -First 8 |
                 ForEach-Object { [IO.Path]::GetRelativePath($Stage, $_.FullName) })
-            throw "Release stage contains build-only PDB/LIB/EXP files: $($examples -join '; ')"
+            throw "Release stage contains build-only compiler/linker files: $($examples -join '; ')"
         }
         $debugDlls = @(Get-ChildItem -LiteralPath $Stage -Recurse -File | Where-Object {
             $_.Name -match '^(?:msvcp\d+(?:_\d+)?|vcruntime\d+(?:_\d+)?|concrt\d*)d\.dll$|^ucrtbased\.dll$'
