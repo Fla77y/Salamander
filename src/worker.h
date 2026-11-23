@@ -215,6 +215,7 @@ enum COperationCode
 #define OPFL_TGTPATH_IS_FAST 0x00000040      // the target path is a disk, USB disk, flash drive, flash-card reader, CD, DVD, or RAM disk (not a network or floppy)
 #define OPFL_IGNORE_INVALID_NAME 0x00000080  // skip the name validity test (for directories: unchanged name = do not flag as invalid)
 #define OPFL_UTF16_COPY_PATHS 0x00000100     // SourceName/TargetName are non-path tokens owned by UnicodeCopyPaths
+#define OPFL_UTF16_MOVE_AFTER_COPY 0x00000200 // Delete the pinned UTF-16 source only after an unskipped, completed worker copy
 
 struct COperation
 {
@@ -424,7 +425,8 @@ void FreeScript(COperations* script);
 // threads. Failure leaves ownership with the caller, which must FreeScript().
 BOOL PrepareUnicodeFileCopy(COperations* script, const Salamander::Utf16DiskPath& source,
                             const Salamander::Utf16DiskPath& target,
-                            const WIN32_FILE_ATTRIBUTE_DATA& attributes, BOOL ignoreADS, DWORD& error);
+                            const WIN32_FILE_ATTRIBUTE_DATA& attributes, BOOL ignoreADS, DWORD& error,
+                            BOOL moveAfterCopy = FALSE);
 
 //
 // File information classes and Io Status block (see NTDDK.H)
