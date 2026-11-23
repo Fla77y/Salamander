@@ -317,10 +317,27 @@ int main()
         !OwnPath(pastePath, pasteTarget))
         return Fail("create long clipboard copy target");
     std::size_t copied = 0;
+    // Arrange / Assert: unsupported ambiguous drop effects must not trigger
+    // an actual transfer or obscure its error when the copy below fails.
     if (Salamander::UnicodeClipboardTransferEffect(DROPEFFECT_COPY | DROPEFFECT_MOVE) != DROPEFFECT_NONE ||
-        Salamander::UnicodeClipboardTransferEffect(DROPEFFECT_MOVE | DROPEFFECT_SCROLL) != DROPEFFECT_MOVE ||
-        !Salamander::TryTransferUnicodeClipboardFiles(pastedFiles, pasteTarget, DROPEFFECT_COPY, copied, error) || copied != 2)
-        return Fail("copy both Unicode clipboard files into a long directory");
+        Salamander::UnicodeClipboardTransferEffect(DROPEFFECT_MOVE | DROPEFFECT_SCROLL) != DROPEFFECT_MOVE)
+        return Fail("Unicode clipboard drop effect validation");
+
+    // Act: copy both files, including the source's alternate data stream.
+    const bool transferSucceeded = Salamander::TryTransferUnicodeClipboardFiles(
+        pastedFiles, pasteTarget, DROPEFFECT_COPY, copied, error);
+    const DWORD nativeError = GetLastError();
+
+    // Assert: report the API's explicit error and partial progress, not just
+    // a potentially stale thread-local GetLastError value.
+    if (!transferSucceeded || copied != 2)
+    {
+        std::fprintf(stderr,
+                     "FAIL: copy both Unicode clipboard files into a long directory "
+                     "(transferSucceeded=%d, operationError=%lu, copied=%zu/2, GetLastError=%lu)\n",
+                     transferSucceeded ? 1 : 0, error, copied, nativeError);
+        return 1;
+    }
 
     const auto firstCopy = extendedPaste + filename.substr(filename.find_last_of(L'\\'));
     const auto secondCopy = extendedPaste + distinctName.substr(distinctName.find_last_of(L'\\'));
