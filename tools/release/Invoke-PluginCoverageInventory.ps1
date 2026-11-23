@@ -105,6 +105,7 @@ if ($RequireMatchingPayloads) {
         if ($unexpectedProjects.Count -gt 0) {
             throw "Undeclared shipped plug-ins: $($unexpectedProjects -join ', ')"
         }
+        Assert-SalamanderPluginSidecarParity -BuiltDirectory $BuiltDirectory -StagedDirectory $StagedDirectory
         Write-Host "PASS: all $(@($inventory | Where-Object SolutionProject).Count) Solution plug-ins are present with matching SHA-256 hashes; undeclared SPLs excluded."
     }
     Write-Host "PASS: $($matched.Count) built/staged SPL payloads match SHA-256; $($required.Count) explicitly required module(s) present."
