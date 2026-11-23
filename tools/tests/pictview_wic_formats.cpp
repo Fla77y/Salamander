@@ -180,6 +180,83 @@ const FormatCase kFormats[] = {
     {L"hdp", &GUID_ContainerFormatWmp, nullptr, 0},
 };
 
+// A rejected read must clear output from the preceding successful decode.
+// This includes an explicitly reset frame count for callers reusing it.
+bool TestInvalidFrameDoesNotReturnPixels(const std::wstring& path)
+{
+    pictview::wic::DecodedImage image;
+    UINT frameCount = 0;
+    HRESULT hr = pictview::wic::DecodeFrame(path.c_str(), 0, image, &frameCount);
+    if (FAILED(hr) || frameCount != 1 || image.bgra.empty())
+    {
+        std::fprintf(stderr, "FAIL: prepare out-of-range WIC frame regression\n");
+        return false;
+    }
+
+    // Act / Assert: all test images have exactly one frame.
+    frameCount = 99;
+    hr = pictview::wic::DecodeFrame(path.c_str(), 1, image, &frameCount);
+    if (SUCCEEDED(hr) || frameCount != 0 || image.width != 0 ||
+        image.height != 0 || image.stride != 0 || !image.bgra.empty())
+    {
+        std::fprintf(stderr, "FAIL: out-of-range WIC frame retains pixels or frame count\n");
+        return false;
+    }
+    return true;
+}
+
+// Reuse the same DecodedImage after a successful decode to detect stale
+// pixel exposure across all common invalid input paths.
+bool VerifyInvalidDecode(const std::wstring& valid, const wchar_t* invalid,
+                         const char* scenario)
+{
+    pictview::wic::DecodedImage image;
+    UINT frameCount = 0;
+    HRESULT hr = pictview::wic::DecodeFrame(valid.c_str(), 0, image, &frameCount);
+    if (FAILED(hr) || image.bgra.empty())
+    {
+        std::fprintf(stderr, "FAIL: prepare invalid WIC decoding regression\n");
+        return false;
+    }
+
+    frameCount = 99;
+    hr = pictview::wic::DecodeFrame(invalid, 0, image, &frameCount);
+    if (SUCCEEDED(hr) || frameCount != 0 || image.width != 0 ||
+        image.height != 0 || image.stride != 0 || !image.bgra.empty())
+    {
+        std::fprintf(stderr, "FAIL: %s did not fail closed\n", scenario);
+        return false;
+    }
+    return true;
+}
+
+// The production WIC decode API guarantees empty results for invalid files.
+bool TestDecodeFailuresAreAtomic(TestFixture& fixture)
+{
+    const std::wstring valid = fixture.root + L"\\valid-failure-reference.png";
+    fixture.files.push_back(valid);
+    if (FAILED(EncodeRedImage(valid, GUID_ContainerFormatPng)))
+    {
+        std::fprintf(stderr, "FAIL: create reference WIC image\n");
+        return false;
+    }
+
+    const std::wstring corrupt = fixture.root + L"\\truncated-image.png";
+    fixture.files.push_back(corrupt);
+    const unsigned char truncated[] = {0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A};
+    if (FAILED(WriteBytes(corrupt, truncated, sizeof(truncated))))
+    {
+        std::fprintf(stderr, "FAIL: create truncated WIC image\n");
+        return false;
+    }
+
+    const std::wstring missing = fixture.root + L"\\not-present.png";
+    return VerifyInvalidDecode(valid, nullptr, "invalid WIC filename: null") &&
+           VerifyInvalidDecode(valid, L"", "invalid WIC filename: empty") &&
+           VerifyInvalidDecode(valid, missing.c_str(), "missing WIC image") &&
+           VerifyInvalidDecode(valid, corrupt.c_str(), "truncated WIC image");
+}
+
 bool TestFormat(TestFixture& fixture, const FormatCase& format)
 {
     // Arrange
@@ -211,7 +288,7 @@ bool TestFormat(TestFixture& fixture, const FormatCase& format)
         std::fwprintf(stderr, L"FAIL: PictView WIC .%ls decode (HRESULT 0x%08lX, frames=%u, pixels=%zu)\n",
                       format.extension, static_cast<unsigned long>(decoded),
                       frames, image.bgra.size());
-    return valid;
+    return valid && TestInvalidFrameDoesNotReturnPixels(file);
 }
 
 bool TestLongPath(TestFixture& fixture)
@@ -257,6 +334,8 @@ bool RunTests()
     for (const auto& format : kFormats)
         if (!TestFormat(fixture, format))
             success = false;
+    if (!TestDecodeFailuresAreAtomic(fixture))
+        success = false;
     if (!TestLongPath(fixture))
         success = false;
     return success;
