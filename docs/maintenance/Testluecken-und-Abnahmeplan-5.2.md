@@ -251,6 +251,19 @@ Binärtest-Wiederverwendung
 für sämtliche Module.** SDK-Binärkompatibilität, alle
 Unicode-/Langpfad-Operationen und Plugin-Host-Interaktionen bleiben offen.
 
+**UP-02 – Binär-ABI-Test über alle tatsächlich gebauten Module
+erweitert (VORBEREITET):** Die x64-dumpbin-Prüfung nutzt jetzt
+Get-SalamanderPluginInventory statt einer auf fünf Module begrenzten
+Schleife. Alle gefundenen BuiltPath-SPLs werden gegen die jeweiligen
+.def-Namen und PE-Exporttabellen geprüft; die fünf bisherigen
+Pflichtmodule bleiben zwingend und nicht deklarierte Build-SPLs werden
+abgewiesen. Quell-Regressionsschutz a1dac23561d6bf7e4f618700f09191dfda2241e0,
+Implementierung ad50f2a85924f9386da3b86fda6e6e2211300bd5.
+Alle 35 .def-Dateien wurden separat aus GitHub gelesen und enthielten
+die beiden deklarierten SDK-Exportnamen.
+**Keine ausgeführte x64-Binärprüfung und kein Unicode-/Langpfad-
+End-to-End-Nachweis auf diesem HEAD.**
+
 **Nächster Schritt nach dieser Quellbasis:** Neue Regressionen auf
 Windows ausführen; anschließend tatsächliche Built-/Staged-/Shipped-SPLs
 auf dem **selben** Commit nachweisen, pro Modul Funktionen
