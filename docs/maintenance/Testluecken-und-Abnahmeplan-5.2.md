@@ -411,6 +411,28 @@ prüfen, danach den kompletten `--build-clean --test-all --setup`-
 Lauf auf demselben aktuellen SHA wiederholen. A0-02 und
 die vollständige Registry-/Upgrade-Abnahme bleiben offen.
 
+**A0-02 – PowerShell-Parserregression nach Canary-Erweiterung
+(23.11.2026, behoben im Quelltext):**
+Beim gezielten Windows-Aufruf des Registry-Canary-Tests auf
+`7b4d80ac63c89c2e7ec9cc8dbb6b1564db77d9d0`
+meldete PowerShell einen `ParserError` in
+`Test-LegacyConfig-Canary.ps1:50`. Der zuvor eingefügte
+Regressionstest hatte versehentlich den Quelltext beschädigt:
+Die Regex `'^[0-9A-F]{64}$'` wurde abgeschnitten und
+nachfolgende Skriptabschnitte dupliziert. **Dieser Parserfehler
+entstand vor jedem Registry-Test; keine neue Aussage über die
+Produktfunktion.** Der Test wurde aus dem letzten intakten
+194-Zeilen-Stand rekonstruiert und um einen kontrollierten
+20-Zeilen-Test ergänzt. Der komplette Originalinhalt
+bleibt abgesehen von der gezielten Einfügung unverändert.
+Reparatur-Commit `d4cc3d5bfbb50d646af2dbe9e27e808945bb3895`.
+Die Datei ist jetzt 214 Zeilen lang; Regex,
+Setup des GUID-eigenen `Config1` und Cleanup sind
+quellseitig geprüft. Der Parser wurde in dieser
+Ausführungsumgebung **nicht tatsächlich ausgeführt**.
+Nächste Prüfung: PowerShell-AST-Parser, dann isolierter
+`Test-LegacyConfig-Canary.ps1`. A0-02 bleibt offen.
+
 ### [ ] A0-02 – Einstellungen, Upgrade und persistierte Daten (**P1**, TEILBELEGT)
 - **Lücke:** Registry-/Konfigurationsregressionen existieren; komplette
   5.0→5.2→5.0-Kompatibilität ist nicht als End-to-End-Matrix belegt.
