@@ -1,6 +1,8 @@
 name: PictView WIC decoder
 
 on:
+  push:
+    branches: ["bugfix/v5.2"]
   pull_request:
     branches: ["**"]
     paths:
