@@ -749,6 +749,28 @@ Aufruf auf unverändertem Checkout:
 pwsh -NoProfile -File .\tools\release\tests\Invoke-LegacyViewerReliability.ps1 -Configuration Debug -Iterations 5
 ```
 
+**QA-03 – fünffacher Debug-ViewUnicode-Lauf: PASS (begrenzt, 23.11.2026):**
+Der Benutzer hat auf Source-SHA
+`98d9d06b0cc514259f6119cc399da7d6f964b9c3`
+`Invoke-LegacyViewerReliability.ps1 -Configuration Debug -Iterations 5`
+auf Windows ausgeführt. Binär-SHA256:
+`3E017F3ABE5C2AE56A79D78004D4440D79F096499144C0E4E1F3DF794680BCB1`.
+Alle fünf isolierten Fälle meldeten Exitcode 0, zwei erfolgreiche
+bytegenaue Viewer-Kopiervergleiche, Next/Previous und
+erfolgreiche Clipboard-Wiederherstellung. Es verblieben
+jeweils **0** Salamander-Prozesse. Laufzeiten: 3,48 s,
+3,26 s, 3,25 s, 3,42 s, 3,47 s.
+Laut Konsolenausgabe: lokales Evidenzverzeichnis
+`D:\Build\OpenSal\logs\legacy-viewer-reliability\viewunicode-20261123-221445-fefdb01a`
+mit `Summary.csv` und fünf Falllogs. Die lokalen Logdateien
+wurden nicht zusätzlich eingelesen; Nachweis beruht auf der
+übermittelten Konsole. Damit beträgt die beobachtete
+Fehlerrate **0/5 in genau dieser isolierten Umgebung**, nicht
+0 % allgemein. Der früher einmalig aufgetretene Fehler im
+gesamten `--test-all`-Ablauf bleibt ungeklärt. Die vollständige
+Testmatrix und der Setup-Lauf sind auf dem integrierten SHA
+weiterhin ausstehend. **QA-03 bleibt TEILBELEGT.**
+
 ### [ ] QA-04 – Umgebungs-/Locale-Matrix (**P1**, OFFEN)
 - **Fälle:** Windows 11 Build, CP1252 und nichtwesteuropäische
   ACP, LongPathsEnabled ein/aus, 100/125/200 %-DPI,
@@ -756,12 +778,30 @@ pwsh -NoProfile -File .\tools\release\tests\Invoke-LegacyViewerReliability.ps1 -
 - **Abnahme:** Abweichende Ergebnisse je Umgebung erfasst;
   korrekte UI-Bedienung und Sicherheitsverträge.
 
+**Branch-Konsolidierung vor Gesamtverifikation (23.11.2026):**
+PR #16 per Fast-Forward nach `bugfix/v5.2` übernommen
+(`98d9d06b0cc514259f6119cc399da7d6f964b9c3`);
+PR #14 über den Zwei-Eltern-Merge-Commit
+`c06e17ccc04540a7704b596941d56fa5b37cf6f1`
+mit expliziter Auflösung der Überschneidungen integriert.
+Die strengeren Plugin-ABI-/Payload-Verträge aus #16
+blieben erhalten; die zusätzlichen WIC-/PictView-, VS2026-
+und Binärinventartests aus #14 wurden aufgenommen.
+**Diese kombinierte Quellenbasis ist noch nicht vollständig
+unter Windows getestet und keine Release-Freigabe.**
+Weitere Fixes erfolgen wie beauftragt direkt auf
+`bugfix/v5.2`, ohne neue Entwicklungsbranches.
+Die Windows-Quell-/Registry-Vorprüfung reagiert nun auch
+auf Pushes in diesen Branch. Der veraltete
+`Export-Csv -NoTypeInformation`-Schalter wurde wegen
+der im 5/5-Lauf gemeldeten Warnung entfernt.
+
 ## 11. Arbeitsreihenfolge und Meilensteine
 
 | Phase | IDs / Ergebnis | Vorgänger / Verifikation |
 | --- | --- | --- |
 | **M0** – Inventar/Beweislage | UP-01, QA-02, MGMT-03; ausgeführte vs. nur registrierte Tests erfassen | Prüfen: `a7ab5b40`, offene PRs, exakte Build-/Testlogs |
-| **M1** – Vorbereitete Tests sicher übernehmen | PR #14 gegen aktuelles `bugfix/v5.2` prüfen, nötigenfalls Konflikte beheben; BUILD-01, PKG-01, WIC-01/WIC-04/WIC-05; RED/GREEN | Keine automatische Merge-Freigabe ohne tatsächliche MSVC/Windows-Tests |
+| **M1** – Vorbereitete Tests sicher übernehmen | PR #14 und #16 vor dem gemeinsamen Volltest in `bugfix/v5.2` integriert; BUILD-01, PKG-01, WIC-01/WIC-04/WIC-05 weiter prüfen | Die Integration ist kein Abnahme-PASS; vollständige MSVC-/GUI-/Setup-Ausführung auf einheitlichem SHA erforderlich |
 | **M2** – Datenintegrität und Plugin-Operationen | UP-02…UP-07, QA-01, WIC-07, FIND-03 | Vollständiges Plugininventar; pro Modul reproduzierbare Matrix |
 | **M3** – Originalfunktionen und GUI | A0-01/A0-02, FIND-01/FIND-02/FIND-04/FIND-05, WIC-02…WIC-06 | EFS/32.700/Host nur in geeigneter kontrollierter Umgebung |
 | **M4** – CI/Build/Steuerung | BUILD-01/BUILD-02, MGMT-01…MGMT-03, QA-03/QA-04 | Vollständige Testmatrix auf demselben SHA |
