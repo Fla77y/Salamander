@@ -1,5 +1,12 @@
 # Test coverage audit — 23 November 2026
 
+> **Historischer Snapshot, kein aktuelles Arbeits-Backlog.** Die verbindliche,
+> fortlaufend gepflegte Aufgaben- und Nachweisliste befindet sich in
+> [Testlücken- und Abnahmeplan 5.2](Testluecken-und-Abnahmeplan-5.2.md).
+> Der aktuelle grüne Referenzstand ist `a7ab5b40d859509ffe5fead2d8f00739399a5067`;
+> die folgenden Aussagen zu `37a5cc5` bleiben als historische Belege erhalten.
+
+
 This record separates executed test evidence from source contracts, added but
 unexecuted tests, and behavior that remains unimplemented or unverified. A green
 `--test-all` is **not** a claim of 100% source, branch, UI or plugin coverage.
