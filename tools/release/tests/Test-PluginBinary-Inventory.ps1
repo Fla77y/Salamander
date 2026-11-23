@@ -38,7 +38,7 @@ try {
     [IO.File]::WriteAllBytes($unexpected, [byte[]](0, 1, 2))
     # Act / Assert
     $rejected = $false
-    try { [void]@(Get-BuiltPluginNames -BuildDirectory $testRoot) }
+    try { $null = @(Get-BuiltPluginNames -BuildDirectory $testRoot) }
     catch [InvalidOperationException] { $rejected = $true }
     if (-not $rejected) { throw 'Mismatched SPL filename and plug-in directory was accepted.' }
 
@@ -49,7 +49,7 @@ try {
     [IO.File]::WriteAllBytes($nested, [byte[]](0, 1, 2))
     # Act / Assert
     $rejected = $false
-    try { [void]@(Get-BuiltPluginNames -BuildDirectory $testRoot) }
+    try { $null = @(Get-BuiltPluginNames -BuildDirectory $testRoot) }
     catch [InvalidOperationException] { $rejected = $true }
     if (-not $rejected) { throw 'Nested unexpected SPL file was silently accepted.' }
 
