@@ -14,6 +14,7 @@
 #include "pack.h"
 #include "mapi.h"
 #include "common/legacy_disk_name_safety.h"
+#include "common/win32_unicode_panel_name.h"
 #include "common/win32_unicode_file_ops.h"
 #include "common/win32_unicode_clipboard_files.h"
 #include "common/win32_unicode_directory_delete.h"
@@ -171,7 +172,9 @@ BOOL CFilesWindow::TryUnicodeSingleFileDelete()
 
     const std::string alias(entry.Name);
     std::wstring originalName;
-    const bool longEntry = HasLongDiskPath() || strlen(GetPath()) + entry.NameLen + 1 >= MAX_PATH;
+    const bool longEntry = HasLongDiskPath() ||
+        !Salamander::IsExactAnsiName(GetPath(), GetDiskPathW().c_str()) ||
+        Salamander::ExceedsLegacyDiskPathLimit(strlen(GetPath()), entry.NameLen, MAX_PATH);
     if (longEntry ? !UnicodeDiskNames.TryGetRow(entry.Name, originalName)
                   : !UnicodeDiskNames.TryGetLossy(alias.c_str(), originalName))
         return FALSE; // ambiguous or missing identity
@@ -587,6 +590,8 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
     const std::string legacyAlias(entry.Name);
     std::wstring originalName;
     if (HasLongDiskPath() || target->HasLongDiskPath() ||
+        !Salamander::IsExactAnsiName(GetPath(), GetDiskPathW().c_str()) ||
+        !Salamander::IsExactAnsiName(target->GetPath(), target->GetDiskPathW().c_str()) ||
         Salamander::ExceedsLegacyTransferPathLimit(
             strlen(GetPath()), strlen(target->GetPath()), entry.NameLen, MAX_PATH))
     {
@@ -862,7 +867,9 @@ BOOL CFilesWindow::TryUnicodeSingleDirectoryDelete()
     // Keep the legacy dialog for ordinary short ASCII-only trees. A short
     // selected directory can still contain Unicode or overlong descendants.
     const bool needsNativeName =
-        HasLongDiskPath() || UnicodeDiskNames.IsUnsafeAnsiName(entry.Name);
+        HasLongDiskPath() ||
+        !Salamander::IsExactAnsiName(GetPath(), GetDiskPathW().c_str()) ||
+        UnicodeDiskNames.IsUnsafeAnsiName(entry.Name);
 
     const std::string alias(entry.Name);
     std::wstring originalName;
@@ -1024,6 +1031,8 @@ BOOL CFilesWindow::TryUnicodeSingleDirectoryCopy(CActionType type, CFilesWindow*
 
     const bool needsUnicodeCopy =
         HasLongDiskPath() || target->HasLongDiskPath() ||
+        !Salamander::IsExactAnsiName(GetPath(), GetDiskPathW().c_str()) ||
+        !Salamander::IsExactAnsiName(target->GetPath(), target->GetDiskPathW().c_str()) ||
         UnicodeDiskNames.IsUnsafeAnsiName(entry.Name) ||
         Salamander::ExceedsLegacyTransferPathLimit(
             strlen(GetPath()), strlen(target->GetPath()), entry.NameLen, MAX_PATH);
@@ -1307,7 +1316,8 @@ BOOL CFilesWindow::HasUnsupportedLegacyPluginSelection()
 {
     if (!Is(ptDisk))
         return FALSE;
-    if (HasLongDiskPath())
+    if (HasLongDiskPath() ||
+        !Salamander::IsExactAnsiName(GetPath(), GetDiskPathW().c_str()))
         return TRUE;
     const auto unsafe = [this, pathLength = strlen(GetPath())](const CFileData& entry) {
         return pathLength + entry.NameLen + 1 >= MAX_PATH ||
@@ -1346,6 +1356,18 @@ void CFilesWindow::FilesAction(CActionType type, CFilesWindow* target, int count
     if (Dirs->Count + Files->Count == 0)
         return;
 
+    // A short panel path can still be a lossy ACP projection of a UTF-16
+    // directory. The legacy engine cannot safely address an ASCII leaf
+    // below such a parent, even though neither path exceeds MAX_PATH.
+    const bool sourceDirectoryNeedsWide =
+        Is(ptDisk) &&
+        !Salamander::IsExactAnsiName(GetPath(), GetDiskPathW().c_str());
+    const bool targetDirectoryNeedsWide =
+        (type == atCopy || type == atMove) && target != NULL &&
+        target->Is(ptDisk) &&
+        !Salamander::IsExactAnsiName(
+            target->GetPath(), target->GetDiskPathW().c_str());
+
     // A selected Unicode directory must never enter the fixed-buffer ANSI
     // recursive deletion engine. This handler preserves the user's delete
     // versus Recycle Bin policy and rejects ambiguous wide identities.
@@ -1355,7 +1377,8 @@ void CFilesWindow::FilesAction(CActionType type, CFilesWindow* target, int count
 
     // Long folders must never enter the fixed-buffer ANSI operation engine.
     // Use the existing W-only transfer path for ordinary selected files.
-    if (HasLongDiskPath() ||
+    if (HasLongDiskPath() || sourceDirectoryNeedsWide ||
+        targetDirectoryNeedsWide ||
         ((type == atCopy || type == atMove) &&
          target != NULL && target->HasLongDiskPath()))
     {
