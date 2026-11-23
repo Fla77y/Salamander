@@ -13,6 +13,16 @@ Die Solution **src/vcxproj/salamand.sln** enthält **35** eigenständige Plugin-
 | Kein eigenständiges Plugin | **shared** (SDK) |
 | Keine eigenständigen Plugin-Projekte | Sprachprojekte (lang_*), Helper-DLLs/-EXEs wie 7za und exif |
 
+**Erweiterte Quellprüfung (23.11.2026):** Das Inventar verlangt jetzt
+nicht nur einen passenden Eintrag in `salamand.sln`, sondern auch die
+tatsächlich vorhandene Haupt-`.vcxproj` im erwarteten Plugin-Unterordner.
+Eine isolierte Regression löscht testweise eine deklarierte Projektdatei
+und muss die Erfassung abbrechen. Die 35 entsprechenden Repository-Pfade
+wurden über die GitHub-Dateischnittstelle einzeln als **vorhanden**
+bestätigt (Commit `4de015f7117f92fa5da9d1bf8f75753cb17da5fb`).
+Das bestätigt noch weder erfolgreiche MSBuild-Kompilierung noch
+UTF-16-/Langpfadfunktion oder Release-Plugin-Vollständigkeit.
+
 Die Liste wurde unter **tools/release/plugin-source-inventory-baseline.json** maschinenlesbar versioniert. Änderungen am Projekt- oder Quellverzeichnisbestand werden vom neuen Regressionstest aufgedeckt.
 
 **Grenze:** Ein Quellordner oder eine Projektdatei ist kein Nachweis eines gebauten, ausgelieferten oder funktionierenden Plugins. Der WinSCP-Quellordner ist ein Prüfpunkt, keine Genehmigung, dieses Modul zu entfernen oder zu aktivieren.
