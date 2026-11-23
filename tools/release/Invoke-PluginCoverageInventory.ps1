@@ -15,7 +15,8 @@ param(
         (Join-Path $PSScriptRoot '..\..')),
     [string]$BuiltDirectory,
     [string]$StagedDirectory,
-    [string]$ReportRoot
+    [string]$ReportRoot,
+    [switch]$RequireMatchingPayloads
 )
 
 Set-StrictMode -Version Latest
@@ -35,8 +36,23 @@ $operations = @($inventory | Get-SalamanderPluginOperationMatrix)
 if ($inventory.Count -eq 0 -or $operations.Count -ne (12 * $inventory.Count)) {
     throw 'Plug-in coverage inventory or operation matrix is incomplete.'
 }
+if ($RequireMatchingPayloads) {
+    if ([string]::IsNullOrWhiteSpace($StagedDirectory)) {
+        throw '-RequireMatchingPayloads requires an explicit stage directory.'
+    }
+    $invalid = @($inventory | Where-Object {
+        $_.PayloadStatus -notin @('MATCH', 'NOT_SHIPPED')
+    })
+    if ($invalid.Count -gt 0) {
+        $details = ($invalid | ForEach-Object {
+            "$($_.Plugin):$($_.PayloadStatus)"
+        }) -join ', '
+        throw "SPL build/staging inventory and SHA-256 mismatch: $details"
+    }
+    Write-Host 'PASS: built and staged SPL inventories have identical SHA-256 payloads (source-only nonshipped modules excluded).'
+}
 
-$inventory | Select-Object Plugin,SourceDirectory,SolutionProject,BuiltModule,StagedModule,Capabilities | Format-Table -AutoSize | Out-String | Write-Host
+$inventory | Select-Object Plugin,SourceDirectory,SolutionProject,BuiltModule,StagedModule,PayloadStatus,Capabilities | Format-Table -AutoSize | Out-String | Write-Host
 
 $sourceOnly = @($inventory | Where-Object {
     $_.SourceDirectory -and -not $_.SolutionProject
