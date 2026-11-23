@@ -15,13 +15,14 @@ concurrency:
 
 jobs:
   build:
-    name: Build ${{ matrix.platform }} Debug (fail on warnings)
+    name: Build ${{ matrix.platform }} ${{ matrix.configuration }} (fail on warnings)
     runs-on: windows-2025-vs2026
 
     strategy:
       fail-fast: false
       matrix:
         platform: ["Win32", "x64"]
+        configuration: ["Debug", "Release"]
 
     defaults:
       run:
@@ -29,7 +30,7 @@ jobs:
         working-directory: s
 
     env:
-      BUILD_CONFIGURATION: Debug
+      BUILD_CONFIGURATION: ${{ matrix.configuration }}
       SOLUTION_PATH: '.\src\vcxproj\salamand.sln'
       LOG_DIRECTORY: build_logs
 
@@ -68,7 +69,7 @@ jobs:
       - name: Register MSVC problem matcher
         uses: ammaraskar/msvc-problem-matcher@master
 
-      - name: Build via MSBuild (Debug | ${{ matrix.platform }})
+      - name: Build via MSBuild (${{ matrix.configuration }} | ${{ matrix.platform }})
         run: |
           $logDir = Join-Path (Get-Location) $env:LOG_DIRECTORY
           New-Item -ItemType Directory -Force -Path $logDir | Out-Null
@@ -101,7 +102,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: msbuild-${{ matrix.platform }}-debug-logs
+          name: msbuild-${{ matrix.platform }}-${{ matrix.configuration }}-logs
           path: |
             ${{ env.LOG_PATH }}
           if-no-files-found: warn

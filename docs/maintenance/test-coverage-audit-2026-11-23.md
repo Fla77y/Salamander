@@ -30,11 +30,17 @@ unexecuted tests, and behavior that remains unimplemented or unverified. A green
 
 | Area | New executable evidence | Limits |
 | --- | --- | --- |
-| A7 WIC decoder format coverage | `tools/tests/pictview_wic_formats.cpp` compiled/executed by `Invoke-PictViewTests.ps1` in x86 and x64 and by the PictView WIC CI workflow; tests all 13 extensions from both registrations, a real decoder response and decoded red BGRA pixels, Unicode paths and an extended-length PNG path | Cannot prove the complete in-process plug-in path, animation, thumbnails, or unsupported legacy codecs; JPEG XR depends on the actual Windows WIC codec |
+| A7 WIC decoder format coverage | `tools/tests/pictview_wic_formats.cpp` compiled/executed by `Invoke-PictViewTests.ps1` in x86 and x64 and by the PictView WIC CI workflow; tests all 13 extensions from both registrations, a real decoder response and decoded red BGRA pixels, Unicode paths and an extended-length PNG path | Cannot prove the complete in-process plug-in path, timed GUI animation, thumbnails, or unsupported legacy codecs; JPEG XR depends on the actual Windows WIC codec |
 | A7 WIC fail-closed | `pictview_wic_formats.cpp` now reuses populated outputs across null, empty, missing and truncated source inputs plus out-of-range frames, requiring empty output/frame count on failure | Still requires Windows WIC execution; platform codec behavior differs |
 | A7 WIC export formats | `pictview_wic_writer.cpp` now checks real BMP/JPEG/TIFF Save Copy output, decode and byte-for-byte preservation of an existing destination on collision | Does not establish interactive Save Copy UI or historical Save As equivalence |
 | A7 viewer and thumbnail declaration drift | `Test-PictView-Management.ps1` compares the real `AddViewer`/`SetThumbnailLoader` registrations against the compiled native format table | Static contract alone does not demonstrate GUI behavior |
 | A7 PictView host formats | Explicit `manage.cmd --test-pictview-host --release` now drives F3 for BMP, PNG, JPEG, GIF, TIFF and ICO in distinct verified child processes, checks SPL/HWND identity and unchanged image bytes | Opt-in, unlocked interactive Windows desktop and compatible PictView associations required; cannot be included unconditionally in `--test-all` |
+| Plugin SDK ABI inventory | `Test-PluginBinary-Contract.ps1` now checks every discovered built `.spl` for x64 machine type and both required SDK exports, while retaining five mandatory binary requirements | Does not prove Unicode/long-path behavior inside individual plugins or completeness of the shipped module list; needs a fresh full build |
+| WIC read-only integrity | `pictview_wic_formats.cpp` compares complete test image bytes before and after native decoding for every advertised format and its extended-length PNG fixture | Windows MSVC/codec execution pending |
+| A7 animated GIF frame decoding | Native independent red/green 2-frame GIF fixture verifies both decoded frame indices, frame count, no stale pixels, and unchanged source bytes | Does not verify timed playback, GIF disposal/compositing, or PictView window animation |
+| A3 VS2026 CI full-build coverage | `pr-msbuild.yml` now has Debug and Release for Win32 and x64; `Test-VS2026-ProjectMetadata.ps1` requires this matrix | Real Windows CI execution and actual build logs are outstanding |
+| A5 staged plugin completeness | `Assert-StagedBuiltPlugins` checks every built SPL has a byte-identical staged copy; rejects missing, changed and unexpected SPLs, including files outside the plugin tree; synthetic tests run with `--test` | Only modules present in the build are compared; not an end-user VM check |
+| Plugin inventory regression | `Test-PluginBinary-Inventory.ps1` runs under `manage --test` and verifies discovery, nonstandard source `.def` layout, unexpected and nested paths | PE export checks still require real MSVC `dumpbin` and built binaries |
 | CI format gate | `.github/workflows/pr-pictview-wic.yml` compiles/runs the same format regression on x86 and x64 when the test/decoder changes | A CI success is not a clean end-user VM |
 
 Run these tests on a clean checkout of the new commit before using them as
@@ -46,6 +52,12 @@ pwsh -NoProfile -File .\tools\release\tests\Test-PictView-Management.ps1
 .\manage.cmd --test-pictview-host --release
 .\manage.cmd --test-all
 ```
+
+The additional checks above are on the unmerged draft PR #14, based on
+`bugfix/v5.2`. GitHub Actions has not produced a run for those changes;
+none is recorded here as a Windows PASS.
+
+The release-stage validator also rejects all compiler/linker files already excluded from robocopy: `.obj`, `.pch`, `.idb`, `.ilk`, `.tlog`, `.lastbuildstate`, `.pdb`, `.lib`, and `.exp`.
 
 ## Remaining acceptance gaps and risks (not closed)
 

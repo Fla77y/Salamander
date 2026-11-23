@@ -56,6 +56,21 @@ foreach ($match in $matches) {
     }
 }
 
+# Release and Debug must both compile across Win32 and x64 in GitHub CI.
+# A Debug-only runner cannot qualify the shipping Release configuration.
+$buildWorkflow = Get-Content -LiteralPath (
+    Join-Path $repository '.github\workflows\pr-msbuild.yml') -Raw
+foreach ($required in @(
+    'platform: ["Win32", "x64"]',
+    'configuration: ["Debug", "Release"]',
+    'BUILD_CONFIGURATION: ${{ matrix.configuration }}',
+    'msbuild @arguments'
+)) {
+    if (-not $buildWorkflow.Contains($required)) {
+        throw "VS2026 CI build matrix is incomplete: $required"
+    }
+}
+
 Write-Host "PASS: VS 2026 solution metadata and $($matches.Count) active C++ projects use supported MSVC toolsets."
 
 

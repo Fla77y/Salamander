@@ -272,6 +272,10 @@ function Run-Tests {
     $pluginCoverageInventory = Join-Path $repository 'tools\release\tests\Test-PluginCoverageInventory.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $pluginCoverageInventory)
 
+    # PR14: verify standalone discovery of all built SPL module identities.
+    $pluginInventoryTest = Join-Path $repository 'tools\release\tests\Test-PluginBinary-Inventory.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $pluginInventoryTest)
+
     $pluginModuleContract = Join-Path $repository 'tools\release\tests\Test-PluginModulePaths-Contract.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $pluginModuleContract)
 

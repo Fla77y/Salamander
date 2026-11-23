@@ -140,6 +140,7 @@ foreach ($configuration in @('Debug', 'Release')) {
         -StagedDirectory $stage -RequireMatchingPayloads -RequireSolutionPluginPayloads `
         -RequiredShippedModules @('7zip','checksum','filecomp','renamer','pictview')
     Test-DistributionStage -Stage $stage -Configuration $configuration -DumpbinExe $dumpbinExe
+    Assert-StagedBuiltPlugins -BuiltDirectory $variantPaths[$configuration] -Stage $stage
 
     $archive = Join-Path $artifactDir ("OpenSalamander-{0}-x64.7z" -f $configuration)
     Remove-Item -LiteralPath $archive -Force -ErrorAction SilentlyContinue
