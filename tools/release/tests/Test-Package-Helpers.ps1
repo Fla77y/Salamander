@@ -447,6 +447,33 @@ if ([string]::IsNullOrEmpty($filesActionBlock) -or
     throw 'F5/F6 must not reach the ANSI engine with a long target panel.'
 }
 
+# A 17+ MiB cross-volume F6 must keep the original progress/pause/cancel
+# worker. It may remove the source only after an unskipped copy and after
+# both W handles have proved their file identities. Never count an ANSI
+# rename fallback or a successful but skipped copy as a successful move.
+$wideWorkerSource = Get-Content -LiteralPath (Join-Path $toolsDir '..\..\src\worker.cpp') -Raw
+$wideWorkerPaths = Get-Content -LiteralPath (Join-Path $toolsDir '..\..\src\common\worker_copy_paths.h') -Raw
+$wideWorkerIo = Get-Content -LiteralPath (Join-Path $toolsDir '..\..\src\common\win32_worker_copy_io.h') -Raw
+$wideFileOps = Get-Content -LiteralPath (Join-Path $toolsDir '..\..\src\common\win32_unicode_file_ops.h') -Raw
+foreach ($required in @(
+    'OPFL_UTF16_MOVE_AFTER_COPY', 'unicodeMoveAfterCopy ? &skipped : NULL',
+    'unicodeMoveAfterCopy && !Error && !skipped && !*dlgData.CancelWorker',
+    'WaitForSingleObject(dlgData.WorkerNotSuspended, INFINITE)',
+    'widePaths->HasSourceIdentity && widePaths->HasTargetIdentity',
+    'TryCompleteUnicodeMoveAfterCopy('
+)) {
+    if (-not $wideWorkerSource.Contains($required)) {
+        throw "Background Unicode F6 move lost fail-closed completion gate: $required"
+    }
+}
+if (-not $wideWorkerPaths.Contains('CaptureTargetIdentity') -or
+    -not $wideWorkerIo.Contains('Current->HasTargetIdentity') -or
+    -not $wideFileOps.Contains('TryDeleteUnicodeFileWithIdentity(source, expectedSource, error)') -or
+    -not $filesActionSource.Contains('crossVolumeRequiresWorker') -or
+    -not $filesActionSource.Contains('return startWideWorker()')) {
+    throw 'Cross-volume Unicode F6 must retain W source/target identities and the existing progress worker.'
+}
+
 # Unicode F8 must respect the user's exact Recycle Bin configuration.
 # Refusing a non-fixed drive when recycle is selected is safer than silently
 # switching to permanent deletion. The actual W deletion uses a pinned ID.
