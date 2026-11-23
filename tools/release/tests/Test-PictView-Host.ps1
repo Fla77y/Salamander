@@ -7,11 +7,13 @@
 .DESCRIPTION
     Opt-in: requires an unlocked desktop and trusted installed plug-ins.
     Refuses to interact with an existing Salamander instance.
-    Uses an isolated BMP fixture, normal F3 viewer and exact module/HWND IDs.
+    Uses a single isolated image fixture, normal F3 viewer and exact module/HWND IDs.
 #>
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][string]$SalamanderExe,
+    [ValidateSet('Bmp','Png','Jpeg','Gif','Tiff','Ico')]
+    [string]$ImageFormat = 'Bmp',
     [ValidateRange(5, 120)][int]$TimeoutSeconds = 25
 )
 
@@ -325,19 +327,42 @@ function Focus-TestOwnedSalamander {
 
 $root = Join-Path ([IO.Path]::GetTempPath()) ('pictview-host-' + [Guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($root)
-$fixture = Join-Path $root 'test-image.bmp'
+$extension = switch ($ImageFormat) {
+    'Bmp'  { 'bmp' }
+    'Png'  { 'png' }
+    'Jpeg' { 'jpg' }
+    'Gif'  { 'gif' }
+    'Tiff' { 'tif' }
+    'Ico'  { 'ico' }
+}
+$fixture = Join-Path $root ('test-image.' + $extension)
 $process = $null
 $viewerHandle = [IntPtr]::Zero
 try {
-    # Arrange: one disposable image with exact byte identity.
-    $bitmap = [Drawing.Bitmap]::new(2, 1)
-    try {
-        $bitmap.SetPixel(0, 0, [Drawing.Color]::Red)
-        $bitmap.SetPixel(1, 0, [Drawing.Color]::Lime)
-        $bitmap.Save($fixture, [Drawing.Imaging.ImageFormat]::Bmp)
+    # Arrange: exactly one disposable image with exact byte identity.
+    # ICO has no GDI+ encoder; use a validated 1x1 32-bit DIB-in-ICO fixture.
+    if ($ImageFormat -eq 'Ico') {
+        $iconBytes = [Convert]::FromBase64String(
+            'AAABAAEAAQEAAAEAIAAwAAAAFgAAACgAAAABAAAAAgAAAAEAIAAAAAAABAAAAAAAAAAAAAAAAAAAAAAAAAAAAP//AAAAAA==')
+        [IO.File]::WriteAllBytes($fixture, $iconBytes)
     }
-    finally {
-        $bitmap.Dispose()
+    else {
+        $imageCodec = switch ($ImageFormat) {
+            'Bmp'  { [Drawing.Imaging.ImageFormat]::Bmp }
+            'Png'  { [Drawing.Imaging.ImageFormat]::Png }
+            'Jpeg' { [Drawing.Imaging.ImageFormat]::Jpeg }
+            'Gif'  { [Drawing.Imaging.ImageFormat]::Gif }
+            'Tiff' { [Drawing.Imaging.ImageFormat]::Tiff }
+        }
+        $bitmap = [Drawing.Bitmap]::new(2, 1)
+        try {
+            $bitmap.SetPixel(0, 0, [Drawing.Color]::Red)
+            $bitmap.SetPixel(1, 0, [Drawing.Color]::Lime)
+            $bitmap.Save($fixture, $imageCodec)
+        }
+        finally {
+            $bitmap.Dispose()
+        }
     }
     $expectedHash = [Convert]::ToHexString(
         [Security.Cryptography.SHA256]::HashData([IO.File]::ReadAllBytes($fixture)))
@@ -354,11 +379,11 @@ try {
         -WorkingDirectory (Split-Path -Parent $SalamanderExe) `
         -Environment @{ TEMP = $processTemp; TMP = $processTemp } -PassThru
 
-    # Act: open the single BMP fixture through Salamander's normal F3.
+    # Act: open the exact selected image via Salamander's normal F3.
     # Do not modify the user's clipboard or viewer associations.
     $fixtures = @(Get-ChildItem -LiteralPath $root -File)
     if ($fixtures.Count -ne 1 -or $fixtures[0].FullName -cne $fixture) {
-        throw 'Expected exactly one isolated BMP fixture.'
+        throw "Expected exactly one isolated $ImageFormat image fixture."
     }
     Wait-For -Description 'test Salamander main HWND' -Condition {
         $process.Refresh()
@@ -490,7 +515,7 @@ try {
                "Original failure: $($_.Exception.Message)")
     }
 
-    # Assert: the real SPL was loaded, window identity matches, and the BMP
+    # Assert: the real SPL was loaded, window identity matches, and the file
     # was not modified. Close the viewer without modifying the source.
     $process.Refresh()
     $plugins = @($process.Modules | Where-Object {
@@ -502,7 +527,7 @@ try {
     $actualHash = [Convert]::ToHexString(
         [Security.Cryptography.SHA256]::HashData([IO.File]::ReadAllBytes($fixture)))
     if ($actualHash -cne $expectedHash) {
-        throw 'Viewing changed the disposable BMP fixture bytes.'
+        throw "Viewing changed the disposable $ImageFormat fixture bytes."
     }
     if (-not [PictViewHostWindows]::PostMessage($viewerHandle, 0x0010,
                                                 [IntPtr]::Zero, [IntPtr]::Zero)) {
@@ -511,7 +536,7 @@ try {
     Wait-For -Description 'WIC PictView HWND close' -Condition {
         return -not [PictViewHostWindows]::IsWindow($viewerHandle)
     }
-    Write-Host "PASS: owned Salamander PID $($process.Id) loaded PictView SPL, opened/closed WIC viewer without changing the BMP."
+    Write-Host "PASS: $ImageFormat F3: owned Salamander PID $($process.Id) loaded PictView SPL, opened/closed WIC viewer without changing the image."
 }
 catch {
     if ($process -and -not $process.HasExited) {
