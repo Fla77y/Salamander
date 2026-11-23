@@ -17,6 +17,7 @@ param(
     [string]$StagedDirectory,
     [string]$ReportRoot,
     [switch]$RequireMatchingPayloads,
+    [switch]$RequireSolutionPluginPayloads,
     [string[]]$RequiredShippedModules = @()
 )
 
@@ -36,6 +37,9 @@ $inventory = @(Get-SalamanderPluginInventory @options)
 $operations = @($inventory | Get-SalamanderPluginOperationMatrix)
 if ($RequiredShippedModules.Count -gt 0 -and -not $RequireMatchingPayloads) {
     throw '-RequiredShippedModules requires -RequireMatchingPayloads.'
+}
+if ($RequireSolutionPluginPayloads -and -not $RequireMatchingPayloads) {
+    throw '-RequireSolutionPluginPayloads requires -RequireMatchingPayloads.'
 }
 if ($inventory.Count -eq 0 -or $operations.Count -ne (12 * $inventory.Count)) {
     throw 'Plug-in coverage inventory or operation matrix is incomplete.'
@@ -81,6 +85,27 @@ if ($RequireMatchingPayloads) {
     } | Sort-Object)
     if ($missing.Count -ne 0) {
         throw "Required shipped plug-ins missing or mismatched: $($missing -join ', ')"
+    }
+    if ($RequireSolutionPluginPayloads) {
+        # Every Solution plug-in is part of the current full-build contract.
+        # Source-only directories (such as WinSCP) remain unshipped until
+        # their own Solution project and runtime acceptance are established.
+        $missingProjects = @($inventory | Where-Object {
+            $_.SolutionProject -and $_.PayloadStatus -cne 'MATCH'
+        } | ForEach-Object Plugin | Sort-Object)
+        if ($missingProjects.Count -gt 0) {
+            throw "Missing Solution plug-in payloads: $($missingProjects -join ', ')"
+        }
+
+        # A staged SPL with no Solution project is not part of the approved
+        # inventory even when an identical copy is present in the build tree.
+        $unexpectedProjects = @($inventory | Where-Object {
+            -not $_.SolutionProject -and $_.StagedModule -ceq 'PRESENT'
+        } | ForEach-Object Plugin | Sort-Object)
+        if ($unexpectedProjects.Count -gt 0) {
+            throw "Undeclared shipped plug-ins: $($unexpectedProjects -join ', ')"
+        }
+        Write-Host "PASS: all $(@($inventory | Where-Object SolutionProject).Count) Solution plug-ins are present with matching SHA-256 hashes; undeclared SPLs excluded."
     }
     Write-Host "PASS: $($matched.Count) built/staged SPL payloads match SHA-256; $($required.Count) explicitly required module(s) present."
 }
