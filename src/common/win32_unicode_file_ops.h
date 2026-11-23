@@ -437,14 +437,16 @@ inline bool TryDeleteUnicodeFileWithIdentity(
     return deleted;
 }
 
-// Finalize a completed background cross-volume copy without trusting path
-// strings or the original panel snapshot. The copied target is held open
-// against writes and deletion while the original is removed by file ID.
-// An incomplete, skipped, replaced or differently sized copy is never a move.
+// Finalize a background Unicode F6 copy only if the original and published
+// target are still the exact files observed by the worker. Lock both regular
+// files against writes/deletion while comparing their complete primary byte
+// streams, and mark the original for deletion by the SAME verified handle.
+// This intentionally trades an extra read for no silent data loss in F6.
 inline bool TryCompleteUnicodeMoveAfterCopy(
     const Utf16DiskPath& source, const Utf16DiskPath& destination,
     const BY_HANDLE_FILE_INFORMATION& expectedSource,
-    const BY_HANDLE_FILE_INFORMATION& expectedTarget, DWORD& error)
+    const BY_HANDLE_FILE_INFORMATION& expectedTarget, DWORD& error,
+    const BOOL* cancelRequested = nullptr, HANDLE resumeEvent = nullptr)
 {
     if (!UnicodeFileOperationsDetail::HasRegularFileIdentity(expectedSource) ||
         !UnicodeFileOperationsDetail::HasRegularFileIdentity(expectedTarget))
@@ -452,31 +454,111 @@ inline bool TryCompleteUnicodeMoveAfterCopy(
         error = ERROR_FILE_INVALID;
         return false;
     }
-
-    std::wstring targetPath;
-    if (!UnicodeFileOperationsDetail::TryGetExtendedPath(destination, targetPath, error))
+    if (expectedSource.dwVolumeSerialNumber == expectedTarget.dwVolumeSerialNumber &&
+        expectedSource.nFileIndexHigh == expectedTarget.nFileIndexHigh &&
+        expectedSource.nFileIndexLow == expectedTarget.nFileIndexLow)
+    {
+        error = ERROR_INVALID_PARAMETER;
         return false;
-    const HANDLE target = CreateFileW(
-        targetPath.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ,
-        nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
-    if (target == INVALID_HANDLE_VALUE)
+    }
+
+    std::wstring sourcePath, targetPath;
+    if (!UnicodeFileOperationsDetail::TryGetExtendedPath(source, sourcePath, error) ||
+        !UnicodeFileOperationsDetail::TryGetExtendedPath(destination, targetPath, error))
+        return false;
+
+    struct HandleGuard
+    {
+        HANDLE handle = INVALID_HANDLE_VALUE;
+        ~HandleGuard() { if (handle != INVALID_HANDLE_VALUE) CloseHandle(handle); }
+    };
+    HandleGuard targetGuard{
+        CreateFileW(targetPath.c_str(), GENERIC_READ | FILE_READ_ATTRIBUTES,
+                    FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+                    FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_SEQUENTIAL_SCAN, nullptr)};
+    if (targetGuard.handle == INVALID_HANDLE_VALUE)
     {
         error = GetLastError();
         return false;
     }
-    BY_HANDLE_FILE_INFORMATION actualTarget{};
-    bool completed = false;
-    if (!GetFileInformationByHandle(target, &actualTarget))
+    HandleGuard sourceGuard{
+        CreateFileW(sourcePath.c_str(), GENERIC_READ | FILE_READ_ATTRIBUTES | DELETE,
+                    FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+                    FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_SEQUENTIAL_SCAN, nullptr)};
+    if (sourceGuard.handle == INVALID_HANDLE_VALUE)
+    {
         error = GetLastError();
-    else if (!UnicodeFileOperationsDetail::IsSameRegularFile(expectedTarget, actualTarget) ||
-             actualTarget.nFileSizeHigh != expectedSource.nFileSizeHigh ||
-             actualTarget.nFileSizeLow != expectedSource.nFileSizeLow)
-        error = ERROR_FILE_INVALID;
-    else
-        completed = TryDeleteUnicodeFileWithIdentity(source, expectedSource, error);
+        return false;
+    }
 
-    CloseHandle(target);
-    return completed;
+    BY_HANDLE_FILE_INFORMATION actualSource{}, actualTarget{};
+    if (!GetFileInformationByHandle(sourceGuard.handle, &actualSource) ||
+        !GetFileInformationByHandle(targetGuard.handle, &actualTarget))
+    {
+        error = GetLastError();
+        return false;
+    }
+    if (!UnicodeFileOperationsDetail::IsSameRegularFile(expectedSource, actualSource) ||
+        !UnicodeFileOperationsDetail::IsSameRegularFile(expectedTarget, actualTarget) ||
+        actualSource.nFileSizeHigh != actualTarget.nFileSizeHigh ||
+        actualSource.nFileSizeLow != actualTarget.nFileSizeLow ||
+        actualSource.nFileSizeHigh != expectedSource.nFileSizeHigh ||
+        actualSource.nFileSizeLow != expectedSource.nFileSizeLow)
+    {
+        error = ERROR_FILE_INVALID;
+        return false;
+    }
+
+    constexpr DWORD BufferBytes = 64U * 1024U;
+    BYTE sourceBytes[BufferBytes], targetBytes[BufferBytes];
+    ULONGLONG remaining =
+        (static_cast<ULONGLONG>(actualSource.nFileSizeHigh) << 32) |
+        actualSource.nFileSizeLow;
+    while (remaining != 0)
+    {
+        if (cancelRequested != nullptr && *cancelRequested)
+        {
+            error = ERROR_CANCELLED;
+            return false;
+        }
+        if (resumeEvent != nullptr &&
+            WaitForSingleObject(resumeEvent, INFINITE) != WAIT_OBJECT_0)
+        {
+            error = ERROR_OPERATION_ABORTED;
+            return false;
+        }
+        const DWORD chunk = remaining > BufferBytes
+            ? BufferBytes : static_cast<DWORD>(remaining);
+        DWORD fromSource = 0, fromTarget = 0;
+        if (!ReadFile(sourceGuard.handle, sourceBytes, chunk, &fromSource, nullptr) ||
+            !ReadFile(targetGuard.handle, targetBytes, chunk, &fromTarget, nullptr))
+        {
+            error = GetLastError();
+            return false;
+        }
+        if (fromSource != chunk || fromTarget != chunk ||
+            std::memcmp(sourceBytes, targetBytes, chunk) != 0)
+        {
+            error = ERROR_CRC;
+            return false;
+        }
+        remaining -= chunk;
+    }
+
+    if (cancelRequested != nullptr && *cancelRequested)
+    {
+        error = ERROR_CANCELLED;
+        return false;
+    }
+    FILE_DISPOSITION_INFO remove{TRUE};
+    if (!SetFileInformationByHandle(
+            sourceGuard.handle, FileDispositionInfo, &remove, sizeof(remove)))
+    {
+        error = GetLastError();
+        return false;
+    }
+    error = ERROR_SUCCESS;
+    return true;
 }
 
 inline bool TryDeleteUnicodeFile(const Utf16DiskPath& file, DWORD& error)
