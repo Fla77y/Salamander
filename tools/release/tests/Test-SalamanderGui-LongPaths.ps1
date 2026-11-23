@@ -4723,6 +4723,83 @@ try {
         # Assert: both source-of-truth and moved content are intact.
         Assert-True (Test-Content $unicodeShortFile) 'Unicode F6 leaves original fixture intact'
         Assert-True (Test-Content $moved) 'Unicode F6 preserves moved content'
+
+        # Regression: short parent + lossless ASCII leaf yields a 263-unit
+        # full path. TryGetLossy does not resolve it, so F5/F6 must use the
+        # original W row identity even when HasLongDiskPath() is false.
+        $leafPrefix = 'Audiobook-regression-'
+        $leafSuffix = '.m4b'
+        $leafLength = 263 - $source.Length - 1
+        Assert-True ($source.Length -lt 260 -and
+            $leafLength -gt ($leafPrefix.Length + $leafSuffix.Length) -and
+            $leafLength -le 255) 'Short-parent long-leaf fixture is valid'
+        $longLeafName = $leafPrefix +
+            ('a' * ($leafLength - $leafPrefix.Length - $leafSuffix.Length)) +
+            $leafSuffix
+        $longLeafSource = Join-Path $source $longLeafName
+        Assert-True ($longLeafSource.Length -eq 263) (
+            'Full path is exactly 263 UTF-16 units despite a short parent')
+        [IO.File]::WriteAllBytes($longLeafSource, $payload)
+
+        # Restore panel layout: source -> destination for F5.
+        Send-Keys '{TAB}'
+        Go-ToPath $source
+        Send-Keys '{TAB}'
+        Go-ToPath $destination
+        Send-Keys '{TAB}'
+        Assert-True ((Read-PanelPath) -ceq $source) (
+            'Overlong-leaf source panel identity verified')
+        Focus-DirectoryRow -Name $longLeafName
+        Assert-True ((Read-FocusedFullname) -ceq $longLeafSource) (
+            'Overlong lossless-ANSI filename retains full W identity')
+        Send-Keys '{F5}'
+        Wait-Until { (Get-TestDialog) -match 'Copy the Unicode file' } (
+            'F5 overlong leaf uses the W-only confirmation')
+        Send-Keys '{ENTER}'
+        $longLeafCopied = Join-Path $destination $longLeafName
+        Wait-Until {
+            [IO.File]::Exists($longLeafCopied) -and
+            [Linq.Enumerable]::SequenceEqual[byte](
+                [IO.File]::ReadAllBytes($longLeafCopied), $payload)
+        } 'F5 copies a 263-unit lossless-ANSI full path without data loss'
+        Assert-True (Test-Content $longLeafSource) 'Long-leaf F5 retains source bytes'
+
+        # Same-volume F6 is a rename, not a content transfer. Make the
+        # disposable copy >16 MiB to prevent the old size guard from hiding
+        # this valid operation behind the legacy-ANSI refusal dialog.
+        $largeBytes = 17 * 1024 * 1024
+        $file = [IO.File]::Open($longLeafCopied, [IO.FileMode]::Open,
+                               [IO.FileAccess]::Write, [IO.FileShare]::None)
+        try { $file.SetLength($largeBytes) }
+        finally { $file.Dispose() }
+        $expectedHash = (Get-FileHash -LiteralPath $longLeafCopied -Algorithm SHA256).Hash
+
+        Send-Keys '{TAB}'
+        Send-Keys '{TAB}'
+        Go-ToPath $moveDir
+        Send-Keys '{TAB}'
+        Go-ToPath $destination
+        Assert-True ((Read-PanelPath) -ceq $destination) (
+            'Overlong-leaf F6 source panel identity verified')
+        Focus-DirectoryRow -Name $longLeafName
+        Assert-True ((Read-FocusedFullname) -ceq $longLeafCopied) (
+            '17 MiB+ long filename remains selected for F6')
+        Send-Keys '{F6}'
+        Wait-Until { (Get-TestDialog) -match 'Move the Unicode file' } (
+            'F6 same-volume large overlong leaf uses the W-only confirmation')
+        Send-Keys '{ENTER}'
+        $longLeafMoved = Join-Path $moveDir $longLeafName
+        Wait-Until {
+            [IO.File]::Exists($longLeafMoved) -and
+            -not [IO.File]::Exists($longLeafCopied)
+        } 'F6 renames 17 MiB+ long filename within the same volume'
+        Assert-True ((Get-Item -LiteralPath $longLeafMoved).Length -eq $largeBytes -and
+            (Get-FileHash -LiteralPath $longLeafMoved -Algorithm SHA256).Hash -ceq $expectedHash) (
+            'F6 same-volume large move preserves SHA-256 bytes')
+        Assert-True (Test-Content $longLeafSource) (
+            'Large F6 leaves the unrelated original long-leaf source intact')
+        Write-Host 'PASS: F5/F6 263-unit lossless-ANSI source and 17 MiB+ same-volume move.'
+
         $passed = $true
         Write-Host 'PASS: real Unicode F5 and F6 file transfer without ANSI narrowing.'
         return

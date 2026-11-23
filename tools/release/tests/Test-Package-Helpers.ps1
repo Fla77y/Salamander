@@ -834,6 +834,23 @@ if ($multiTransfer -notmatch 'UnicodePanelNameCache' -or
     $multiTransfer -match 'ResolveUnicodePanelFileName\(') {
     throw 'F7: Unicode batch transfers must resolve alias uniqueness from bounded phase snapshots.'
 }
+# Regression: a 109-byte parent and 153-byte CP1252 name exceed
+# MAX_PATH together although neither component does. The GUI F5/F6
+# fallback must select the original row, not the lossy-only alias cache.
+$singleTransfer = [regex]::Match(
+    $panelTransfers,
+    '(?s)BOOL CFilesWindow::TryUnicodeSingleFileTransfer\(.*?BOOL CFilesWindow::TryUnicodeSingleDirectoryDelete\(').Value
+if ([string]::IsNullOrEmpty($singleTransfer) -or
+    $singleTransfer -notmatch 'ExceedsLegacyDiskPathLimit\(\s*strlen\(GetPath\(\)\),\s*entry\.NameLen,\s*MAX_PATH\)' -or
+    $singleTransfer -notmatch 'if\s*\(!UnicodeDiskNames\.TryGetRow\(entry\.Name,\s*originalName\)\)' -or
+    $singleTransfer -notmatch 'else if\s*\(!UnicodeDiskNames\.TryGetLossy' -or
+    $singleTransfer -notmatch 'const bool useWorker = type == atCopy && fileSize > MaxSynchronousTransferBytes' -or
+    $singleTransfer -match 'if\s*\(fileSize > MaxSynchronousTransferBytes && !useWorker\)' -or
+    $singleTransfer -notmatch '\(type == atCopy && !useWorker') {
+    throw 'F5/F6: lossless ANSI file names over MAX_PATH and large same-volume moves must use W operations.'
+}
+Write-Host 'PASS: F5/F6 long lossless-name identity and large same-volume move route.'
+
 # F2: the original Find dialog now searches full UTF-16 roots rather than
 # falling back to MAX_PATH ANSI buffers. Its Look in control must accept a
 # 32700-unit path (including escaped separators), but over-capacity initial
