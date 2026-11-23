@@ -67,8 +67,8 @@ foreach ($command in @(
 }
 
 # Negative characterization: the collector must detect a removed dialog.
-$withoutFind = [regex]::Replace($dialogRc,
-    '(?m)^\s*IDD_FIND\s+DIALOGEX?[^\r\n]*', '', 1)
+$withoutFind = [regex]::new(
+    '(?m)^\s*IDD_FIND\s+DIALOGEX?[^\r\n]*').Replace($dialogRc, '', 1)
 $idsWithoutFind = @(Get-ResourceIdentifiers -Source $withoutFind -Pattern $dialogPattern)
 if ('IDD_FIND' -in $idsWithoutFind) {
     throw 'Resource inventory collector failed to detect removal of IDD_FIND.'
