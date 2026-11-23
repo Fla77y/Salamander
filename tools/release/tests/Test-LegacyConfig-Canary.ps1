@@ -124,6 +124,19 @@ try {
     finally { $newVersion.Dispose() }
 
     Assert-IsolatedLegacyConfigPreserved -TestConfigurationKey $root -ExpectedDigest $digest
+
+    # A0-02 release-gate negative: the legacy root itself is deleted.
+    # This deliberately mutates only the fresh GUID-owned fake Config1.
+    [Microsoft.Win32.Registry]::CurrentUser.DeleteSubKeyTree("$root\Config1", $false)
+    Assert-Rejected -Action {
+        Assert-IsolatedLegacyConfigPreserved -TestConfigurationKey $root -ExpectedDigest $digest
+    } -ExpectedText 'Legacy 5.0 canary root is missing'
+    $recreated = New-IsolatedLegacyConfigCanary -TestConfigurationKey $root
+    if ($recreated -cne $digest) {
+        throw 'Recreated isolated legacy configuration differs from original snapshot.'
+    }
+    Assert-IsolatedLegacyConfigPreserved -TestConfigurationKey $root -ExpectedDigest $digest
+    Write-Host 'PASS: canary detects deletion of 5.0 configuration and restored synthetic snapshot.'
     Write-Host 'PASS: GUID-owned legacy config SHA-256 detects Unicode, binary, structural and version changes without touching user 5.0/5.2 keys.'
 }
 finally {
