@@ -39,6 +39,10 @@ $specs = @(
         'tools\tests\pictview_wic_decode.cpp',
         'src\plugins\pictview\WicImageDecoder.cpp'
     ); Libraries = @('windowscodecs.lib','ole32.lib') },
+    @{ Name = 'pictview_wic_formats'; Sources = @(
+        'tools\tests\pictview_wic_formats.cpp',
+        'src\plugins\pictview\WicImageDecoder.cpp'
+    ); Libraries = @('windowscodecs.lib','ole32.lib') },
     @{ Name = 'pictview_wic_presenter'; Sources = @(
         'tools\tests\pictview_wic_presenter.cpp',
         'src\plugins\pictview\WicBitmapPresenter.cpp'
