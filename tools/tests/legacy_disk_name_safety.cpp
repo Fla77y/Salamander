@@ -84,6 +84,22 @@ int main()
         !Salamander::ExceedsLegacyDiskPathLimit(static_cast<std::size_t>(-1), 1, 260))
         return Fail("long leaf in a short ANSI folder must use the original UTF-16 row");
 
+    // A short source may still overflow the legacy buffer in the OTHER
+    // panel. Both F5 and F6 must switch to the W-backed transfer before
+    // the ANSI engine builds the destination filename.
+    // Arrange: a 20-byte source directory and a 245-byte target directory.
+    constexpr std::size_t sourceLength = 20;
+    constexpr std::size_t targetLength = 245;
+    constexpr std::size_t leafLength = 15;
+    // Act / Assert: source fits, destination does not.
+    if (Salamander::ExceedsLegacyDiskPathLimit(sourceLength, leafLength, 260) ||
+        !Salamander::ExceedsLegacyTransferPathLimit(
+            sourceLength, targetLength, leafLength, 260) ||
+        Salamander::ExceedsLegacyTransferPathLimit(20, 30, leafLength, 260) ||
+        !Salamander::ExceedsLegacyTransferPathLimit(20, 260, 0, 260) ||
+        !Salamander::ExceedsLegacyTransferPathLimit(20, 245, 15, 0))
+        return Fail("F5/F6 must inspect destination length before entering ANSI engine");
+
     std::puts("PASS: fail-closed ANSI disk name operation selection, focus and batch semantics");
     return 0;
 }
