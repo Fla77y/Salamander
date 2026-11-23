@@ -28,6 +28,7 @@ param(
     [switch]$ShortUnicodeRenameOnly,
     [switch]$ShortUnicodeRecycleOnly,
     [switch]$ShortUnicodePermanentDeleteOnly,
+    [switch]$ShortUnicodeParentOnly,
     [switch]$VerifyRecycleRestore,
     [switch]$PluginLoadSmokeOnly,
     [switch]$WicViewerVerified,
@@ -3896,6 +3897,18 @@ try {
         [IO.Directory]::CreateDirectory($destination) | Out-Null
         [IO.Directory]::CreateDirectory($moveDir) | Out-Null
     }
+    if ($ShortUnicodeParentOnly) {
+        [void][IO.Directory]::CreateDirectory($destination)
+        [void][IO.Directory]::CreateDirectory($moveDir)
+        $unicodeParent = Join-Path $source 'parent_東京_😀'
+        [void][IO.Directory]::CreateDirectory($unicodeParent)
+        $parentSourceName = 'plain-child.txt'
+        $parentSourceFile = Join-Path $unicodeParent $parentSourceName
+        [IO.File]::WriteAllBytes($parentSourceFile, $payload)
+        $parentTargetSourceName = 'target-to-unicode.txt'
+        [IO.File]::WriteAllBytes(
+            (Join-Path $destination $parentTargetSourceName), $payload)
+    }
     if ($ShortUnicodeDirectoryRenameOnly) {
         [void][IO.Directory]::CreateDirectory($destination)
         [void][IO.Directory]::CreateDirectory($moveDir)
@@ -3931,6 +3944,7 @@ try {
         -not $ShortUnicodeMultiSelectOnly -and
         -not $ShortUnicodeDirectoryRenameOnly -and
         -not $ShortUnicodeRecycleOnly -and -not $ShortUnicodePermanentDeleteOnly -and
+        -not $ShortUnicodeParentOnly -and
         -not $ShortUnicodeUnsafeOperationsOnly -and -not $ShortOperationsOnly -and
         -not $UnicodeFindOnly -and -not $LegacyFindScenario -and -not $MaximumPathOnly -and
         -not $LargeUnicodeCopyOnly -and
@@ -4515,6 +4529,79 @@ try {
         Assert-True (Test-Content $bestFitFile) 'Best-fit Unicode file content remains intact'
         $passed = $true
         Write-Host 'PASS: Unicode GUI filename round-trip survives non-question-mark ANSI best-fit mapping.'
+        return
+    }
+
+    if ($ShortUnicodeParentOnly) {
+        # Test a short UTF-16 parent directory with a plain ASCII leaf:
+        # name-only checks are insufficient to protect ANSI file actions.
+        Send-Keys '{TAB}'
+        Go-ToPath $destination
+        Send-Keys '{TAB}'
+        Go-ToPath $unicodeParent
+        Assert-True ((Read-PanelPath) -ceq $unicodeParent) 'Original Unicode source parent verified'
+        Send-Keys '{END}'
+        Assert-True ((Read-FocusedFilename) -ceq $parentSourceName) 'ASCII file in Unicode parent selected'
+        Send-Keys '{F5}'
+        Wait-Until {
+            $dialog = Get-TestDialog
+            if ($dialog -match 'legacy ANSI file-operation engine|native Unicode file operation') {
+                throw "Unicode parent F5 incorrectly rejected: $dialog"
+            }
+            return $dialog -match 'Copy the Unicode file to the other panel'
+        } 'F5 Unicode source directory without long path'
+        Send-Keys '{ENTER}'
+        $parentCopied = Join-Path $destination $parentSourceName
+        Wait-Until {
+            (Test-Content $parentCopied) -and (Test-Content $parentSourceFile)
+        } 'F5 from short Unicode directory preserves ASCII leaf bytes'
+
+        # Move the original from the Unicode parent to a normal target.
+        Send-Keys '{TAB}'
+        Go-ToPath $moveDir
+        Send-Keys '{TAB}'
+        Assert-True ((Read-PanelPath) -ceq $unicodeParent) 'F6 Unicode source parent verified'
+        Send-Keys '{END}'
+        Assert-True ((Read-FocusedFilename) -ceq $parentSourceName) 'F6 source identity verified'
+        Send-Keys '{F6}'
+        Wait-Until {
+            $dialog = Get-TestDialog
+            if ($dialog -match 'legacy ANSI file-operation engine|native Unicode file operation') {
+                throw "Unicode parent F6 incorrectly rejected: $dialog"
+            }
+            return $dialog -match 'Move the Unicode file to the other panel'
+        } 'F6 from short Unicode parent routes through native move'
+        Send-Keys '{ENTER}'
+        $parentMoved = Join-Path $moveDir $parentSourceName
+        Wait-Until {
+            (Test-Content $parentMoved) -and
+            -not [IO.File]::Exists($parentSourceFile)
+        } 'F6 out of short Unicode parent retains exact bytes'
+
+        # Destination-side regression: the source parent is ASCII, but
+        # moving into a Unicode destination must not encode the target as ACP.
+        Send-Keys '{TAB}'
+        Go-ToPath $unicodeParent
+        Send-Keys '{TAB}'
+        Go-ToPath $destination
+        Assert-True ((Read-PanelPath) -ceq $destination) 'F6 ASCII source parent verified'
+        Send-Keys '{END}'
+        Assert-True ((Read-FocusedFilename) -ceq $parentTargetSourceName) 'F6 target-side fixture verified'
+        Send-Keys '{F6}'
+        Wait-Until {
+            $dialog = Get-TestDialog
+            if ($dialog -match 'legacy ANSI file-operation engine|native Unicode file operation') {
+                throw "Unicode destination parent F6 incorrectly rejected: $dialog"
+            }
+            return $dialog -match 'Move the Unicode file to the other panel'
+        } 'F6 into short Unicode parent routes through native move'
+        Send-Keys '{ENTER}'
+        Wait-Until {
+            (Test-Content (Join-Path $unicodeParent $parentTargetSourceName)) -and
+            -not [IO.File]::Exists((Join-Path $destination $parentTargetSourceName))
+        } 'F6 into short Unicode parent preserves exact bytes'
+        $passed = $true
+        Write-Host 'PASS: short Unicode source and destination directories route F5/F6 through lossless UTF-16.'
         return
     }
 
