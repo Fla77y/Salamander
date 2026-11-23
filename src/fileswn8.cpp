@@ -301,8 +301,9 @@ BOOL CFilesWindow::TryUnicodeMultiFileTransfer(CActionType type, CFilesWindow* t
     const int selectedCount = GetSelCount();
     constexpr int MaxSynchronousItems = 16;
     constexpr ULONGLONG MaxSynchronousBytes = 16ULL * 1024 * 1024;
-    if (selectedCount < 2 || selectedCount > MaxSynchronousItems)
+    if (selectedCount < 2)
         return FALSE;
+    bool useWorker = selectedCount > MaxSynchronousItems;
 
     std::vector<int> indexes(static_cast<std::size_t>(selectedCount));
     if (GetSelItems(selectedCount, indexes.data()) != selectedCount)
@@ -345,6 +346,7 @@ BOOL CFilesWindow::TryUnicodeMultiFileTransfer(CActionType type, CFilesWindow* t
         Salamander::Utf16DiskPath destination;
         std::wstring sourceExtended;
         std::wstring targetExtended;
+        WIN32_FILE_ATTRIBUTE_DATA attributes{};
     };
     std::vector<Transfer> transfers;
     transfers.reserve(static_cast<std::size_t>(selectedCount));
@@ -409,9 +411,14 @@ BOOL CFilesWindow::TryUnicodeMultiFileTransfer(CActionType type, CFilesWindow* t
         const ULONGLONG bytes =
             (static_cast<ULONGLONG>(attributes.nFileSizeHigh) << 32) |
             attributes.nFileSizeLow;
-        if (bytes > MaxSynchronousBytes - totalBytes)
-            return FALSE; // no unbounded, synchronous UI thread operation
-        totalBytes += bytes;
+        if (!useWorker)
+        {
+            if (bytes > MaxSynchronousBytes - totalBytes)
+                useWorker = true;
+            else
+                totalBytes += bytes;
+        }
+        item.attributes = attributes;
 
         const DWORD existing = GetFileAttributesW(item.targetExtended.c_str());
         if (existing != INVALID_FILE_ATTRIBUTES ||
@@ -425,7 +432,11 @@ BOOL CFilesWindow::TryUnicodeMultiFileTransfer(CActionType type, CFilesWindow* t
         std::to_wstring(transfers.size()) +
         L" selected Unicode/ASCII disk files to the other panel?\n\n" +
         L"Existing files will not be overwritten. If a later file fails, "
-        L"earlier completed transfers remain and will be reported.";
+        L"earlier completed transfers remain and will be reported." +
+        (useWorker
+            ? std::wstring(L"\n\nThe original progress worker will handle the ")
+              + L"large selection with Pause and Cancel."
+            : std::wstring());
     if (MessageBoxW(HWindow, prompt.c_str(), L"Unicode batch transfer",
                     MB_OKCANCEL | MB_ICONQUESTION) != IDOK)
         return TRUE;
@@ -461,7 +472,7 @@ BOOL CFilesWindow::TryUnicodeMultiFileTransfer(CActionType type, CFilesWindow* t
     // All entries are checked again after the modal confirmation. A failed
     // preflight never starts any transfer and never falls through to ANSI.
     ULONGLONG recheckedTotalBytes = 0;
-    for (const Transfer& item : transfers)
+    for (Transfer& item : transfers)
     {
         std::wstring resolvedName;
         if (!sourceNames.TryGet(item.alias.c_str(), resolvedName) ||
@@ -487,14 +498,18 @@ BOOL CFilesWindow::TryUnicodeMultiFileTransfer(CActionType type, CFilesWindow* t
         const ULONGLONG checkedBytes =
             (static_cast<ULONGLONG>(attributes.nFileSizeHigh) << 32) |
             attributes.nFileSizeLow;
-        if (checkedBytes > MaxSynchronousBytes - recheckedTotalBytes)
+        if (!useWorker)
         {
-            MessageBoxW(HWindow, L"The selected Unicode files grew beyond "
-                        L"the synchronous transfer limit. No files were transferred.",
-                        L"Unicode batch transfer", MB_OK | MB_ICONWARNING);
-            return TRUE;
+            if (checkedBytes > MaxSynchronousBytes - recheckedTotalBytes)
+            {
+                MessageBoxW(HWindow, L"The selected Unicode files grew beyond "
+                            L"the synchronous transfer limit. No files were transferred.",
+                            L"Unicode batch transfer", MB_OK | MB_ICONWARNING);
+                return TRUE;
+            }
+            recheckedTotalBytes += checkedBytes;
         }
-        recheckedTotalBytes += checkedBytes;
+        item.attributes = attributes;
 
         const DWORD existing = GetFileAttributesW(item.targetExtended.c_str());
         if (existing != INVALID_FILE_ATTRIBUTES ||
@@ -503,6 +518,75 @@ BOOL CFilesWindow::TryUnicodeMultiFileTransfer(CActionType type, CFilesWindow* t
             MessageBoxW(HWindow, L"A Unicode destination now exists or "
                         L"cannot be inspected. No files were transferred.",
                         L"Unicode batch transfer", MB_OK | MB_ICONWARNING);
+            return TRUE;
+        }
+    }
+
+    if (useWorker)
+    {
+        // The UI confirmation and complete name/collision preflight have
+        // already succeeded. Only owned UTF-16 entries are enqueued.
+        // Their source identities are revalidated when opened by the worker.
+        try
+        {
+            CCriteriaData criteria;
+            if (CopyMoveOptions.Get() != NULL)
+                criteria = *CopyMoveOptions.Get();
+            if (criteria.UseMasks || criteria.UseAdvanced)
+            {
+                MessageBoxW(HWindow, L"The saved transfer filters still require "
+                    L"the legacy name engine. No files were changed.",
+                    L"Unicode batch transfer", MB_OK | MB_ICONWARNING);
+                return TRUE;
+            }
+
+            std::unique_ptr<COperations, decltype(&FreeScript)> script(
+                new COperations(selectedCount, 16, NULL, NULL, NULL), FreeScript);
+            if (script == NULL)
+                throw std::bad_alloc();
+            script->CopyAttrs = criteria.CopyAttrs;
+            script->CopySecurity = criteria.CopySecurity;
+            script->OverwriteOlder = FALSE; // preflight rejects all existing targets
+            script->StartOnIdle = criteria.StartOnIdle;
+            if (criteria.UseSpeedLimit)
+                script->SetSpeedLimit(TRUE, criteria.SpeedLimit);
+            script->UnicodeCopyNotificationPath = targetPanelPath;
+
+            for (const Transfer& item : transfers)
+            {
+                if (!PrepareUnicodeFileCopy(
+                        script.get(), item.source, item.destination,
+                        item.attributes, criteria.IgnoreADS, error, type == atMove))
+                {
+                    MessageBoxW(HWindow, GetErrorTextW(error),
+                        L"Unicode batch transfer", MB_OK | MB_ICONWARNING);
+                    return TRUE;
+                }
+            }
+
+            BeginSuspendMode();
+            BeginStopRefresh();
+            const BOOL started = StartProgressDialog(
+                script.get(), LoadStr(type == atMove ? IDS_MOVE : IDS_COPY), NULL, NULL);
+            if (started)
+                script.release(); // worker owns the full script after starting
+            EndStopRefresh();
+            EndSuspendMode();
+            if (!started)
+                MessageBoxW(HWindow, L"Unable to start the Unicode progress worker.",
+                            L"Unicode batch transfer", MB_OK | MB_ICONWARNING);
+            else
+            {
+                SetSel(FALSE, -1, TRUE);
+                PostMessage(HWindow, WM_USER_SELCHANGED, 0, 0);
+            }
+            return TRUE;
+        }
+        catch (const std::bad_alloc&)
+        {
+            MessageBoxW(HWindow, L"Not enough memory for the Unicode transfer script. "
+                        L"No operation was started.", L"Unicode batch transfer",
+                        MB_OK | MB_ICONWARNING);
             return TRUE;
         }
     }
