@@ -709,6 +709,25 @@ behauptet.** Wiederholung des isolierten Debug-`ViewUnicode`-
 Falls auf dem aktuellen PR-SHA erforderlich, danach vollständiger
 `--test-all --setup`-Lauf auf demselben SHA.
 
+**QA-03 / FIND-04 – gezielte Debug-Verifikation auf neuerem SHA
+(23.11.2026, ein erfolgreicher Durchlauf):** Benutzerseitig
+ausgeführtes `Build-IsolatedGuiTest.ps1 -Configuration Debug
+-OutputName isolated-legacy-find` und anschließend
+`Test-SalamanderGui-LongPaths.ps1 -IsolatedConfiguration
+-LegacyFindScenario ViewUnicode` auf
+`62234c10b31bed4507700b2a21a0fc5dbd9fe4d2`.
+Die Konsole bestätigt: isolierter Debug-x64-Build, originaler
+Find-Dialog, zwei unterschiedliche UTF-16-Treffer,
+**beide** bytegenauen Viewer-Copy-Prüfungen, Next/Previous
+und Zwischenablage-Wiederherstellung mit PASS.
+Die neuen Timeout-Diagnosezweige wurden dadurch nicht
+ausgeführt; der zuvor in einem vollständigen Testlauf
+beobachtete Fehler ist **nicht reproduziert, aber nicht als
+behoben nachgewiesen**. Es liegt für diesen Einzellauf
+kein separat versionierter vollständiger Transcript-Dateipfad
+oder Binär-SHA256 vor. QA-03 bleibt offen, bis Wiederholung,
+Fehlerrate und derselbe SHA im Volltest dokumentiert sind.
+
 ### [ ] QA-04 – Umgebungs-/Locale-Matrix (**P1**, OFFEN)
 - **Fälle:** Windows 11 Build, CP1252 und nichtwesteuropäische
   ACP, LongPathsEnabled ein/aus, 100/125/200 %-DPI,
