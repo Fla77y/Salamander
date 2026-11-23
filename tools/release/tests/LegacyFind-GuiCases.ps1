@@ -417,7 +417,24 @@ function Test-LegacyFindDuplicates {
                 'Duplicate content is unavailable without the size criterion')
         }
         [SalamanderGuiNative]::PostFindButton($owned.Handle, $ownerPid, 1)
-        Wait-Until { -not [SalamanderGuiNative]::IsWindowVisible($owned.Handle) } 'duplicate search started'
+        Wait-Until { -not [SalamanderGuiNative]::IsWindowVisible($owned.Handle) } 'duplicate criteria dialog closed'
+
+        # EndDialog hides the modal before StartSearch resumes in its owning
+        # GUI thread. A read-only WM_NULL message synchronizes that dispatch:
+        # otherwise the still-enabled query controls can make an unstarted
+        # duplicate search look like a completed zero-result search.
+        if ([SalamanderGuiNative]::FindLegacySearchWindow($ownerPid) -ne $legacyWindow) {
+            throw 'Original Find window changed during duplicate criteria confirmation.'
+        }
+        [IntPtr]$barrierResult = [IntPtr]::Zero
+        $barrier = [SalamanderGuiNative]::SendMessageTimeout(
+            $legacyWindow, [uint32]0, [UIntPtr]::Zero, [IntPtr]::Zero,
+            [uint32]2, [uint32]5000, [ref]$barrierResult)
+        $barrierError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        if ($barrier -eq [IntPtr]::Zero) {
+            throw "Duplicate search modal dispatch did not complete (Win32 error $barrierError)."
+        }
+
         Assert-LegacyFindCount -Expected $case.Count -Description $case.Description
     }
 }
