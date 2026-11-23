@@ -95,6 +95,22 @@ if ($viewExtensions.Count -eq 0 -or
 }
 Write-Host "PASS: PictView WIC codec regressions cover all $($testedExtensions.Count) advertised extensions."
 
+# Format acceptance must also reject damaged input, invalid arguments and
+# out-of-range frames without leaking the prior decode or frame count.
+foreach ($required in @(
+    'TestDecodeFailuresAreAtomic',
+    'TestInvalidFrameDoesNotReturnPixels',
+    'truncated WIC image',
+    'missing WIC image',
+    'invalid WIC filename',
+    'out-of-range WIC frame'
+)) {
+    if (-not $formatsSource.Contains($required)) {
+        throw "PictView native format matrix lacks fail-closed regression: $required"
+    }
+}
+
+
 if ($runnerText -notmatch '/W4 /WX' -or
     $runnerText -notmatch "'x64','x86'" -or
     $runnerText -notmatch '\$LASTEXITCODE -ne 0' -or
