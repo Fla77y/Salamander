@@ -529,8 +529,8 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
     const std::string legacyAlias(entry.Name);
     std::wstring originalName;
     if (HasLongDiskPath() || target->HasLongDiskPath() ||
-        Salamander::ExceedsLegacyDiskPathLimit(
-            strlen(GetPath()), entry.NameLen, MAX_PATH))
+        Salamander::ExceedsLegacyTransferPathLimit(
+            strlen(GetPath()), strlen(target->GetPath()), entry.NameLen, MAX_PATH))
     {
         // A short parent plus an ordinary, lossless ANSI name can still
         // exceed MAX_PATH. TryGetLossy deliberately rejects such names.
@@ -1159,18 +1159,28 @@ void CFilesWindow::FilesAction(CActionType type, CFilesWindow* target, int count
     {
         const int dirCount = Dirs->Count;
         const int itemCount = dirCount + Files->Count;
+        const bool hasDiskTarget =
+            (type == atCopy || type == atMove) &&
+            target != NULL && target->Is(ptDisk);
+        const std::size_t targetPathLength =
+            hasDiskTarget ? strlen(target->GetPath()) : 0;
         const bool unsafe = Salamander::SelectionContainsLossyDiskName(
             static_cast<std::size_t>(itemCount),
             static_cast<std::size_t>(GetSelCount()),
             static_cast<std::size_t>(GetCaretIndex()),
-            [this, dirCount, pathLength = strlen(GetPath())](std::size_t index) -> Salamander::LegacyDiskEntryView {
+            [this, dirCount, sourceLength = strlen(GetPath()),
+             targetPathLength, hasDiskTarget](std::size_t index) -> Salamander::LegacyDiskEntryView {
                 const CFileData& entry =
                     index < static_cast<std::size_t>(dirCount)
                         ? Dirs->At(static_cast<int>(index))
                         : Files->At(static_cast<int>(index) - dirCount);
+                const bool overlong = hasDiskTarget
+                    ? Salamander::ExceedsLegacyTransferPathLimit(
+                          sourceLength, targetPathLength, entry.NameLen, MAX_PATH)
+                    : Salamander::ExceedsLegacyDiskPathLimit(
+                          sourceLength, entry.NameLen, MAX_PATH);
                 return {entry.Name, entry.Selected != 0,
-                        pathLength + entry.NameLen + 1 >= MAX_PATH ||
-                            UnicodeDiskNames.IsUnsafeAnsiName(entry.Name)};
+                        overlong || UnicodeDiskNames.IsUnsafeAnsiName(entry.Name)};
             });
         if (unsafe)
         {
