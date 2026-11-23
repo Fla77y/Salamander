@@ -667,6 +667,8 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
         (static_cast<ULONGLONG>(attributes.nFileSizeHigh) << 32) |
         attributes.nFileSizeLow;
     const bool useWorker = type == atCopy && fileSize > MaxSynchronousTransferBytes;
+    const bool largeMoveMayNeedWorker =
+        type == atMove && fileSize > MaxSynchronousTransferBytes;
     // A same-volume F6 move is a metadata rename, not a byte copy. The
     // no-copy-fallback W helper rejects cross-volume moves explicitly; file
     // size must not prevent a safe same-volume rename.
@@ -684,7 +686,10 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
         originalName + L"\n\nDestination: " + targetDirectory +
         (useWorker ? L"\n\nThe existing background copy worker will be used. "
                      L"Existing destinations follow your overwrite confirmation settings." :
-                     L"\n\nExisting files will not be overwritten.");
+         largeMoveMayNeedWorker
+                   ? L"\n\nA cross-volume move will use the existing background worker. "
+                     L"Existing destinations follow your overwrite confirmation settings."
+                   : L"\n\nExisting files will not be overwritten.");
     if (MessageBoxW(HWindow, prompt.c_str(),
                     type == atCopy ? L"Unicode copy" : L"Unicode move",
                     MB_OKCANCEL | MB_ICONQUESTION) != IDOK)
@@ -726,7 +731,7 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
         return TRUE;
     }
 
-    if (useWorker)
+    const auto startWideWorker = [&]() -> BOOL
     {
         try
         {
@@ -735,8 +740,8 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
                 criteria = *CopyMoveOptions.Get();
             if (criteria.UseMasks || criteria.UseAdvanced)
             {
-                MessageBoxW(HWindow, L"The saved copy filters still require the legacy name engine. "
-                    L"No files were changed.", L"Unicode copy", MB_OK | MB_ICONWARNING);
+                MessageBoxW(HWindow, L"The saved transfer filters still require the legacy name engine. "
+                    L"No files were changed.", L"Unicode transfer", MB_OK | MB_ICONWARNING);
                 return TRUE;
             }
             std::unique_ptr<COperations, decltype(&FreeScript)> script(
@@ -750,14 +755,16 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
             if (criteria.UseSpeedLimit)
                 script->SetSpeedLimit(TRUE, criteria.SpeedLimit);
             script->UnicodeCopyNotificationPath = targetPanelPath;
-            if (!PrepareUnicodeFileCopy(script.get(), source, destination, currentAttributes, criteria.IgnoreADS, error))
+            if (!PrepareUnicodeFileCopy(script.get(), source, destination, currentAttributes,
+                                        criteria.IgnoreADS, error, type == atMove))
             {
                 MessageBoxW(HWindow, GetErrorTextW(error), L"Unicode copy", MB_OK | MB_ICONWARNING);
                 return TRUE;
             }
             BeginSuspendMode();
             BeginStopRefresh();
-            const BOOL started = StartProgressDialog(script.get(), LoadStr(IDS_COPY), NULL, NULL);
+            const BOOL started = StartProgressDialog(
+                script.get(), LoadStr(type == atMove ? IDS_MOVE : IDS_COPY), NULL, NULL);
             if (started)
                 script.release(); // the existing worker owns/frees it from here
             EndStopRefresh();
@@ -774,11 +781,13 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
         }
         catch (const std::bad_alloc&)
         {
-            MessageBoxW(HWindow, L"Not enough memory to prepare the Unicode copy.",
-                L"Unicode copy", MB_OK | MB_ICONWARNING);
+            MessageBoxW(HWindow, L"Not enough memory to prepare the Unicode transfer.",
+                L"Unicode transfer", MB_OK | MB_ICONWARNING);
             return TRUE;
         }
-    }
+    };
+    if (useWorker)
+        return startWideWorker();
 
     // Refresh may be delayed until the operation completes. All filesystem
     // paths are owned UTF-16 values; no pointer to panel entry survives.
@@ -788,7 +797,7 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
         ? Salamander::TryCopyUnicodeFileNoOverwrite(source, destination, error)
         : Salamander::TryMoveUnicodeFileNoOverwrite(source, destination, error);
     bool crossVolumeCopyAttempted = false;
-    bool crossVolumeTooLarge = false;
+    bool crossVolumeRequiresWorker = false;
     if (!succeeded && type == atMove && error == ERROR_NOT_SAME_DEVICE)
     {
         // Reuse the existing Unicode clipboard transfer transaction instead
@@ -801,8 +810,8 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
             currentAttributes.nFileSizeLow;
         if (currentBytes > MaxSynchronousTransferBytes)
         {
-            crossVolumeTooLarge = true;
-            error = ERROR_FILE_TOO_LARGE; // No unbounded UI-thread copy.
+            crossVolumeRequiresWorker = true;
+            error = ERROR_FILE_TOO_LARGE; // Start the existing background worker.
         }
         else
         {
@@ -815,16 +824,13 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
     }
     EndStopRefresh();
     EndSuspendMode();
+    if (crossVolumeRequiresWorker)
+        return startWideWorker();
 
     if (!succeeded)
     {
         wchar_t detail[320];
-        if (crossVolumeTooLarge)
-            swprintf_s(detail, _countof(detail),
-                       L"Cross-volume Unicode move requires a background "
-                       L"worker for files over 16 MiB. No copy was started "
-                       L"and neither file was changed.");
-        else if (crossVolumeCopyAttempted)
+        if (crossVolumeCopyAttempted)
             swprintf_s(detail, _countof(detail),
                        L"Cross-volume Unicode move failed (Win32 error %lu). "
                        L"Check both locations: the verified destination copy "
