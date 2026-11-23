@@ -40,6 +40,7 @@ $requiredToken = "-RequiredShippedModules @('7zip','checksum','filecomp','rename
 if ($stageCall -lt 0 -or $payloadGate -le $stageCall -or
     $archiveCreation -le $payloadGate -or
     -not $packagingScript.Contains('-RequireMatchingPayloads') -or
+    -not $packagingScript.Contains('-RequireSolutionPluginPayloads') -or
     -not $packagingScript.Contains($requiredToken)) {
     throw 'PKG-01: package creation must validate byte-identical mandatory staged SPL modules before archiving.'
 }
