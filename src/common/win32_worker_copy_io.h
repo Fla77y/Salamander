@@ -65,6 +65,11 @@ inline bool BeforeTargetMutation(const char* token, const wchar_t* path)
     if (attributes == INVALID_FILE_ATTRIBUTES)
     {
         const DWORD error = GetLastError();
+        if (Current->CaptureTargetIdentity && Current->HasTargetIdentity)
+        {
+            SetLastError(ERROR_FILE_INVALID); // an owned F6 target disappeared
+            return false;
+        }
         return error == ERROR_FILE_NOT_FOUND; // other uncertainty is not absence
     }
     if ((attributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0)
@@ -72,7 +77,8 @@ inline bool BeforeTargetMutation(const char* token, const wchar_t* path)
         SetLastError(ERROR_REPARSE_TAG_INVALID);
         return false;
     }
-    if (!Current->HasSourceIdentity)
+    if (!Current->HasSourceIdentity &&
+        !(Current->CaptureTargetIdentity && Current->HasTargetIdentity))
         return true;
     HANDLE check = CreateFileW(path, FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
         nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
@@ -87,7 +93,8 @@ inline bool BeforeTargetMutation(const char* token, const wchar_t* path)
         SetLastError(error);
         return false;
     }
-    if (SameIdentity(Current->SourceIdentity, target))
+    if (Current->HasSourceIdentity &&
+        SameIdentity(Current->SourceIdentity, target))
     {
         SetLastError(ERROR_INVALID_PARAMETER); // includes a different hard-link name
         return false;
