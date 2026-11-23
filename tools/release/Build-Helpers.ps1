@@ -22,10 +22,14 @@ function Assert-BuildDirectory {
           [Parameter(Mandatory)][string]$BuildRoot)
     $repo = [IO.Path]::GetFullPath($Repository).TrimEnd('\', '/')
     $root = [IO.Path]::GetFullPath($BuildRoot).TrimEnd('\', '/')
+    $expectedInternalRoot = Join-Path $repo '.Build'
+    if ($root.Equals($expectedInternalRoot, [StringComparison]::OrdinalIgnoreCase)) {
+        return
+    }
     if ($root.Equals($repo, [StringComparison]::OrdinalIgnoreCase) -or
         $root.StartsWith($repo + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase) -or
         $repo.StartsWith($root + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
-        throw 'BuildRoot must be separate from the repository and its parent directories.'
+        throw 'BuildRoot must be outside the repository or exactly its .Build directory.'
     }
 }
 
