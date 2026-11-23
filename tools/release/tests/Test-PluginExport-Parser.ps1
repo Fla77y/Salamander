@@ -77,3 +77,63 @@ $forwarded = @'
 Assert-Export $forwarded 'SalamanderPluginEntry' $false 'reject forwarded or invalid record'
 
 Write-Host 'PASS: dumpbin parser accepts only exact public names in valid export rows.'
+
+
+# UP-02 RED: source .def files may use either "EXPORTS Name" or a
+# conventional EXPORTS section with ordinal/private attributes.
+function Assert-DefinitionExport {
+    param([string]$Definition, [string]$Name, [bool]$Expected)
+    $actual = Test-ModuleDefinitionExport -Definition $Definition -Name $Name
+    if ($actual -ne $Expected) {
+        throw "Definition export mismatch for '$Name': expected $Expected; actual $actual."
+    }
+}
+$singleLine = @'
+LIBRARY 7zip.spl
+EXPORTS SalamanderPluginEntry
+EXPORTS SalamanderPluginGetReqVer
+'@
+$multiline = @'
+LIBRARY automation.spl
+; EXPORTS ForgedExport
+EXPORTS
+  SalamanderPluginEntry @1 PRIVATE
+  SalamanderPluginGetReqVer @2 PRIVATE
+  ExtraSymbol=DecoratedName
+'@
+Assert-DefinitionExport $singleLine 'SalamanderPluginEntry' $true
+Assert-DefinitionExport $multiline 'SalamanderPluginEntry' $true
+Assert-DefinitionExport $multiline 'SalamanderPluginGetReqVer' $true
+Assert-DefinitionExport $multiline 'ForgedExport' $false
+Assert-DefinitionExport $multiline 'SalamanderPluginEntryExtra' $false
+Assert-DefinitionExport $multiline 'DecoratedName' $false
+
+# The actual Solution sources must all declare the immutable SDK entry
+# points. This does not load the DLLs or prove that binaries were shipped.
+$repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
+$baseline = Get-Content -LiteralPath (
+    Join-Path $repository 'tools\release\plugin-source-inventory-baseline.json') -Raw |
+    ConvertFrom-Json
+$names = [string[]]@($baseline.solutionPluginProjects)
+if ($names.Count -ne 35) {
+    throw 'Unexpected source plug-in export inventory size.'
+}
+foreach ($plugin in $names) {
+    $relative = if ($plugin -eq 'diskmap') {
+        'src\plugins\diskmap\DiskMapPlugin\DiskMapPlugin.def'
+    } else {
+        "src\plugins\$plugin\$plugin.def"
+    }
+    $definitionPath = Join-Path $repository $relative
+    if (-not (Test-Path -LiteralPath $definitionPath -PathType Leaf)) {
+        throw "Missing plug-in .def source: $relative"
+    }
+    $definition = Get-Content -LiteralPath $definitionPath -Raw -Encoding UTF8
+    foreach ($symbol in @('SalamanderPluginEntry',
+                          'SalamanderPluginGetReqVer')) {
+        if (-not (Test-ModuleDefinitionExport -Definition $definition -Name $symbol)) {
+            throw "Missing source SDK export $symbol in $relative"
+        }
+    }
+}
+Write-Host "PASS: $($names.Count) declared plug-ins contain both required SDK exports in their .def files."
