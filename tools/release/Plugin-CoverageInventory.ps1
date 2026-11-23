@@ -121,6 +121,7 @@ function Get-SalamanderPluginInventory {
             (Get-FileHash -LiteralPath $staged[$name] -Algorithm SHA256).Hash
         } else { '' }
         $payloadStatus = if ($null -eq $staged) { 'NOT_CHECKED' }
+                         elseif (-not $hasBuilt -and -not $hasStaged) { 'NOT_SHIPPED' }
                          elseif (-not $hasBuilt) { 'MISSING_BUILT' }
                          elseif (-not $hasStaged) { 'MISSING_STAGED' }
                          elseif ($builtHash -cne $stagedHash) { 'HASH_MISMATCH' }
