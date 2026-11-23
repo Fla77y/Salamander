@@ -564,7 +564,8 @@ BOOL CFilesWindow::TryUnicodeMultiFileTransfer(CActionType type, CFilesWindow* t
             {
                 if (!PrepareUnicodeFileCopy(
                         script.get(), item.source, item.destination,
-                        item.attributes, criteria.IgnoreADS, error, type == atMove,
+                        item.attributes, type == atMove ? FALSE : criteria.IgnoreADS,
+                        error, type == atMove,
                         &item.sourceIdentity))
                 {
                     MessageBoxW(HWindow, GetErrorTextW(error),
@@ -870,8 +871,8 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
                 script->SetSpeedLimit(TRUE, criteria.SpeedLimit);
             script->UnicodeCopyNotificationPath = targetPanelPath;
             if (!PrepareUnicodeFileCopy(script.get(), source, destination, currentAttributes,
-                                        criteria.IgnoreADS, error, type == atMove,
-                                        &sourceIdentity))
+                                        type == atMove ? FALSE : criteria.IgnoreADS,
+                                        error, type == atMove, &sourceIdentity))
             {
                 MessageBoxW(HWindow, GetErrorTextW(error), L"Unicode copy", MB_OK | MB_ICONWARNING);
                 return TRUE;
