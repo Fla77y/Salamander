@@ -580,6 +580,15 @@ exit /b 0
         Assert-StagedBuiltPlugins -BuiltDirectory (Join-Path $root 'reference-build') -Stage $stage
     } 'Distribution must reject an SPL not present in the build output'
     Remove-Item -LiteralPath $unknown -Force
+
+    # An SPL at the package root must not escape the expected plugins\ tree.
+    $rogueRootModule = Join-Path $stage 'unexpected.spl'
+    [IO.File]::WriteAllBytes($rogueRootModule, [byte[]](0,1,2))
+    Assert-Throws {
+        Assert-StagedBuiltPlugins -BuiltDirectory (Join-Path $root 'reference-build') -Stage $stage
+    } 'Distribution must reject root-level SPL outside its plugin directory'
+    Remove-Item -LiteralPath $rogueRootModule -Force
+
     Assert-StagedBuiltPlugins -BuiltDirectory (Join-Path $root 'reference-build') -Stage $stage
     Write-Host 'PASS: staged plug-in integrity, omissions and unbuilt modules are rejected.'
 
