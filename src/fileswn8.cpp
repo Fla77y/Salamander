@@ -347,6 +347,7 @@ BOOL CFilesWindow::TryUnicodeMultiFileTransfer(CActionType type, CFilesWindow* t
         std::wstring sourceExtended;
         std::wstring targetExtended;
         WIN32_FILE_ATTRIBUTE_DATA attributes{};
+        BY_HANDLE_FILE_INFORMATION sourceIdentity{};
     };
     std::vector<Transfer> transfers;
     transfers.reserve(static_cast<std::size_t>(selectedCount));
@@ -405,7 +406,9 @@ BOOL CFilesWindow::TryUnicodeMultiFileTransfer(CActionType type, CFilesWindow* t
         if (!GetFileAttributesExW(item.sourceExtended.c_str(),
                                  GetFileExInfoStandard, &attributes) ||
             (attributes.dwFileAttributes &
-                (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0)
+                (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0 ||
+            !Salamander::TryReadUnicodeRegularFileIdentity(
+                item.source, item.sourceIdentity, error))
             return FALSE;
 
         const ULONGLONG bytes =
@@ -485,12 +488,17 @@ BOOL CFilesWindow::TryUnicodeMultiFileTransfer(CActionType type, CFilesWindow* t
         }
 
         WIN32_FILE_ATTRIBUTE_DATA attributes = {};
+        BY_HANDLE_FILE_INFORMATION currentIdentity{};
         if (!GetFileAttributesExW(item.sourceExtended.c_str(),
                                  GetFileExInfoStandard, &attributes) ||
             (attributes.dwFileAttributes &
-                (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0)
+                (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0 ||
+            !Salamander::TryReadUnicodeRegularFileIdentity(
+                item.source, currentIdentity, error) ||
+            !Salamander::UnicodeFileOperationsDetail::IsSameRegularFile(
+                item.sourceIdentity, currentIdentity))
         {
-            MessageBoxW(HWindow, L"A source file disappeared or changed type. "
+            MessageBoxW(HWindow, L"A source file disappeared or changed identity. "
                         L"No files were transferred.",
                         L"Unicode batch transfer", MB_OK | MB_ICONWARNING);
             return TRUE;
@@ -556,7 +564,8 @@ BOOL CFilesWindow::TryUnicodeMultiFileTransfer(CActionType type, CFilesWindow* t
             {
                 if (!PrepareUnicodeFileCopy(
                         script.get(), item.source, item.destination,
-                        item.attributes, criteria.IgnoreADS, error, type == atMove))
+                        item.attributes, criteria.IgnoreADS, error, type == atMove,
+                        &item.sourceIdentity))
                 {
                     MessageBoxW(HWindow, GetErrorTextW(error),
                         L"Unicode batch transfer", MB_OK | MB_ICONWARNING);
@@ -599,9 +608,9 @@ BOOL CFilesWindow::TryUnicodeMultiFileTransfer(CActionType type, CFilesWindow* t
     {
         bool succeeded = type == atCopy
             ? Salamander::TryCopyUnicodeFileNoOverwrite(
-                item.source, item.destination, error)
+                item.source, item.destination, error, &item.sourceIdentity)
             : Salamander::TryMoveUnicodeFileNoOverwrite(
-                item.source, item.destination, error);
+                item.source, item.destination, error, &item.sourceIdentity);
         if (!succeeded && type == atMove && error == ERROR_NOT_SAME_DEVICE)
         {
             // The batch was preflighted as <=16 MiB total. For a different
@@ -610,9 +619,11 @@ BOOL CFilesWindow::TryUnicodeMultiFileTransfer(CActionType type, CFilesWindow* t
             // never delete it without verifying the exact source again.
             attemptedCrossVolumeCopy = true;
             std::size_t moved = 0;
+            const std::vector<BY_HANDLE_FILE_INFORMATION> expectedSources{
+                item.sourceIdentity};
             succeeded = Salamander::TryTransferUnicodeClipboardFiles(
-                {item.source}, targetDir, DROPEFFECT_MOVE, moved, error) &&
-                moved == 1;
+                {item.source}, targetDir, DROPEFFECT_MOVE, moved, error,
+                &expectedSources) && moved == 1;
         }
         if (!succeeded)
             break;
@@ -923,9 +934,10 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
         {
             crossVolumeCopyAttempted = true;
             std::size_t completed = 0;
+            const std::vector<BY_HANDLE_FILE_INFORMATION> expectedSources{sourceIdentity};
             succeeded = Salamander::TryTransferUnicodeClipboardFiles(
-                {source}, targetDir, DROPEFFECT_MOVE, completed, error) &&
-                completed == 1;
+                {source}, targetDir, DROPEFFECT_MOVE, completed, error,
+                &expectedSources) && completed == 1;
         }
     }
     EndStopRefresh();
