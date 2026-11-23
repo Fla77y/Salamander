@@ -66,19 +66,41 @@ inline DWORD CALLBACK VerifyCopyHandles(LARGE_INTEGER, LARGE_INTEGER, LARGE_INTE
     if (check.verified && reason != CALLBACK_STREAM_SWITCH)
         return PROGRESS_CONTINUE;
 
-    BY_HANDLE_FILE_INFORMATION actual{}, staging{};
-    if (!GetFileInformationByHandle(source, &actual) || !GetFileInformationByHandle(destination, &staging))
-        check.error = GetLastError();
-    else if (!IsSameRegularFile(*check.expected, actual) || !HasRegularFileIdentity(staging) ||
-             (check.verified && !IsSameRegularFile(check.staging, staging)))
-        check.error = ERROR_FILE_INVALID;
-    else
+    // Each stream must still belong to the originally opened source file.
+    BY_HANDLE_FILE_INFORMATION actual{};
+    if (!GetFileInformationByHandle(source, &actual))
     {
-        check.staging = staging;
-        check.verified = true;
+        check.error = GetLastError();
+        return PROGRESS_CANCEL;
+    }
+    if (!IsSameRegularFile(*check.expected, actual))
+    {
+        check.error = ERROR_FILE_INVALID;
+        return PROGRESS_CANCEL;
+    }
+
+    if (check.verified)
+    {
+        // CopyFileExW may provide a destination ADS handle without permission
+        // to query its file metadata. The first stream established the staging
+        // identity; PublishVerifiedCopy reopens and verifies it before rename.
         return PROGRESS_CONTINUE;
     }
-    return PROGRESS_CANCEL;
+
+    BY_HANDLE_FILE_INFORMATION staging{};
+    if (!GetFileInformationByHandle(destination, &staging))
+    {
+        check.error = GetLastError();
+        return PROGRESS_CANCEL;
+    }
+    if (!HasRegularFileIdentity(staging))
+    {
+        check.error = ERROR_FILE_INVALID;
+        return PROGRESS_CANCEL;
+    }
+    check.staging = staging;
+    check.verified = true;
+    return PROGRESS_CONTINUE;
 }
 
 inline bool TryRenameOpenFileNoOverwrite(HANDLE file, const std::wstring& target, DWORD& error)
