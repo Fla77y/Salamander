@@ -375,6 +375,42 @@ und Unicode-/Langpfad-Grenzen klassifizieren.
 - **Quellen:** `AGENTS.md` A0, `tools/release/tests/`,
   `docs/pictview-wic-migration.md`. **Abhängig von:** A7-06.
 
+**A0-02 – kombinierter Windows-Lauf (23.11.2026, neue Test-Failure):**
+Der Nutzer hat `manage.cmd --build-clean --test-all --setup` auf
+sauberem Source-SHA
+`3b79ffc65b836bf74fb7bfe7003a2766233e41f3`
+ausgeführt. Lokales Protokoll:
+`D:\Build\OpenSal\logs\manage-20261123-223541-643-67dd32.log`
+(22:35:41–22:38:37 Uhr). Debug/Release x64, HTML-Hilfe,
+die zuvor fehlgeschlagene komplette Plugin-Inventarregression
+einschließlich leerem/fehlendem Modul und SHA-256-Negativfällen,
+Plugin-Binärinventar und Loader-Quellverträge wurden erfolgreich
+abgeschlossen. Danach brach der Lauf in
+`LegacyConfig-Canary.ps1:108` beim ersten
+`Get-IsolatedLegacyConfigDigest` mit PowerShell-Parameterbindung
+`Cannot bind argument to parameter 'Entries' because it is an empty collection`
+ab. Die Hilfsfunktion `Add-RegistryCanarySnapshot` verwendete
+`[Parameter(Mandatory)]` auf einer zunächst
+**absichtlich leeren** `List[string]`; die Listenbefüllung wurde
+noch gar nicht erreicht. **Kein produktiver Registry- oder
+GUI-Fehler belegt; nachfolgende Tests und Setup nicht erreicht.**
+
+Korrektur auf **demselben Branch `bugfix/v5.2`**:
+`[AllowEmptyCollection()]` am obligatorischen
+`Entries`-Parameter (Commit
+`6f632433db959006ea7d693a385e7e5b34e41622`).
+Ein zusätzlicher Negativ-/Positivkontrakt auf einer ausschließlich
+GUID-eigenen `HKCU\\Software\\Open Salamander\\CodexTests`-
+Fixture prüft den anfänglich leeren Sammler, den ersten
+kanonischen KEY-Datensatz und die stabile SHA-256-Prüfsumme
+(Commit `1ca107cc36c70d582768b6fb2acb27d0325fc3ee`).
+**Die neuen Änderungen sind noch nicht auf Windows ausgeführt.**
+Zuerst isoliert
+`pwsh -NoProfile -File .\\tools\\release\\tests\\Test-LegacyConfig-Canary.ps1`
+prüfen, danach den kompletten `--build-clean --test-all --setup`-
+Lauf auf demselben aktuellen SHA wiederholen. A0-02 und
+die vollständige Registry-/Upgrade-Abnahme bleiben offen.
+
 ### [ ] A0-02 – Einstellungen, Upgrade und persistierte Daten (**P1**, TEILBELEGT)
 - **Lücke:** Registry-/Konfigurationsregressionen existieren; komplette
   5.0→5.2→5.0-Kompatibilität ist nicht als End-to-End-Matrix belegt.
