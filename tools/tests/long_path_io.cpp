@@ -1296,6 +1296,70 @@ int main()
         if (!identical || !DeleteFileW(crossTargetExtended.c_str()))
             return Fail("verify moved bytes and clean own target");
 
+        // Two selected Unicode files must move across volumes without
+        // accepting an ACP alias or leaving a source copy. The complete
+        // preflight also refuses an occupied second target *before* moving
+        // the first file.
+        const std::wstring multiNameA = L"multi-a-" +
+            std::to_wstring(GetCurrentProcessId()) + L"-東京.bin";
+        const std::wstring multiNameB = L"multi-b-" +
+            std::to_wstring(GetCurrentProcessId()) + L"-大阪.bin";
+        const std::wstring multiSourceA = current + L"\\" + multiNameA;
+        const std::wstring multiSourceB = current + L"\\" + multiNameB;
+        const std::wstring multiTargetA = otherRoot + L"\\" + multiNameA;
+        const std::wstring multiTargetB = otherRoot + L"\\" + multiNameB;
+        std::wstring sourceAExtended, sourceBExtended;
+        std::wstring targetAExtended, targetBExtended;
+        Salamander::Utf16DiskPath ownedA, ownedB;
+        if (!OwnPath(multiSourceA, ownedA) ||
+            !OwnPath(multiSourceB, ownedB) ||
+            !Convert(multiSourceA, sourceAExtended) ||
+            !Convert(multiSourceB, sourceBExtended) ||
+            !Convert(multiTargetA, targetAExtended) ||
+            !Convert(multiTargetB, targetBExtended))
+            return Fail("prepare independent cross-volume multi-file names");
+        const char bytesA[] = "unicode cross-volume A";
+        const char bytesB[] = "unicode cross-volume B";
+        if (!writePayload(sourceAExtended, bytesA, sizeof(bytesA)) ||
+            !writePayload(sourceBExtended, bytesB, sizeof(bytesB)) ||
+            !writePayload(targetBExtended, "occupied", sizeof("occupied")))
+            return Fail("create explicit multi-file cross-volume fixtures");
+        completed = 0;
+        if (Salamander::TryTransferUnicodeClipboardFiles(
+                {ownedA, ownedB}, otherDirectory, DROPEFFECT_MOVE,
+                completed, operationError) ||
+            completed != 0 || operationError != ERROR_FILE_EXISTS ||
+            GetFileAttributesW(targetAExtended.c_str()) != INVALID_FILE_ATTRIBUTES ||
+            GetFileAttributesW(sourceAExtended.c_str()) == INVALID_FILE_ATTRIBUTES ||
+            GetFileAttributesW(sourceBExtended.c_str()) == INVALID_FILE_ATTRIBUTES)
+            return Fail("multi-file collision must reject entire batch before first move");
+        if (!DeleteFileW(targetBExtended.c_str()))
+            return Fail("remove only owned collision fixture");
+        completed = 0;
+        if (!Salamander::TryTransferUnicodeClipboardFiles(
+                {ownedA, ownedB}, otherDirectory, DROPEFFECT_MOVE,
+                completed, operationError) ||
+            completed != 2 || operationError != ERROR_SUCCESS ||
+            GetFileAttributesW(sourceAExtended.c_str()) != INVALID_FILE_ATTRIBUTES ||
+            GetFileAttributesW(sourceBExtended.c_str()) != INVALID_FILE_ATTRIBUTES)
+            return Fail("move both Unicode files between independent volumes");
+        const auto verifyAndRemove = [](const std::wstring& path,
+                                        const char* expected, DWORD length) -> bool {
+            HANDLE handle = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ,
+                                        nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+            if (handle == INVALID_HANDLE_VALUE)
+                return false;
+            std::vector<char> actual(length);
+            DWORD read = 0;
+            const bool valid = ReadFile(handle, actual.data(), length, &read, nullptr) &&
+                               read == length && memcmp(actual.data(), expected, length) == 0;
+            CloseHandle(handle);
+            return valid && DeleteFileW(path.c_str());
+        };
+        if (!verifyAndRemove(targetAExtended, bytesA, sizeof(bytesA)) ||
+            !verifyAndRemove(targetBExtended, bytesB, sizeof(bytesB)))
+            return Fail("multi-file cross-volume move preserves both payloads");
+
         // A pre-existing file with the same Unicode name is never replaced.
         const char occupiedBytes[] = "unrelated destination";
         if (!writePayload(crossSourceExtended, movedPayload, sizeof(movedPayload)) ||
