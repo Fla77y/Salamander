@@ -43,9 +43,13 @@ if ($driver -notmatch 'function Initialize-IsolatedGuiConfiguration' -or
 $canary = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'LegacyConfig-Canary.ps1') -Raw
 $canaryTest = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'Test-LegacyConfig-Canary.ps1') -Raw
 $seed = $driver.IndexOf('New-IsolatedLegacyConfigCanary -TestConfigurationKey $testConfigurationKey')
+if ($seed -lt 0) { throw 'A0-02: GUI driver must seed an isolated 5.0 canary before launch.' }
 $launch = $driver.IndexOf('Start-Process -FilePath $SalamanderExe', $seed)
+if ($launch -lt 0) { throw 'A0-02: GUI process launch after canary seeding missing.' }
 $ready = $driver.IndexOf('    Wait-ForGuiResponsive', $launch)
+if ($ready -lt 0) { throw 'A0-02: GUI readiness barrier after launch missing.' }
 $verify = $driver.IndexOf('Assert-IsolatedLegacyConfigPreserved -TestConfigurationKey $testConfigurationKey', $ready)
+if ($verify -lt 0) { throw 'A0-02: GUI post-upgrade canary comparison missing.' }
 $dispatch = $driver.IndexOf('    if ($LegacyFindScenario) {', $verify)
 if ($driver -notmatch "if \(\`$LegacyFindScenario -eq 'Baseline'\)" -or
     $seed -lt 0 -or $launch -le $seed -or $ready -le $launch -or
