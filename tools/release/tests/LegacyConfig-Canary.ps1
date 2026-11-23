@@ -18,7 +18,8 @@ function Add-RegistryCanarySnapshot {
     param(
         [Parameter(Mandatory)][Microsoft.Win32.RegistryKey]$Key,
         [Parameter(Mandatory)][string]$RelativePath,
-        [Parameter(Mandatory)][Collections.Generic.List[string]]$Entries
+        # A freshly created snapshot collector is intentionally empty.
+        [Parameter(Mandatory)][AllowEmptyCollection()][Collections.Generic.List[string]]$Entries
     )
 
     # Registry key/value names may contain pipes and newlines. Encode names
