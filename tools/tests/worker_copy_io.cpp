@@ -213,6 +213,81 @@ void Io_WhenSourceReplacedBetweenRetries_RejectsDifferentFileId()
         nullptr, OPEN_EXISTING, 0, nullptr) == INVALID_HANDLE_VALUE);
     assert(GetLastError() == ERROR_FILE_INVALID);
 }
+void Io_WhenUnicodeMoveStarts_RejectsOccupiedTargetAndConcurrentSourceWriter()
+{
+    Fixture fixture;
+    Io::Scope scope(fixture.Paths);
+    fixture.Paths->CaptureTargetIdentity = true;
+    const char* sourceToken = fixture.Paths->SourceToken.c_str();
+    const char* targetToken = fixture.Paths->TargetToken.c_str();
+
+    HANDLE pinnedSource = Io::OpenRaw(sourceToken, GENERIC_READ,
+        FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+    assert(pinnedSource != INVALID_HANDLE_VALUE);
+    // The worker must deny an external concurrent writer while F6 copies.
+    HANDLE writer = CreateFileW(Extended(fixture.Source).c_str(), GENERIC_WRITE,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    assert(writer == INVALID_HANDLE_VALUE);
+    assert(GetLastError() == ERROR_SHARING_VIOLATION);
+
+    HANDLE foreignTarget = CreateFileW(Extended(fixture.Target).c_str(), GENERIC_WRITE,
+        0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    assert(foreignTarget != INVALID_HANDLE_VALUE);
+    DWORD count = 0;
+    assert(WriteFile(foreignTarget, "SAFE", 4, &count, nullptr) && count == 4);
+    assert(CloseHandle(foreignTarget));
+
+    // The legacy copy worker may ask OPEN_ALWAYS. Unicode F6 must turn
+    // its first write into CREATE_NEW, never truncate this foreign file.
+    assert(Io::OpenRaw(targetToken, GENERIC_WRITE, 0, nullptr,
+        OPEN_ALWAYS, 0, nullptr) == INVALID_HANDLE_VALUE);
+    assert(GetLastError() == ERROR_FILE_EXISTS);
+    HANDLE readTarget = CreateFileW(Extended(fixture.Target).c_str(), GENERIC_READ,
+        FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    assert(readTarget != INVALID_HANDLE_VALUE);
+    char protectedBytes[4]{};
+    count = 0;
+    assert(ReadFile(readTarget, protectedBytes, 4, &count, nullptr) &&
+        count == 4 && std::memcmp(protectedBytes, "SAFE", 4) == 0);
+    assert(CloseHandle(readTarget) && CloseHandle(pinnedSource));
+}
+
+void Io_WhenUnicodeMoveRetries_RequiresSameTargetIdentityAndNoRecreation()
+{
+    Fixture fixture;
+    Io::Scope scope(fixture.Paths);
+    fixture.Paths->CaptureTargetIdentity = true;
+    const char* sourceToken = fixture.Paths->SourceToken.c_str();
+    const char* targetToken = fixture.Paths->TargetToken.c_str();
+    HANDLE source = Io::OpenRaw(sourceToken, GENERIC_READ,
+        FILE_SHARE_READ | FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+    assert(source != INVALID_HANDLE_VALUE && CloseHandle(source));
+    HANDLE target = Io::OpenRaw(targetToken, GENERIC_WRITE, 0,
+        nullptr, OPEN_ALWAYS, 0, nullptr);
+    assert(target != INVALID_HANDLE_VALUE && fixture.Paths->HasTargetIdentity);
+    assert(CloseHandle(target));
+
+    // A missing target can never be recreated by a retry.
+    assert(DeleteFileW(Extended(fixture.Target).c_str()));
+    assert(Io::OpenRaw(targetToken, GENERIC_WRITE, 0, nullptr,
+        OPEN_ALWAYS, 0, nullptr) == INVALID_HANDLE_VALUE);
+    assert(GetFileAttributesW(Extended(fixture.Target).c_str()) == INVALID_FILE_ATTRIBUTES);
+
+    HANDLE replaced = CreateFileW(Extended(fixture.Target).c_str(), GENERIC_WRITE,
+        0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    assert(replaced != INVALID_HANDLE_VALUE && CloseHandle(replaced));
+    // A new file with the original name must not receive ADS/ACL/attributes
+    // or any future write, despite the worker's saved destination token.
+    assert(Io::OpenRaw(targetToken, GENERIC_WRITE, 0, nullptr,
+        OPEN_ALWAYS, 0, nullptr) == INVALID_HANDLE_VALUE);
+    assert(GetLastError() == ERROR_FILE_INVALID);
+    assert(!Io::SetAttributes(targetToken, FILE_ATTRIBUTE_HIDDEN));
+    assert(GetLastError() == ERROR_FILE_INVALID);
+    assert((GetFileAttributesW(Extended(fixture.Target).c_str()) &
+        FILE_ATTRIBUTE_HIDDEN) == 0);
+}
+
 } // namespace
 
 int main()
@@ -229,5 +304,7 @@ int main()
     Io_WhenUnknownOrSourceMutation_RefusesWithoutChangingFiles();
     Io_WhenTargetIsSourceHardLink_NeverTruncatesOrChangesSource();
     Io_WhenSourceReplacedBetweenRetries_RejectsDifferentFileId();
-    return std::puts("PASS: scoped W worker I/O, metadata, hard-link safety, source identity and thread isolation"), 0;
+    Io_WhenUnicodeMoveStarts_RejectsOccupiedTargetAndConcurrentSourceWriter();
+    Io_WhenUnicodeMoveRetries_RequiresSameTargetIdentityAndNoRecreation();
+    return std::puts("PASS: scoped W worker I/O, metadata, hard-link safety, pinned Unicode F6 identity and thread isolation"), 0;
 }
