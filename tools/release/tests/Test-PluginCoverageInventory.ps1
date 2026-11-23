@@ -91,6 +91,16 @@ EndProject
     [IO.File]::WriteAllBytes((Join-Path $stage 'plugins\alpha\alpha.spl'), [byte[]](1,2,3))
     [IO.File]::WriteAllBytes((Join-Path $stage 'plugins\beta\beta.spl'), [byte[]](7,8,9))
 
+    # Regression: an ordinary Windows path uses ONE separator, not two.
+    # The expected SPL must be recognized without any path rewriting.
+    $actualBuiltPaths = Get-SplInventory -Directory $build -Description 'built'
+    if (-not $actualBuiltPaths.ContainsKey('alpha') -or
+        -not [string]::Equals($actualBuiltPaths['alpha'],
+            (Join-Path $build 'plugins\alpha\alpha.spl'),
+            [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Ordinary single-backslash Windows SPL path was not recognized.'
+    }
+
     # RED: a solution declaration does not prove its vcxproj file exists.
     [IO.File]::Delete($alphaProject)
     Assert-InventoryRejected -Action {
