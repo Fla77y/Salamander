@@ -29,6 +29,18 @@ inline bool ExceedsLegacyDiskPathLimit(std::size_t directoryBytes,
            filenameBytes >= maxPath - directoryBytes - 1;
 }
 
+// F5/F6 write into the opposite panel. A path that fits in the source
+// panel may overflow the legacy ANSI destination buffer. The two checks
+// share the same overflow-safe boundary calculation.
+inline bool ExceedsLegacyTransferPathLimit(std::size_t sourceDirectoryBytes,
+                                           std::size_t targetDirectoryBytes,
+                                           std::size_t filenameBytes,
+                                           std::size_t maxPath) noexcept
+{
+    return ExceedsLegacyDiskPathLimit(sourceDirectoryBytes, filenameBytes, maxPath) ||
+           ExceedsLegacyDiskPathLimit(targetDirectoryBytes, filenameBytes, maxPath);
+}
+
 struct LegacyDiskEntryView
 {
     const char* name;
