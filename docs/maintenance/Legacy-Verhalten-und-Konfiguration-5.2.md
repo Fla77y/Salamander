@@ -84,7 +84,8 @@ neue/gelöschte Schlüssel und Änderungen werden erkannt.
 
 `Test-LegacyConfig-Canary.ps1` führt negative Registry-Fixtures aus:
 ungültiger Zielroot, wiederholtes Seeding, geänderte Unicode-/Binärdaten,
-neu hinzugefügter Schlüssel und falsche 5.2-Versionsnummer. Es räumt
+neu hinzugefügter Schlüssel, **vollständig gelöschter alter Root** und
+falsche 5.2-Versionsnummer. Es räumt
 ausschließlich seinen GUID-eigenen Root ab und ist durch `manage.cmd --test`
 registriert.
 
