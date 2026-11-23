@@ -93,11 +93,14 @@ EndProject
     $winscp = @($inventory | Where-Object Plugin -EQ 'winscp')[0]
     if (-not $alpha.SourceDirectory -or -not $alpha.SolutionProject -or
         $alpha.BuiltModule -cne 'PRESENT' -or $alpha.StagedModule -cne 'PRESENT' -or
+        $alpha.PayloadStatus -cne 'MATCH' -or $alpha.BuiltSHA256 -cne $alpha.StagedSHA256 -or
         $beta.BuiltModule -cne 'ABSENT' -or $beta.StagedModule -cne 'PRESENT' -or
+        $beta.PayloadStatus -cne 'MISSING_BUILT' -or
         $rogue.SourceDirectory -or $rogue.SolutionProject -or
         $rogue.BuiltModule -cne 'PRESENT' -or $rogue.StagedModule -cne 'ABSENT' -or
+        $rogue.PayloadStatus -cne 'MISSING_STAGED' -or
         -not $winscp.SourceDirectory -or $winscp.SolutionProject -or
-        $winscp.BuiltModule -cne 'ABSENT') {
+        $winscp.BuiltModule -cne 'ABSENT' -or $winscp.PayloadStatus -cne 'NOT_SHIPPED') {
         throw 'Built, staged, source-only or unexpected module classification is incorrect.'
     }
 
@@ -147,6 +150,36 @@ EndProject
         @(Import-Csv -LiteralPath (Join-Path $owned[0].FullName 'operations.csv')).Count -ne 48) {
         throw 'Report must include all modules and operations in a unique owned child directory.'
     }
+    # Explicit PKG-01 preflight fails on missing modules, byte mismatch
+    # and mismatched folder identity but accepts a nonshipped source folder.
+    $invoker = Join-Path $PSScriptRoot '..\Invoke-PluginCoverageInventory.ps1'
+    Assert-InventoryRejected -Action {
+        & $invoker -Repository $fake -BuiltDirectory $build -StagedDirectory $stage -RequireMatchingPayloads
+    } -Reason 'missing built/staged SPL payloads' -ExpectedError 'SPL build/staging inventory and SHA-256 mismatch'
+    Assert-InventoryRejected -Action {
+        & $invoker -Repository $fake -BuiltDirectory $build -RequireMatchingPayloads
+    } -Reason 'missing stage under strict integrity mode' -ExpectedError '-RequireMatchingPayloads requires'
+
+    [IO.File]::WriteAllBytes((Join-Path $build 'plugins\beta\beta.spl'), [byte[]](7,8,9))
+    [void][IO.Directory]::CreateDirectory((Join-Path $stage 'plugins\rogue'))
+    [IO.File]::WriteAllBytes((Join-Path $stage 'plugins\rogue\rogue.spl'), [byte[]](4,5,6))
+    & $invoker -Repository $fake -BuiltDirectory $build -StagedDirectory $stage -RequireMatchingPayloads
+
+    $stageAlpha = Join-Path $stage 'plugins\alpha\alpha.spl'
+    [IO.File]::WriteAllBytes($stageAlpha, [byte[]](1,2,4))
+    $damaged = @(Get-SalamanderPluginInventory -Repository $fake -BuiltDirectory $build -StagedDirectory $stage |
+        Where-Object Plugin -EQ 'alpha')[0]
+    if ($damaged.PayloadStatus -cne 'HASH_MISMATCH' -or
+        $damaged.BuiltSHA256 -ceq $damaged.StagedSHA256) {
+        throw 'Byte-modified staged plugin must yield a SHA-256 mismatch.'
+    }
+    Assert-InventoryRejected -Action {
+        & $invoker -Repository $fake -BuiltDirectory $build -StagedDirectory $stage -RequireMatchingPayloads
+    } -Reason 'staged plugin tampering' -ExpectedError 'alpha:HASH_MISMATCH'
+    [IO.File]::WriteAllBytes($stageAlpha, [byte[]](1,2,3))
+
+    Write-Host 'PASS: exact SPL payload matching, missing module and tampered-byte negative regression.'
+
     Write-Host 'PASS: plugin inventory, mismatched module rejection, open statuses and CSV report.'
 }
 finally {
