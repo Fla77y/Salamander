@@ -8558,7 +8558,8 @@ BOOL PrepareUnicodeFileCopy(COperations* script, const Salamander::Utf16DiskPath
         return FALSE;
     }
     const bool firstOperation = script->Count == 0;
-    if (!firstOperation && script->IsCopyOperation == (moveAfterCopy != FALSE))
+    const BOOL requestedCopy = moveAfterCopy ? FALSE : TRUE;
+    if (!firstOperation && script->IsCopyOperation != requestedCopy)
     {
         error = ERROR_INVALID_PARAMETER; // no mixed Copy/Move worker script
         return FALSE;
