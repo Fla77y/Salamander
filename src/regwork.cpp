@@ -611,9 +611,15 @@ BOOL CRegistryWorkerThread::SetValue(HKEY key, const char* name, DWORD type, con
         return SetValueAux(MainWindow != NULL ? MainWindow->HWindow : NULL, key, name, type, data, dataSize, FALSE);
 }
 
-static BOOL SetPanelPathAux(HWND parent, HKEY key, const std::wstring& path)
+struct PanelPathWrite
 {
-    const LONG error = Salamander::WriteSavedPanelPath(key, path);
+    const std::wstring& path;
+    const wchar_t* valueName;
+};
+
+static BOOL SetPanelPathAux(HWND parent, HKEY key, const PanelPathWrite& request)
+{
+    const LONG error = Salamander::WriteSavedPanelPath(key, request.path, request.valueName);
     if (error == ERROR_SUCCESS)
         return TRUE;
     if (HLanguage == NULL)
@@ -623,16 +629,17 @@ static BOOL SetPanelPathAux(HWND parent, HKEY key, const std::wstring& path)
     return FALSE;
 }
 
-BOOL CRegistryWorkerThread::SetPanelPath(HKEY key, const std::wstring& path)
+BOOL CRegistryWorkerThread::SetPanelPath(HKEY key, const std::wstring& path, const wchar_t* valueName)
 {
     CInUseHandler inUse;
+    const PanelPathWrite request{path, valueName ? valueName : Salamander::SavedPanelPathValue};
     if (!inUse.CanUseThread(this))
-        return SetPanelPathAux(MainWindow != NULL ? MainWindow->HWindow : NULL, key, path);
+        return SetPanelPathAux(MainWindow != NULL ? MainWindow->HWindow : NULL, key, request);
 
     WorkType = rwtSetPanelPath;
     LastWorkSuccess = FALSE;
     Key = key;
-    Data = &path;
+    Data = &request;
     WaitForWorkDoneWithMessageLoop();
     return LastWorkSuccess;
 }
@@ -726,7 +733,7 @@ CRegistryWorkerThread::Body()
                 LastWorkSuccess = SetValueAux(NULL, Key, Name, ValueType, Data, DataSize, FALSE);
                 break;
             case rwtSetPanelPath:
-                LastWorkSuccess = SetPanelPathAux(NULL, Key, *static_cast<const std::wstring*>(Data));
+                LastWorkSuccess = SetPanelPathAux(NULL, Key, *static_cast<const PanelPathWrite*>(Data));
                 break;
             case rwtDeleteValue:
                 LastWorkSuccess = DeleteValueAux(Key, Name);

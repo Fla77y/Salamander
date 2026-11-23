@@ -248,6 +248,18 @@ URLText
 #define PANEL_LEFT 3   // Left panel
 #define PANEL_RIGHT 4  // Right panel
 
+// Optional host export "SalamanderGetDiskPanelPathW". Resolve it by name on
+// GetModuleHandleW(NULL) and call it from the main thread. It returns the
+// required buffer size in UTF-16 code units, including the terminator, or
+// zero for a non-disk/unavailable panel. A null or undersized buffer is
+// left untouched. This interface does not extend a legacy virtual table.
+typedef DWORD(__cdecl* FSalamanderGetDiskPanelPathW)(int panel, wchar_t* buffer, DWORD capacity);
+
+// Optional host export "SalamanderChangeDiskPanelPathW". Pass an absolute
+// disk path and call from the main thread. Returns FALSE if navigation
+// fails or if the host cannot represent the path in its current panel.
+typedef BOOL(__cdecl* FSalamanderChangeDiskPanelPathW)(int panel, const wchar_t* path);
+
 // Path types
 #define PATH_TYPE_WINDOWS 1 // Windows path ("c:\path" or UNC path)
 #define PATH_TYPE_ARCHIVE 2 // Path inside an archive (the archive lies on a Windows path)

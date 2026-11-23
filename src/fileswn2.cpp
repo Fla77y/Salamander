@@ -75,7 +75,9 @@ void CFilesWindow::Execute(int index)
         const bool wouldEnterLongDirectory =
             index < Dirs->Count &&
             strlen(GetPath()) + strlen(Dirs->At(index).Name) + 1 >= MAX_PATH - 2;
-        if (HasLongDiskPath() || wouldEnterLongDirectory)
+        const bool unicodeDirectory = index < Dirs->Count &&
+            UnicodeDiskNames.IsUnsafeAnsiName(Dirs->At(index).Name);
+        if (HasLongDiskPath() || wouldEnterLongDirectory || unicodeDirectory)
         {
             // Execute's legacy code below copies paths into MAX_PATH buffers.
             // Keep file association/archive execution refused on long paths.
@@ -1479,8 +1481,7 @@ void CFilesWindow::CloseCurrentPath(HWND parent, BOOL cancel, BOOL detachFS, BOO
             {
                 const char* path = GetPath();
                 // HICON hIcon = GetFileOrPathIconAux(path, FALSE, TRUE); // we retrieve the icon
-                if (!HasLongDiskPath())
-                    MainWindow->DirHistoryAddPathUnique(0, path, NULL, NULL /*hIcon*/, NULL, NULL);
+                MainWindow->DirHistoryAddPathUnique(0, path, NULL, NULL /*hIcon*/, NULL, NULL);
                 if (!newPathIsTheSame)
                     UserWorkedOnThisPath = FALSE;
             }
@@ -1658,8 +1659,7 @@ void CFilesWindow::RefreshPathHistoryData()
         {
             if (Is(ptDisk))
             {
-                if (!HasLongDiskPath())
-                    PathHistory->ChangeActualPathData(0, GetPath(), NULL, NULL, NULL, topIndex, file->Name);
+                PathHistory->ChangeActualPathData(0, GetPath(), NULL, NULL, NULL, topIndex, file->Name);
             }
             else
             {
@@ -1807,8 +1807,7 @@ BOOL CFilesWindow::ChangeLongPathToDisk(HWND parent, const char* path, int sugge
     const char requestedSeparator = legacyPath[1];
     const BOOL samePath = Is(ptDisk) &&
         CompareStringOrdinal(GetDiskPathW().c_str(), -1, directory.c_str(), -1, TRUE) == CSTR_EQUAL;
-    if (!HasLongDiskPath())
-        RefreshPathHistoryData();
+    RefreshPathHistoryData();
     if (!isRefresh)
         MainWindow->CancelPanelsUI();
     CloseCurrentPath(parent, FALSE, detachFS, samePath, isRefresh, !samePath);

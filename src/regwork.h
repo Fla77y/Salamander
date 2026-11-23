@@ -111,7 +111,7 @@ public:
     // returns success
     BOOL SetValue(HKEY key, const char* name, DWORD type, const void* data, DWORD dataSize);
 
-    BOOL SetPanelPath(HKEY key, const std::wstring& path);
+    BOOL SetPanelPath(HKEY key, const std::wstring& path, const wchar_t* valueName = nullptr);
 
     // deletes value 'name' from key 'key'; returns TRUE on success
     BOOL DeleteValue(HKEY key, const char* name);

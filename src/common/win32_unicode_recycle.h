@@ -4,11 +4,13 @@
 #pragma once
 
 #include "utf16_disk_path.h"
+#include "win32_long_path.h"
 
 #include <windows.h>
 #include <shlobj.h>
 #include <shobjidl.h>
 #include <string>
+#include <string_view>
 
 namespace Salamander
 {
@@ -50,11 +52,39 @@ public:
 private:
     HRESULT result_;
 };
+
+inline bool IsExactShellPath(const wchar_t* resolved, const std::wstring& path,
+                             const std::wstring& extendedPath)
+{
+    if (resolved == nullptr)
+        return false;
+    if (path == resolved || extendedPath == resolved)
+        return true;
+
+    // Explorer can expose a long shell item through its 8.3 spelling.
+    // Expand that spelling to the complete original path before trusting it.
+    const std::wstring_view spelling(resolved);
+    if (spelling.substr(0, 4) == L"\\\\?\\")
+        resolved += 4;
+    std::wstring extendedResolved;
+    DWORD error;
+    if (!TryMakeExtendedLengthPath(resolved, extendedResolved, error))
+        return false;
+    const DWORD capacity = GetLongPathNameW(extendedResolved.c_str(), nullptr, 0);
+    if (capacity == 0 || capacity > 32767)
+        return false;
+    std::wstring expanded(capacity, L'\0');
+    const DWORD length = GetLongPathNameW(extendedResolved.c_str(), expanded.data(), capacity);
+    if (length == 0 || length >= capacity)
+        return false;
+    expanded.resize(length);
+    return expanded == extendedPath;
+}
 } // namespace UnicodeRecycleDetail
 
 // Request a native shell Recycle Bin operation for one exact UTF-16 entry.
-// Never silently fall back to permanent deletion. A short selected root is
-// required until extended-length shell parsing has been verified.
+// Never silently fall back to permanent deletion. A shell item must resolve
+// to the exact selected path before it can be queued.
 inline bool TryRecycleUnicodeEntry(const Utf16DiskPath& source,
                                    HWND owner,
                                    HRESULT& error,
@@ -67,9 +97,11 @@ inline bool TryRecycleUnicodeEntry(const Utf16DiskPath& source,
     static_assert(sizeof(wchar_t) == sizeof(char16_t),
                   "The shell requires Windows UTF-16 wchar_t");
     const std::wstring name(source.Value().begin(), source.Value().end());
-    if (name.size() >= MAX_PATH)
+    std::wstring extended;
+    DWORD pathError;
+    if (!TryMakeExtendedLengthPath(name.c_str(), extended, pathError))
     {
-        error = HRESULT_FROM_WIN32(ERROR_FILENAME_EXCED_RANGE);
+        error = HRESULT_FROM_WIN32(pathError);
         return false;
     }
 
@@ -84,7 +116,7 @@ inline bool TryRecycleUnicodeEntry(const Utf16DiskPath& source,
         return false;
     }
 
-    const DWORD attributes = GetFileAttributesW(name.c_str());
+    const DWORD attributes = GetFileAttributesW(extended.c_str());
     if (attributes == INVALID_FILE_ATTRIBUTES)
     {
         error = HRESULT_FROM_WIN32(GetLastError());
@@ -125,8 +157,21 @@ inline bool TryRecycleUnicodeEntry(const Utf16DiskPath& source,
     UnicodeRecycleDetail::OwnedComInterface<IShellItem> item;
     error = SHCreateItemFromParsingName(name.c_str(), nullptr,
                                         IID_PPV_ARGS(item.Receive()));
+    if (FAILED(error) && name.size() >= MAX_PATH)
+        error = SHCreateItemFromParsingName(extended.c_str(), nullptr, IID_PPV_ARGS(item.Receive()));
     if (FAILED(error))
         return false;
+    PWSTR resolved = nullptr;
+    error = item->GetDisplayName(SIGDN_FILESYSPATH, &resolved);
+    const bool exact = SUCCEEDED(error) &&
+        UnicodeRecycleDetail::IsExactShellPath(resolved, name, extended);
+    CoTaskMemFree(resolved);
+    if (!exact)
+    {
+        if (SUCCEEDED(error))
+            error = HRESULT_FROM_WIN32(ERROR_INVALID_NAME);
+        return false;
+    }
     error = operation->DeleteItem(item.operator->(), nullptr);
     if (FAILED(error))
         return false;
@@ -142,9 +187,11 @@ inline bool TryRecycleUnicodeEntry(const Utf16DiskPath& source,
 
     // Successful shell completion must also have removed the original
     // directory entry. The shell may return success for a skipped operation.
-    if (GetFileAttributesW(name.c_str()) != INVALID_FILE_ATTRIBUTES)
+    const DWORD remaining = GetFileAttributesW(extended.c_str());
+    const DWORD lookupError = remaining == INVALID_FILE_ATTRIBUTES ? GetLastError() : ERROR_GEN_FAILURE;
+    if (lookupError != ERROR_FILE_NOT_FOUND && lookupError != ERROR_PATH_NOT_FOUND)
     {
-        error = HRESULT_FROM_WIN32(ERROR_GEN_FAILURE);
+        error = HRESULT_FROM_WIN32(lookupError);
         return false;
     }
     return true;

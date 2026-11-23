@@ -32,6 +32,7 @@ extern "C"
 #include "crypt\fileenc.h"
 #include "crypt\sha1.h"
 #include "pwdmngr.h"
+#include "common/utf16_disk_path.h"
 
 CPackerConfig PackerConfig;
 CUnpackerConfig UnpackerConfig;
@@ -961,6 +962,41 @@ CSalamanderGeneral::GetPanel(int panel)
     return MainWindow->GetPanel(panel);
 }
 
+extern "C" __declspec(dllexport) DWORD __cdecl
+SalamanderGetDiskPanelPathW(int panel, wchar_t* buffer, DWORD capacity)
+{
+    if (MainWindow == nullptr || MainThreadID != GetCurrentThreadId())
+        return 0;
+    CFilesWindow* files = MainWindow->GetPanel(panel);
+    if (!files || !files->Is(ptDisk) || files->GetDiskPathW().empty())
+        return 0;
+    const auto& path = files->GetDiskPathW();
+    const DWORD required = static_cast<DWORD>(path.size() + 1);
+    if (buffer && capacity >= required)
+        memcpy(buffer, path.c_str(), required * sizeof(wchar_t));
+    return required;
+}
+
+extern "C" __declspec(dllexport) BOOL __cdecl
+SalamanderChangeDiskPanelPathW(int panel, const wchar_t* path)
+{
+    if (MainWindow == nullptr || MainThreadID != GetCurrentThreadId() || path == nullptr)
+        return FALSE;
+    CFilesWindow* files = MainWindow->GetPanel(panel);
+    if (!files)
+        return FALSE;
+    const size_t length = wcsnlen_s(path, 32767);
+    if (length == 32767)
+        return FALSE;
+    const std::wstring directory(path, length);
+    Salamander::Utf16DiskPath checked;
+    Salamander::Utf16PathError error;
+    if (!Salamander::Utf16DiskPath::TryCreateAbsolute(
+            std::u16string(directory.begin(), directory.end()), checked, error))
+        return FALSE;
+    return files->ChangeUnicodePathToDisk(MainWindow->HWindow, directory);
+}
+
 BOOL CSalamanderGeneral::GetPanelPath(int panel, char* buffer, int bufferSize, int* type,
                                       char** archiveOrFS, BOOL convertFSPathToExternal)
 {
@@ -981,6 +1017,19 @@ BOOL CSalamanderGeneral::GetPanelPath(int panel, char* buffer, int bufferSize, i
     CFilesWindow* p = GetPanel(panel);
     if (p != NULL)
     {
+        if (p->Is(ptDisk))
+        {
+            if (type != NULL)
+                *type = PATH_TYPE_WINDOWS;
+            if (bufferSize == 0)
+                return TRUE;
+            const char* path = p->GetPath();
+            const size_t length = strlen(path) + 1;
+            if (bufferSize < 0 || length > static_cast<size_t>(bufferSize))
+                return FALSE;
+            memcpy(buffer, path, length);
+            return TRUE;
+        }
         char buf[2 * MAX_PATH];
         int offset = -1; // offset into the buffer for computing archiveOrFS (-1 means NULL)
         if (p->Is(ptZIPArchive))
@@ -1018,17 +1067,8 @@ BOOL CSalamanderGeneral::GetPanelPath(int panel, char* buffer, int bufferSize, i
             }
             else
             {
-                if (p->Is(ptDisk))
-                {
-                    if (type != NULL)
-                        *type = PATH_TYPE_WINDOWS;
-                    strcpy(buf, p->GetPath());
-                }
-                else
-                {
-                    TRACE_E("Unexpected situation in CSalamanderGeneral::GetPanelPath()");
-                    return FALSE;
-                }
+                TRACE_E("Unexpected situation in CSalamanderGeneral::GetPanelPath()");
+                return FALSE;
             }
         }
 

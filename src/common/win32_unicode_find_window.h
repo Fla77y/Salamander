@@ -548,8 +548,7 @@ class UnicodeFindWindow
         }
         if (command == RecycleResult)
         {
-            // Existing IFileOperation adapter is deliberately limited to
-            // short local files. Never silently turn a recycle into deletion.
+            // The shell adapter verifies the exact path before recycling.
             HRESULT hresult = E_FAIL;
             if (!isDirectory && TryRecycleUnicodeFile(source, window_, hresult))
             {

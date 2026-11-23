@@ -1151,9 +1151,10 @@ MENU_TEMPLATE_ITEM CopyMoveMoreDialogMenu[] =
 // CChangeDirDlg
 //
 
-CChangeDirDlg::CChangeDirDlg(HWND parent, char* path, BOOL* sendDirectlyToPlugin) : CCommonDialog(HLanguage, IDD_CHANGEDIR, IDD_CHANGEDIR, parent)
+CChangeDirDlg::CChangeDirDlg(HWND parent, std::wstring& path, BOOL* sendDirectlyToPlugin)
+    : CCommonDialog(HLanguage, IDD_CHANGEDIR, IDD_CHANGEDIR, parent), Path(path)
 {
-    Path = path;
+    UnicodeWnd = TRUE;
     SendDirectlyToPlugin = sendDirectlyToPlugin;
 }
 
@@ -1167,13 +1168,17 @@ void CChangeDirDlg::Transfer(CTransferInfo& ti)
         if (ti.Type == ttDataToWindow)
         {
             LoadComboFromStdHistoryValues(hWnd, history, CHANGEDIR_HISTORY_SIZE);
-            SendMessage(hWnd, CB_LIMITTEXT, 2 * MAX_PATH - 1, 0);
-            SendMessage(hWnd, WM_SETTEXT, 0, (LPARAM)Path);
+            SendMessageW(hWnd, CB_LIMITTEXT, 32766, 0);
+            SetWindowTextW(hWnd, Path.c_str());
         }
         else
         {
-            SendMessage(hWnd, WM_GETTEXT, 2 * MAX_PATH, (LPARAM)Path);
-            AddValueToStdHistoryValues(history, CHANGEDIR_HISTORY_SIZE, Path, FALSE);
+            std::wstring text(static_cast<std::size_t>(GetWindowTextLengthW(hWnd)) + 1, L'\0');
+            text.resize(GetWindowTextW(hWnd, text.data(), static_cast<int>(text.size())));
+            Path.swap(text);
+            std::string legacy;
+            if (Salamander::TryMakeExactAnsiPanelPath(Path, legacy) && legacy.size() < 2 * MAX_PATH)
+                AddValueToStdHistoryValues(history, CHANGEDIR_HISTORY_SIZE, legacy.c_str(), FALSE);
         }
     }
     if (SendDirectlyToPlugin != NULL)
@@ -1190,7 +1195,7 @@ CChangeDirDlg::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
     {
         if (SendDirectlyToPlugin == NULL)
             EnableWindow(GetDlgItem(HWindow, IDC_SENDDIRECTTOPLG), FALSE);
-        InstallWordBreakProc(GetDlgItem(HWindow, IDE_PATH));    // install WordBreakProc into the combobox
+        InstallWordBreakProc(GetDlgItem(HWindow, IDE_PATH), TRUE);
         CreateKeyForwarder(HWindow, IDE_PATH);                  // so that we receive WM_USER_KEYDOWN
         ChangeToIconButton(HWindow, IDB_BROWSE, IDI_DIRECTORY); // the button will have a folder icon and an arrow to the right
 

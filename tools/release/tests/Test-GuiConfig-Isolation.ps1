@@ -31,7 +31,9 @@ if ($driver -notmatch 'function Initialize-IsolatedGuiConfiguration' -or
     $driver -notmatch "SetValue\('Configuration', 59" -or
     $driver -notmatch '\[ValidateRange\(5,120\)\]\[int\]\$StartupReadyTimeoutSeconds = 90' -or
     ([regex]::Matches($driver, '-TimeoutSecondsOverride \$StartupReadyTimeoutSeconds')).Count -ne 2 -or
-    $driver -notmatch "GetValue\('Configuration', 0\) -gt 59" -or
+    $driver -notmatch "\`$version = \[int\]\`$key\.GetValue\('Configuration', 0\)" -or
+    $driver -notmatch '\$version -le 59' -or
+    $driver -notmatch 'GetValue\(''Save In Progress'', \$null\)' -or
     $driver -notmatch 'startup wait chain' -or
     $driver -notmatch 'Primary GUI failure:') {
     throw 'Isolated first-run acceptance needs a deterministic language, real upgrade/plugin initialization, startup wait diagnostics and preserved primary failure.'

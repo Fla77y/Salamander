@@ -491,6 +491,10 @@ Disk panels keep an owned UTF-16 path alongside the legacy path. The native
 listing, directory monitor, search and file operations read the UTF-16 copy.
 Directory monitoring uses the full extended path on Windows when needed.
 Long directory navigation accepts the original UTF-16 row or clipboard path.
+The Change Directory dialog keeps its editable path in UTF-16 and passes
+absolute long disk paths directly to the native navigation route.
+Back and forward navigation and the directory history keep the full disk
+path, including entries that exceed the history menu's display buffer.
 The existing `Path` registry value is read and written as UTF-16, including
 paths saved by earlier versions. The panel still requires an exact legacy
 code-page representation before opening a path for its remaining ANSI callers.
@@ -526,12 +530,24 @@ files open, and compares their identities to the handles opened by Win32's
 copy engine. It verifies the temporary copy again before renaming it by
 handle. An unexpected file at the staging path cannot be published or
 removed by this operation. It preserves source files and
-refuses overwrites. A cut selection can move one regular file
-atomically within the same volume. The move uses the same open file handle for
-source validation and rename, and refuses a destination created in the
-meantime. A multiple selection, cross-volume move,
-link creation, directories, reparse points and virtual clipboard items still
-require separate integration.
+refuses overwrites. A cut selection can move up to 16 regular files within
+the same volume. Each rename uses the source handle opened during validation.
+If a later rename fails, the operation attempts to restore earlier moves in
+reverse order without overwriting any new file at the original location.
+The reported count reflects items still at the destination after rollback.
+Same-volume cut also accepts ordinary directories. The Unicode disk
+selection publishes a wide file-drop list for the clipboard and for copy
+drags. Long drop destinations use that format for native regular-file copies.
+Cross-volume move, recursive clipboard copy, reparse points, link creation,
+and virtual clipboard items still require separate integration.
+
+Fixed-drive recycling checks the source with extended-length Win32 APIs
+and requires the Windows shell item to resolve to the exact original path.
+Shell support for long source paths depends on the Windows version.
+
+Plugins may resolve the optional host exports
+`SalamanderGetDiskPanelPathW` and `SalamanderChangeDiskPanelPathW` through
+their SDK typedefs. Legacy plugin virtual tables are unchanged.
 Internal change notifications retain the full path when refreshing disk
 panels. The legacy plug-in notification interface still receives short paths.
 

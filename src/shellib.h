@@ -292,6 +292,8 @@ private:
     CGetFSToFSDropEffect GetFSToFSDropEffect;
     void* GetFSToFSDropEffectParam;
 
+    bool HandleUnicodeDiskDrop(IDataObject* data, POINTL pt, DWORD keys, DWORD& effect, bool execute);
+
 public:
     CImpDropTarget(HWND ownerWindow, CDoCopyMove doCopyMove, void* doCopyMoveParam,
                    CGetCurDir getCurDir, void* getCurDirParam, CDropEnd dropEnd,

@@ -147,7 +147,7 @@ BOOL CFilesWindow::TryUnicodeSingleFileRecycle()
     const int recycleMode = invertRecycleBin
         ? (Configuration.UseRecycleBin == 0 ? 1 : 0)
         : Configuration.UseRecycleBin;
-    if (recycleMode != 1 || MyGetDriveType(GetPath()) != DRIVE_FIXED)
+    if (recycleMode != 1 || GetPathDriveType() != DRIVE_FIXED)
         return FALSE; // Never silently replace permanent-delete semantics
 
     if (CheckPath(TRUE) != ERROR_SUCCESS)
@@ -168,7 +168,9 @@ BOOL CFilesWindow::TryUnicodeSingleFileRecycle()
 
     const std::string alias(entry.Name);
     std::wstring originalName;
-    if (!UnicodeDiskNames.TryGetLossy(alias.c_str(), originalName))
+    const bool longEntry = HasLongDiskPath() || strlen(GetPath()) + entry.NameLen + 1 >= MAX_PATH;
+    if (longEntry ? !UnicodeDiskNames.TryGetRow(entry.Name, originalName)
+                  : !UnicodeDiskNames.TryGetLossy(alias.c_str(), originalName))
         return FALSE; // ambiguous or missing identity
 
     const std::string panelPath(GetPath());
@@ -186,11 +188,6 @@ BOOL CFilesWindow::TryUnicodeSingleFileRecycle()
             std::u16string(originalName.begin(), originalName.end()),
             component, validationError) ||
         !ownedDirectory.TryAppend(component, source, validationError))
-        return FALSE;
-
-    // Shell parsing has separate, legacy path restrictions. This slice
-    // supports only a short ordinary path; no extended-length prefix.
-    if (source.Value().size() >= MAX_PATH)
         return FALSE;
 
     DWORD enumerationError = ERROR_SUCCESS;
@@ -770,9 +767,8 @@ BOOL CFilesWindow::TryUnicodeSingleDirectoryDelete()
         return FALSE; // No stable wide row identity: never use the ANSI alias.
 
     const std::string panelPath(GetPath());
-    std::wstring wideDirectory;
-    if (!Salamander::TryGetUnicodePanelDirectory(
-            panelPath.c_str(), wideDirectory))
+    const std::wstring wideDirectory = GetDiskPathW();
+    if (wideDirectory.empty())
         return FALSE;
 
     Salamander::Utf16PathError validationError;
@@ -824,7 +820,7 @@ BOOL CFilesWindow::TryUnicodeSingleDirectoryDelete()
     int recycleMode = invertRecycleBin
         ? (Configuration.UseRecycleBin == 0 ? 1 : 0)
         : Configuration.UseRecycleBin;
-    if (MyGetDriveType(GetPath()) != DRIVE_FIXED)
+    if (GetPathDriveType() != DRIVE_FIXED)
         recycleMode = 0;
     // Mode 2 applies the configured RecycleMasks to individual descendants.
     // An all-or-nothing directory operation must not silently reinterpret
@@ -838,16 +834,6 @@ BOOL CFilesWindow::TryUnicodeSingleDirectoryDelete()
         return TRUE;
     }
     const bool recycle = recycleMode == 1;
-
-    // Shell recycling accepts only a short selected root. Its descendants
-    // may still be long, because the operation moves the directory as an item.
-    if (recycle && source.Value().size() >= MAX_PATH)
-    {
-        MessageBoxW(HWindow, L"Windows Recycle Bin cannot accept this long "
-                    L"directory path. No permanent deletion was attempted.",
-                    L"Unicode directory deletion", MB_OK | MB_ICONWARNING);
-        return TRUE;
-    }
 
     const std::wstring prompt = (recycle
         ? L"Move this directory and all its contents to the Recycle Bin?\n\n"
@@ -1064,6 +1050,10 @@ BOOL CFilesWindow::HasUnsupportedLegacyPluginSelection()
         return FALSE;
     if (HasLongDiskPath())
         return TRUE;
+    const auto unsafe = [this, pathLength = strlen(GetPath())](const CFileData& entry) {
+        return pathLength + entry.NameLen + 1 >= MAX_PATH ||
+            UnicodeDiskNames.IsUnsafeAnsiName(entry.Name);
+    };
 
     const int directoryCount = Dirs->Count;
     const int count = directoryCount + Files->Count;
@@ -1077,13 +1067,13 @@ BOOL CFilesWindow::HasUnsupportedLegacyPluginSelection()
             ? Dirs->At(index) : Files->At(index - directoryCount);
         if (index < directoryCount && strcmp(item.Name, "..") == 0)
             return FALSE; // synthetic navigation row, not a disk identity
-        return UnicodeDiskNames.IsUnsafeAnsiName(item.Name);
+        return unsafe(item);
     }
     for (int index = 0; index < count; ++index)
     {
         const CFileData& item = index < directoryCount
             ? Dirs->At(index) : Files->At(index - directoryCount);
-        if (item.Selected && UnicodeDiskNames.IsUnsafeAnsiName(item.Name))
+        if (item.Selected && unsafe(item))
             return TRUE;
     }
     return FALSE;
@@ -1113,7 +1103,8 @@ void CFilesWindow::FilesAction(CActionType type, CFilesWindow* target, int count
         if (countSizeMode == 0 &&
             (TryUnicodeMultiFileTransfer(type, target) ||
              TryUnicodeSingleFileTransfer(type, target) ||
-             TryUnicodeSingleDirectoryMove(type, target)))
+             TryUnicodeSingleDirectoryMove(type, target) ||
+             (type == atDelete && TryUnicodeSingleFileRecycle())))
             return;
         SalMessageBox(HWindow,
                       "This long directory requires a native Unicode file operation. "
@@ -1136,13 +1127,14 @@ void CFilesWindow::FilesAction(CActionType type, CFilesWindow* target, int count
             static_cast<std::size_t>(itemCount),
             static_cast<std::size_t>(GetSelCount()),
             static_cast<std::size_t>(GetCaretIndex()),
-            [this, dirCount](std::size_t index) -> Salamander::LegacyDiskEntryView {
+            [this, dirCount, pathLength = strlen(GetPath())](std::size_t index) -> Salamander::LegacyDiskEntryView {
                 const CFileData& entry =
                     index < static_cast<std::size_t>(dirCount)
                         ? Dirs->At(static_cast<int>(index))
                         : Files->At(static_cast<int>(index) - dirCount);
                 return {entry.Name, entry.Selected != 0,
-                        UnicodeDiskNames.IsUnsafeAnsiName(entry.Name)};
+                        pathLength + entry.NameLen + 1 >= MAX_PATH ||
+                            UnicodeDiskNames.IsUnsafeAnsiName(entry.Name)};
             });
         if (unsafe)
         {

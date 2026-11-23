@@ -301,6 +301,14 @@ int main()
     if (!Salamander::TryReadUnicodeClipboardFiles(dropBytes.data(), dropBytes.size(), pastedFiles, error) ||
         pastedFiles.size() != 2 || pastedFiles[0].Value() != std::u16string(filename.begin(), filename.end()))
         return Fail("clipboard snapshot preserves the exact source paths");
+    std::vector<unsigned char> published;
+    std::vector<Salamander::Utf16DiskPath> publishedPaths;
+    if (!Salamander::TryEncodeUnicodeFileDrop(pastedFiles, published) ||
+        !Salamander::TryReadUnicodeClipboardFiles(published.data(), published.size(), publishedPaths, error) ||
+        publishedPaths.size() != pastedFiles.size() ||
+        publishedPaths[0].Value() != pastedFiles[0].Value() ||
+        publishedPaths[1].Value() != pastedFiles[1].Value())
+        return Fail("published file drop round-trips both exact paths");
 
     const auto pastePath = current + L"\\paste-target";
     std::wstring extendedPaste;
@@ -342,8 +350,11 @@ int main()
         GetFileAttributesW(firstCopy.c_str()) != INVALID_FILE_ATTRIBUTES)
         return Fail("clipboard copy preserves bytes and checks all collisions before writing");
     if (Salamander::TryTransferUnicodeClipboardFiles(pastedFiles, pasteTarget, DROPEFFECT_MOVE, copied, error) ||
-        copied != 0 || error != ERROR_NOT_SUPPORTED || GetFileAttributesW(result.c_str()) == INVALID_FILE_ATTRIBUTES)
-        return Fail("multi-file cut must leave every source intact");
+        copied != 0 || error != ERROR_FILE_EXISTS ||
+        GetFileAttributesW(result.c_str()) == INVALID_FILE_ATTRIBUTES ||
+        GetFileAttributesW(extendedDistinct.c_str()) == INVALID_FILE_ATTRIBUTES ||
+        GetFileAttributesW(firstCopy.c_str()) != INVALID_FILE_ATTRIBUTES)
+        return Fail("multi-file cut detects a later collision before moving any source");
     const std::vector<Salamander::Utf16DiskPath> secondFileOnly{pastedFiles[1]};
     if (Salamander::TryTransferUnicodeClipboardFiles(secondFileOnly, pasteTarget, DROPEFFECT_MOVE, copied, error) ||
         copied != 0 || error != ERROR_FILE_EXISTS || GetFileAttributesW(extendedDistinct.c_str()) == INVALID_FILE_ATTRIBUTES)
@@ -423,6 +434,15 @@ int main()
         !MoveFileW(firstCopy.c_str(), result.c_str()))
         return Fail("move one cut file atomically to a long Unicode destination");
 
+    if (!DeleteFileW(secondCopy.c_str()) ||
+        !Salamander::TryTransferUnicodeClipboardFiles(pastedFiles, pasteTarget, DROPEFFECT_MOVE, copied, error) ||
+        copied != 2 || GetFileAttributesW(result.c_str()) != INVALID_FILE_ATTRIBUTES ||
+        GetFileAttributesW(extendedDistinct.c_str()) != INVALID_FILE_ATTRIBUTES ||
+        !MoveFileW(firstCopy.c_str(), result.c_str()) ||
+        !MoveFileW(secondCopy.c_str(), extendedDistinct.c_str()) ||
+        !CopyFileW(extendedDistinct.c_str(), secondCopy.c_str(), TRUE))
+        return Fail("move both cut files and restore the test fixtures");
+
     const auto emptySourcePath = current + L"\\empty_\U0001F600.txt";
     const auto emptyTargetPath = extendedPaste + L"\\empty_\U0001F600.txt";
     std::wstring emptySourceExtended;
@@ -437,6 +457,23 @@ int main()
     if (!Salamander::TryTransferUnicodeClipboardFiles({emptyOwned}, pasteTarget, DROPEFFECT_COPY, copied, error) ||
         copied != 1 || !DeleteFileW(emptyTargetPath.c_str()) || !DeleteFileW(emptySourceExtended.c_str()))
         return Fail("prove source identity even when copying an empty file");
+
+    const std::wstring cutDirectory = current + L"\\cut_\U0001F600";
+    const std::wstring movedDirectory = pastePath + L"\\cut_\U0001F600";
+    std::wstring cutDirectoryExtended, movedDirectoryExtended;
+    Salamander::Utf16DiskPath cutDirectoryOwned;
+    if (!Convert(cutDirectory, cutDirectoryExtended) || !Convert(movedDirectory, movedDirectoryExtended) ||
+        !OwnPath(cutDirectory, cutDirectoryOwned) || !CreateDirectoryW(cutDirectoryExtended.c_str(), nullptr))
+        return Fail("prepare long cut directory");
+    const auto cutChild = cutDirectoryExtended + L"\\content.txt";
+    const auto movedChild = movedDirectoryExtended + L"\\content.txt";
+    if (!CopyFileW(result.c_str(), cutChild.c_str(), TRUE))
+        return Fail("prepare content in the long cut directory");
+    if (!Salamander::TryTransferUnicodeClipboardFiles({cutDirectoryOwned}, pasteTarget, DROPEFFECT_MOVE, copied, error) ||
+        copied != 1 || GetFileAttributesW(cutDirectoryExtended.c_str()) != INVALID_FILE_ATTRIBUTES ||
+        GetFileAttributesW(movedChild.c_str()) == INVALID_FILE_ATTRIBUTES ||
+        !DeleteFileW(movedChild.c_str()) || !RemoveDirectoryW(movedDirectoryExtended.c_str()))
+        return Fail("move a Unicode directory into a long same-volume destination");
 
     if (GetFileAttributesW(result.c_str()) == INVALID_FILE_ATTRIBUTES ||
         GetFileAttributesW(extendedDistinct.c_str()) == INVALID_FILE_ATTRIBUTES ||

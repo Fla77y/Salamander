@@ -20,6 +20,9 @@ param(
     [switch]$KeepFixture,
     [switch]$BaselineOnly,
     [switch]$MaximumPathOnly,
+    [switch]$LongNavigationHistoryOnly,
+    [switch]$LongClipboardMoveOnly,
+    [switch]$LongRecycleOnly,
     [switch]$ShortUnicodeOnly,
     [switch]$ShortUnicodeRenameOnly,
     [switch]$ShortUnicodeRecycleOnly,
@@ -60,8 +63,8 @@ if ([Threading.Thread]::CurrentThread.GetApartmentState() -ne 'STA') {
 if (-not (Test-Path -LiteralPath $SalamanderExe -PathType Leaf)) {
     throw "Salamander executable missing: $SalamanderExe"
 }
-if ($LegacyFindScenario -and -not $IsolatedConfiguration) {
-    throw 'Legacy Find GUI tests require -IsolatedConfiguration.'
+if (($LegacyFindScenario -or $LongNavigationHistoryOnly -or $LongClipboardMoveOnly -or $LongRecycleOnly) -and -not $IsolatedConfiguration) {
+    throw 'This GUI test requires -IsolatedConfiguration.'
 }
 if (($LegacyFindScenario -eq 'EncryptedFixture') -ne [bool]$LegacyFindEncryptedFixture) {
     throw 'EncryptedFixture requires -LegacyFindEncryptedFixture with an existing disposable EFS file.'
@@ -140,12 +143,13 @@ public static class SalamanderGuiNative
         SetClipboardBytes(owner, 13, bytes); // CF_UNICODETEXT
     }
 
-    public static void SetClipboardFileDrop(IntPtr owner, string path, bool cut)
+    public static void SetClipboardFileDrop(IntPtr owner, string[] paths, bool cut)
     {
-        if (String.IsNullOrEmpty(path) || path.IndexOf('\0') >= 0)
-            throw new ArgumentException("Expected a nonempty file path.", "path");
+        if (paths == null || paths.Length == 0 ||
+            Array.Exists(paths, path => String.IsNullOrEmpty(path) || path.IndexOf('\0') >= 0))
+            throw new ArgumentException("Expected nonempty file paths.", "paths");
         const int headerSize = 20;
-        byte[] names = Encoding.Unicode.GetBytes(path + "\0\0");
+        byte[] names = Encoding.Unicode.GetBytes(String.Join("\0", paths) + "\0\0");
         byte[] bytes = new byte[headerSize + names.Length];
         bytes[0] = headerSize; // DROPFILES.pFiles
         bytes[16] = 1; // DROPFILES.fWide
@@ -846,6 +850,37 @@ public static class SalamanderGuiNative
     public static string OwnedControlText(IntPtr dialog, uint processId, int controlId)
     {
         return GetWindowCaption(VerifiedChild(dialog, processId, controlId));
+    }
+
+    public static void PostVerifiedChangeDirectory(IntPtr mainWindow, uint pid)
+    {
+        if (mainWindow == IntPtr.Zero || FindMainWindow(pid) != mainWindow ||
+            !PostMessageW(mainWindow, 0x0111, new UIntPtr(862), IntPtr.Zero))
+            throw new InvalidOperationException("Could not open Change Directory on the verified test window");
+    }
+
+    public static void SubmitVerifiedChangeDirectory(IntPtr mainWindow, IntPtr dialog, uint pid, string path)
+    {
+        if (mainWindow == IntPtr.Zero || FindMainWindow(pid) != mainWindow ||
+            dialog == IntPtr.Zero || FindOwnedDialogControl(pid, 456, null) != dialog ||
+            !MatchesDialogTitle(GetWindowCaption(dialog), "Change Directory"))
+            throw new InvalidOperationException("Unverified Change Directory dialog");
+
+        IntPtr combo = VerifiedChild(dialog, pid, 210);
+        IntPtr ok = VerifiedChild(dialog, pid, 1);
+        if (!IsWindowUnicode(combo) || ClassName(combo) != "ComboBox" ||
+            ClassName(ok) != "Button" || !IsWindowEnabled(ok))
+            throw new InvalidOperationException("Change Directory has no Unicode path control or OK button");
+
+        IntPtr result;
+        var observed = new StringBuilder(path.Length + 2);
+        if (SendMessageTimeoutWriteText(combo, 0x000C, UIntPtr.Zero, path, 2, 5000, out result) == IntPtr.Zero ||
+            result == IntPtr.Zero ||
+            SendMessageTimeoutReadText(combo, 0x000D, new UIntPtr((uint)observed.Capacity), observed,
+                                       2, 5000, out result) == IntPtr.Zero ||
+            observed.ToString() != path ||
+            !PostMessageW(dialog, 0x0111, new UIntPtr(1), ok))
+            throw new InvalidOperationException("Could not submit the exact path in Change Directory");
     }
 
     public static bool OwnedControlEnabled(IntPtr dialog, uint processId, int controlId)
@@ -1858,7 +1893,12 @@ public sealed class SalamanderGuiClipboardOwner : IDisposable
 
     public void SetFileDrop(string path, bool cut = false)
     {
-        Publish(owner => SalamanderGuiNative.SetClipboardFileDrop(owner, path, cut));
+        SetFileDrop(new[] { path }, cut);
+    }
+
+    public void SetFileDrop(string[] paths, bool cut)
+    {
+        Publish(owner => SalamanderGuiNative.SetClipboardFileDrop(owner, paths, cut));
     }
 
     private void Publish(Action<IntPtr> write)
@@ -2129,7 +2169,12 @@ function Initialize-IsolatedGuiConfiguration {
     try { $versionKey.SetValue('Configuration', 59, [Microsoft.Win32.RegistryValueKind]::DWord) }
     finally { $versionKey.Dispose() }
     $languageKey = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($testConfigurationKey + '\Config0\Configuration')
-    try { $languageKey.SetValue('Language', 'english.slg', [Microsoft.Win32.RegistryValueKind]::String) }
+    try {
+        $languageKey.SetValue('Language', 'english.slg', [Microsoft.Win32.RegistryValueKind]::String)
+        if ($LongRecycleOnly) {
+            $languageKey.SetValue('Use Recycle Bin', 1, [Microsoft.Win32.RegistryValueKind]::DWord)
+        }
+    }
     finally { $languageKey.Dispose() }
 }
 
@@ -2168,6 +2213,12 @@ function Find-VerifiedRecycledFixtureItem {
             -not [string]::Equals([string]$item.Name, $expectedName,
                 [StringComparison]::Ordinal)) { continue }
         $deletedFrom = [string]$item.ExtendedProperty('System.Recycle.DeletedFrom')
+        # The shell records a long local original directory with its Win32
+        # extended prefix. Only remove that spelling prefix for comparison.
+        if ($deletedFrom.Length -ge 7 -and $deletedFrom.StartsWith('\\?\', [StringComparison]::Ordinal) -and
+            $deletedFrom[5] -eq ':' -and $deletedFrom[6] -eq '\') {
+            $deletedFrom = $deletedFrom.Substring(4)
+        }
         if (-not [string]::Equals($deletedFrom.TrimEnd('\'), $expectedDirectory,
                 [StringComparison]::OrdinalIgnoreCase)) { continue }
         if ($null -ne $match) {
@@ -2641,7 +2692,7 @@ function Send-Keys {
 # clipboard before Salamander had consumed the original path.
 function Invoke-SalamanderCommand {
     param(
-        [ValidateSet(709,710,711,775)][int]$CommandId
+        [ValidateSet(709,710,711,774,775,832,833)][int]$CommandId
     )
     $process.Refresh()
     if ($process.HasExited) { throw 'Salamander exited while dispatching a GUI command.' }
@@ -4003,6 +4054,10 @@ try {
                 if ($process.HasExited) {
                     throw "Salamander exited during isolated startup upgrade (exit code $($process.ExitCode))."
                 }
+                $startupDialog = Get-TestDialog
+                if ($startupDialog -match 'Error Changing Directory') {
+                    throw "Salamander displayed a blocking dialog during isolated startup: $startupDialog"
+                }
                 $key = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey($testConfigurationKey + '\Config0\Version')
                 if ($null -eq $key) { return $false }
                 try { $version = [int]$key.GetValue('Configuration', 0) }
@@ -4075,7 +4130,7 @@ try {
         $passed = $true
         return
     }
-    $backgroundCommandsOnly = $TemporaryDirectoryDeletionOnly -or $LargeUnicodeCopyOnly -or $UnicodeFindOnly
+    $backgroundCommandsOnly = $TemporaryDirectoryDeletionOnly -or $LargeUnicodeCopyOnly -or $UnicodeFindOnly -or $LongNavigationHistoryOnly -or $LongClipboardMoveOnly -or $LongRecycleOnly
     if (-not $backgroundCommandsOnly) { Focus-TestProcess }
 
     # First validate the GUI driver against a normal short path. If this
@@ -4088,6 +4143,103 @@ try {
     # Go-ToPath already verified the observed panel path. A duplicate
     # WM_COMMAND 711 adds no coverage and can race with GUI processing.
     Write-Host 'PASS: GUI driver can navigate a normal short directory'
+    if ($LongRecycleOnly) {
+        Go-ToPath $deep -NoForeground
+        Focus-DirectoryRow -Name $utfName -VerifiedBackground
+        Assert-True ((Read-FocusedFullname -AllowVerifiedBackground) -ceq $sourceFile) 'Exact disposable long file before F8'
+        [SalamanderGuiNative]::PostVerifiedDirectoryDeleteCommand($mainWindowHandle, [uint32]$process.Id)
+        $prompt = @{ Window = [IntPtr]::Zero }
+        Wait-Until {
+            $dialog = Get-TestDialog
+            if ($dialog -eq 'Salamander main window is disabled by an unidentified dialog') { return $false }
+            if ($dialog -and $dialog -notmatch 'Recycle Unicode file') {
+                throw "Unexpected dialog for long recycle: $dialog"
+            }
+            if ($dialog -and $dialog.Contains($utfName)) {
+                $prompt.Window = [SalamanderGuiNative]::FindOwnedDialogControl([uint32]$process.Id, 1, $null)
+            }
+            $prompt.Window -ne [IntPtr]::Zero
+        } 'Owned Recycle Bin prompt names the exact file'
+        [SalamanderGuiNative]::PostOwnedCopyDialogButton($prompt.Window, [uint32]$process.Id, 1)
+        Wait-Until {
+            $dialog = Get-TestDialog
+            if ($dialog -eq 'Salamander main window is disabled by an unidentified dialog') { return $false }
+            if ($dialog -and ($dialog -notmatch 'Recycle Unicode file' -or $dialog -match 'could not complete')) {
+                throw "Windows refused the long recycle operation or requires another confirmation: $dialog"
+            }
+            -not [IO.File]::Exists($sourceFile)
+        } 'Original long Unicode entry disappears'
+        $shell = New-Object -ComObject Shell.Application
+        $bin = $shell.NameSpace(10)
+        if ($null -eq $bin) { throw 'Recycle Bin shell namespace unavailable' }
+        $match = @{ Item = $null }
+        Wait-Until {
+            $match.Item = Find-VerifiedRecycledFixtureItem -RecycleFolder $bin -OriginalFullPath $sourceFile
+            $null -ne $match.Item
+        } 'Recycle Bin contains the exact file and original long directory'
+        Restore-VerifiedRecycledFixtureItem -Item $match.Item -OriginalFullPath $sourceFile
+        Wait-Until { Test-Content $sourceFile } 'Restored long Unicode file has identical bytes'
+        Write-Host 'PASS: long Unicode Recycle Bin round trip'
+        $passed = $true
+        return
+    }
+    if ($LongClipboardMoveOnly) {
+        # Arrange two distinct Unicode files and an existing long target directory.
+        $names = @('cut-first-東京.txt', 'cut-second-😀.txt')
+        [string[]]$cutSources = @($names | ForEach-Object { Join-Path $destination $_ })
+        $cutTargets = @($names | ForEach-Object { Join-Path $deep $_ })
+        foreach ($cutSource in $cutSources) { [IO.File]::WriteAllBytes($cutSource, $payload) }
+        Go-ToPath $deep -NoForeground
+
+        # Act on the verified window with a Unicode, multi-entry CF_HDROP cut.
+        $script:clipboardOwner.SetFileDrop($cutSources, $true)
+        Invoke-SalamanderCommand -CommandId 775 # CM_CLIPPASTE
+        Wait-Until {
+            $dialog = Get-TestDialog
+            if ($dialog) { throw "Unicode clipboard move displayed an error: $dialog" }
+            (Test-Content $cutTargets[0]) -and (Test-Content $cutTargets[1]) -and
+                -not [IO.File]::Exists($cutSources[0]) -and -not [IO.File]::Exists($cutSources[1])
+        } 'CF_HDROP moves both Unicode files into a long path without changing their bytes'
+        Write-Host 'PASS: multi-file Unicode cut and paste into a long directory'
+
+        # The application must also publish an exact UTF-16 CF_HDROP.
+        # Navigate back by command so the cut payload remains intact.
+        $roundTrip = Join-Path $source $names[0]
+        Focus-DirectoryRow -Name $names[0] -VerifiedBackground
+        Assert-True ((Read-FocusedFullname -AllowVerifiedBackground) -ceq $cutTargets[0]) 'Long source identity before cut'
+        Invoke-SalamanderCommand -CommandId 774 # CM_CLIPCUT
+        Invoke-SalamanderCommand -CommandId 832 # CM_ACTIVEBACK
+        Invoke-SalamanderCommand -CommandId 775 # CM_CLIPPASTE
+        Wait-Until {
+            $dialog = Get-TestDialog
+            if ($dialog) { throw "Long-to-short clipboard move displayed an error: $dialog" }
+            (Test-Content $roundTrip) -and -not [IO.File]::Exists($cutTargets[0])
+        } 'Salamander publishes the exact long source and pastes it into a short directory'
+        $passed = $true
+        return
+    }
+    if ($LongNavigationHistoryOnly) {
+        # Arrange the previous long location through the Unicode clipboard path.
+        Go-ToPath $deep -NoForeground
+        [SalamanderGuiNative]::PostVerifiedChangeDirectory($mainWindowHandle, [uint32]$process.Id)
+        $changeDir = @{ Window = [IntPtr]::Zero }
+        Wait-Until {
+            $changeDir.Window = [SalamanderGuiNative]::FindOwnedDialogControl([uint32]$process.Id, 456, $null)
+            $changeDir.Window -ne [IntPtr]::Zero
+        } 'Change Directory opened for the verified test process'
+        [SalamanderGuiNative]::SubmitVerifiedChangeDirectory(
+            $mainWindowHandle, $changeDir.Window, [uint32]$process.Id, $beyondClipboardLimit)
+        Wait-Until { (Read-PanelPath) -ceq $beyondClipboardLimit } 'Change Directory opens the full path beyond 2*MAX_PATH'
+
+        # Act on the verified window and assert each exact observed path.
+        Invoke-SalamanderCommand -CommandId 832 # CM_ACTIVEBACK
+        Wait-Until { (Read-PanelPath) -ceq $deep } 'History returns to the previous long directory'
+        Invoke-SalamanderCommand -CommandId 833 # CM_ACTIVEFORWARD
+        Wait-Until { (Read-PanelPath) -ceq $beyondClipboardLimit } 'History restores the full directory beyond 2*MAX_PATH'
+        Write-Host 'PASS: back and forward retain complete long directory paths'
+        $passed = $true
+        return
+    }
     if ($TemporaryDirectoryDeletionOnly) {
         # Act: exercise Salamander's actual F8 deletion command handler
         # (CM_DELETEFILES) through its verified HWND, without global focus.

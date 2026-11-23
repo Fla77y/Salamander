@@ -80,6 +80,16 @@ int main()
                      loaded != retainedPath))
         failure = Fail("invalid UTF-16 value must not overwrite the saved path");
 
+    const std::wstring historyPath = retainedPath + L"\\" + std::wstring(225, L'z');
+    if (!failure &&
+        (historyPath.size() <= 2 * MAX_PATH ||
+         Salamander::WriteSavedPanelPath(key, historyPath, L"1") != ERROR_SUCCESS ||
+         Salamander::ReadSavedPanelPath(key, loaded, L"1") != Salamander::SavedPanelPathStatus::Loaded ||
+         loaded != historyPath ||
+         Salamander::ReadSavedPanelPath(key, loaded, L"2") != Salamander::SavedPanelPathStatus::Missing ||
+         loaded != historyPath))
+        failure = Fail("numbered history value retains the complete path beyond the legacy buffer");
+
     DWORD originalSize = 0;
     DWORD originalType = REG_NONE;
     if (!failure && (RegQueryValueExW(key, L"Path", nullptr, &originalType,

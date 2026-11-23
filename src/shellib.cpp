@@ -7,6 +7,9 @@
 #include "shellib.h"
 #include "cfgdlg.h"
 #include "plugins.h"
+#include "fileswnd.h"
+#include "mainwnd.h"
+#include "common/win32_unicode_clipboard_files.h"
 extern "C"
 {
 #include "shexreg.h"
@@ -628,6 +631,102 @@ STDMETHODIMP CImpDropTarget::QueryInterface(REFIID refiid, void FAR* FAR* ppv)
     }
 }
 
+bool CImpDropTarget::HandleUnicodeDiskDrop(IDataObject* data, POINTL pt, DWORD keys,
+                                          DWORD& effect, bool execute)
+{
+    if (GetCurDir != ::GetCurrentDir)
+        return false;
+    auto* panel = static_cast<CFilesWindow*>(GetCurDirParam);
+    if (!panel->Is(ptDisk))
+        return false;
+
+    RECT rect{};
+    if (!GetWindowRect(panel->GetListBoxHWND(), &rect))
+    {
+        effect = DROPEFFECT_NONE;
+        return true;
+    }
+    const int index = panel->GetIndex(pt.x - rect.left, pt.y - rect.top);
+    const bool child = index >= 0 && index < panel->Dirs->Count;
+    const auto& root = panel->GetDiskPathW();
+    const bool wideChild = child &&
+        (panel->UnicodeDiskNames.IsUnsafeAnsiName(panel->Dirs->At(index).Name) ||
+         root.size() + panel->Dirs->At(index).NameLen + 1 >= MAX_PATH);
+    if (!panel->HasLongDiskPath() && !wideChild)
+        return false;
+
+    const DWORD allowed = effect;
+    effect = DROPEFFECT_NONE;
+    panel->SetDropTarget(-1);
+    if (!data || OldDataObjectIsFake || !(allowed & DROPEFFECT_COPY) ||
+        (keys & (MK_SHIFT | MK_ALT)) ||
+        (!child && index >= 0 && index < panel->Dirs->Count + panel->Files->Count))
+        return true;
+
+    Salamander::Utf16DiskPath directory;
+    Salamander::Utf16PathError pathError;
+    if (!Salamander::Utf16DiskPath::TryCreateAbsolute(
+            std::u16string(root.begin(), root.end()), directory, pathError))
+        return true;
+    if (child)
+    {
+        const auto& row = panel->Dirs->At(index);
+        std::wstring name;
+        Salamander::Utf16FileName component;
+        if ((row.Attr & FILE_ATTRIBUTE_REPARSE_POINT) ||
+            !panel->UnicodeDiskNames.TryGetRow(row.Name, name) ||
+            !Salamander::Utf16FileName::TryCreate(std::u16string(name.begin(), name.end()), component, pathError) ||
+            !directory.TryAppend(component, directory, pathError))
+            return true;
+    }
+
+    FORMATETC format{CF_HDROP, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
+    if (data->QueryGetData(&format) != S_OK)
+        return true;
+    if (!execute)
+    {
+        panel->SetDropTarget(child ? index : -1);
+        effect = DROPEFFECT_COPY;
+        return true;
+    }
+    if (ConfirmDrop != NULL && (RButton || (ConfirmDropEnable && *ConfirmDropEnable)))
+    {
+        DWORD copy = DROPEFFECT_COPY;
+        DWORD preferred = DROPEFFECT_COPY;
+        if (!ConfirmDrop(copy, preferred, keys) || copy != DROPEFFECT_COPY)
+            return true;
+    }
+    STGMEDIUM payload{};
+    if (data->GetData(&format, &payload) != S_OK)
+        return true;
+    const void* bytes = payload.tymed == TYMED_HGLOBAL && payload.hGlobal ? GlobalLock(payload.hGlobal) : nullptr;
+    std::vector<Salamander::Utf16DiskPath> sources;
+    DWORD error = ERROR_INVALID_DATA;
+    const bool parsed = bytes && Salamander::TryReadUnicodeClipboardFiles(
+        bytes, GlobalSize(payload.hGlobal), sources, error);
+    if (bytes)
+        GlobalUnlock(payload.hGlobal);
+    ReleaseStgMedium(&payload);
+
+    std::size_t completed = 0;
+    if (parsed && Salamander::TryTransferUnicodeClipboardFiles(sources, directory, DROPEFFECT_COPY, completed, error))
+        effect = DROPEFFECT_COPY;
+    if (completed)
+    {
+        const auto& path = directory.Value();
+        std::string legacy;
+        if (Salamander::TryMakeExactAnsiPanelPath(std::wstring(path.begin(), path.end()), legacy))
+            MainWindow->PostChangeOnPathNotification(legacy.c_str(), FALSE);
+    }
+    if (effect == DROPEFFECT_NONE)
+    {
+        wchar_t message[160];
+        swprintf_s(message, L"Copied %zu files (Win32 error %lu).", completed, error);
+        MessageBoxW(OwnerWindow, message, L"Copy dropped files", MB_OK | MB_ICONWARNING);
+    }
+    return true;
+}
+
 STDMETHODIMP CImpDropTarget::DragEnter(IDataObject* pDataObject,
                                        DWORD grfKeyState,
                                        POINTL pt, DWORD* pdwEffect)
@@ -651,6 +750,8 @@ STDMETHODIMP CImpDropTarget::DragEnter(IDataObject* pDataObject,
 
     if (ImageDragging)
         ImageDragEnter(pt.x, pt.y);
+    if (HandleUnicodeDiskDrop(OldDataObject, pt, grfKeyState, *pdwEffect, false))
+        return S_OK;
     if (GetCurDir != NULL)
     {
         BOOL tgtFile;
@@ -770,6 +871,12 @@ STDMETHODIMP CImpDropTarget::DragOver(DWORD grfKeyState, POINTL pt,
 
     if (ImageDragging)
         ImageDragMove(pt.x, pt.y);
+    if (HandleUnicodeDiskDrop(OldDataObject, pt, grfKeyState, *pdwEffect, false))
+    {
+        if (CurDirDropTarget != NULL)
+            SetDirectory(NULL, 0, pt, NULL, OldDataObject, FALSE, idtttWindows);
+        return S_OK;
+    }
 
     if (GetCurDir != NULL)
     {
@@ -916,6 +1023,12 @@ STDMETHODIMP CImpDropTarget::Drop(IDataObject* pDataObject, DWORD grfKeyState,
     {
         DragLeave();
         return E_INVALIDARG;
+    }
+
+    if (HandleUnicodeDiskDrop(pDataObject, pt, grfKeyState, *pdwEffect, true))
+    {
+        DragLeave();
+        return S_OK;
     }
 
     DWORD origEffect = *pdwEffect;

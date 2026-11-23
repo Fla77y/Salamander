@@ -27,6 +27,7 @@ extern "C"
 #include "salshlib.h"
 #include "common/win32_unicode_clipboard_files.h"
 #include "common/win32_unicode_panel_name.h"
+#include <algorithm>
 
 // !!! do not use StdColumnsPrivate directly, use GetStdColumn()
 CColumDataItem StdColumnsPrivate[STANDARD_COLUMNS_COUNT] =
@@ -221,7 +222,19 @@ BOOL CFilesWindow::ClipboardPaste(BOOL onlyLinks, BOOL onlyTest, const char* pas
     CALL_STACK_MESSAGE4("CFilesWindow::ClipboardPaste(%d, %d, %s)", onlyLinks, onlyTest, pastePath);
     // CM_CLIPPASTE tries file paste first, then uses ClipboardPastePath()
     // when the clipboard contains plain text. Keep the two operations distinct.
-    if (HasLongDiskPath() || (pastePath != NULL && strlen(pastePath) >= MAX_PATH))
+    const DWORD clipboardSequence = GetClipboardSequenceNumber();
+    const bool longTarget = HasLongDiskPath() || (pastePath != NULL && strlen(pastePath) >= MAX_PATH);
+    bool longSource = false;
+    if (!longTarget && Is(ptDisk) && !onlyLinks && !onlyTest && IsClipboardFormatAvailable(CF_HDROP))
+    {
+        std::vector<Salamander::Utf16DiskPath> paths;
+        DWORD effect, error;
+        if (ReadNativeUnicodeClipboardFiles(HWindow, clipboardSequence, paths, effect, error))
+            longSource = std::any_of(paths.begin(), paths.end(), [](const auto& path) {
+                return path.Value().size() >= MAX_PATH;
+            });
+    }
+    if (longTarget || longSource)
     {
         const std::string targetPath = pastePath ? pastePath : GetPath();
         std::wstring wideTarget;
@@ -229,7 +242,6 @@ BOOL CFilesWindow::ClipboardPaste(BOOL onlyLinks, BOOL onlyTest, const char* pas
             Salamander::TryGetUnicodePanelDirectory(targetPath.c_str(), wideTarget);
         else
             wideTarget = GetDiskPathW();
-        const DWORD clipboardSequence = GetClipboardSequenceNumber();
         IDataObject* clipboardData = NULL;
         if (OleGetClipboard(&clipboardData) != S_OK || clipboardData == NULL)
             return FALSE;
@@ -287,16 +299,21 @@ BOOL CFilesWindow::ClipboardPaste(BOOL onlyLinks, BOOL onlyTest, const char* pas
         }
         if (completed)
             MainWindow->PostChangeOnPathNotification(targetPath.c_str(), FALSE);
+        if (completed && transferEffect == DROPEFFECT_MOVE)
+        {
+            for (const auto& file : files)
+            {
+                const auto& source = file.Value();
+                const auto separator = source.find_last_of(u'\\');
+                const std::wstring sourceDirectory(source.begin(),
+                    source.begin() + (separator == 2 ? 3 : separator));
+                std::string legacySource;
+                if (Salamander::TryMakeExactAnsiPanelPath(sourceDirectory, legacySource))
+                    MainWindow->PostChangeOnPathNotification(legacySource.c_str(), FALSE);
+            }
+        }
         if (success && transferEffect == DROPEFFECT_MOVE)
         {
-            const auto& source = files.front().Value();
-            const auto separator = source.find_last_of(u'\\');
-            const std::wstring sourceDirectory(source.begin(),
-                source.begin() + (separator == 2 ? 3 : separator));
-            std::string legacySource;
-            if (Salamander::TryMakeExactAnsiPanelPath(sourceDirectory, legacySource))
-                MainWindow->PostChangeOnPathNotification(legacySource.c_str(), FALSE);
-
             // Clear the cut payload only if it still belongs to this paste.
             if (clipboardSequence && OpenClipboard(HWindow))
             {
@@ -312,7 +329,8 @@ BOOL CFilesWindow::ClipboardPaste(BOOL onlyLinks, BOOL onlyTest, const char* pas
             wchar_t message[360];
             swprintf_s(message, L"Transferred %zu files (Win32 error %lu). "
                        L"Long-path paste can copy up to 16 regular files (16 MiB total) or move "
-                       L"one regular file within the same volume. Existing files are not replaced.",
+                       L"up to 16 files or ordinary directories within the same volume. "
+                       L"Existing items are not replaced.",
                        completed, error);
             MessageBoxW(HWindow, message, L"Paste from clipboard", MB_OK | MB_ICONWARNING);
         }

@@ -17,6 +17,7 @@
 #include "snooper.h"
 #include "zip.h"
 #include "shiconov.h"
+#include "common/utf16_disk_path.h"
 
 #include <vector>
 
@@ -1970,8 +1971,13 @@ BOOL CFilesWindow::ChangeDir(const char* newDir, int suggestedTopIndex, const ch
     char path[2 * MAX_PATH];
     char errBuf[3 * MAX_PATH + 100];
     GetGeneralPath(path, 2 * MAX_PATH, TRUE);
+    std::wstring dialogPath;
+    if (Is(ptDisk))
+        dialogPath = GetDiskPathW();
+    else
+        Salamander::TryGetUnicodePanelDirectory(path, dialogPath);
     BOOL sendDirectlyToPlugin = FALSE;
-    CChangeDirDlg dlg(HWindow, path, MainWindow->GetActivePanel()->Is(ptPluginFS) ? &sendDirectlyToPlugin : NULL);
+    CChangeDirDlg dlg(HWindow, dialogPath, MainWindow->GetActivePanel()->Is(ptPluginFS) ? &sendDirectlyToPlugin : NULL);
 
     // refresh DefaultDir
     MainWindow->UpdateDefaultDir(TRUE);
@@ -1986,10 +1992,56 @@ CHANGE_AGAIN:
     {
         if (newDir == NULL)
         {
+            std::string legacy;
+            const bool fitsLegacyDialog =
+                (dialogPath.empty() || Salamander::TryMakeExactAnsiPanelPath(dialogPath, legacy)) &&
+                legacy.size() < _countof(path);
+            if (fitsLegacyDialog)
+            {
+                strcpy_s(path, legacy.c_str());
+                if (!sendDirectlyToPlugin && !PostProcessPathFromUser(HWindow, path))
+                    goto CHANGE_AGAIN;
+            }
+
+            if (!fitsLegacyDialog || (!sendDirectlyToPlugin && strlen(path) >= MAX_PATH - 2))
+            {
+                std::wstring directory;
+                if (fitsLegacyDialog)
+                    Salamander::TryGetUnicodePanelDirectory(path, directory);
+                else
+                {
+                    const auto first = dialogPath.find_first_not_of(L" \t\r\n");
+                    if (first != std::wstring::npos)
+                        directory = dialogPath.substr(first, dialogPath.find_last_not_of(L" \t\r\n") - first + 1);
+                    if (directory.size() >= 2 && directory.front() == L'"' && directory.back() == L'"')
+                        directory = directory.substr(1, directory.size() - 2);
+                }
+                if (directory.compare(0, 8, L"\\\\?\\UNC\\") == 0)
+                    directory.replace(0, 8, L"\\\\");
+                else if (directory.compare(0, 4, L"\\\\?\\") == 0)
+                    directory.erase(0, 4);
+
+                Salamander::Utf16DiskPath checked;
+                Salamander::Utf16PathError error;
+                if (!sendDirectlyToPlugin && Salamander::Utf16DiskPath::TryCreateAbsolute(
+                        std::u16string(directory.begin(), directory.end()), checked, error))
+                {
+                    TopIndexMem.Clear();
+                    if (!ChangeUnicodePathToDisk(HWindow, directory))
+                        goto CHANGE_AGAIN;
+                    EndStopRefresh();
+                    if (failReason != NULL)
+                        *failReason = CHPPFR_SUCCESS;
+                    return TRUE;
+                }
+                if (!fitsLegacyDialog)
+                {
+                    SalMessageBox(HWindow, LoadStr(IDS_THEPATHISINVALID), LoadStr(IDS_ERRORCHANGINGDIR),
+                                  MB_OK | MB_ICONEXCLAMATION);
+                    goto CHANGE_AGAIN;
+                }
+            }
             convertFSPathToInternal = TRUE; // after input from user, conversion to internal format is necessary
-            // postprocessing will be done only for path, which is not to be sent directly to plugin
-            if (!sendDirectlyToPlugin && !PostProcessPathFromUser(HWindow, path))
-                goto CHANGE_AGAIN;
         }
         BOOL sendDirectlyToPluginLocal = sendDirectlyToPlugin;
         TopIndexMem.Clear(); // long jump

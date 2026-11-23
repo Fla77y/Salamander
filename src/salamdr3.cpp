@@ -14,6 +14,7 @@
 #include "execute.h"
 #include "shellib.h"
 #include "menu.h"
+#include "common/saved_panel_path_registry.h"
 
 CUserMenuIconBkgndReader UserMenuIconBkgndReader;
 
@@ -1290,11 +1291,13 @@ CPathHistoryItem::CPathHistoryItem(int type, const char* pathOrArchiveOrFSName,
 
     if (Type == 0) // drive
     {
-        char root[MAX_PATH];
-        GetRootPath(root, pathOrArchiveOrFSName);
         const char* e = pathOrArchiveOrFSName + strlen(pathOrArchiveOrFSName);
-        if ((int)strlen(root) < e - pathOrArchiveOrFSName || // not a root path
-            pathOrArchiveOrFSName[0] == '\\')                // this is a UNC path
+        char root[MAX_PATH] = {};
+        const bool shortPath = e - pathOrArchiveOrFSName < MAX_PATH;
+        if (shortPath)
+            GetRootPath(root, pathOrArchiveOrFSName);
+        if (!shortPath || (int)strlen(root) < e - pathOrArchiveOrFSName ||
+            pathOrArchiveOrFSName[0] == '\\')
         {
             if (*(e - 1) == '\\')
                 e--;
@@ -1645,16 +1648,18 @@ BOOL CPathHistoryItem::Execute(CFilesWindow* panel)
 
 BOOL CPathHistoryItem::IsTheSamePath(CPathHistoryItem& item, CPluginFSInterfaceEncapsulation* curPluginFS)
 {
-    char buf1[2 * MAX_PATH];
-    char buf2[2 * MAX_PATH];
     if (Type == item.Type)
     {
         if (Type == 0) // drive
         {
-            GetPath(buf1, 2 * MAX_PATH);
-            item.GetPath(buf2, 2 * MAX_PATH);
-            if (StrICmp(buf1, buf2) == 0)
-                return TRUE;
+            if (PathOrArchiveOrFSName == NULL || item.PathOrArchiveOrFSName == NULL)
+                return FALSE;
+            std::wstring path;
+            std::wstring other;
+            if (Salamander::TryGetUnicodePanelDirectory(PathOrArchiveOrFSName, path) &&
+                Salamander::TryGetUnicodePanelDirectory(item.PathOrArchiveOrFSName, other))
+                return CompareStringOrdinal(path.c_str(), -1, other.c_str(), -1, TRUE) == CSTR_EQUAL;
+            return strcmp(PathOrArchiveOrFSName, item.PathOrArchiveOrFSName) == 0;
         }
         else
         {
@@ -2082,7 +2087,7 @@ void CPathHistory::SaveToRegistry(HKEY hKey, const char* name, BOOL onlyClear)
         if (!onlyClear) // if we are not just clearing the key, store the history values
         {
             int index = 0;
-            char buf[10];
+            char buf[16];
             char path[2 * MAX_PATH];
             int i;
             for (i = 0; i < Paths.Count; i++)
@@ -2092,8 +2097,15 @@ void CPathHistory::SaveToRegistry(HKEY hKey, const char* name, BOOL onlyClear)
                 {
                 case 0: // drive
                 {
-                    strcpy(path, item->PathOrArchiveOrFSName);
-                    break;
+                    std::wstring widePath;
+                    if (Salamander::TryGetUnicodePanelDirectory(item->PathOrArchiveOrFSName, widePath))
+                    {
+                        wchar_t valueName[16];
+                        swprintf_s(valueName, L"%d", index + 1);
+                        if (RegistryWorkerThread.SetPanelPath(historyKey, widePath, valueName))
+                            index++;
+                    }
+                    continue;
                 }
 
                 // archive & FS: use ':' character to separate the two parts of the path
@@ -2128,19 +2140,24 @@ void CPathHistory::LoadFromRegistry(HKEY hKey, const char* name)
     HKEY historyKey;
     if (OpenKey(hKey, name, historyKey))
     {
-        char path[2 * MAX_PATH];
         char fsName[MAX_PATH];
-        const char* pathOrArchiveOrFSName = path;
+        const char* pathOrArchiveOrFSName;
         const char* archivePathOrFSUserPart = NULL;
-        char buf[10];
+        wchar_t valueName[16];
         int type;
         int i;
         for (i = 0;; i++)
         {
-            itoa(i + 1, buf, 10);
-            if (GetValue(historyKey, buf, REG_SZ, path, 2 * MAX_PATH))
+            swprintf_s(valueName, L"%d", i + 1);
+            std::wstring widePath;
+            const auto status = Salamander::ReadSavedPanelPath(historyKey, widePath, valueName, 2);
+            if (status != Salamander::SavedPanelPathStatus::Loaded)
+                break;
+            std::string legacyPath;
+            if (Salamander::TryMakeExactAnsiPanelPath(widePath, legacyPath))
             {
-                if (strlen(path) >= 2)
+                char* path = legacyPath.data();
+                if (legacyPath.size() >= 2)
                 {
                     // the path can be of type
                     // 0 (drive): "C:\???" or "\\server\???"
@@ -2157,7 +2174,7 @@ void CPathHistory::LoadFromRegistry(HKEY hKey, const char* name)
                             type = 0;
                             archivePathOrFSUserPart = NULL;
                         }
-                        else
+                        else if (legacyPath.size() < 2 * MAX_PATH)
                         {
                             *separator = 0;
                             type = 1;
@@ -2167,7 +2184,8 @@ void CPathHistory::LoadFromRegistry(HKEY hKey, const char* name)
                     else
                     {
                         // candidate for an FS path
-                        if (IsPluginFSPath(path, fsName, &archivePathOrFSUserPart))
+                        if (legacyPath.size() < 2 * MAX_PATH &&
+                            IsPluginFSPath(path, fsName, &archivePathOrFSUserPart))
                         {
                             pathOrArchiveOrFSName = fsName;
                             type = 2;
@@ -2179,8 +2197,6 @@ void CPathHistory::LoadFromRegistry(HKEY hKey, const char* name)
                         TRACE_E("CPathHistory::LoadFromRegistry() invalid path: " << path);
                 }
             }
-            else
-                break;
         }
         CloseKey(historyKey);
     }

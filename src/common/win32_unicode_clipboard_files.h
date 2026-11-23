@@ -12,6 +12,37 @@
 
 namespace Salamander
 {
+inline bool TryEncodeUnicodeFileDrop(const std::vector<Utf16DiskPath>& files,
+                                    std::vector<unsigned char>& bytes)
+{
+    bytes.clear();
+    if (files.empty() || files.size() > 1024)
+        return false;
+    std::size_t units = 1;
+    for (const auto& file : files)
+    {
+        if (file.Value().empty())
+            return false;
+        units += file.Value().size() + 1;
+    }
+    const std::size_t size = sizeof(DROPFILES) + units * sizeof(char16_t);
+    if (size > 8 * 1024 * 1024)
+        return false;
+    DROPFILES header{};
+    header.pFiles = sizeof(header);
+    header.fWide = TRUE;
+    bytes.resize(size);
+    memcpy(bytes.data(), &header, sizeof(header));
+    std::size_t offset = sizeof(header);
+    for (const auto& file : files)
+    {
+        const std::size_t length = (file.Value().size() + 1) * sizeof(char16_t);
+        memcpy(bytes.data() + offset, file.Value().c_str(), length);
+        offset += length;
+    }
+    return true;
+}
+
 inline DWORD UnicodeClipboardTransferEffect(DWORD advertisedEffect)
 {
     const DWORD transfer = advertisedEffect & (DROPEFFECT_COPY | DROPEFFECT_MOVE);
@@ -97,7 +128,8 @@ inline HANDLE OpenUnicodeClipboardSource(const std::wstring& path, DWORD effect,
 
     if (!GetFileInformationByHandle(source, &info))
         error = GetLastError();
-    else if (info.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT))
+    else if ((info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) ||
+             (!moving && (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)))
         error = ERROR_NOT_SUPPORTED;
     else if (!moving && !info.nFileIndexHigh && !info.nFileIndexLow)
         error = ERROR_FILE_INVALID;
@@ -125,13 +157,34 @@ inline bool TryTransferUnicodeClipboardFiles(const std::vector<Utf16DiskPath>& f
     error = ERROR_INVALID_PARAMETER;
     if (files.empty() || files.size() > 16)
         return false;
-    // A single same-volume rename is atomic. Moving a whole cut selection
-    // needs a separate recovery contract for failures partway through.
-    if (effect != DROPEFFECT_COPY && (effect != DROPEFFECT_MOVE || files.size() != 1))
+    if (effect != DROPEFFECT_COPY && effect != DROPEFFECT_MOVE)
     {
         error = ERROR_NOT_SUPPORTED;
         return false;
     }
+    DWORD destinationVolume = 0;
+    if (effect == DROPEFFECT_MOVE)
+    {
+        std::wstring extendedDirectory;
+        if (!UnicodeFileOperationsDetail::TryGetExtendedPath(directory, extendedDirectory, error))
+            return false;
+        const HANDLE target = CreateFileW(extendedDirectory.c_str(), FILE_READ_ATTRIBUTES,
+                                         FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                         nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+        if (target == INVALID_HANDLE_VALUE)
+        {
+            error = GetLastError();
+            return false;
+        }
+        BY_HANDLE_FILE_INFORMATION info{};
+        const BOOL inspected = GetFileInformationByHandle(target, &info);
+        error = inspected ? ERROR_DIRECTORY : GetLastError();
+        CloseHandle(target);
+        if (!inspected || !(info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+            return false;
+        destinationVolume = info.dwVolumeSerialNumber;
+    }
+
     constexpr ULONGLONG maxSynchronousBytes = 16ULL * 1024 * 1024;
     ULONGLONG totalBytes = 0;
     struct SourceGuard
@@ -174,6 +227,11 @@ inline bool TryTransferUnicodeClipboardFiles(const std::vector<Utf16DiskPath>& f
             }
             totalBytes += bytes;
         }
+        else if (target.sourceInfo.dwVolumeSerialNumber != destinationVolume)
+        {
+            error = ERROR_NOT_SAME_DEVICE;
+            return false;
+        }
 
         const auto& absolute = file.Value();
         const auto component = std::u16string_view(absolute).substr(absolute.find_last_of(u'\\') + 1);
@@ -215,7 +273,20 @@ inline bool TryTransferUnicodeClipboardFiles(const std::vector<Utf16DiskPath>& f
             : TryCopyUnicodeFileNoOverwrite(files[index], destinations[index].path, error,
                                            &destinations[index].sourceInfo);
         if (!success)
+        {
+            // Each rename is atomic. Undo earlier moves if a later one fails.
+            // A new file at an original name is never overwritten during rollback.
+            if (effect == DROPEFFECT_MOVE)
+            {
+                for (std::size_t moved = index; moved > 0; --moved)
+                {
+                    DWORD rollbackError;
+                    if (RenameUnicodeClipboardSource(sources.handles[moved - 1], files[moved - 1], rollbackError))
+                        --completed;
+                }
+            }
             return false;
+        }
         ++completed;
     }
     return true;

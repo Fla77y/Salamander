@@ -732,14 +732,14 @@ protected:
 class CChangeDirDlg : public CCommonDialog
 {
 public:
-    CChangeDirDlg(HWND parent, char* path, BOOL* sendDirectlyToPlugin);
+    CChangeDirDlg(HWND parent, std::wstring& path, BOOL* sendDirectlyToPlugin);
 
     virtual void Transfer(CTransferInfo& ti);
 
 protected:
     INT_PTR DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam);
 
-    char* Path;
+    std::wstring& Path;
     BOOL* SendDirectlyToPlugin;
 };
 

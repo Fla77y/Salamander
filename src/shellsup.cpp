@@ -18,6 +18,7 @@ extern "C"
 }
 #include "salshlib.h"
 #include "tasklist.h"
+#include "common/win32_unicode_clipboard_files.h"
 //#include "drivelst.h"
 
 //
@@ -1192,6 +1193,154 @@ BOOL GetACLUISecurityPageName(char* pageName, int pageNameMax)
     return ret;
 }
 
+class CUnicodeFileDropData : public IDataObject
+{
+public:
+    CUnicodeFileDropData(std::vector<unsigned char> bytes, DWORD effect)
+        : Bytes(std::move(bytes)), Effect(effect),
+          EffectFormat(static_cast<CLIPFORMAT>(RegisterClipboardFormatW(L"Preferred DropEffect"))) {}
+
+    STDMETHODIMP QueryInterface(REFIID iid, void** result) override
+    {
+        if (!result)
+            return E_POINTER;
+        *result = nullptr;
+        if (iid != IID_IUnknown && iid != IID_IDataObject)
+            return E_NOINTERFACE;
+        *result = static_cast<IDataObject*>(this);
+        AddRef();
+        return S_OK;
+    }
+    STDMETHODIMP_(ULONG) AddRef() override { return InterlockedIncrement(&References); }
+    STDMETHODIMP_(ULONG) Release() override
+    {
+        const ULONG remaining = InterlockedDecrement(&References);
+        if (remaining == 0)
+            delete this;
+        return remaining;
+    }
+    STDMETHODIMP QueryGetData(FORMATETC* format) override
+    {
+        if (!format)
+            return E_POINTER;
+        if (format->cfFormat != CF_HDROP && (!EffectFormat || format->cfFormat != EffectFormat))
+            return DV_E_FORMATETC;
+        if (format->dwAspect != DVASPECT_CONTENT || format->lindex != -1 || !(format->tymed & TYMED_HGLOBAL))
+            return DV_E_FORMATETC;
+        return S_OK;
+    }
+    STDMETHODIMP GetData(FORMATETC* format, STGMEDIUM* medium) override
+    {
+        if (!medium)
+            return E_POINTER;
+        *medium = {};
+        const HRESULT result = QueryGetData(format);
+        if (FAILED(result))
+            return result;
+        const bool fileList = format->cfFormat == CF_HDROP;
+        const SIZE_T length = fileList ? Bytes.size() : sizeof(Effect);
+        HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, length);
+        if (!memory)
+            return E_OUTOFMEMORY;
+        void* data = GlobalLock(memory);
+        if (!data)
+        {
+            GlobalFree(memory);
+            return E_OUTOFMEMORY;
+        }
+        memcpy(data, fileList ? static_cast<const void*>(Bytes.data()) : &Effect, length);
+        GlobalUnlock(memory);
+        medium->tymed = TYMED_HGLOBAL;
+        medium->hGlobal = memory;
+        return S_OK;
+    }
+    STDMETHODIMP EnumFormatEtc(DWORD direction, IEnumFORMATETC** result) override
+    {
+        if (direction != DATADIR_GET)
+            return E_NOTIMPL;
+        FORMATETC formats[] = {
+            {CF_HDROP, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL},
+            {EffectFormat, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL}
+        };
+        return SHCreateStdEnumFmtEtc(EffectFormat ? 2 : 1, formats, result);
+    }
+    STDMETHODIMP GetDataHere(FORMATETC*, STGMEDIUM*) override { return E_NOTIMPL; }
+    STDMETHODIMP GetCanonicalFormatEtc(FORMATETC*, FORMATETC* result) override
+    {
+        if (result)
+            result->ptd = nullptr;
+        return E_NOTIMPL;
+    }
+    STDMETHODIMP SetData(FORMATETC*, STGMEDIUM*, BOOL) override { return E_NOTIMPL; }
+    STDMETHODIMP DAdvise(FORMATETC*, DWORD, IAdviseSink*, DWORD*) override { return OLE_E_ADVISENOTSUPPORTED; }
+    STDMETHODIMP DUnadvise(DWORD) override { return OLE_E_ADVISENOTSUPPORTED; }
+    STDMETHODIMP EnumDAdvise(IEnumSTATDATA**) override { return OLE_E_ADVISENOTSUPPORTED; }
+
+private:
+    LONG References = 1;
+    const std::vector<unsigned char> Bytes;
+    const DWORD Effect;
+    const CLIPFORMAT EffectFormat;
+};
+
+static bool PublishUnicodeDiskSelection(CFilesWindow* panel, CShellAction action,
+                                        const int* indexes, int count)
+{
+    const auto& directory = panel->GetDiskPathW();
+    Salamander::Utf16PathError error;
+    Salamander::Utf16DiskPath parent;
+    if (!Salamander::Utf16DiskPath::TryCreateAbsolute(
+            std::u16string(directory.begin(), directory.end()), parent, error) ||
+        count <= 0 || count > 1024)
+        return false;
+    std::vector<Salamander::Utf16DiskPath> paths;
+    paths.reserve(count);
+    const int dirs = panel->Dirs->Count;
+    for (int i = 0; i < count; ++i)
+    {
+        const int index = indexes[i];
+        if (index < 0 || index >= dirs + panel->Files->Count)
+            return false;
+        const CFileData& row = index < dirs ? panel->Dirs->At(index) : panel->Files->At(index - dirs);
+        std::wstring name;
+        Salamander::Utf16FileName component;
+        Salamander::Utf16DiskPath path;
+        if (!panel->UnicodeDiskNames.TryGetRow(row.Name, name) ||
+            !Salamander::Utf16FileName::TryCreate(std::u16string(name.begin(), name.end()), component, error) ||
+            !parent.TryAppend(component, path, error))
+            return false;
+        paths.push_back(std::move(path));
+    }
+    std::vector<unsigned char> bytes;
+    if (!Salamander::TryEncodeUnicodeFileDrop(paths, bytes))
+        return false;
+    auto* data = new CUnicodeFileDropData(std::move(bytes),
+        action == saCutToClipboard ? DROPEFFECT_MOVE : DROPEFFECT_COPY);
+    bool success = false;
+    if (action == saLeftDragFiles || action == saRightDragFiles)
+    {
+        auto* source = new CImpIDropSource(FALSE);
+        DWORD effect = DROPEFFECT_NONE;
+        // Keep ownership with this source. A native drop target can safely
+        // copy CF_HDROP without requesting a second deletion from OLE.
+        success = SUCCEEDED(DoDragDrop(data, source, DROPEFFECT_COPY, &effect));
+        source->Release();
+    }
+    else
+    {
+        success = SUCCEEDED(OleSetClipboard(data));
+        if (success)
+        {
+            // Persist the two self-contained formats after the process exits.
+            OleFlushClipboard();
+            IdleRefreshStates = TRUE;
+            IdleCheckClipboard = TRUE;
+        }
+    }
+    data->Release();
+    return success;
+}
+
 void ShellAction(CFilesWindow* panel, CShellAction action, BOOL useSelection,
                  BOOL posByMouse, BOOL onlyPanelMenu)
 {
@@ -1262,6 +1411,20 @@ void ShellAction(CFilesWindow* panel, CShellAction action, BOOL useSelection,
     }
     else
         index = -1;
+
+    if (useSelection && panel->Is(ptDisk) &&
+        (dragFiles || action == saCopyToClipboard || action == saCutToClipboard) &&
+        panel->HasUnsupportedLegacyPluginSelection())
+    {
+        const bool success = PublishUnicodeDiskSelection(panel, action,
+            count == 0 ? &index : indexes, count == 0 ? 1 : count);
+        delete[] indexes;
+        EndStopRefresh();
+        if (!success)
+            MessageBoxW(panel->HWindow, L"The exact Unicode file selection could not be published.",
+                        L"File transfer", MB_OK | MB_ICONWARNING);
+        return;
+    }
 
     char targetPath[2 * MAX_PATH];
     targetPath[0] = 0;

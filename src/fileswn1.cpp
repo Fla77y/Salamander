@@ -1720,9 +1720,7 @@ void CFilesWindow::DirectoryLineSetText()
     {
         if (Is(ptDisk))
         {
-            // Legacy history entries have MAX_PATH-sized buffers.
-            if (!HasLongDiskPath())
-                PathHistory->AddPath(0, GetPath(), NULL, NULL, NULL);
+            PathHistory->AddPath(0, GetPath(), NULL, NULL, NULL);
             path = GetPath();
         }
         else

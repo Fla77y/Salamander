@@ -34,6 +34,15 @@ int main()
     if (nonexistentDeleted || SUCCEEDED(error))
         return std::puts("FAIL: nonexistent Unicode source accepted"), 1;
 
+    const std::wstring longMissing = L"C:\\OpenSal-Nonexistent-20261113-UNICODE\\" +
+        std::wstring(190, L'a') + L"\\" + std::wstring(190, L'b') + L"\\file_\U0001F600.txt";
+    if (!Salamander::Utf16DiskPath::TryCreateAbsolute(
+            std::u16string(longMissing.begin(), longMissing.end()), path, validationError) ||
+        Salamander::TryRecycleUnicodeFile(path, nullptr, error) ||
+        (error != HRESULT_FROM_WIN32(ERROR_PATH_NOT_FOUND) &&
+         error != HRESULT_FROM_WIN32(ERROR_FILE_NOT_FOUND)))
+        return std::puts("FAIL: long missing path must be diagnosed before entering the shell"), 1;
+
     // Arrange: test-owned directory and file. Type mismatches must fail
     // before IFileOperation can recycle anything, even on an unlocked GUI.
     wchar_t temporary[MAX_PATH] = {};
@@ -58,6 +67,18 @@ int main()
         !Salamander::Utf16DiskPath::TryCreateAbsolute(
             std::u16string(leaf.begin(), leaf.end()), ownedFile, validationError))
         return std::puts("FAIL: own type-check paths"), 1;
+
+    std::wstring extendedLeaf;
+    DWORD pathError;
+    if (!Salamander::TryMakeExtendedLengthPath(leaf.c_str(), extendedLeaf, pathError) ||
+        !Salamander::UnicodeRecycleDetail::IsExactShellPath(leaf.c_str(), leaf, extendedLeaf) ||
+        Salamander::UnicodeRecycleDetail::IsExactShellPath(root.c_str(), leaf, extendedLeaf))
+        return std::puts("FAIL: shell identity must distinguish the file from its parent"), 1;
+    wchar_t shortPath[MAX_PATH] = {};
+    const DWORD shortLength = GetShortPathNameW(extendedLeaf.c_str(), shortPath, MAX_PATH);
+    if (shortLength != 0 && shortLength < MAX_PATH &&
+        !Salamander::UnicodeRecycleDetail::IsExactShellPath(shortPath, leaf, extendedLeaf))
+        return std::puts("FAIL: shell alias must expand to the original entry"), 1;
 
     // Act / Assert: no shell operation and no filesystem mutation.
     if (Salamander::TryRecycleUnicodeFile(ownedRoot, nullptr, error) ||
