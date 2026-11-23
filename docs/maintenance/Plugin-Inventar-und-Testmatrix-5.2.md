@@ -37,9 +37,22 @@ Die Erfassung ist nur lesend: kein DLL-Load, keine Registry-Änderung, keine Än
 
 Die Pfade aus **einem tatsächlich ausgeführten, aktuellen Build** verwenden, nicht alte Build-Ausgaben als Nachweis annehmen:
 
-    pwsh -NoProfile -File .\tools\release\Invoke-PluginCoverageInventory.ps1 -BuiltDirectory '<frische-Build-Ausgabe>' -StagedDirectory '<frische-Staging-Ausgabe>' -ReportRoot (Join-Path $env:TEMP 'Salamander-Evidence')
+    pwsh -NoProfile -File .\tools\release\Invoke-PluginCoverageInventory.ps1 -BuiltDirectory '<frische-Build-Ausgabe>' -StagedDirectory '<frische-Staging-Ausgabe>' -ReportRoot (Join-Path $env:TEMP 'Salamander-Evidence') -RequireMatchingPayloads
 
-Der Report ist **keine SHA-256-Prüfung** der Staging-Dateien: Dafür ist der gesonderte Release-Nachweis PKG-01 notwendig.
+**Zusätzliche SHA-256-Kontrolle:** Bei expliziter Angabe beider Verzeichnisse
+berechnet das Inventar für tatsächlich vorhandene SPL-Dateien zwei
+SHA-256-Hashes und klassifiziert **MATCH**, **HASH_MISMATCH**,
+**MISSING_BUILT**, **MISSING_STAGED** oder **NOT_SHIPPED**.
+Mit `-RequireMatchingPayloads` führt bereits ein fehlendes oder
+byteverschiedenes Modul zum Fehler. Quellordner ohne gebautes und
+gestagtes Modul (z. B. `winscp`) werden als **NOT_SHIPPED** erfasst;
+dies ist ausdrücklich keine Bestätigung, dass diese Auslassung
+produktfachlich zulässig ist.
+
+Dieses Werkzeug vergleicht ausschließlich **SPL-Dateien**. Es prüft weder
+alle zusätzlichen Sprachen, Hilfebinaries, Rechte, Signaturen noch die
+Vollständigkeit der tatsächlich vorgesehenen Release-Module; **PKG-01**
+bleibt deshalb eine separate obligatorische Freigabeprüfung.
 
 ## 3. Mindestmatrix für jedes ausgelieferte Plugin
 
@@ -61,7 +74,7 @@ Der Report ist **keine SHA-256-Prüfung** der Staging-Dateien: Dafür ist der ge
 | --- | --- | --- |
 | Test-PluginBinary-Contract.ps1 (grüner Stand) | PE/SDK-ABI für fünf Pflichtmodule | Keine vollständige Modulliste oder Unicode-/Langpfadfunktion |
 | Test-PluginModulePaths-Contract.ps1 | Statischer W-Modul-/Sprachpfadvertrag | Kein Plugin-End-to-End |
-| **Test-PluginCoverageInventory.ps1 (neu)** | Exakte Quell-/Solution-Baseline, negatives synthetisches SPL-Layout, ungetestete Statuswerte, CSV-Report | Ausführung unter Windows noch ausstehend |
+| **Test-PluginCoverageInventory.ps1 (neu)** | Exakte Quell-/Solution-Baseline, negatives synthetisches SPL-Layout, ungetestete Statuswerte, CSV-Report, bytegenaue SHA-256-Matching-/Tampering-/Missing-Negativfälle | Ausführung unter Windows noch ausstehend |
 | [Draft-PR #14](https://github.com/Fla77y/Salamander/pull/14) | Weitere gebaute SPL-ABI-/Staging-Regressionen vorbereitet | Noch nicht gemergt und nicht Windows-verifiziert |
 | --test-plugin-load | Opt-in reale Plugin-Host-Initialisierung | Keine Operationenmatrix, nicht in --test-all |
 
