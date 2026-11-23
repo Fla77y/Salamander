@@ -484,6 +484,37 @@ Nächste Prüfung: PowerShell-AST-Parser, dann isolierter
   keine Fehlzuordnung, keine ungefragte Zielüberschreibung; pro Plugin und
   Operation unabhängige reproduzierbare Protokolle. **Abhängig von:** UP-01.
 
+**Neuer Produktcode auf `bugfix/v5.2` (23.11.2026, noch nicht
+Windows-getestet):** Eine einzelne gewöhnliche Unicode-Datei kann
+bei F6 nach dem nachgewiesenen Win32-Fehler
+`ERROR_NOT_SAME_DEVICE` jetzt über die bereits vorhandene
+UTF-16-Zwischenablage-Transaktion (`TryTransferUnicodeClipboardFiles`)
+bewegt werden. Diese prüft eindeutige Dateihandles und Byte-
+Kopierveröffentlichung ohne Zielüberschreibung, bevor die ursprüngliche
+Datei gelöscht wird. Bei einer fehlgeschlagenen Quelllöschung
+bleibt die Zielkopie absichtlich erhalten und wird dem Benutzer
+als **möglicher Teiltransfer** gemeldet. Für einen synchronen Aufruf
+gelten weiterhin höchstens 16 MiB, um den GUI-Thread nicht
+unbegrenzt zu blockieren. Größere volumeübergreifende F6-Dateien,
+mehrere Dateien/Verzeichnisse sowie der vollständige Worker-
+/Overwrite-/ACL-/ADS-Vertrag **sind nicht fertig**; für diese
+Fälle ist der asynchrone UTF-16-Move-Worker erforderlich.
+Produkt-Commits:
+`9983c51b8c7c9cce2a8a8fdceced7e05e01207bc`,
+`a964a9086f750b8d2499c0a22bb4d63b0d8d1b2f`.
+
+Ein zusätzlicher nativer Win32-Regressionstest in
+`tools/tests/long_path_io.cpp` (Commit
+`f791a04a289e73e03ebae81ec2e1d35b88d819f4`)
+wird nur ausgeführt, wenn
+`OPENSAL_CROSS_VOLUME_TEST_DIR` ausdrücklich auf einen
+**vorhandenen, eigens für Tests bereitgestellten Ordner auf
+einem zweiten Volume** zeigt. Er verlangt echten Device-
+Unterschied und prüft originalgetreue Bytes, erfolgreiche
+Quellentfernung sowie Zielkollision ohne Überschreibung.
+Fehlt das zweite Volume, meldet er `SKIP`, nicht `PASS`.
+**Ausführung unter Windows noch offen.**
+
 ### [ ] UP-04 – Kopieren/Bewegen über Volume- und Worker-Grenzen (**P0**, TEILBELEGT)
 - **Lücke:** F5/F6 mit 263 UTF-16-Einheiten und >17 MiB Same-Volume-Move
   bestanden; das beweist **keinen** Cross-Volume-Move großer Dateien.
@@ -513,6 +544,30 @@ Nächste Prüfung: PowerShell-AST-Parser, dann isolierter
 - **Abnahme:** Exakte Identität oder kontrollierte Ablehnung; Rückkehr aus
   Shell/Editor ändert nie eine andere Datei; Originalbytes bei Fehlern
   unverändert. Vorhandene positive Einzeltests nicht doppelt zählen.
+
+**Neuer Produktcode auf `bugfix/v5.2` (23.11.2026, noch nicht
+Windows-getestet):** Bei F5/F6 wird jetzt vor dem ANSI-Engine-
+Aufruf auch `Zielverzeichnis + Dateiname` auf die
+`MAX_PATH`-Grenze geprüft, nicht mehr nur die Quelle.
+Die gemeinsame `ExceedsLegacyTransferPathLimit`-Prüfung
+verwendet überlaufsichere Längenberechnungen und führt
+betroffene Dateioperationen zum bestehenden UTF-16-Weg.
+Regressionen liegen in
+`tools/tests/legacy_disk_name_safety.cpp`
+(Commit `ed939834c413078094cf0359d7785cf18fd1fb65`)
+und im echten F5-/F6-GUI-Test für **zwei jeweils kurze Panelpfade
+bei insgesamt zu langem Ziel-Dateipfad**
+(`Test-SalamanderGui-LongPaths.ps1`, Commit
+`393a2459f831e1fc98b43ae4bd1b850245d06e87`) vor.
+Helper/Produkt-Commits:
+`68b3dd56b0afbb338237c6f1ef23d25af57559e9`,
+`be004f9a99d2a0ae0d7cc945ee56ec0a49307836`.
+Die reine Grenzformel wurde in einem
+separaten Linux-Clang-Probelauf mit Assertions kompiliert und
+ausgeführt; dies ersetzt **weder** das originale MSVC-
+Testprogramm **noch** Windows-GUI-Abnahme. UP-07 bleibt
+TEILBELEGT; echte UNC-/EFS-/Near-Limit-Aktionen und
+LongPathsEnabled-Matrix sind weiterhin offen.
 
 ### [ ] UP-07 – Pfadgrenzwerte und Dateisystembedingungen (**P1**, TEILBELEGT)
 - **Fälle:** 259/260/263, 255-Komponentenlimit, echte 32.700er-Pfade,
