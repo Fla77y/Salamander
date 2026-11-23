@@ -264,6 +264,37 @@ die beiden deklarierten SDK-Exportnamen.
 **Keine ausgeführte x64-Binärprüfung und kein Unicode-/Langpfad-
 End-to-End-Nachweis auf diesem HEAD.**
 
+**Neue lokale Ausführungsevidenz (23.11.2026, 20:58–21:12 Uhr):**
+Der bereitgestellte PowerShell-Transkriptlauf
+\`manage.cmd --build-clean --test-all\` meldet auf dem **getesteten**
+Commit \`2be91b27032a2f4cb4619a606b42b0af7c8ea6c1\`
+einen sauberen Git-Working-Tree und den vollständigen Abschluss
+\`Alle angeforderten Schritte erfolgreich abgeschlossen.\`.
+Der Text nennt \`D:\Build\OpenSal\logs\manage-20261123-205829-483-5c3b7f.log\`
+als lokales Originalprotokoll. Im bereitgestellten Text erscheinen für
+beide Konfigurationen **je 35** verschiedene Solution-\`.spl\`-Buildausgaben
+(Debug x64 und Release x64). Ebenso meldet er den erfolgreichen nativen
+und GUI-Testabschluss einschließlich Legacy Find, Unicode, Langpfaden,
+F2/F5/F6/F8 und PictView/WIC. Die damalige ABI-Prüfung prüfte nur
+die fünf vordefinierten Module. Die späteren PR-Änderungen sind
+**nicht durch diesen Lauf gedeckt**; eine finale Paketierung (\`--setup\`)
+war **nicht** Teil des Befehls. Daher bleiben alle separaten
+Abnahme- und Clean-VM-Gates offen.
+
+**PKG-01 – korrigierte Quelltools und vollständiges Solution-Gate
+(nicht auf HEAD getestet):** Ein statisch entdeckter
+PowerShell-Quellbruch in \`Plugin-CoverageInventory.ps1\` und
+\`Invoke-PluginCoverageInventory.ps1\` wurde aus der letzten
+unbeschädigten Fassung rekonstruiert. Der zentrale
+\`Test-Package-Helpers.ps1\` überprüft nun deren Parser-Syntax
+vor weiterer Prüfung. \`-RequireSolutionPluginPayloads\` sichert
+in der Paketpipeline zusätzlich zu SHA-256 die Existenz aller
+Solution-Projekt-SPLs in Build und Stage und verwirft
+nicht deklarierte gestagte Module. Neu: Negativtests für auf
+beiden Seiten fehlende Solution-SPLs und unbekannte Stage-SPLs.
+Nicht gelöst: Seitenelemente, Runtime- und DLL-Abhängigkeiten,
+Setup-/Uninstall-Clean-VM-Abnahme und Ausführung dieser Änderungen.
+
 **Nächster Schritt nach dieser Quellbasis:** Neue Regressionen auf
 Windows ausführen; anschließend tatsächliche Built-/Staged-/Shipped-SPLs
 auf dem **selben** Commit nachweisen, pro Modul Funktionen
