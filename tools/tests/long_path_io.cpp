@@ -1434,6 +1434,102 @@ int main()
         GetFileAttributesW(deleteProbeExtended.c_str()) != INVALID_FILE_ATTRIBUTES)
         return Fail("F8 deletes original file only after identity revalidation");
 
+    // The background Unicode F6 worker may remove its source only after a
+    // complete copied target has the same *file identity* it created. A path
+    // replacement with identical bytes and size must still be rejected.
+    const std::wstring workerSource = current + L"\\worker-source-東京.bin";
+    const std::wstring workerTarget = current + L"\\worker-target-大阪.bin";
+    const std::wstring workerAside = current + L"\\worker-aside-識別.bin";
+    std::wstring sourceForWorker, targetForWorker, asideForWorker;
+    Salamander::Utf16DiskPath ownedWorkerSource, ownedWorkerTarget;
+    if (!Convert(workerSource, sourceForWorker) ||
+        !Convert(workerTarget, targetForWorker) ||
+        !Convert(workerAside, asideForWorker) ||
+        !OwnPath(workerSource, ownedWorkerSource) ||
+        !OwnPath(workerTarget, ownedWorkerTarget))
+        return Fail("create UTF-16 asynchronous move identity paths");
+    HANDLE workerInput = CreateFileW(sourceForWorker.c_str(), GENERIC_WRITE,
+                                     0, nullptr, CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (workerInput == INVALID_HANDLE_VALUE)
+        return Fail("create UTF-16 asynchronous move source");
+    const char workerPayload[] = "verified Unicode background copy";
+    DWORD workerWritten = 0;
+    const bool workerWrote = WriteFile(workerInput, workerPayload,
+                                       sizeof(workerPayload), &workerWritten, nullptr) &&
+                             workerWritten == sizeof(workerPayload);
+    CloseHandle(workerInput);
+    if (!workerWrote || !CopyFileW(sourceForWorker.c_str(), targetForWorker.c_str(), TRUE))
+        return Fail("create completed Unicode worker copy");
+
+    auto readWorkerIdentity = [](const std::wstring& name,
+                                 BY_HANDLE_FILE_INFORMATION& identity) -> bool {
+        const HANDLE file = CreateFileW(name.c_str(), FILE_READ_ATTRIBUTES,
+                                        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+                                        nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+        if (file == INVALID_HANDLE_VALUE)
+            return false;
+        const bool read = GetFileInformationByHandle(file, &identity) != FALSE;
+        CloseHandle(file);
+        return read;
+    };
+    BY_HANDLE_FILE_INFORMATION expectedWorkerSource{}, expectedWorkerTarget{};
+    if (!readWorkerIdentity(sourceForWorker, expectedWorkerSource) ||
+        !readWorkerIdentity(targetForWorker, expectedWorkerTarget))
+        return Fail("capture both worker file identities");
+
+    // Replace the *target* with a byte-identical file at the same path.
+    if (!MoveFileExW(targetForWorker.c_str(), asideForWorker.c_str(), 0) ||
+        !CopyFileW(sourceForWorker.c_str(), targetForWorker.c_str(), TRUE))
+        return Fail("stage replaced Unicode worker destination");
+    if (Salamander::TryCompleteUnicodeMoveAfterCopy(
+            ownedWorkerSource, ownedWorkerTarget, expectedWorkerSource,
+            expectedWorkerTarget, operationError) ||
+        operationError != ERROR_FILE_INVALID ||
+        GetFileAttributesW(sourceForWorker.c_str()) == INVALID_FILE_ATTRIBUTES)
+        return Fail("worker move must not delete source after target replacement");
+    if (!DeleteFileW(targetForWorker.c_str()) ||
+        !MoveFileExW(asideForWorker.c_str(), targetForWorker.c_str(), 0))
+        return Fail("restore copied target identity");
+
+    // Replace the *source* after copying. Its original identity is now
+    // at a different filename, and the replacement must survive.
+    if (!MoveFileExW(sourceForWorker.c_str(), asideForWorker.c_str(), 0) ||
+        !CopyFileW(targetForWorker.c_str(), sourceForWorker.c_str(), TRUE))
+        return Fail("stage replaced Unicode worker source");
+    if (Salamander::TryCompleteUnicodeMoveAfterCopy(
+            ownedWorkerSource, ownedWorkerTarget, expectedWorkerSource,
+            expectedWorkerTarget, operationError) ||
+        operationError != ERROR_FILE_INVALID ||
+        GetFileAttributesW(sourceForWorker.c_str()) == INVALID_FILE_ATTRIBUTES)
+        return Fail("worker move must not delete unrelated source replacement");
+    if (!DeleteFileW(sourceForWorker.c_str()) ||
+        !MoveFileExW(asideForWorker.c_str(), sourceForWorker.c_str(), 0))
+        return Fail("restore original Unicode move source");
+
+    // Both identities now match. A successful move removes exactly the
+    // original source and retains the fully copied target.
+    if (!Salamander::TryCompleteUnicodeMoveAfterCopy(
+            ownedWorkerSource, ownedWorkerTarget, expectedWorkerSource,
+            expectedWorkerTarget, operationError) ||
+        operationError != ERROR_SUCCESS ||
+        GetFileAttributesW(sourceForWorker.c_str()) != INVALID_FILE_ATTRIBUTES)
+        return Fail("worker Unicode move finalizer deletes exact source");
+    HANDLE verifiedTarget = CreateFileW(targetForWorker.c_str(), GENERIC_READ,
+                                        FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+                                        FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (verifiedTarget == INVALID_HANDLE_VALUE)
+        return Fail("open finalized Unicode move copy");
+    char workerBytes[sizeof(workerPayload)]{};
+    DWORD workerRead = 0;
+    const bool workerSameBytes = ReadFile(
+        verifiedTarget, workerBytes, sizeof(workerBytes), &workerRead, nullptr) &&
+        workerRead == sizeof(workerPayload) &&
+        memcmp(workerBytes, workerPayload, sizeof(workerPayload)) == 0;
+    CloseHandle(verifiedTarget);
+    if (!workerSameBytes || !DeleteFileW(targetForWorker.c_str()))
+        return Fail("finalized Unicode background move retained original data");
+    std::puts("PASS: cross-volume worker finalizer rejects changed source/target identity and preserves exact bytes");
+
     if (!DeleteFileW(extendedDistinct.c_str()))
         return Fail("DeleteFileW distinct Unicode filename");
     if (!DeleteFileW(extendedMaxFile.c_str()))
