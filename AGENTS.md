@@ -6,6 +6,22 @@
 > den `Master-Prompt-C++.md` und sämtliche Anforderungen 0–7 aus `Anforderungen.md`.
 > Sie ersetzt nicht die Pflicht, den aktuellen Repository-Inhalt zu prüfen.
 
+## Projektweite Testlücken und Arbeitsfortschritt
+
+**Pflichtlektüre bei Test-, Bugfix-, Unicode-/Langpfad-, Plugin-, WIC- und
+Release-Aufgaben:** [Testlücken- und Abnahmeplan 5.2](docs/maintenance/Testluecken-und-Abnahmeplan-5.2.md).
+
+- Vor Aufgabenbeginn die **aktuelle** versionierte Datei lesen, betroffene
+  Gap-IDs, Prioritäten, Voraussetzungen und Abnahmekriterien ermitteln.
+- Nach erledigter Arbeit im selben PR/Commit den Status, ausgeführte
+  Positiv-/Negativtests, den genauen Commit und die Nachweise aktualisieren.
+- Nicht ausgeführte oder nur statisch geprüfte Tests niemals als PASS
+  markieren; fehlende Funktionsparität nicht durch Tests als erfüllt ausgeben.
+- Die Liste ergänzt A0–A7 und
+  [die Release-Gates](tools/release/Release-5.2-Gates.md), ersetzt sie nicht.
+  Für nicht zur Aufgabe gehörige IDs keine ungefragten Codeänderungen
+  durchführen.
+
 ## 1. Prioritäten und Entscheidungsregeln
 
 1. Beachte die jeweils geltenden übergeordneten Anweisungen, Sicherheitsgrenzen und
