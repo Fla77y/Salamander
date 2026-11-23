@@ -43,10 +43,10 @@ Open Salamander – Verwaltung für Visual Studio 2026
   manage.cmd --test-gui-legacy-find  Legacy-Suche (Strg+F), Filter, Unicode, Focus File und Viewer
   manage.cmd --test-clipboard-snapshot  Native Zwischenablage-Sicherung/-Wiederherstellung prüfen
   manage.cmd --setup        Debug- und Release-7z plus Inno-Setup-Pakete erzeugen
-  manage.cmd --test-pictview  WIC-Decoder, GDI, Frames, Export, Clipboard, Transforms: MSVC x86/x64
+  manage.cmd --test-pictview  WIC-Decoder (13 Endungen), Langpfade, Export, Clipboard: MSVC x86/x64
   manage.cmd --test-pictview-window  Zusätzlich echten WIC-Viewer-HWND testen
                                  (unverriegelter Windows-Desktop erforderlich)
-  manage.cmd --test-pictview-host  Plugin im echten Salamander mit F3 laden und Viewer öffnen
+  manage.cmd --test-pictview-host  F3-Plugin-Hosttest: BMP, PNG, JPEG, GIF, TIFF, ICO
                                  (opt-in, vorher andere Salamander-Instanzen schließen)
   manage.cmd --test-gui     Automatisierter GUI-Test: lange Pfade, Unicode-Dateien, F5
   manage.cmd --test-gui-max-path  Reale GUI-Prüfung nahe 32767: 32700 Gesamt- und 255 UTF-16-Namenseinheiten
@@ -82,7 +82,7 @@ Mehrere Aktionen kombinieren:
   manage.cmd --build --test-all  Vollständige Suite auf beiden x64-Binaries
   manage.cmd --test-pictview  WIC-Tests lokal mit x86 und x64 kompilieren und ausführen
   manage.cmd --test-pictview-window  Zusätzlich einen echten WIC-Viewer öffnen/schließen
-  manage.cmd --test-pictview-host  PictView im echten Salamander über F3 testen
+  manage.cmd --test-pictview-host  Sechs Bildformate mit echtem PictView-F3 prüfen (opt-in)
 
 Voraussetzungen:
   Windows 11, PowerShell 7.4+, VS 2026 mit MSVC v143/ATL, Windows SDK.
