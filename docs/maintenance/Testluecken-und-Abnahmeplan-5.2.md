@@ -122,6 +122,13 @@ Es wurden keine GUI-/Win32-Tests für diese neuen Dateien ausgeführt.
   **manage.cmd --test / --test-all** registriert. Sie sind statisch
   integriert, **noch nicht tatsächlich unter Windows ausgeführt**.
 
+- **MGMT-03, VORBEREITET:** Der neue
+  **Test-TestGapTracker.ps1** gleicht alle **35** stabilen IDs mit
+  **test-gap-ids-baseline.json** ab. Er fordert weiterhin die zentralen
+  Links in AGENTS.md und README.md, weist simuliert entfernte IDs und
+  unbelegte [x]-Abschlüsse zurück. Er läuft künftig in manage.cmd --test;
+  ein echter Windows-Lauf steht noch aus.
+
 **Nächster Schritt nach dieser Quellbasis:** Neue Regressionen auf
 Windows ausführen; anschließend tatsächliche Built-/Staged-/Shipped-SPLs
 auf dem **selben** Commit nachweisen, pro Modul Funktionen
@@ -495,6 +502,18 @@ Großumbauten oder impliziten Systemeingriffen. Kritische Datenintegritäts-
 und Regressionstests haben vor Feature-Ausbau Vorrang.
 
 ## 12. Nachweise, Pflege und Abschlussregel
+
+Wenn eine Checkbox einer ID auf **[x]** gesetzt wird, muss **in derselben
+ID-Sektion** mindestens eine ausführungsbezogene Nachweiszeile stehen,
+damit der automatische Tracker-Vertrag keine unbelegten PASS-Meldungen
+akzeptiert. Das maschinenprüfbare Format ist:
+
+    - **Nachweis:** SHA=0123456789abcdef0123456789abcdef01234567; Test=manage.cmd --test-all; Log=logs/actual-run.log
+
+Das Beispiel ist **kein echtes Testergebnis** und darf nicht als Beleg
+übernommen werden. Die Felder müssen auf den **wirklich ausgeführten**
+Test und dessen belegten Quellstand verweisen; relevante Umgebung, Ergebnis
+und Risiken stehen ergänzend in der untenstehenden Tabelle.
 
 Für jede abgeschlossene ID den folgenden **Belegblock** eintragen; ohne
 Beleg verbleibt sie offen:
