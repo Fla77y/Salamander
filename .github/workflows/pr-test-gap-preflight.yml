@@ -1,0 +1,47 @@
+name: Test-gap source and registry preflight (Windows)
+
+# This branch-only check is not a substitute for the interactive GUI suite
+# or the clean Windows 11 release VM. It exists to execute new PR #16 tests.
+on:
+  push:
+    branches:
+      - work/test-gap-m0-a0-up01
+    paths:
+      - 'tools/release/**'
+      - 'docs/maintenance/**'
+      - '.github/workflows/pr-test-gap-preflight.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  contracts:
+    name: A0 / UP-01 / PKG-01 / MGMT-03 source regressions
+    runs-on: windows-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run isolated source, payload and registry regression tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $tests = @(
+            'Test-LegacyUiSurfaceInventory.ps1',
+            'Test-LegacyConfig-Canary.ps1',
+            'Test-GuiConfig-Isolation.ps1',
+            'Test-PluginCoverageInventory.ps1',
+            'Test-TestGapTracker.ps1',
+            'Test-ProductVersion.ps1'
+          )
+          foreach ($test in $tests) {
+            Write-Host "=== Running $test ==="
+            & pwsh.exe -NoLogo -NoProfile -File (Join-Path 'tools/release/tests' $test)
+            if ($LASTEXITCODE -ne 0) {
+              throw "Regression $test failed (exit code $LASTEXITCODE)."
+            }
+          }
+          Write-Host 'PASS: all scoped source/registry regressions executed on this commit.'
