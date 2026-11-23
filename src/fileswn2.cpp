@@ -77,16 +77,21 @@ void CFilesWindow::Execute(int index)
             strlen(GetPath()) + strlen(Dirs->At(index).Name) + 1 >= MAX_PATH - 2;
         const bool unicodeDirectory = index < Dirs->Count &&
             UnicodeDiskNames.IsUnsafeAnsiName(Dirs->At(index).Name);
-        if (HasLongDiskPath() || wouldEnterLongDirectory || unicodeDirectory)
+        // Even short parent paths may be lossy ANSI projections; never pass
+        // those bytes to the association/archive entry point.
+        const bool unicodeParent =
+            !Salamander::IsExactAnsiName(GetPath(), GetDiskPathW().c_str());
+        if (HasLongDiskPath() || wouldEnterLongDirectory ||
+            unicodeDirectory || unicodeParent)
         {
             // Execute's legacy code below copies paths into MAX_PATH buffers.
             // Keep file association/archive execution refused on long paths.
             if (index >= Dirs->Count)
             {
                 MessageBoxW(HWindow,
-                            L"Opening files from this long directory is not yet "
+                            L"Opening files from this Unicode or long directory is not yet "
                             L"supported by the legacy association/archive handler.",
-                            L"Long directory", MB_OK | MB_ICONINFORMATION);
+                            L"Unicode directory", MB_OK | MB_ICONINFORMATION);
                 EndStopRefresh();
                 return;
             }
