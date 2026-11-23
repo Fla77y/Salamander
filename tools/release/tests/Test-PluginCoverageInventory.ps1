@@ -117,6 +117,15 @@ EndProject
         Get-SalamanderPluginInventory -Repository $fake -BuiltDirectory $build
     } -Reason 'misplaced SPL binary' -ExpectedError 'Unexpected built SPL location'
     [IO.File]::Delete($wrong)
+    # A root-level SPL must not be omitted simply because it is not in
+    # the conventional plugins/<name>/<name>.spl location.
+    $rootSPL = Join-Path $build 'rogue-root.spl'
+    [IO.File]::WriteAllBytes($rootSPL, [byte[]](4,5,6))
+    Assert-InventoryRejected -Action {
+        Get-SalamanderPluginInventory -Repository $fake -BuiltDirectory $build
+    } -Reason 'SPL outside plugin tree' -ExpectedError 'Unexpected built SPL outside plugins tree'
+    [IO.File]::Delete($rootSPL)
+
     Assert-InventoryRejected -Action {
         Get-SalamanderPluginInventory -Repository $fake -StagedDirectory $stage
     } -Reason 'stage without build context' -ExpectedError 'Staged plug-ins require a build directory'
