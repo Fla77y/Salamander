@@ -201,6 +201,34 @@ EndProject
 
     & $invoker -Repository $fake -BuiltDirectory $build -StagedDirectory $stage -RequireMatchingPayloads -RequiredShippedModules @('alpha','beta')
 
+    # PKG-01: Release completeness is stronger than equal hashes.
+    # Two matching copies of an undeclared module must be rejected.
+    Assert-InventoryRejected -Action {
+        & $invoker -Repository $fake -BuiltDirectory $build -StagedDirectory $stage -RequireMatchingPayloads -RequireSolutionPluginPayloads
+    } -Reason 'undeclared matched SPL in release stage' -ExpectedError 'Undeclared shipped plug-ins: rogue'
+    [IO.File]::Delete((Join-Path $build 'plugins\rogue\rogue.spl'))
+    [IO.File]::Delete((Join-Path $stage 'plugins\rogue\rogue.spl'))
+
+    # Source-only winscp is not a Solution project and need not ship.
+    & $invoker -Repository $fake -BuiltDirectory $build -StagedDirectory $stage -RequireMatchingPayloads -RequireSolutionPluginPayloads
+
+    # A Solution project omitted from BOTH trees previously looked like
+    # NOT_SHIPPED, hiding an incomplete Release archive.
+    $buildBeta = Join-Path $build 'plugins\beta\beta.spl'
+    $stageBeta = Join-Path $stage 'plugins\beta\beta.spl'
+    [IO.File]::Delete($buildBeta)
+    [IO.File]::Delete($stageBeta)
+    Assert-InventoryRejected -Action {
+        & $invoker -Repository $fake -BuiltDirectory $build -StagedDirectory $stage -RequireMatchingPayloads -RequireSolutionPluginPayloads
+    } -Reason 'Solution module silently omitted from build and stage' -ExpectedError 'Missing Solution plug-in payloads: beta'
+    [IO.File]::WriteAllBytes($buildBeta, [byte[]](7,8,9))
+    [IO.File]::WriteAllBytes($stageBeta, [byte[]](7,8,9))
+
+    # A completeness request without byte-integrity comparison is invalid.
+    Assert-InventoryRejected -Action {
+        & $invoker -Repository $fake -BuiltDirectory $build -StagedDirectory $stage -RequireSolutionPluginPayloads
+    } -Reason 'completeness without checksums' -ExpectedError '-RequireSolutionPluginPayloads requires -RequireMatchingPayloads'
+
     $stageAlpha = Join-Path $stage 'plugins\alpha\alpha.spl'
     [IO.File]::WriteAllBytes($stageAlpha, [byte[]](1,2,4))
     $damaged = @(Get-SalamanderPluginInventory -Repository $fake -BuiltDirectory $build -StagedDirectory $stage |
