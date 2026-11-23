@@ -113,6 +113,18 @@ function Get-SalamanderPluginInventory {
     foreach ($name in @($names | Sort-Object)) {
         $hasBuilt = $null -ne $built -and $built.ContainsKey($name)
         $hasStaged = $null -ne $staged -and $staged.ContainsKey($name)
+
+        $builtHash = if ($hasBuilt -and $null -ne $staged) {
+            (Get-FileHash -LiteralPath $built[$name] -Algorithm SHA256).Hash
+        } else { '' }
+        $stagedHash = if ($hasStaged) {
+            (Get-FileHash -LiteralPath $staged[$name] -Algorithm SHA256).Hash
+        } else { '' }
+        $payloadStatus = if ($null -eq $staged) { 'NOT_CHECKED' }
+                         elseif (-not $hasBuilt) { 'MISSING_BUILT' }
+                         elseif (-not $hasStaged) { 'MISSING_STAGED' }
+                         elseif ($builtHash -cne $stagedHash) { 'HASH_MISMATCH' }
+                         else { 'MATCH' }
         [pscustomobject]@{
             Plugin               = $name
             SourceDirectory      = $sourceNames.Contains($name)
@@ -123,6 +135,9 @@ function Get-SalamanderPluginInventory {
                                    elseif ($hasStaged) { 'PRESENT' } else { 'ABSENT' }
             BuiltPath            = if ($hasBuilt) { $built[$name] } else { '' }
             StagedPath           = if ($hasStaged) { $staged[$name] } else { '' }
+            BuiltSHA256          = $builtHash
+            StagedSHA256         = $stagedHash
+            PayloadStatus        = $payloadStatus
             Capabilities         = 'NOT_ASSESSED'
             UnicodeAcceptance    = 'NOT_TESTED'
             LongPathAcceptance   = 'NOT_TESTED'
