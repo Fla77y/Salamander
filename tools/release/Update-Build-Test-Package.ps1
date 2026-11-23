@@ -14,7 +14,7 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$BuildRoot = 'D:\Build\OpenSal',
+    [string]$BuildRoot,
     [switch]$SkipUpdate,
     [switch]$SkipInstaller,
     [switch]$SkipBuild,
@@ -29,6 +29,9 @@ $PSNativeCommandUseErrorActionPreference = $false
 
 $repository = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).ProviderPath
 $solution = Join-Path $repository 'src\vcxproj\salamand.sln'
+if ([string]::IsNullOrWhiteSpace($BuildRoot)) {
+    $BuildRoot = Join-Path $repository '.Build'
+}
 $buildRootFull = [IO.Path]::GetFullPath($BuildRoot)
 $env:OPENSAL_BUILD_DIR = $buildRootFull.TrimEnd('\') + '\'
 $artifactDir = Join-Path $buildRootFull 'dist'
@@ -38,9 +41,7 @@ $variantPaths = @{
     Release = Join-Path $buildRootFull 'salamander\Release_x64'
 }
 
-if ($buildRootFull.TrimEnd('\').StartsWith($repository + '\', [StringComparison]::OrdinalIgnoreCase)) {
-    throw 'BuildRoot must be outside the Git repository to keep updates safe.'
-}
+Assert-BuildDirectory -Repository $repository -BuildRoot $buildRootFull
 
 if (-not (Test-Path -LiteralPath $solution -PathType Leaf)) {
     throw "Solution does not exist: $solution"
