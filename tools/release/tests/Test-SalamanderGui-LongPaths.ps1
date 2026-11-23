@@ -4866,8 +4866,73 @@ try {
             -not [IO.File]::Exists($unicodeCopy) -and
             -not [IO.File]::Exists($asciiCopy) } 'Unicode F6 moves both selected files'
         Assert-True (Test-Content $unicodeShortFile) 'Original Unicode source retained'
+
+        # Arrange: force the *same* two selected files through the progress
+        # worker. The original small batch above still tests the synchronous
+        # path. A 17-MiB ASCII file plus one Unicode filename exceeds 16 MiB.
+        [IO.File]::Delete($unicodeMoved)
+        [IO.File]::Delete($asciiMoved)
+        $largeSecondSource = Join-Path $source $secondName
+        $largeBytes = [byte[]]::new(17MB)
+        [IO.File]::WriteAllBytes($largeSecondSource, $largeBytes)
+        $largeSecondHash = (Get-FileHash -LiteralPath $largeSecondSource -Algorithm SHA256).Hash
+        Send-Keys '{TAB}'
+        Go-ToPath $destination
+        Send-Keys '{TAB}'
+        Go-ToPath $source
+        Select-TwoRegularFiles -ExpectedNames @($utfName, $secondName)
+        Send-Keys '{F5}'
+        Wait-Until {
+            (Get-TestDialog) -match 'Copy 2 selected Unicode/ASCII disk files'
+        } 'Unicode F5 large batch confirmation'
+        Send-Keys '{ENTER}'
+        $largeSecondCopy = Join-Path $destination $secondName
+        $unicodeCopy = Join-Path $destination $utfName
+        Wait-Until {
+            if (-not (Test-Content $unicodeCopy) -or
+                -not [IO.File]::Exists($largeSecondCopy)) { return $false }
+            try {
+                return (Get-FileHash -LiteralPath $largeSecondCopy -Algorithm SHA256).Hash -ceq $largeSecondHash
+            }
+            catch { return $false }
+        } 'Unicode worker F5 copies 17-MiB batch member with exact SHA-256'
+        Wait-Until {
+            [SalamanderGuiNative]::FindOwnedDialogControl(
+                [uint32]$process.Id, 158, $null) -eq [IntPtr]::Zero
+        } 'Unicode F5 large batch progress worker completed'
+        Assert-True ((Get-FileHash -LiteralPath $largeSecondSource -Algorithm SHA256).Hash -ceq $largeSecondHash) 'Large batch F5 source unchanged'
+
+        # F6 from the copied directory into the emptied owned destination.
+        Send-Keys '{TAB}'
+        Go-ToPath $moveDir
+        Send-Keys '{TAB}'
+        Go-ToPath $destination
+        Select-TwoRegularFiles -ExpectedNames @($utfName, $secondName)
+        Send-Keys '{F6}'
+        Wait-Until {
+            (Get-TestDialog) -match 'Move 2 selected Unicode/ASCII disk files'
+        } 'Unicode F6 large batch confirmation'
+        Send-Keys '{ENTER}'
+        $largeSecondMoved = Join-Path $moveDir $secondName
+        $unicodeMoved = Join-Path $moveDir $utfName
+        Wait-Until {
+            if (-not (Test-Content $unicodeMoved) -or
+                -not [IO.File]::Exists($largeSecondMoved) -or
+                [IO.File]::Exists($largeSecondCopy) -or
+                [IO.File]::Exists($unicodeCopy)) { return $false }
+            try {
+                return (Get-FileHash -LiteralPath $largeSecondMoved -Algorithm SHA256).Hash -ceq $largeSecondHash
+            }
+            catch { return $false }
+        } 'Unicode worker F6 moves 17-MiB batch member with exact SHA-256'
+        Wait-Until {
+            [SalamanderGuiNative]::FindOwnedDialogControl(
+                [uint32]$process.Id, 158, $null) -eq [IntPtr]::Zero
+        } 'Unicode F6 large batch worker completed'
+        Assert-True (Test-Content $unicodeShortFile) 'Original independent Unicode fixture retained'
+        Assert-True ((Get-FileHash -LiteralPath $largeSecondSource -Algorithm SHA256).Hash -ceq $largeSecondHash) 'Original independent large fixture retained'
         $passed = $true
-        Write-Host 'PASS: multi-selection Unicode F5/F6 transfers every selected regular file.'
+        Write-Host 'PASS: Unicode F5/F6 both synchronous and background 17-MiB multi-file transfers preserve exact bytes.'
         return
     }
 
