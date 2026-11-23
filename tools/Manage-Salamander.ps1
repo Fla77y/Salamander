@@ -10,7 +10,7 @@ $PSNativeCommandUseErrorActionPreference = $false
 
 $requestedActions = @($args)
 $repository = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).ProviderPath
-$buildRoot = 'D:\Build\OpenSal'
+$buildRoot = Join-Path $repository '.Build'
 $configuration = 'Release'
 $validOptions = @('--update', '--build', '--test', '--setup', '--run',
                   '--test-gui-large-unicode-copy', '--test-gui-legacy-find', '--test-clipboard-snapshot',
