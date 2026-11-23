@@ -165,6 +165,29 @@ EndProject
     [IO.File]::WriteAllBytes((Join-Path $stage 'plugins\rogue\rogue.spl'), [byte[]](4,5,6))
     & $invoker -Repository $fake -BuiltDirectory $build -StagedDirectory $stage -RequireMatchingPayloads
 
+    # RED: comparing two empty plug-in folders must never be reported as
+    # successful release payload coverage, even though every source project
+    # is classified NOT_SHIPPED in both trees.
+    $emptyBuild = Join-Path $root 'empty-build'
+    $emptyStage = Join-Path $root 'empty-stage'
+    [void][IO.Directory]::CreateDirectory((Join-Path $emptyBuild 'plugins'))
+    [void][IO.Directory]::CreateDirectory((Join-Path $emptyStage 'plugins'))
+    Assert-InventoryRejected -Action {
+        & $invoker -Repository $fake -BuiltDirectory $emptyBuild -StagedDirectory $emptyStage -RequireMatchingPayloads
+    } -Reason 'both output trees have no plug-ins' -ExpectedError 'No matching staged SPL payloads'
+
+    # RED: an expected release module cannot be silently omitted from both
+    # sides; source-only folders are exempt only if not explicitly required.
+    Assert-InventoryRejected -Action {
+        & $invoker -Repository $fake -BuiltDirectory $build -StagedDirectory $stage -RequireMatchingPayloads -RequiredShippedModules @('alpha','winscp')
+    } -Reason 'required source-only module absent from release' -ExpectedError 'Required shipped plug-ins missing or mismatched: winscp'
+
+    Assert-InventoryRejected -Action {
+        & $invoker -Repository $fake -BuiltDirectory $build -StagedDirectory $stage -RequireMatchingPayloads -RequiredShippedModules @('alpha','alpha')
+    } -Reason 'duplicate required module name' -ExpectedError 'Duplicate required plug-in name'
+
+    & $invoker -Repository $fake -BuiltDirectory $build -StagedDirectory $stage -RequireMatchingPayloads -RequiredShippedModules @('alpha','beta')
+
     $stageAlpha = Join-Path $stage 'plugins\alpha\alpha.spl'
     [IO.File]::WriteAllBytes($stageAlpha, [byte[]](1,2,4))
     $damaged = @(Get-SalamanderPluginInventory -Repository $fake -BuiltDirectory $build -StagedDirectory $stage |
