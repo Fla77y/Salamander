@@ -132,6 +132,13 @@ foreach ($configuration in @('Debug', 'Release')) {
     Write-Host "=== Packaging $configuration x64 ==="
     $stage = Join-Path $stageRoot ("OpenSalamander-{0}-x64" -f $configuration)
     New-DistributionStage -BuiltDirectory $variantPaths[$configuration] -Stage $stage -Repository $repository -Configuration $configuration -CrtFolders $crt
+    # PKG-01: a successful copy is insufficient. Reject missing mandatory
+    # plugins and byte differences between built and staged payloads before
+    # creating either a portable archive or an installer.
+    & (Join-Path $PSScriptRoot 'Invoke-PluginCoverageInventory.ps1') `
+        -Repository $repository -BuiltDirectory $variantPaths[$configuration] `
+        -StagedDirectory $stage -RequireMatchingPayloads `
+        -RequiredShippedModules @('7zip','checksum','filecomp','renamer','pictview')
     Test-DistributionStage -Stage $stage -Configuration $configuration -DumpbinExe $dumpbinExe
 
     $archive = Join-Path $artifactDir ("OpenSalamander-{0}-x64.7z" -f $configuration)
