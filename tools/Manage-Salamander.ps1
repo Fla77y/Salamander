@@ -257,6 +257,11 @@ function Run-Tests {
     $legacyFindContract = Join-Path $repository 'tools\release\tests\Test-LegacyFind-UiContract.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $legacyFindContract)
 
+    # A0/UP-01: fail when a plug-in source/project silently disappears and
+    # exercise the read-only inventory's missing/rogue-module cases.
+    $pluginCoverageInventory = Join-Path $repository 'tools\release\tests\Test-PluginCoverageInventory.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $pluginCoverageInventory)
+
     $pluginModuleContract = Join-Path $repository 'tools\release\tests\Test-PluginModulePaths-Contract.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $pluginModuleContract)
 
