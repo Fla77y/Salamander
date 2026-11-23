@@ -116,6 +116,16 @@ Es wurden keine GUI-/Win32-Tests für diese neuen Dateien ausgeführt.
   sowie kritische F2–F8-/Find-Kommandos gegen unbemerkten Wegfall.
   Die Referenz ist der *grüne 5.2-Quellstand*, **nicht** eine
   Original-5.0-UI-Vergleichsmessung; A0 bleibt offen.
+- **A0-02, Importpfad weiterhin blockierend:** Die vorhandenen
+  Produktpfade `FindLatestConfiguration` und
+  `CMainWindow::DeleteOldConfigurations` (Aufruf in
+  `src/salamdr1.cpp`) können eine ältere Konfiguration nach
+  ausdrücklicher Import-/Löschentscheidung entfernen.
+  Der neue Canary prüft nur die vorhandene 5.2-Config0, **nicht**
+  diesen Pfad. Für die Release-Gate-Vorgabe „5.0-Registry erhalten“
+  ist ein separater, echter 5.0→5.2-VM-Import- und Rollbacktest
+  einschließlich beider Dialogentscheidungen notwendig.
+
 - **A0-02, neue Regression vorbereitet:** Ein echtes Registry-
   Negativtestskript `Test-LegacyConfig-Canary.ps1` erstellt ausschließlich
   eigene GUID-Schlüssel und erkennt geänderte Unicode-/Binärwerte,
@@ -133,6 +143,16 @@ Es wurden keine GUI-/Win32-Tests für diese neuen Dateien ausgeführt.
   erforderlichen isolierten 5.0→5.2→5.0-Snapshots sind im
   [Legacy-Verhaltensinventar](Legacy-Verhalten-und-Konfiguration-5.2.md)
   einzeln erfasst. **Kein** echter VM-/Rollback-Test neu ausgeführt.
+- **UP-01 / PKG-01, SHA-256-Gate vorbereitet:** Der neue SPL-
+  Inventarreport vergleicht bei ausdrücklich bereitgestellten
+  Build- und Staging-Verzeichnissen die tatsächlich enthaltenen
+  SPL-Bytes per SHA-256. `-RequireMatchingPayloads` lehnt fehlende,
+  zusätzliche und veränderte SPLs ab. Die synthetischen Regressionen
+  simulieren `HASH_MISMATCH`, `MISSING_BUILT`, `MISSING_STAGED`
+  und ein bewusst nicht ausgeliefertes Quellmodul (`NOT_SHIPPED`).
+  Noch kein echter Build-/Staging-/Release-Artefaktvergleich oder
+  Windows-Testlauf für diese Änderungen erfolgt.
+
 - **UP-01, TEILBELEGT:** Die tatsächliche Solution enthält **35**
   gleichnamige Top-Level-Plugin-Projekte; unter src/plugins liegen
   **36** Plugin-Quellordner (ohne shared). **winscp** ist derzeit
