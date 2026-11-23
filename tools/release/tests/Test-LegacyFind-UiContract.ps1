@@ -121,6 +121,8 @@ foreach ($required in @('ClipboardSequenceChanged=', 'ClipboardTextKind=',
     }
 }
 if ($viewerCopyAssert -notmatch '(?s)catch\s*\{.*?if \(\$_.Exception.Message -cne' -or
+    $viewerCopyAssert -notmatch '\$observed\s*=\s*@\{' -or
+    $viewerCopyAssert -notmatch '\$observed\.Sequence' -or
     $viewerCopyAssert -notmatch 'Wait-Until\s*\{' -or
     $viewerCopyAssert -notmatch "GetClipboardSequenceNumber\(\)" -or
     $viewerCopyAssert -notmatch 'Get-ClipboardText') {
