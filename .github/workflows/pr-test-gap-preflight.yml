@@ -40,6 +40,7 @@ jobs:
             'Test-LegacyConfig-Canary.ps1',
             'Test-GuiConfig-Isolation.ps1',
             'Test-PluginCoverageInventory.ps1',
+            'Test-PluginExport-Parser.ps1',
             'Test-TestGapTracker.ps1',
             'Test-VS2026-ProjectMetadata.ps1',
             'Test-ProductVersion.ps1'
