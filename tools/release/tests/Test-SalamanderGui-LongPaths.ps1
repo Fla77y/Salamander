@@ -5195,6 +5195,71 @@ try {
     Wait-Until { Test-Content $longTargetFile } 'F5 short source into long target'
     Assert-True ((Test-Content $longTargetFile) -and (Test-Content $shortSourceFile)) 'F5 short-to-long bytes intact at both paths'
 
+    # UP-07 regression: BOTH panel directories are below MAX_PATH,
+    # but the other panel + leaf exceeds it. F5/F6 must choose their
+    # W-backed route before constructing any ANSI destination buffer.
+    # This is a GUID-owned fixture, never an existing user directory.
+    $boundaryDirectoryLength = 245
+    $boundaryComponentLength = $boundaryDirectoryLength - $root.Length - 1
+    Assert-True ($boundaryComponentLength -ge 16 -and
+                 $boundaryComponentLength -le 240) 'Fixture can represent a safe near-MAX_PATH directory'
+    $boundaryDirectory = Join-Path $root ('n' * $boundaryComponentLength)
+    Assert-True ($boundaryDirectory.Length -eq $boundaryDirectoryLength) 'Destination directory is shorter than MAX_PATH'
+    [void][IO.Directory]::CreateDirectory($boundaryDirectory)
+    $boundaryName = 'zzzz-target-overflow-' + ('x' * 22) + '.bin'
+    $boundarySource = Join-Path $destination $boundaryName
+    $boundaryTarget = Join-Path $boundaryDirectory $boundaryName
+    Assert-True ($boundarySource.Length -lt 260 -and
+                 $boundaryTarget.Length -gt 260) 'Only target file crosses legacy MAX_PATH'
+    [IO.File]::WriteAllBytes($boundarySource, $payload)
+
+    # Arrange: other panel points to the near-boundary destination.
+    Send-Keys '{TAB}'
+    Go-ToPath $boundaryDirectory
+    Send-Keys '{TAB}'
+    Go-ToPath $destination
+    Assert-True ((Read-PanelPath) -ceq $destination) 'F5 short source panel verified'
+    Send-Keys '{END}'
+    Assert-True ((Read-FocusedFilename) -ceq $boundaryName) 'F5 near-limit source identity verified'
+    # Act: an ordinary lossless-ANSI leaf must still use the Unicode engine.
+    Send-Keys '{F5}'
+    Wait-Until {
+        $dialog = Get-TestDialog
+        if ($dialog -match 'legacy ANSI file-operation engine|native Unicode file operation') {
+            throw "F5 incorrectly rejected target-overflow file: $dialog"
+        }
+        return $dialog -match 'Copy the Unicode file to the other panel'
+    } 'F5 target-leaf overflow routes through Unicode confirmation'
+    Send-Keys '{ENTER}'
+    # Assert: the source remains, and the >MAX_PATH destination has exact bytes.
+    Wait-Until { (Test-Content $boundaryTarget) -and
+                 (Test-Content $boundarySource) } 'F5 lossless leaf into near-MAX_PATH target'
+    [IO.File]::Delete($boundaryTarget)
+
+    # Arrange / Act / Assert: F6 uses the same destination length gate,
+    # removing only the original fixture after a successful same-volume move.
+    Go-ToPath $destination
+    Send-Keys '{END}'
+    Assert-True ((Read-FocusedFilename) -ceq $boundaryName) 'F6 near-limit source identity verified'
+    Send-Keys '{F6}'
+    Wait-Until {
+        $dialog = Get-TestDialog
+        if ($dialog -match 'legacy ANSI file-operation engine|native Unicode file operation') {
+            throw "F6 incorrectly rejected target-overflow file: $dialog"
+        }
+        return $dialog -match 'Move the Unicode file to the other panel'
+    } 'F6 target-leaf overflow routes through Unicode confirmation'
+    Send-Keys '{ENTER}'
+    Wait-Until { (Test-Content $boundaryTarget) -and
+                 -not [IO.File]::Exists($boundarySource) } 'F6 near-MAX_PATH target preserves bytes'
+    Write-Host 'PASS: F5/F6 accept lossless short sources whose target leaf exceeds MAX_PATH.'
+    # Restore the opposite panel before deleting the GUID-owned test folder.
+    Send-Keys '{TAB}'
+    Go-ToPath $deep
+    Send-Keys '{TAB}'
+    [IO.File]::Delete($boundaryTarget)
+    [IO.Directory]::Delete($boundaryDirectory)
+
     $clipboardName = 'clipboard-東京-😀.txt'
     $clipboardSource = Join-Path $destination $clipboardName
     $clipboardTarget = Join-Path $deep $clipboardName
