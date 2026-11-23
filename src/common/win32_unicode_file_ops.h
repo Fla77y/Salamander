@@ -306,12 +306,38 @@ inline bool TryCopyUnicodeFileNoOverwrite(const Utf16DiskPath& source,
 // full file-operation engine with appropriate verification and recovery.
 inline bool TryMoveUnicodeFileNoOverwrite(const Utf16DiskPath& source,
                                           const Utf16DiskPath& destination,
-                                          DWORD& error)
+                                          DWORD& error,
+                                          const BY_HANDLE_FILE_INFORMATION* expectedSource = nullptr)
 {
     std::wstring sourcePath, destinationPath;
     if (!UnicodeFileOperationsDetail::TryGetExtendedPath(source, sourcePath, error) ||
         !UnicodeFileOperationsDetail::TryGetExtendedPath(destination, destinationPath, error))
         return false;
+
+    if (expectedSource != nullptr)
+    {
+        const HANDLE original = CreateFileW(
+            sourcePath.c_str(), DELETE | FILE_READ_ATTRIBUTES,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+        if (original == INVALID_HANDLE_VALUE)
+        {
+            error = GetLastError();
+            return false;
+        }
+        BY_HANDLE_FILE_INFORMATION actual{};
+        bool renamed = false;
+        if (!GetFileInformationByHandle(original, &actual))
+            error = GetLastError();
+        else if (!UnicodeFileOperationsDetail::IsSameRegularFile(
+                     *expectedSource, actual))
+            error = ERROR_FILE_INVALID;
+        else
+            renamed = UnicodeFileOperationsDetail::TryRenameOpenFileNoOverwrite(
+                original, destinationPath, error);
+        CloseHandle(original);
+        return renamed;
+    }
 
     if (!MoveFileExW(sourcePath.c_str(), destinationPath.c_str(), 0))
     {
