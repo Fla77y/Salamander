@@ -20,10 +20,15 @@ function Assert-EquivalentNames {
 }
 
 function Assert-InventoryRejected {
-    param([scriptblock]$Action, [string]$Reason)
+    param([scriptblock]$Action, [string]$Reason, [string]$ExpectedError)
     $rejected = $false
     try { $null = & $Action }
-    catch { $rejected = $true }
+    catch {
+        if (-not $_.Exception.Message.Contains($ExpectedError, [StringComparison]::OrdinalIgnoreCase)) {
+            throw "Inventory rejected '$Reason' for the wrong reason: $($_.Exception.Message)"
+        }
+        $rejected = $true
+    }
     if (-not $rejected) { throw "Invalid plug-in inventory accepted: $Reason" }
 }
 
@@ -110,11 +115,19 @@ EndProject
     [IO.File]::WriteAllBytes($wrong, [byte[]](0,1,2))
     Assert-InventoryRejected -Action {
         Get-SalamanderPluginInventory -Repository $fake -BuiltDirectory $build
-    } -Reason 'misplaced SPL binary'
+    } -Reason 'misplaced SPL binary' -ExpectedError 'Unexpected built SPL location'
     [IO.File]::Delete($wrong)
     Assert-InventoryRejected -Action {
         Get-SalamanderPluginInventory -Repository $fake -StagedDirectory $stage
-    } -Reason 'stage without build context'
+    } -Reason 'stage without build context' -ExpectedError 'Staged plug-ins require a build directory'
+
+    # A duplicate top-level project must be diagnosed, not de-duplicated
+    # silently into a plausible-looking source inventory.
+    [IO.File]::AppendAllText((Join-Path $fakeSolution 'salamand.sln'), $solutionText)
+    Assert-InventoryRejected -Action {
+        Get-SalamanderPluginInventory -Repository $fake
+    } -Reason 'duplicate project declarations' -ExpectedError 'Duplicate Salamander plug-in project'
+    [IO.File]::WriteAllText((Join-Path $fakeSolution 'salamand.sln'), $solutionText)
 
     $reports = Join-Path $root 'reports'
     [void][IO.Directory]::CreateDirectory($reports)
