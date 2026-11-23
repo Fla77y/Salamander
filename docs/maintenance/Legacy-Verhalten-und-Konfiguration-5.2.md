@@ -2,10 +2,13 @@
 
 **Status:** TEILBELEGT · **Referenz-Quellstand:** `a7ab5b40d859509ffe5fead2d8f00739399a5067` · **23.11.2026**
 
-Dieses Inventar charakterisiert die **aktuell sichtbaren Verträge**; es ist
-**kein Beleg vollständiger Gleichheit mit dem Original 5.0**. Die ursprüngliche
-5.0-Binärversion und ihre Ressourcen/Interaktionen müssen für A0-01 auf einer
-geeigneten, getrennten Testumgebung als Referenz vermessen werden. Bestehende
+Dieses Inventar charakterisiert die **aktuell sichtbaren Verträge** und
+vergleicht deklarierte Ressourcen mit dem ursprünglichen GitHub-5.0-Quellstand
+`3945ecf7a655b2dbb0a50e189a2682e1e336352e` (Initial-Commit 2023-12-04;
+`spl_vers.h` nennt Produktversion 5.0). Dies ist **kein Beleg vollständiger
+GUI- oder Funktionsgleichheit mit einer ausgeführten Original-5.0-Version**.
+Die ursprüngliche 5.0-Binärversion und ihre Laufzeitinteraktionen müssen
+für A0-01 auf einer getrennten Testumgebung vermessen werden. Bestehende
 Benutzeroberfläche und Shortcuts dürfen nicht ungefragt verändert werden.
 
 ## A0-01: Aktueller UI-/Funktionsbestand und Testbelege
@@ -19,6 +22,27 @@ Benutzeroberfläche und Shortcuts dürfen nicht ungefragt verändert werden.
 | PictView/F3, WIC, Navigation, Transform/Export | `src/plugins/pictview/`, `docs/pictview-wic-migration.md` | Native WIC-Tests und ein früherer realer BMP-F3-Host-Smoketest | **Historische Funktionen fehlen im Produkt** (u. a. zeitgesteuertes GIF, Bearbeitung/Undo, Capture/Print, alte Menüs); `WIC-02`…07 |
 | Viewer/Editor/Shell, Clipboard, Papierkorb | `src/mainwnd*.cpp`, `src/fileswn*.cpp` | Diverse GUI-Kern- und Clipboard-/Unicode-Tests | Alle Modalfehler, Shell-Umgebungen, externe Handler, Originalverhalten |
 | Locale, Skalierung, High-DPI, Barrierefreiheit | Win32-Dialogressourcen/GUI | Teilweise Ressourcen-/GUI-Verträge | DPI-/Sprach-/Tastaturnavigation, Focus/Screenreader, `QA-04` |
+
+**Statischer Originalquellenvergleich (5.0 → 5.2):**
+- `src/lang/lang.rc`: alle 107 Dialogdefinitionen einschließlich ihres
+  übrigen Ressourcenquelltextes sind bytegleich nach Abzug des zusätzlichen
+  UTF-8-BOM der 5.2-Datei; kein Dialog-Text-/Layout-Unterschied im
+  verglichenen `.rc` nachweisbar.
+- `src/lang/lang.rh`: identisches Git-Blob (`b3deae919240047f9def59238b7edc88b75644de`);
+  die numerischen Ressourcen-IDs sind unverändert.
+- `src/salamand.rc`: alle 89 ursprünglichen Accelerator-Zeilen bleiben
+  erhalten (einschließlich eines im Original wiederholten F4-Eintrags).
+  Ausschließlich `Alt+Shift+F7 → CM_FINDUNICODEFILE` kam hinzu; vier
+  Acceleratorgruppen und die beiden bereits vorhandenen Dialogressourcen
+  bleiben erhalten.
+- `src/plugins/pictview/pictview.rc` und `.rh`: identische Git-Blobs.
+  Daraus folgt **nicht** PictView-Laufzeitparität; die WIC-Migration hat
+  nachweislich andere und derzeit fehlende Funktionen (WIC-06).
+- Die 89 Original-Bindings sind als überprüfbare Multimenge in
+  `tools/release/ui-resource-inventory-baseline.json` verankert.
+  `Test-LegacyUiSurfaceInventory.ps1` erkennt auch den absichtlichen
+  Testfall „F5 Copy-Binding entfernt“. Diese Tests **wurden noch nicht
+  unter PowerShell/Windows ausgeführt**.
 
 **Ressourceninventar am betrachteten Stand:** `src/lang/lang.rc`
 enthält **107** explizite `IDD_...`-Dialogdefinitionen;
@@ -56,8 +80,11 @@ Originaldaten als Beleg **lesen**, nicht korrigieren. Freigabe ausstehend.
 
 ## Arbeiten in Reihenfolge
 
-- [ ] 5.0-Referenzartefakt/-konfiguration nachweisen und auf isolierter VM
-  bereitstellen (A0-01, A0-02).
+- [x] Originales 5.0-GitHub-Quellcommit für die oben genannten
+  Dialog-/Accelerator-Ressourcen verifiziert (statischer Quellvergleich).
+- [ ] Originales 5.0-**Binärartefakt** und die zugehörige
+  Benutzerkonfiguration nachweisen und auf isolierter VM bereitstellen
+  (A0-01, A0-02).
 - [ ] Charakterisierung aller erreichbaren Dialoge/Menüs/Shortcuts gegen
   Originalerwartungen dokumentieren; fehlende automatisierte GUI-Fälle
   ergänzen (A0-01).
@@ -69,6 +96,8 @@ Originaldaten als Beleg **lesen**, nicht korrigieren. Freigabe ausstehend.
   OS/Locale, Dateihashes und Protokollen in
   `Testluecken-und-Abnahmeplan-5.2.md` eintragen.
 
-**Ergebnis dieses Inventarisierungsschritts:** Belegquellen und bislang
-fehlende Referenzszenarien sind nun explizit zugeordnet. A0-01/A0-02
-verbleiben **TEILBELEGT**; es gab noch keinen Original-5.0-Vergleich.
+**Ergebnis dieses Inventarisierungsschritts:** Der statische
+5.0→5.2-Ressourcenvergleich ist belegt; wichtige Tastenkürzel und
+Dialogdeklarationen bleiben erhalten. A0-01/A0-02 verbleiben
+**TEILBELEGT**; ein echter 5.0-/5.2-Laufzeit-, Registry- und
+Funktionsvergleich wurde noch nicht ausgeführt.
