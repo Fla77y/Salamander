@@ -636,6 +636,15 @@ einen vollständigen Lesevorgang auf Quelle und
 Ziel; dies ist eine bewusste Datenintegritäts-
 abwägung. Die ADS-Kopie selbst folgt dem
 bestehenden Worker-Vertrag.
+Zusätzlich prüft der native
+`tools/tests/worker_copy_io.cpp`-Test die neue
+F6-`CREATE_NEW`-Zielerzeugung, die Schreibsperre der
+Quell-Handleöffnung, die Ablehnung von Zielpfad-
+Ersetzungen und die sichere Ablehnung von
+Metadatenänderungen an fremden Zieldateien.
+Auch diese Regression muss auf Windows tatsächlich
+kompiliert und ausgeführt werden.
+
 **Ein vollständiger Build, alle neuen GUI-Tests
 und das echte zweite Volume sind noch ausstehend.**
 
