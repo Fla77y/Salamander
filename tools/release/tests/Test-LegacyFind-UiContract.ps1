@@ -107,4 +107,25 @@ foreach ($case in 'Baseline','UnicodeMasks','UnicodeRootIgnore','FocusLong','Vie
         throw "Expected '$case' in the automatically discovered Legacy Find suite."
     }
 }
+# A timeout in the viewer Copy check must distinguish a command that did
+# not change the clipboard from a changed but byte-incorrect selection.
+# The diagnostic must not retry input, emit clipboard contents or mark a
+# mismatch as PASS; this protects user data and preserves the failure.
+$viewerCopyAssert = [regex]::Match($legacyGuiCases,
+    '(?s)function Assert-LegacyViewerContents\s*\{(.*?)\r?\n\}\s*\r?\nfunction Test-LegacyFindWideViewer').Groups[1].Value
+foreach ($required in @('ClipboardSequenceChanged=', 'ClipboardTextKind=',
+                        'ObservedUtf16Length=', 'ExpectedUtf16Length=',
+                        'ViewerStillMatches=', 'Viewer copied the exact bytes from the named result')) {
+    if (-not $viewerCopyAssert.Contains($required)) {
+        throw "Legacy Find Viewer Copy timeout lacks safe diagnosis: $required"
+    }
+}
+if ($viewerCopyAssert -notmatch '(?s)catch\s*\{.*?if \(\$_.Exception.Message -cne' -or
+    $viewerCopyAssert -notmatch 'Wait-Until\s*\{' -or
+    $viewerCopyAssert -notmatch "GetClipboardSequenceNumber\(\)" -or
+    $viewerCopyAssert -notmatch 'Get-ClipboardText') {
+    throw 'Viewer Copy diagnostics must preserve exact, bounded clipboard verification.'
+}
+Write-Host 'PASS: failed Viewer Copy distinguishes unchanged clipboard, mismatched text and lost viewer without replay.'
+
 Write-Host 'PASS: --test-all dispatches isolated, automatically discovered Legacy Find GUI scenarios.'
