@@ -14,7 +14,7 @@ $buildRoot = 'D:\Build\OpenSal'
 $configuration = 'Release'
 $validOptions = @('--update', '--build', '--test', '--setup', '--run',
                   '--test-gui-large-unicode-copy', '--test-gui-legacy-find', '--test-clipboard-snapshot',
-                  '--debug', '--release', '--all', '--build-delta', '--build-clean', '--test-all', '--test-gui', '--test-gui-max-path', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-recycle-restore', '--test-plugin-exports', '--test-plugin-load', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-unicode-find', '--test-gui-manual', '--test-gui-temp-delete', '--test-pictview', '--test-pictview-window', '--test-pictview-host', '--diagnose-gui', '--help', '-h', '/?')
+                  '--debug', '--release', '--all', '--build-delta', '--build-clean', '--test-all', '--test-gui', '--test-gui-max-path', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-gui-unicode-permanent-delete', '--test-recycle-restore', '--test-plugin-exports', '--test-plugin-load', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-unicode-find', '--test-gui-manual', '--test-gui-temp-delete', '--test-pictview', '--test-pictview-window', '--test-pictview-host', '--diagnose-gui', '--help', '-h', '/?')
 $requestedSet = [System.Collections.Generic.HashSet[string]]::new(
     [StringComparer]::OrdinalIgnoreCase)
 
@@ -55,6 +55,7 @@ Open Salamander – Verwaltung für Visual Studio 2026
   manage.cmd --test-gui-names  Unicode-Dateinamen in der GUI bei kurzen Pfaden prüfen
   manage.cmd --test-gui-unicode-rename  Echte UTF-16-F2-Umbenennung im Dateipanel prüfen
   manage.cmd --test-gui-unicode-recycle  F8-Dateioperation mit UTF-16 und Windows-Papierkorb prüfen
+  manage.cmd --test-gui-unicode-permanent-delete  Dauerhaftes F8 für eindeutig erkannte UTF-16-Datei prüfen
   manage.cmd --test-recycle-restore  Opt-in: echten Unicode-F8-Papierkorb und verlustfreie Wiederherstellung prüfen
   manage.cmd --test-plugin-exports  x64-Debug/Release-Plugins auf PE-Exports und SDK-ABI prüfen (nur lesen)
   manage.cmd --test-plugin-load  Opt-in: reale Plugin-Manager-Initialisierung für vier Plugins (lädt alle installierten)
@@ -613,6 +614,13 @@ try {
                 $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
                 Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
                                           '-SalamanderExe', $testedExe, '-ShortUnicodeRecycleOnly')
+            }
+            if ($requestedSet.Contains('--test-gui-unicode-permanent-delete')) {
+                Write-Host '=== SALAMANDER-GUI-UNICODE F8 PERMANENT DELETE ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-ShortUnicodePermanentDeleteOnly')
             }
             if ($requestedSet.Contains('--test-gui-unicode-transfer')) {
                 Write-Host '=== SALAMANDER-GUI-UNICODE F5/F6 TRANSFER ==='
