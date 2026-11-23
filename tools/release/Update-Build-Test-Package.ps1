@@ -17,13 +17,15 @@ param(
     [string]$BuildRoot = 'D:\Build\OpenSal',
     [switch]$SkipUpdate,
     [switch]$SkipInstaller,
-    [switch]$SkipBuild
+    [switch]$SkipBuild,
+    [ValidateSet('Delta', 'Rebuild', 'Clean')][string]$BuildMode = 'Rebuild'
 )
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
 . (Join-Path $PSScriptRoot 'Package-Helpers.ps1')
+. (Join-Path $PSScriptRoot 'Build-Helpers.ps1')
 
 $repository = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..')).ProviderPath
 $solution = Join-Path $repository 'src\vcxproj\salamand.sln'
@@ -60,7 +62,7 @@ if (-not $SkipUpdate) {
     $afterUpdate = (& git -C $repository rev-parse HEAD).Trim()
     if ($LASTEXITCODE -ne 0) { throw 'Unable to read updated Git revision.' }
     if ($afterUpdate -ne $beforeUpdate) {
-        $changedPipeline = @(& git -C $repository diff --name-only $beforeUpdate $afterUpdate -- 'tools/release/Update-Build-Test-Package.ps1' 'tools/release/Package-Helpers.ps1' 'tools/release/OpenSalamander.iss')
+        $changedPipeline = @(& git -C $repository diff --name-only $beforeUpdate $afterUpdate -- 'tools/release/Update-Build-Test-Package.ps1' 'tools/release/Package-Helpers.ps1' 'tools/release/Build-Helpers.ps1' 'tools/release/OpenSalamander.iss')
         if ($LASTEXITCODE -ne 0) { throw 'Unable to compare pipeline versions after Git update.' }
         if ($changedPipeline.Count -gt 0) {
             throw 'The update changed release pipeline scripts. Run the command again to load the new version safely.'
@@ -108,29 +110,23 @@ Write-Host "Build root: $env:OPENSAL_BUILD_DIR"
 Write-Host 'Rebuilding x64 Debug and Release...'
 
 if ($SkipBuild) { Write-Host 'Rebuild übersprungen: vorhandene Builds werden auf Vollständigkeit geprüft.' }
+if (-not $SkipBuild) {
+    Invoke-SalamanderBuild -Msbuild $msbuild -Solution $solution -Repository $repository `
+        -BuildRoot $buildRootFull -Mode $BuildMode -Invoke {
+            param($Executable, $Arguments)
+            Invoke-Checked $Executable $Arguments
+        }
+}
 foreach ($configuration in @('Debug', 'Release')) {
-    Write-Host "=== $configuration x64 ==="
-    if (-not $SkipBuild) {
-        Invoke-Checked $msbuild @(
-        $solution,
-        '/t:Rebuild',
-        "/p:Configuration=$configuration",
-        '/p:Platform=x64',
-        '/p:PreferredToolArchitecture=x64',
-        '/m',
-        '/nr:false',
-        '/v:minimal'
-        )
-    }
     $expectedBinary = Join-Path $variantPaths[$configuration] 'salamand.exe'
     if (-not (Test-Path -LiteralPath $expectedBinary -PathType Leaf)) {
-        throw "MSBuild reported success but the expected executable is missing: $expectedBinary"
+        throw "Build output is missing: $expectedBinary"
     }
 }
 
 Build-CompiledHelp -Repository $repository -HhcExe $hhcExe -OutputDirectories @(
     $variantPaths.Debug, $variantPaths.Release
-)
+) -Incremental:($SkipBuild -or $BuildMode -eq 'Delta')
 
 foreach ($configuration in @('Debug', 'Release')) {
     Write-Host "=== Packaging $configuration x64 ==="

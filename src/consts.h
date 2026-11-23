@@ -651,7 +651,7 @@ void RemoveEmptyDirs(const char* dir);
 // parameters and return values are not documented
 BOOL ViewFileInt(HWND parent, const char* name, BOOL altView, DWORD handlerID, BOOL returnLock,
                  HANDLE& lock, BOOL& lockOwner, BOOL addToHistory, int enumFileNamesSourceUID,
-                 int enumFileNamesLastFileIndex);
+                 int enumFileNamesLastFileIndex, const wchar_t* wideFindPath = NULL);
 
 // converts the string ('str' of length 'len') to unsigned __int64 (a leading
 // '+' sign is allowed; leading and trailing white-space is ignored);
@@ -1030,18 +1030,35 @@ void SuppressToolTipOnCurrentMousePos();                                 // see 
 // Makes Ctrl+Left/Right skip over backslashes and spaces. Assigns
 // EditWordBreakProc to an edit line or combo box. Can be called from
 // WM_INITDIALOG. Uninstalling is not required.
-BOOL InstallWordBreakProc(HWND hWindow);
+BOOL InstallWordBreakProc(HWND hWindow, BOOL preserveUnicode = FALSE);
 
 // removes all items from a combo box drop-down list
 // used when clearing history
 void ClearComboboxListbox(HWND hCombo);
 
+// Synchronous Find-to-panel request. All pointers remain owned by the sender.
+struct CFocusFindResultData
+{
+    const char* Directory;
+    const wchar_t* Name;
+    bool IsDirectory;
+};
+
 // structure for WM_USER_VIEWFILE and WM_USER_VIEWFILEWITH
+struct COpenWideFindViewerData
+{
+    const wchar_t* Path;
+    const wchar_t* Name;
+    int SourceUID;
+    int Index;
+};
+
 struct COpenViewerData
 {
     char* FileName;
     int EnumFileNamesSourceUID;
     int EnumFileNamesLastFileIndex;
+    const wchar_t* WideFindPath = NULL;
 };
 
 //
@@ -1213,6 +1230,9 @@ struct COpenViewerData
 #define WM_USER_FINDFULLROWSEL WM_APP + 412 // [0, 0] - Find windows must set their list view to match Configuration.FindFullRowSelect
 
 #define WM_USER_SLGINCOMPLETE WM_APP + 414 // [0, 0] - notification that SLG is not fully translated; encourages contributions
+
+#define WM_USER_VIEWFINDRESULTW WM_APP + 417 // [COpenWideFindViewerData*, altView]
+#define WM_USER_FOCUSFINDRESULT WM_APP + 416 // [CFocusFindResultData*, 0] -> TRUE if the exact row was focused
 
 #define WM_USER_USERMENUICONS_READY WM_APP + 415 // [bkgndReaderData, threadID] - notification for the main window \
                                                  // that reading icons for the User Menu has finished in the \
@@ -2173,6 +2193,10 @@ struct CFileNamesEnumData
     CPluginInterfaceAbstract* Plugin; // used when 'OnlyAssociatedExtensions'==TRUE; designates which plugin to filter file names for ('Plugin'==NULL = internal viewer)
     char FileName[MAX_PATH];
     BOOL Select;
+    // In-process viewer requests only. Both strings live until the wait ends.
+    const std::u16string* WideLastFileName;
+    std::u16string* WideResult;
+    BOOL OnlySelected;
     BOOL TimedOut; // TRUE when nobody is waiting for the result anymore (searching the name would be pointless)
 
     // result:
@@ -2196,6 +2220,8 @@ extern HANDLE FileNamesEnumDone;
 // PANEL_LEFT or PANEL_RIGHT. Returns FALSE if the enumeration source was not
 // found or if it is a Find window
 BOOL IsFileEnumSourcePanel(int srcUID, int* panel);
+bool GetWideFindFileForViewer(int srcUID, int& index, const std::u16string& last,
+                              bool previous, bool onlySelected, std::u16string& result);
 
 // Returns the next file name for the viewer from the source (left/right panel or Find window).
 // 'srcUID' is the unique identifier of the source (it is passed as a parameter when opening

@@ -33,4 +33,9 @@
       <Culture>0x0409</Culture>
     </ResourceCompile>
   </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(OpenSalamanderIsolatedGuiTest)' == 'true'">
+    <ClCompile>
+      <PreprocessorDefinitions>OPENSAL_ENABLE_ISOLATED_TEST_CONFIG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+    </ClCompile>
+  </ItemDefinitionGroup>
 </Project>

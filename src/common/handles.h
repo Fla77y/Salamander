@@ -589,6 +589,8 @@ public:
 
     HINSTANCE LoadLibrary(LPCTSTR lpLibFileName);
 
+    HINSTANCE LoadLibraryW(LPCWSTR lpLibFileName);
+
     HINSTANCE LoadLibraryEx(LPCTSTR lpLibFileName, HANDLE hFile, DWORD dwFlags);
 
     BOOL FreeLibrary(HMODULE hLibModule);

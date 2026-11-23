@@ -35,26 +35,55 @@
 
 #include "svg.h"
 
+#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
+#include "common/isolated_test_configuration.h"
+
+// Exported only by explicitly instrumented local test builds. GUI drivers
+// preflight this marker before trusting the per-process test ID environment.
+extern "C" __declspec(dllexport) const char* __cdecl OpenSalamanderIsolatedTestBuild()
+{
+    return "OpenSalamander-IsolatedGUI-Config-v1";
+}
+
+static bool InitializeIsolatedTestConfiguration()
+try
+{
+    char id[33];
+    if (GetEnvironmentVariableA("OPENSAL_GUI_TEST_ID", id, _countof(id)) != 32)
+        return false;
+    static std::string roots[SALCFG_ROOTS_COUNT];
+    for (int i = 0; i < SALCFG_ROOTS_COUNT; ++i)
+    {
+        if (!Salamander::TryBuildIsolatedConfigurationRoot(id, i, roots[i]))
+            return false;
+    }
+    for (int i = 0; i < SALCFG_ROOTS_COUNT; ++i)
+        SalamanderConfigurationRoots[i] = roots[i].c_str();
+    return true;
+}
+catch (const std::bad_alloc&)
+{
+    return false;
+}
+#endif // OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
+
 extern "C"
 {
 #include "shexreg.h"
 }
 #include "salshlib.h"
 #include "shiconov.h"
-#include "salmoncl.h"
 #include "jumplist.h"
 #include "usermenu.h"
 #include "execute.h"
 #include "drivelst.h"
 
-#pragma comment(linker, "/ENTRY:MyEntryPoint") // we want a custom entry point for the application
-
 #pragma comment(lib, "UxTheme.lib")
 
-// Make the application's original entry point available.
-extern "C" int WinMainCRTStartup();
-
 #ifdef X64_STRESS_TEST
+
+#pragma comment(linker, "/ENTRY:MyEntryPoint")
+extern "C" int WinMainCRTStartup();
 
 #define X64_STRESS_TEST_ALLOC_COUNT 1000
 
@@ -88,32 +117,13 @@ void X64StressTestAlloc()
     delete testNew;
 }
 
-#endif //X64_STRESS_TEST
-// our own entry point, which we told the linker to use via pragma
+// Only the explicit allocation stress build still needs a pre-CRT entry point.
 int MyEntryPoint()
 {
-#ifdef X64_STRESS_TEST
-    // Consume the lower 4 GB of address space so later allocations get pointers larger than a DWORD.
     X64StressTestAlloc();
-#endif //X64_STRESS_TEST
-
-    int ret = 1; // error
-
-    // Start Salmon so it can catch as many of our crashes as possible
-    if (SalmonInit())
-    {
-        // call the application's original entry point to start the program
-        ret = WinMainCRTStartup();
-    }
-    else
-        MessageBox(NULL, "Open Salamander Bug Reporter (salmon.exe) initialization has failed. Please reinstall Open Salamander.",
-                   SALAMANDER_TEXT_VERSION, MB_OK | MB_ICONSTOP);
-
-    // the debugger no longer gets this far; we crash in the RTL (tested with VC 2008 and our RTL)
-
-    // done
-    return ret;
+    return WinMainCRTStartup();
 }
+#endif // X64_STRESS_TEST
 
 BOOL SalamanderBusy = TRUE;       // Is Salamander busy?
 DWORD LastSalamanderIdleTime = 0; // GetTickCount() value from when SalamanderBusy last changed to TRUE
@@ -3515,6 +3525,11 @@ BOOL ParseCommandLineParameters(LPSTR cmdLine, CCommandLineParams* cmdLineParams
 
 int WinMainBody(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPSTR cmdLine, int cmdShow)
 {
+#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
+    // Fail before any configuration discovery/import, including older versions.
+    if (!InitializeIsolatedTestConfiguration())
+        return 1;
+#endif // OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
     int myExitCode = 1;
 
     //--- I do not want any critical errors such as "no disk in drive A:"
@@ -3841,9 +3856,6 @@ FIND_NEW_SLG_FILE:
     }
 
     strcpy(Configuration.LoadedSLGName, Configuration.SLGName);
-
-    // Let the already running Salmon load the selected SLG (so far it used a provisional one).
-    SalmonSetSLG(Configuration.SLGName);
 
     // Set localized messages in the ALLOCHAN module (it provides out-of-memory messages for the user, a Retry button,
     // and if everything fails, even Cancel to terminate the application).
@@ -4348,9 +4360,6 @@ FIND_NEW_SLG_FILE:
 
                     // Tell the process list that we are running and have a main window (so it can activate us in OnlyOneInstance mode)
                     TaskList.SetProcessState(PROCESS_STATE_RUNNING, MainWindow->HWindow);
-
-                    // Ask Salmon to check whether there are any old bug reports on disk that need to be sent.
-                    SalmonCheckBugs();
 
                     if (IsSLGIncomplete[0] != 0 && Configuration.ShowSLGIncomplete)
                         PostMessage(MainWindow->HWindow, WM_USER_SLGINCOMPLETE, 0, 0);

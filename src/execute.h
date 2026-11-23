@@ -19,11 +19,12 @@ protected:
     DWORD SelEnd;
 
 public:
-    CComboboxEdit();
+    explicit CComboboxEdit(BOOL unicodeWnd = FALSE);
 
     void GetSel(DWORD* start, DWORD* end);
 
     void ReplaceText(const char* text);
+    void ReplaceText(const wchar_t* text);
 
 protected:
     virtual LRESULT WindowProc(UINT uMsg, WPARAM wParam, LPARAM lParam);

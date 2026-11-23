@@ -6,11 +6,17 @@
 
 #include "cfgdlg.h"
 #include "find.h"
+#include "common/legacy_find_query.h"
+#include "common/win32_unicode_panel_name.h"
 #include "md5.h"
+#include <algorithm>
+#include <memory>
+#include <mutex>
 
-char* FindNamedHistory[FIND_NAMED_HISTORY_SIZE];
-char* FindLookInHistory[FIND_LOOKIN_HISTORY_SIZE];
+std::wstring FindNamedHistory[FIND_NAMED_HISTORY_SIZE];
+std::wstring FindLookInHistory[FIND_LOOKIN_HISTORY_SIZE];
 char* FindGrepHistory[FIND_GREP_HISTORY_SIZE];
+static std::mutex FindTextHistoryMutex;
 
 CFindOptions FindOptions;
 CFindIgnore FindIgnore;
@@ -27,8 +33,8 @@ const char* FINDOPTIONSITEM_CASESENSITIVE_REG = "CaseSensitive";
 const char* FINDOPTIONSITEM_HEXMODE_REG = "HexMode";
 const char* FINDOPTIONSITEM_REGULAR_REG = "RegularExpresions";
 const char* FINDOPTIONSITEM_AUTOLOAD_REG = "AutoLoad";
-const char* FINDOPTIONSITEM_NAMED_REG = "Named";
-const char* FINDOPTIONSITEM_LOOKIN_REG = "LookIn";
+const wchar_t* FINDOPTIONSITEM_NAMED_REG = L"Named";
+const wchar_t* FINDOPTIONSITEM_LOOKIN_REG = L"LookIn";
 const char* FINDOPTIONSITEM_GREP_REG = "Grep";
 
 const char* FINDIGNOREITEM_PATH_REG = "Path";
@@ -46,10 +52,6 @@ const char* OLD_FINDOPTIONSITEM_EXCLUDEMASK_REG = "ExcludeMask";
 BOOL InitializeFind()
 {
     int i;
-    for (i = 0; i < FIND_NAMED_HISTORY_SIZE; i++)
-        FindNamedHistory[i] = NULL;
-    for (i = 0; i < FIND_LOOKIN_HISTORY_SIZE; i++)
-        FindLookInHistory[i] = NULL;
     for (i = 0; i < FIND_GREP_HISTORY_SIZE; i++)
         FindGrepHistory[i] = NULL;
 
@@ -72,22 +74,12 @@ BOOL InitializeFind()
 void ClearFindHistory(BOOL dataOnly)
 {
     int i;
-    for (i = 0; i < FIND_NAMED_HISTORY_SIZE; i++)
     {
-        if (FindNamedHistory[i] != NULL)
-        {
-            free(FindNamedHistory[i]);
-            FindNamedHistory[i] = NULL;
-        }
-    }
-
-    for (i = 0; i < FIND_LOOKIN_HISTORY_SIZE; i++)
-    {
-        if (FindLookInHistory[i] != NULL)
-        {
-            free(FindLookInHistory[i]);
-            FindLookInHistory[i] = NULL;
-        }
+        const std::lock_guard<std::mutex> lock(FindTextHistoryMutex);
+        for (auto& text : FindNamedHistory)
+            text.clear();
+        for (auto& text : FindLookInHistory)
+            text.clear();
     }
 
     for (i = 0; i < FIND_GREP_HISTORY_SIZE; i++)
@@ -132,8 +124,6 @@ CFindOptionsItem::CFindOptionsItem()
 
     AutoLoad = FALSE;
 
-    NamedText[0] = 0;
-    LookInText[0] = 0;
     GrepText[0] = 0;
 }
 
@@ -154,8 +144,8 @@ CFindOptionsItem::operator=(const CFindOptionsItem& s)
 
     AutoLoad = s.AutoLoad;
 
-    lstrcpy(NamedText, s.NamedText);
-    lstrcpy(LookInText, s.LookInText);
+    NamedText = s.NamedText;
+    LookInText = s.LookInText;
     lstrcpy(GrepText, s.GrepText);
 
     return *this;
@@ -163,8 +153,112 @@ CFindOptionsItem::operator=(const CFindOptionsItem& s)
 
 void CFindOptionsItem::BuildItemName()
 {
-    sprintf(ItemName, "\"%s\" %s \"%s\"",
-            NamedText, LoadStr(IDS_FF_IN), LookInText);
+    // The ANSI menu caption is presentation only. Saving or applying an
+    // option always uses the separate, owned UTF-16 query values.
+    const std::wstring caption = L"\"" + NamedText + L"\" " +
+        LoadStrW(IDS_FF_IN) + L" \"" + LookInText + L"\"";
+    size_t units = (std::min)(caption.size(), _countof(ItemName) - 1);
+    int bytes = 0;
+    while (units > 0)
+    {
+        if (caption[units - 1] >= 0xd800 && caption[units - 1] <= 0xdbff)
+            --units;
+        bytes = WideCharToMultiByte(CP_ACP, 0, caption.data(), static_cast<int>(units),
+                                    ItemName, _countof(ItemName) - 1, NULL, NULL);
+        if (bytes > 0)
+            break;
+        --units;
+    }
+    ItemName[bytes] = '\0';
+}
+
+// REG_SZ values written by the old A APIs already reside in the registry as
+// UTF-16. Reading them with W preserves existing data without a new format.
+static bool LoadFindText(HKEY key, const wchar_t* name, std::wstring& value, int limit)
+try
+{
+    value.clear();
+    DWORD bytes = 0;
+    if (RegGetValueW(key, NULL, name, RRF_RT_REG_SZ, NULL, NULL, &bytes) != ERROR_SUCCESS ||
+        bytes == 0 || bytes % sizeof(wchar_t) != 0 || bytes > limit * sizeof(wchar_t))
+        return false;
+    std::wstring text(bytes / sizeof(wchar_t), L'\0');
+    if (RegGetValueW(key, NULL, name, RRF_RT_REG_SZ, NULL, text.data(), &bytes) != ERROR_SUCCESS)
+        return false;
+    text.resize(wcslen(text.c_str()));
+    value = std::move(text);
+    return true;
+}
+catch (const std::bad_alloc&)
+{
+    TRACE_E(LOW_MEMORY);
+    return false;
+}
+
+static bool SaveFindText(HKEY key, const wchar_t* name, const std::wstring& value)
+{
+    const DWORD bytes = static_cast<DWORD>((value.size() + 1) * sizeof(wchar_t));
+    const LSTATUS status = RegSetValueExW(key, name, 0, REG_SZ,
+        reinterpret_cast<const BYTE*>(value.c_str()), bytes);
+    if (status != ERROR_SUCCESS)
+        TRACE_E("Cannot write Find text to the registry, error " << status);
+    return status == ERROR_SUCCESS;
+}
+
+void LoadFindTextHistory(HKEY key, const char* name, std::wstring history[], int count, int textLimit)
+{
+    const std::lock_guard<std::mutex> lock(FindTextHistoryMutex);
+    for (int i = 0; i < count; ++i)
+        history[i].clear();
+    HKEY historyKey;
+    if (!OpenKey(key, name, historyKey))
+        return;
+    for (int i = 0; i < count; ++i)
+    {
+        wchar_t number[12];
+        _itow_s(i + 1, number, 10);
+        if (!LoadFindText(historyKey, number, history[i], textLimit))
+            break;
+    }
+    CloseKey(historyKey);
+}
+
+void SaveFindTextHistory(HKEY key, const char* name, const std::wstring history[], int count, BOOL clear)
+{
+    const std::lock_guard<std::mutex> lock(FindTextHistoryMutex);
+    HKEY historyKey;
+    if (!CreateKey(key, name, historyKey))
+        return;
+    ClearKey(historyKey);
+    if (!clear)
+    {
+        for (int i = 0; i < count && !history[i].empty(); ++i)
+        {
+            wchar_t number[12];
+            _itow_s(i + 1, number, 10);
+            if (!SaveFindText(historyKey, number, history[i]))
+                break;
+        }
+    }
+    CloseKey(historyKey);
+}
+
+std::vector<std::wstring> GetFindTextHistory(std::wstring history[], int count, const std::wstring* newEntry)
+{
+    const std::lock_guard<std::mutex> lock(FindTextHistoryMutex);
+    auto end = history + count;
+    if (newEntry != NULL && !newEntry->empty())
+    {
+        auto entry = std::find(history, end, *newEntry);
+        if (entry == end)
+        {
+            entry = end - 1;
+            *entry = *newEntry;
+        }
+        std::rotate(history, entry, entry + 1);
+    }
+    const auto activeEnd = std::find_if(history, end, [](const std::wstring& value) { return value.empty(); });
+    return {history, activeEnd};
 }
 
 BOOL CFindOptionsItem::Save(HKEY hKey)
@@ -187,10 +281,10 @@ BOOL CFindOptionsItem::Save(HKEY hKey)
         SetValue(hKey, FINDOPTIONSITEM_REGULAR_REG, REG_DWORD, &RegularExpresions, sizeof(DWORD));
     if (AutoLoad != def.AutoLoad)
         SetValue(hKey, FINDOPTIONSITEM_AUTOLOAD_REG, REG_DWORD, &AutoLoad, sizeof(DWORD));
-    if (strcmp(NamedText, def.NamedText) != 0)
-        SetValue(hKey, FINDOPTIONSITEM_NAMED_REG, REG_SZ, NamedText, -1);
-    if (strcmp(LookInText, def.LookInText) != 0)
-        SetValue(hKey, FINDOPTIONSITEM_LOOKIN_REG, REG_SZ, LookInText, -1);
+    if (!NamedText.empty())
+        SaveFindText(hKey, FINDOPTIONSITEM_NAMED_REG, NamedText);
+    if (!LookInText.empty())
+        SaveFindText(hKey, FINDOPTIONSITEM_LOOKIN_REG, LookInText);
     if (strcmp(GrepText, def.GrepText) != 0)
         SetValue(hKey, FINDOPTIONSITEM_GREP_REG, REG_SZ, GrepText, -1);
 
@@ -208,8 +302,8 @@ BOOL CFindOptionsItem::Load(HKEY hKey, DWORD cfgVersion)
     GetValue(hKey, FINDOPTIONSITEM_HEXMODE_REG, REG_DWORD, &HexMode, sizeof(DWORD));
     GetValue(hKey, FINDOPTIONSITEM_REGULAR_REG, REG_DWORD, &RegularExpresions, sizeof(DWORD));
     GetValue(hKey, FINDOPTIONSITEM_AUTOLOAD_REG, REG_DWORD, &AutoLoad, sizeof(DWORD));
-    GetValue(hKey, FINDOPTIONSITEM_NAMED_REG, REG_SZ, NamedText, NAMED_TEXT_LEN);
-    GetValue(hKey, FINDOPTIONSITEM_LOOKIN_REG, REG_SZ, LookInText, LOOKIN_TEXT_LEN);
+    LoadFindText(hKey, FINDOPTIONSITEM_NAMED_REG, NamedText, NAMED_TEXT_LEN);
+    LoadFindText(hKey, FINDOPTIONSITEM_LOOKIN_REG, LookInText, LOOKIN_TEXT_LEN);
     GetValue(hKey, FINDOPTIONSITEM_GREP_REG, REG_SZ, GrepText, GREP_TEXT_LEN);
 
     if (cfgVersion <= 13)
@@ -221,8 +315,13 @@ BOOL CFindOptionsItem::Load(HKEY hKey, DWORD cfgVersion)
         GetValue(hKey, OLD_FINDOPTIONSITEM_EXCLUDEMASK_REG, REG_DWORD, &excludeMask, sizeof(DWORD));
         if (excludeMask)
         {
-            memmove(NamedText + 1, NamedText, NAMED_TEXT_LEN - 1);
-            NamedText[0] = '|';
+            if (NamedText.size() == NAMED_TEXT_LEN - 1)
+            {
+                NamedText.pop_back();
+                if (NamedText.back() >= 0xd800 && NamedText.back() <= 0xdbff)
+                    NamedText.pop_back();
+            }
+            NamedText.insert(NamedText.begin(), L'|');
         }
 
         Criteria.LoadOld(hKey);
@@ -491,7 +590,14 @@ BOOL CFindIgnore::Prepare(CFindIgnore* source)
                 return FALSE;
             item = Items[Items.Count - 1];
             item->Type = type;
-            item->Len = (int)strlen(buff);
+            const int units = MultiByteToWideChar(CP_ACP, MB_ERR_INVALID_CHARS, buff, -1, NULL, 0);
+            if (units <= 0)
+                return FALSE;
+            item->PreparedPath.resize(units);
+            if (MultiByteToWideChar(CP_ACP, MB_ERR_INVALID_CHARS, buff, -1,
+                                    item->PreparedPath.data(), units) != units)
+                return FALSE;
+            item->PreparedPath.pop_back();
         }
     }
     return TRUE;
@@ -516,47 +622,45 @@ const char* SkipRoot(const char* path)
     }
 }
 
-BOOL CFindIgnore::Contains(const char* path, int startPathLen)
+static size_t FindRootSeparator(std::wstring_view path)
 {
-    // full path
-    int i;
-    for (i = 0; i < Items.Count; i++)
+    if (path.substr(0, 2) == L"\\\\")
     {
-        // startPathLen is the path length entered in the Find dialog (search root);
-        // only its subpaths are ignored, see https://forum.altap.cz/viewtopic.php?f=7&t=7434
-        CFindIgnoreItem* item = Items[i];
+        const size_t serverEnd = path.find(L'\\', 2);
+        return serverEnd == std::wstring_view::npos ? serverEnd : path.find(L'\\', serverEnd + 1);
+    }
+    return 2; // skip the drive letter and colon
+}
+
+BOOL CFindIgnore::Contains(std::wstring_view path, size_t startPathLen)
+{
+    for (int i = 0; i < Items.Count; ++i)
+    {
+        const CFindIgnoreItem* item = Items[i];
+        const auto& rule = item->PreparedPath;
+        const auto matchesAt = [&](size_t offset) {
+            // An explicitly chosen search root overrides the Ignore list.
+            return offset <= path.size() && rule.size() <= path.size() - offset &&
+                   offset + rule.size() > startPathLen &&
+                   CompareStringOrdinal(path.data() + offset, static_cast<int>(rule.size()),
+                                        rule.c_str(), static_cast<int>(rule.size()), TRUE) == CSTR_EQUAL;
+        };
         switch (item->Type)
         {
         case fiitFull:
-        {
-            if (item->Len > startPathLen && StrNICmp(path, item->Path, item->Len) == 0)
+            if (matchesAt(0))
                 return TRUE;
             break;
-        }
-
         case fiitRooted:
-        {
-            const char* noRoot = SkipRoot(path);
-            if ((noRoot - path) + item->Len > startPathLen && StrNICmp(noRoot, item->Path, item->Len) == 0)
+            if (matchesAt(FindRootSeparator(path)))
                 return TRUE;
             break;
-        }
-
         case fiitRelative:
-        {
-            const char* m = path;
-            while (m != NULL)
-            {
-                m = StrIStr(m, item->Path);
-                if (m != NULL) // found
-                {
-                    if ((m - path) + item->Len > startPathLen) // subpath: ignore it
-                        return TRUE;
-                    m++; // look for another occurrence, maybe it will be in a subpath
-                }
-            }
+            for (size_t offset = path.find(L'\\'); offset != std::wstring_view::npos;
+                 offset = path.find(L'\\', offset + 1))
+                if (matchesAt(offset))
+                    return TRUE;
             break;
-        }
         }
     }
     return FALSE;
@@ -724,7 +828,7 @@ int CDuplicateCandidates::CompareFunc(CFoundFilesData* f1, CFoundFilesData* f2,
     if (bySize)
     {
         if (byName)
-            res = RegSetStrICmp(f1->Name, f2->Name);
+            res = f1->CompareName(*f2);
         else
             res = 0;
         if (res == 0)
@@ -748,7 +852,7 @@ int CDuplicateCandidates::CompareFunc(CFoundFilesData* f1, CFoundFilesData* f2,
     else
     {
         // byName && !bySize
-        res = RegSetStrICmp(f1->Name, f2->Name);
+        res = f1->CompareName(*f2);
     }
     if (byPath && res == 0)
         res = RegSetStrICmp(f1->Path, f2->Path);
@@ -819,19 +923,42 @@ LABEL_QuickSort:
 
 #define DUPLICATES_BUFFER_SIZE 16384 // buffer size for MD5 calculation
 
+static std::string FindResultLabel(const char* directory, const char* name)
+{
+    if (!*directory || !*name)
+        return {}; // the legacy diagnostic cannot display this path losslessly
+    std::string path(directory);
+    if (path.back() != '\\')
+        path.push_back('\\');
+    path += name;
+    return path;
+}
+
+static HANDLE OpenFindResultForReading(const Salamander::LegacyFindUtf16Identity& identity)
+{
+    const auto path = identity.FullPath();
+    const std::wstring wide(path.begin(), path.end());
+    std::wstring extended;
+    DWORD error = ERROR_SUCCESS;
+    if (!Salamander::TryMakeExtendedLengthPath(wide.c_str(), extended, error))
+    {
+        SetLastError(error);
+        return INVALID_HANDLE_VALUE;
+    }
+    return HANDLES_Q(CreateFileW(extended.c_str(), GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                                 NULL, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL));
+}
+
 BOOL CDuplicateCandidates::GetMD5Digest(CGrepData* data, CFoundFilesData* file,
                                         int* progress, CQuadWord* readSize, const CQuadWord* totalSize)
 {
-    // build full path to the file
-    char fullPath[MAX_PATH];
-    lstrcpyn(fullPath, file->Path, MAX_PATH);
-    SalPathAppend(fullPath, file->Name, MAX_PATH);
+    const auto label = FindResultLabel(file->Path, file->Name);
+    const char* fullPath = label.c_str();
 
     data->SearchingText->Set(fullPath); // set the current file
 
     // open the file for reading with sequential access
-    HANDLE hFile = HANDLES_Q(CreateFile(fullPath, GENERIC_READ, FILE_SHARE_READ | FILE_SHARE_WRITE,
-                                        NULL, OPEN_EXISTING, FILE_FLAG_SEQUENTIAL_SCAN, NULL));
+    HANDLE hFile = OpenFindResultForReading(file->UnicodeIdentity);
     if (hFile != INVALID_HANDLE_VALUE)
     {
         BYTE buffer[DUPLICATES_BUFFER_SIZE];
@@ -1145,11 +1272,33 @@ void CDuplicateCandidates::Examine(CGrepData* data)
 // CSearchForData
 //
 
-void CSearchForData::Set(const char* dir, const char* masksGroup, BOOL includeSubDirs)
+bool TryFindTextToAnsi(const std::wstring& text, char* output, int capacity)
+try
 {
-    strcpy(Dir, dir);
-    MasksGroup.SetMasksString(masksGroup);
-    IncludeSubDirs = includeSubDirs;
+    return WideCharToMultiByte(CP_ACP, 0, text.c_str(), -1, output, capacity, NULL, NULL) > 0 &&
+           (text.empty() || Salamander::IsExactAnsiName(output, text.c_str()));
+}
+catch (const std::bad_alloc&)
+{
+    TRACE_E(LOW_MEMORY);
+    return false;
+}
+
+// The Unicode Find window's Advanced button still checks the short-root bridge.
+bool TryLegacyFindWorkerRoot(const std::wstring& directory, char (&path)[MAX_PATH])
+{
+    if (directory.empty() || !TryFindTextToAnsi(directory, path, _countof(path)))
+        return false;
+    size_t length = strlen(path);
+    const bool addSeparator = path[length - 1] != '\\';
+    if (length + addSeparator + 1 >= _countof(path))
+        return false;
+    if (addSeparator)
+    {
+        path[length++] = '\\';
+        path[length] = '\0';
+    }
+    return true;
 }
 
 //*********************************************************************************
@@ -1356,7 +1505,8 @@ BOOL TestFileContentAux(BOOL& ok, CQuadWord& fileOffset, const CQuadWord& totalS
     }
 }
 
-BOOL TestFileContent(DWORD sizeLow, DWORD sizeHigh, const char* path, CGrepData* data, BOOL isLink)
+BOOL TestFileContent(DWORD sizeLow, DWORD sizeHigh, const char* path,
+                     const Salamander::LegacyFindUtf16Identity& identity, CGrepData* data, BOOL isLink)
 {
     CQuadWord totalSize(sizeLow, sizeHigh);
     CQuadWord fileOffset(0, 0);
@@ -1367,11 +1517,7 @@ BOOL TestFileContent(DWORD sizeLow, DWORD sizeHigh, const char* path, CGrepData*
     {
         DWORD err = ERROR_SUCCESS;
         data->SearchingText->Set(path); // set the current file
-        HANDLE hFile = HANDLES_Q(CreateFile(path, GENERIC_READ,
-                                            FILE_SHARE_READ | FILE_SHARE_WRITE, NULL,
-                                            OPEN_EXISTING,
-                                            FILE_FLAG_SEQUENTIAL_SCAN,
-                                            NULL));
+        HANDLE hFile = OpenFindResultForReading(identity);
         BOOL getLinkFileSizeErr = FALSE;
         if (hFile != INVALID_HANDLE_VALUE)
         {
@@ -1443,7 +1589,7 @@ BOOL TestFileContent(DWORD sizeLow, DWORD sizeHigh, const char* path, CGrepData*
 
 BOOL AddFoundItem(const char* path, const char* name, DWORD sizeLow, DWORD sizeHigh,
                   DWORD attr, const FILETIME* lastWrite, BOOL isDir, CGrepData* data,
-                  CDuplicateCandidates* duplicateCandidates)
+                  CDuplicateCandidates* duplicateCandidates, Salamander::LegacyFindUtf16Identity identity)
 {
     if (duplicateCandidates != NULL && isDir) // directories are ignored when searching for duplicates
         return TRUE;
@@ -1456,6 +1602,7 @@ BOOL AddFoundItem(const char* path, const char* name, DWORD sizeLow, DWORD sizeH
                                    attr, lastWrite, isDir);
         if (good)
         {
+            foundData->UnicodeIdentity = std::move(identity);
             if (duplicateCandidates == NULL)
             {
                 // duplicateCandidates == NULL, adding the item to data->FoundFilesListView
@@ -1513,281 +1660,206 @@ BOOL AddFoundItem(const char* path, const char* name, DWORD sizeLow, DWORD sizeH
     return TRUE;
 }
 
-// 'dirStack' stores directories to be grep-searched later. Otherwise,
-// searching the current directory would recursively search its subdirectories.
-// With this workaround, all files and directories matching the criteria are found first,
-// and then this function is called for all discovered directories.
-// 'dirStack' only grows. When items are removed from it, they are only destroyed,
-// but not removed from the array. Therefore, the variable 'dirStackCount' holds the
-// actual number of items in the array (always less than or equal to dirStack->Count).
-// If memory is low or subdirectories are not searched,
-// 'dirStack' is NULL.
-// If 'duplicateCandidates' != NULL, found items are added to this array
-// instead of data->FoundFilesListView
-void SearchDirectory(char (&path)[MAX_PATH], char* end, int startPathLen,
-                     CMaskGroup* masksGroup, BOOL includeSubDirs, CGrepData* data,
-                     TDirectArray<char*>* dirStack, int dirStackCount,
-                     CDuplicateCandidates* duplicateCandidates,
-                     CFindIgnore* ignoreList, char (&message)[2 * MAX_PATH])
+static void ReportFindPathError(CGrepData* data, const char* path, DWORD error, bool allowIgnore)
 {
-    SLOW_CALL_STACK_MESSAGE6("SearchDirectory(%s, , %d, %s, %d, , , %d, , )", path, startPathLen,
-                             masksGroup->GetMasksString(), includeSubDirs, dirStackCount);
-
-    if (ignoreList != NULL && ignoreList->Contains(path, startPathLen))
-    {
-        FIND_LOG_ITEM log;
-        log.Flags = FLI_INFO;
-        log.Text = LoadStr(IDS_FINDLOG_SKIP);
-        log.Path = path;
-        SendMessage(data->HWindow, WM_USER_ADDLOG, (WPARAM)&log, 0);
-        return;
-    }
-
-    if ((end - path) + 1 < _countof(path))
-        strcpy_s(end, _countof(path) - (end - path), "*");
-    else
-    {
-        FIND_LOG_ITEM log;
-        log.Flags = FLI_ERROR;
-        log.Text = LoadStr(IDS_TOOLONGNAME);
-        log.Path = path;
-        SendMessage(data->HWindow, WM_USER_ADDLOG, (WPARAM)&log, 0);
-        return;
-    }
-
-    WIN32_FIND_DATA file;
-    HANDLE find = HANDLES_Q(FindFirstFile(path, &file));
-    if (find != INVALID_HANDLE_VALUE)
-    {
-        if (end - path > 3)
-            *(end - 1) = 0;
-        else
-            *end = 0;
-        data->SearchingText->Set(path); // set the current path
-        if (end - path > 3)
-            *(end - 1) = '\\';
-        else
-            *end = 0;
-
-        int dirStackEnterCount = 0; // number of items before starting the search at this level
-        if (dirStack != NULL)
-            dirStackEnterCount = dirStackCount;
-        BOOL testFindNextErr = TRUE;
-
-        do
-        {
-            BOOL isDir = (file.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
-            BOOL ignoreDir = isDir && (lstrcmp(file.cFileName, ".") == 0 || lstrcmp(file.cFileName, "..") == 0);
-            if (ignoreDir || (end - path) + lstrlen(file.cFileName) < _countof(path))
-            {
-                // after finding an item without displaying it and once 0.5 s have passed since the last redraw,
-                // we request the listview to redraw
-                if (data->NeedRefresh && GetTickCount() - data->FoundVisibleTick >= 500)
-                {
-                    SendMessage(data->HWindow, WM_USER_ADDFILE, 0, 0);
-                    data->NeedRefresh = FALSE;
-                }
-
-                if (file.cFileName[0] != 0 && !ignoreDir)
-                {
-                    // add all files and directories except "." and ".."
-
-                    // test the criteria attributes, size, date and time
-                    CQuadWord size(file.nFileSizeLow, file.nFileSizeHigh);
-                    if (data->Criteria.Test(file.dwFileAttributes, &size, &file.ftLastWriteTime))
-                    {
-                        // file name
-                        // let the extension be resolved if ext==NULL
-                        if (masksGroup->AgreeMasks(file.cFileName, NULL)) // mask matches
-                        {
-                            BOOL ok;
-                            if (data->Grep)
-                            {
-                                // content
-                                if (isDir)
-                                    ok = FALSE; // a directory cannot be grepped
-                                else
-                                {
-                                    strcpy_s(end, _countof(path) - (end - path), file.cFileName);
-                                    // links: file.nFileSizeLow == 0 && file.nFileSizeHigh == 0, the file size
-                                    // must be additionally obtained via SalGetFileSize()
-                                    BOOL isLink = (file.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
-                                    ok = TestFileContent(file.nFileSizeLow, file.nFileSizeHigh, path, data, isLink);
-                                }
-                            }
-                            else
-                                ok = TRUE;
-
-                            // if the item matches all criteria,
-                            // add it to the list of found items
-                            if (ok)
-                            {
-                                if (end - path > 3)
-                                    *(end - 1) = 0;
-                                else
-                                    *end = 0;
-
-                                AddFoundItem(path, file.cFileName, file.nFileSizeLow, file.nFileSizeHigh,
-                                             file.dwFileAttributes, &file.ftLastWriteTime, isDir, data,
-                                             duplicateCandidates);
-
-                                if (end - path > 3)
-                                    *(end - 1) = '\\';
-                                else
-                                    *end = 0;
-                            }
-                        }
-                    }
-                }
-                if (isDir && includeSubDirs && !ignoreDir) // directory and not "." or ".."
-                {
-                    int l = (int)strlen(file.cFileName);
-
-                    if ((end - path) + l + 1 /* 1 for the backslash */ < _countof(path))
-                    {
-                        BOOL searchNow = TRUE;
-
-                        if (dirStack != NULL)
-                        {
-                            // just store for later search
-                            char* newFileName = new char[l + 1];
-                            if (newFileName != NULL)
-                            {
-                                memmove(newFileName, file.cFileName, l + 1);
-                                if (dirStackCount < dirStack->Count)
-                                {
-                                    // no need to assign an item - we have space
-                                    dirStack->At(dirStackCount) = newFileName;
-                                    dirStackCount++;
-                                    searchNow = FALSE;
-                                }
-                                else
-                                {
-                                    // we must allocate a new item in the array
-                                    dirStack->Add(newFileName);
-                                    if (dirStack->IsGood())
-                                    {
-                                        dirStackCount++;
-                                        searchNow = FALSE;
-                                    }
-                                    else
-                                    {
-                                        dirStack->ResetState();
-                                        delete[] newFileName;
-                                    }
-                                }
-                            }
-                        }
-
-                        if (searchNow)
-                        {
-                            // out of memory - we will not use dirStack
-                            strcpy_s(end, _countof(path) - (end - path), file.cFileName);
-                            strcat_s(end, _countof(path) - (end - path), "\\");
-                            l++;
-                            SearchDirectory(path, end + l, startPathLen, masksGroup, includeSubDirs, data, NULL,
-                                            0, duplicateCandidates, ignoreList, message);
-                        }
-                    }
-                    else
-                    {
-                        FIND_LOG_ITEM log;
-                        log.Flags = FLI_ERROR;
-                        log.Text = LoadStr(IDS_TOOLONGNAME);
-                        strcpy_s(end, _countof(path) - (end - path), file.cFileName);
-                        log.Path = path;
-                        SendMessage(data->HWindow, WM_USER_ADDLOG, (WPARAM)&log, 0);
-                    }
-                }
-            }
-            else // file name too long
-            {
-                FIND_LOG_ITEM log;
-                log.Flags = FLI_ERROR;
-                log.Text = LoadStr(IDS_TOOLONGNAME);
-                *end = 0;
-                strcpy_s(message, path);
-                strcat_s(message, file.cFileName);
-                log.Path = message;
-                SendMessage(data->HWindow, WM_USER_ADDLOG, (WPARAM)&log, 0);
-            }
-            if (data->StopSearch)
-            {
-                testFindNextErr = FALSE;
-                break;
-            }
-        } while (FindNextFile(find, &file));
-        DWORD err = GetLastError();
-        HANDLES(FindClose(find));
-
-        if (testFindNextErr && err != ERROR_NO_MORE_FILES)
-        {
-            if (end - path > 3)
-                *(end - 1) = 0;
-            else
-                *end = 0;
-
-            sprintf(message, LoadStr(IDS_DIRERRORFORMAT), GetErrorText(err));
-            FIND_LOG_ITEM log;
-            log.Flags = FLI_ERROR;
-            log.Text = message;
-            log.Path = path;
-            SendMessage(data->HWindow, WM_USER_ADDLOG, (WPARAM)&log, 0);
-
-            if (end - path > 3)
-                *(end - 1) = '\\';
-            else
-                *end = 0;
-        }
-
-        // search through directories
-        if (dirStack != NULL)
-        {
-            int i;
-            for (i = dirStackEnterCount; i < dirStackCount; i++)
-            {
-                char* newFileName = (char*)dirStack->At(i);
-                if (!data->StopSearch) // may be set during SearchDirectory
-                {
-                    strcpy_s(end, _countof(path) - (end - path), newFileName);
-                    strcat_s(end, _countof(path) - (end - path), "\\");
-                    SearchDirectory(path, end + strlen(end), startPathLen, masksGroup, includeSubDirs, data,
-                                    dirStack, dirStackCount, duplicateCandidates, ignoreList, message);
-                }
-            }
-            // and release data from this level
-            for (i = dirStackEnterCount; i < dirStackCount; i++)
-                delete[] dirStack->At(i);
-        }
-    }
-    else
-    {
-        DWORD err = GetLastError();
-        if (err != ERROR_FILE_NOT_FOUND && err != ERROR_NO_MORE_FILES)
-        {
-            if (end - path > 3)
-                *(end - 1) = 0;
-            else
-                *end = 0;
-
-            sprintf(message, LoadStr(IDS_DIRERRORFORMAT), GetErrorText(err));
-
-            FIND_LOG_ITEM log;
-            log.Flags = FLI_ERROR | FLI_IGNORE;
-            log.Text = message;
-            log.Path = path;
-            SendMessage(data->HWindow, WM_USER_ADDLOG, (WPARAM)&log, 0);
-
-            if (end - path > 3)
-                *(end - 1) = '\\';
-            else
-                *end = 0;
-        }
-    }
-    *end = 0;
+    char message[2 * MAX_PATH];
+    _snprintf_s(message, _TRUNCATE, LoadStr(IDS_DIRERRORFORMAT), GetErrorText(error));
+    FIND_LOG_ITEM log = {static_cast<DWORD>(FLI_ERROR | (allowIgnore ? FLI_IGNORE : 0)), message, path};
+    SendMessage(data->HWindow, WM_USER_ADDLOG, reinterpret_cast<WPARAM>(&log), 0);
 }
 
-void RefineData(CMaskGroup* masksGroup, CGrepData* data)
+static bool TryGetFindDirectoryLabel(const std::wstring& path, std::string& label)
+{
+    const int bytes = WideCharToMultiByte(CP_ACP, 0, path.c_str(), -1, NULL, 0, NULL, NULL);
+    if (bytes <= 0)
+        return false;
+    label.resize(bytes);
+    if (!TryFindTextToAnsi(path, label.data(), bytes))
+    {
+        label.clear();
+        return false;
+    }
+    label.pop_back();
+    return true;
+}
+
+static bool GetFindDirectoryIdentity(const std::wstring& path, BY_HANDLE_FILE_INFORMATION& id)
+{
+    std::wstring extended;
+    DWORD error = ERROR_SUCCESS;
+    if (!Salamander::TryMakeExtendedLengthPath(path.c_str(), extended, error))
+        return false;
+    HANDLE handle = HANDLES_Q(CreateFileW(extended.c_str(), FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE, NULL, OPEN_EXISTING,
+        FILE_FLAG_BACKUP_SEMANTICS, NULL));
+    if (handle == INVALID_HANDLE_VALUE)
+        return false;
+    const bool ok = GetFileInformationByHandle(handle, &id) &&
+        (id.nFileIndexHigh != 0 || id.nFileIndexLow != 0);
+    HANDLES(CloseHandle(handle));
+    return ok;
+}
+
+// Following a directory link is safe only if its target differs from every
+// directory on the current branch. The same target may appear on other branches.
+static bool CanDescendFindLink(const std::wstring& path, size_t parentLength, size_t rootLength)
+{
+    BY_HANDLE_FILE_INFORMATION target;
+    if (!GetFindDirectoryIdentity(path, target))
+        return false;
+    while (true)
+    {
+        BY_HANDLE_FILE_INFORMATION ancestor;
+        if (!GetFindDirectoryIdentity(path.substr(0, parentLength), ancestor) ||
+            (target.dwVolumeSerialNumber == ancestor.dwVolumeSerialNumber &&
+             target.nFileIndexHigh == ancestor.nFileIndexHigh &&
+             target.nFileIndexLow == ancestor.nFileIndexLow))
+            return false;
+        if (parentLength == rootLength)
+            return true;
+        const auto separator = path.rfind(L'\\', parentLength - 1);
+        parentLength = separator <= rootLength ? rootLength : separator;
+    }
+}
+
+struct FindEnumeration
+{
+    HANDLE Handle;
+    ~FindEnumeration() { HANDLES(FindClose(Handle)); }
+};
+
+struct PendingFindDirectory
+{
+    std::wstring Name;
+    size_t ParentLength;
+    bool IsLink;
+};
+
+static void SearchDirectory(const std::wstring& root, const Salamander::LegacyFindMasks& masks,
+                            BOOL includeSubDirs, CGrepData* data,
+                            CDuplicateCandidates* duplicateCandidates, CFindIgnore* ignoreList)
+{
+    std::wstring directory;
+    DWORD error = ERROR_SUCCESS;
+    if (!Salamander::TryResolveLegacyFindDirectory(root, directory, error))
+    {
+        ReportFindPathError(data, NULL, error, false);
+        return;
+    }
+
+    const size_t rootLength = directory.size();
+    const size_t startPathLen = rootLength + (directory.back() != L'\\');
+    std::vector<PendingFindDirectory> pending{{L"", rootLength, false}};
+    while (!pending.empty() && !data->StopSearch)
+    {
+        PendingFindDirectory next = std::move(pending.back());
+        pending.pop_back();
+        directory.resize(next.ParentLength);
+        if (!next.Name.empty())
+        {
+            if (directory.back() != L'\\')
+                directory.push_back(L'\\');
+            directory += next.Name;
+        }
+
+        std::string label;
+        // The ACP directory is reserved for legacy actions and diagnostics.
+        TryGetFindDirectoryLabel(directory, label);
+        if (next.IsLink && !CanDescendFindLink(directory, next.ParentLength, rootLength))
+        {
+            ReportFindPathError(data, label.c_str(), ERROR_CANT_RESOLVE_FILENAME, false);
+            continue;
+        }
+        if (ignoreList != NULL)
+        {
+            const std::wstring withSlash = directory.back() == L'\\' ? directory : directory + L'\\';
+            if (ignoreList->Contains(withSlash, startPathLen))
+            {
+                const std::string ignored = label.empty() || label.back() == '\\' ? label : label + '\\';
+                FIND_LOG_ITEM log = {FLI_INFO, LoadStr(IDS_FINDLOG_SKIP), ignored.c_str()};
+                SendMessage(data->HWindow, WM_USER_ADDLOG, reinterpret_cast<WPARAM>(&log), 0);
+                continue;
+            }
+        }
+
+        std::wstring pattern = directory;
+        if (pattern.back() != L'\\')
+            pattern.push_back(L'\\');
+        pattern.push_back(L'*');
+        std::wstring extended;
+        if (!Salamander::TryMakeExtendedLengthPath(pattern.c_str(), extended, error))
+        {
+            ReportFindPathError(data, label.c_str(), error, false);
+            continue;
+        }
+
+        WIN32_FIND_DATAW file;
+        HANDLE handle = HANDLES_Q(FindFirstFileW(extended.c_str(), &file));
+        if (handle == INVALID_HANDLE_VALUE)
+        {
+            error = GetLastError();
+            if (error != ERROR_FILE_NOT_FOUND && error != ERROR_NO_MORE_FILES)
+                ReportFindPathError(data, label.c_str(), error, !label.empty());
+            continue;
+        }
+        FindEnumeration enumeration{handle};
+        data->SearchingText->Set(label.c_str());
+        const size_t childBegin = pending.size();
+        const std::u16string utf16Directory(directory.begin(), directory.end());
+        do
+        {
+            if (data->NeedRefresh && GetTickCount() - data->FoundVisibleTick >= 500)
+            {
+                SendMessage(data->HWindow, WM_USER_ADDFILE, 0, 0);
+                data->NeedRefresh = FALSE;
+            }
+            const std::wstring name(file.cFileName);
+            if (name.empty() || name == L"." || name == L"..")
+                continue;
+            const bool isDir = (file.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0;
+            const bool isLink = (file.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
+            if (isDir && includeSubDirs)
+                pending.push_back({name, directory.size(), isLink});
+
+            CQuadWord size(file.nFileSizeLow, file.nFileSizeHigh);
+            if ((isDir && data->Grep) ||
+                !data->Criteria.Test(file.dwFileAttributes, &size, &file.ftLastWriteTime))
+                continue;
+            if (!masks.Matches(name))
+                continue;
+            char ansiName[MAX_PATH];
+            if (!TryFindTextToAnsi(name, ansiName, _countof(ansiName)))
+                ansiName[0] = '\0'; // no eligible path for ANSI result actions
+            Salamander::LegacyFindUtf16Identity identity;
+            Salamander::Utf16PathError pathError;
+            if (!Salamander::LegacyFindUtf16Identity::TryCreate(utf16Directory,
+                    std::u16string(name.begin(), name.end()), identity, pathError))
+            {
+                ReportFindPathError(data, label.c_str(),
+                    pathError == Salamander::Utf16PathError::PathTooLong ?
+                        ERROR_FILENAME_EXCED_RANGE : ERROR_INVALID_NAME, false);
+                continue;
+            }
+            if (!data->Grep || TestFileContent(file.nFileSizeLow, file.nFileSizeHigh,
+                    FindResultLabel(label.c_str(), ansiName).c_str(), identity, data, isLink))
+            {
+                AddFoundItem(label.c_str(), ansiName, file.nFileSizeLow, file.nFileSizeHigh,
+                             file.dwFileAttributes, &file.ftLastWriteTime, isDir,
+                             data, duplicateCandidates, std::move(identity));
+            }
+        } while (!data->StopSearch && FindNextFileW(handle, &file));
+        if (!data->StopSearch)
+        {
+            error = GetLastError();
+            if (error != ERROR_NO_MORE_FILES)
+                ReportFindPathError(data, label.c_str(), error, false);
+        }
+        // Visit child directories depth-first in their enumeration order.
+        std::reverse(pending.begin() + childBegin, pending.end());
+    }
+}
+
+static void RefineData(const Salamander::LegacyFindMasks& masks, CGrepData* data)
 {
     int refineCount = data->FoundFilesListView->GetDataForRefineCount();
     int oldProgress = -1;
@@ -1817,8 +1889,8 @@ void RefineData(CMaskGroup* masksGroup, CGrepData* data)
         if (ok && !data->Criteria.Test(refineData->Attr, &refineData->Size, &refineData->LastWrite))
             ok = FALSE;
 
-        // file name (let the extension be resolved if ext==NULL)
-        if (ok && !masksGroup->AgreeMasks(refineData->Name, NULL))
+        const auto& name = refineData->UnicodeIdentity.Name();
+        if (ok && !masks.Matches(std::wstring(name.begin(), name.end())))
             ok = FALSE;
 
         // content
@@ -1828,15 +1900,10 @@ void RefineData(CMaskGroup* masksGroup, CGrepData* data)
                 ok = FALSE; // a directory cannot be grepped
             else
             {
-                char fullPath[MAX_PATH];
-                strcpy(fullPath, refineData->Path);
-                if (fullPath[strlen(fullPath) - 1] != '\\')
-                    strcat(fullPath, "\\");
-                strcat(fullPath, refineData->Name);
-                // links: refineData->Size == 0, the file size must be additionally obtained via SalGetFileSize()
-                BOOL isLink = (refineData->Attr & FILE_ATTRIBUTE_REPARSE_POINT) != 0; // size == 0, the file size must be obtained via SalGetFileSize()
+                const auto label = FindResultLabel(refineData->Path, refineData->Name);
+                const bool isLink = (refineData->Attr & FILE_ATTRIBUTE_REPARSE_POINT) != 0;
                 ok = TestFileContent(refineData->Size.LoDWord, refineData->Size.HiDWord,
-                                     fullPath, data, isLink);
+                                     label.c_str(), refineData->UnicodeIdentity, data, isLink);
             }
         }
 
@@ -1848,12 +1915,60 @@ void RefineData(CMaskGroup* masksGroup, CGrepData* data)
             AddFoundItem(refineData->Path, refineData->Name,
                          refineData->Size.LoDWord, refineData->Size.HiDWord,
                          refineData->Attr, &refineData->LastWrite,
-                         refineData->IsDir, data, NULL);
+                         refineData->IsDir, data, NULL, refineData->UnicodeIdentity);
         }
     }
 }
 
+#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
+// These events are created by the isolated GUI driver before starting the
+// process. Normal binaries do not contain this coordination code.
+static HANDLE OpenIsolatedFindEvent(const char* suffix, DWORD access)
+{
+    char enabled[2];
+    if (GetEnvironmentVariableA("OPENSAL_GUI_FIND_TEST_GATE", enabled, _countof(enabled)) != 1 ||
+        enabled[0] != '1')
+        return NULL;
+
+    char id[33];
+    if (GetEnvironmentVariableA("OPENSAL_GUI_TEST_ID", id, _countof(id)) != 32 ||
+        strspn(id, "0123456789abcdef") != 32)
+        return NULL;
+
+    char name[96];
+    _snprintf_s(name, _TRUNCATE, "Local\\OpenSalamander.FindTest.%s.%s", id, suffix);
+    return OpenEventA(access, FALSE, name);
+}
+
+void SignalIsolatedFindCancellation()
+{
+    HANDLE cancelled = OpenIsolatedFindEvent("cancelled", EVENT_MODIFY_STATE);
+    if (cancelled != NULL)
+    {
+        SetEvent(cancelled);
+        CloseHandle(cancelled);
+    }
+}
+
+static void WaitAtIsolatedFindCheckpoint()
+{
+    HANDLE reached = OpenIsolatedFindEvent("reached", EVENT_MODIFY_STATE);
+    if (reached == NULL)
+        return;
+
+    HANDLE cancelled = OpenIsolatedFindEvent("cancelled", SYNCHRONIZE);
+    if (cancelled != NULL)
+    {
+        if (SetEvent(reached))
+            WaitForSingleObject(cancelled, 15000);
+        CloseHandle(cancelled);
+    }
+    CloseHandle(reached);
+}
+#endif
+
 unsigned GrepThreadFBody(void* ptr)
+try
 {
     CALL_STACK_MESSAGE1("GrepThreadFBody()");
 
@@ -1863,32 +1978,13 @@ unsigned GrepThreadFBody(void* ptr)
     CGrepData* data = (CGrepData*)ptr;
     data->NeedRefresh = FALSE;
     data->Criteria.PrepareForTest();
-    char path[MAX_PATH];
-    char* end;
+#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
+    WaitAtIsolatedFindCheckpoint();
+#endif
     if (data->Refine != 0)
     {
         if (data->Data->Count > 0)
-        {
-            strcpy_s(path, data->Data->At(0)->Dir);
-            int len = (int)strlen(path);
-            if (path[len - 1] != '\\')
-            {
-                strcat_s(path, "\\");
-                len++;
-            }
-            end = path + len;
-            CMaskGroup* mg = &data->Data->At(0)->MasksGroup;
-            int errorPos;
-            if (mg->PrepareMasks(errorPos))
-            {
-                RefineData(mg, data);
-            }
-            else
-            {
-                TRACE_E("PrepareMasks failed errorPos=" << errorPos);
-                data->StopSearch = TRUE;
-            }
-        }
+            RefineData(data->Data->At(0)->MasksGroup, data);
     }
     else
     {
@@ -1896,10 +1992,10 @@ unsigned GrepThreadFBody(void* ptr)
         // after scanning all directories, the array is sorted (by name or by size)
         // if content is checked, MD5 is calculated for ambiguous cases
         // afterwards the data are passed to FoundFilesListView
-        CDuplicateCandidates* duplicateCandidates = NULL;
+        std::unique_ptr<CDuplicateCandidates> duplicateCandidates;
         if (data->FindDuplicates)
         {
-            duplicateCandidates = new CDuplicateCandidates;
+            duplicateCandidates.reset(new CDuplicateCandidates);
             if (duplicateCandidates == NULL)
             {
                 TRACE_E(LOW_MEMORY); // the algorithm will run even without the stack
@@ -1912,55 +2008,20 @@ unsigned GrepThreadFBody(void* ptr)
             int i;
             for (i = 0; i < data->Data->Count; i++)
             {
-                strcpy_s(path, data->Data->At(i)->Dir);
-                int len = (int)strlen(path);
-                if (path[len - 1] != '\\')
-                {
-                    strcat_s(path, "\\");
-                    len++;
-                }
-                end = path + len;
-                CMaskGroup* mg = &data->Data->At(i)->MasksGroup;
-                int errorPos;
-                if (!mg->PrepareMasks(errorPos))
-                {
-                    TRACE_E("PrepareMasks failed errorPos=" << errorPos);
-                    data->StopSearch = TRUE;
-                    break;
-                }
-
-                BOOL includeSubDirs = data->Data->At(i)->IncludeSubDirs;
-                TDirectArray<char*>* dirStack = NULL; // see description at SearchDirectory
-                if (includeSubDirs)
-                {
-                    dirStack = new TDirectArray<char*>(1000, 1000);
-                    if (dirStack == NULL)
-                        TRACE_E(LOW_MEMORY); // the algorithm will run even without the stack
-                }
-
+                CSearchForData* query = data->Data->At(i);
                 // make a local copy of the ignore list, since it has to be processed anyway
                 // this also allows the user to edit the ignore list while the search is in progress
-                CFindIgnore* ignoreList = new CFindIgnore;
+                std::unique_ptr<CFindIgnore> ignoreList(new CFindIgnore);
                 if (ignoreList == NULL)
                     TRACE_E(LOW_MEMORY); // the algorithm will run even without the ignore list
                 else
                 {
                     if (!ignoreList->Prepare(&FindIgnore))
-                    {
-                        delete ignoreList;
-                        ignoreList = NULL;
-                    }
+                        ignoreList.reset();
                 }
 
-                char message[2 * MAX_PATH];
-                SearchDirectory(path, end, (int)(end - path), mg, includeSubDirs, data, dirStack, 0,
-                                duplicateCandidates, ignoreList, message);
-
-                if (ignoreList != NULL)
-                    delete ignoreList;
-
-                if (dirStack != NULL)
-                    delete dirStack;
+                SearchDirectory(query->Directory, query->MasksGroup, query->IncludeSubDirs, data,
+                                duplicateCandidates.get(), ignoreList.get());
                 if (data->StopSearch)
                     break;
             }
@@ -1969,7 +2030,6 @@ unsigned GrepThreadFBody(void* ptr)
         {
             if (!data->StopSearch)
                 duplicateCandidates->Examine(data);
-            delete duplicateCandidates;
         }
     }
 
@@ -1978,6 +2038,17 @@ unsigned GrepThreadFBody(void* ptr)
     PostMessage(data->HWindow, WM_COMMAND, IDC_FIND_STOP, 0);
     TRACE_I("End");
     return 0;
+}
+catch (const std::bad_alloc&)
+{
+    auto* data = static_cast<CGrepData*>(ptr);
+    data->StopSearch = TRUE;
+    data->SearchStopped = TRUE;
+    FIND_LOG_ITEM log = {FLI_ERROR, LoadStr(IDS_CANTSHOWRESULTS), NULL};
+    SendMessage(data->HWindow, WM_USER_ADDLOG, reinterpret_cast<WPARAM>(&log), 0);
+    SendMessage(data->HWindow, WM_USER_ADDFILE, 0, 0);
+    PostMessage(data->HWindow, WM_COMMAND, IDC_FIND_STOP, 0);
+    return 1;
 }
 
 unsigned GrepThreadFEH(void* param)
@@ -2112,7 +2183,7 @@ unsigned ThreadFindDialogMessageLoopBody(void* parameter)
             MSG msg;
             HWND findDialogHWindow = findDialog->HWindow; // because of WM_QUIT, when the window will no longer be allocated
             BOOL haveMSG = FALSE;                         // FALSE means GetMessage() should be called in the loop condition
-            while (haveMSG || GetMessage(&msg, NULL, 0, 0))
+            while (haveMSG || GetMessageW(&msg, NULL, 0, 0) > 0)
             {
                 haveMSG = FALSE;
                 if ((msg.message == WM_SYSKEYDOWN || msg.message == WM_KEYDOWN) &&
@@ -2124,18 +2195,18 @@ unsigned ThreadFindDialogMessageLoopBody(void* parameter)
                     if (msg.message == WM_KEYDOWN && msg.wParam == VK_ESCAPE && findDialog != NULL)
                         findDialog->SetProcessingEscape(TRUE);
                     if (findDialog == NULL ||
-                        (!TranslateAccelerator(findDialogHWindow, FindDialogAccelTable, &msg)) &&
+                        (!TranslateAcceleratorW(findDialogHWindow, FindDialogAccelTable, &msg)) &&
                             (!findDialog->ManageHiddenShortcuts(&msg)) &&
-                            (!IsDialogMessage(findDialogHWindow, &msg)))
+                            (!IsDialogMessageW(findDialogHWindow, &msg)))
                     {
                         TranslateMessage(&msg); // prevent generating WM_CHAR -> would cause a beep on Cancel
-                        DispatchMessage(&msg);
+                        DispatchMessageW(&msg);
                     }
                     if (msg.message == WM_KEYDOWN && msg.wParam == VK_ESCAPE && findDialog != NULL)
                         findDialog->SetProcessingEscape(FALSE);
                 }
 
-                if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+                if (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE))
                 {
                     if (msg.message == WM_QUIT)
                         break;      // equivalent to the situation where GetMessage() returns FALSE
@@ -2184,13 +2255,21 @@ DWORD WINAPI ThreadFindDialogMessageLoop(void* param)
     return ThreadFindDialogMessageLoopEH(param);
 }
 
-BOOL OpenFindDialog(HWND hCenterAgainst, const char* initPath)
+BOOL OpenFindDialog(HWND hCenterAgainst, std::wstring_view initPath)
 {
-    CALL_STACK_MESSAGE3("OpenFindDialog(0x%p, %s)", hCenterAgainst, initPath);
+    CALL_STACK_MESSAGE3("OpenFindDialog(0x%p, %Iu UTF-16 units)", hCenterAgainst, initPath.size());
 
     HCURSOR hOldCur = SetCursor(LoadCursor(NULL, IDC_WAIT));
 
-    CFindDialog* findDlg = new CFindDialog(hCenterAgainst, initPath);
+    CFindDialog* findDlg = NULL;
+    try
+    {
+        findDlg = new CFindDialog(hCenterAgainst, initPath);
+    }
+    catch (const std::bad_alloc&)
+    {
+        // The allocation-failure path below restores the cursor.
+    }
     if (findDlg != NULL && findDlg->IsGood())
     {
         CTFDData data;

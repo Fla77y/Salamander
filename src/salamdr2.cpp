@@ -10,6 +10,7 @@
 #include "tasklist.h"
 #include "versinfo.h"
 #include "logo.h"
+#include "common/win32_plugin_module_path.h"
 #include "reglib\src\regparse.h"
 
 // ****************************************************************************
@@ -3028,13 +3029,26 @@ BOOL IsSLGFileValid(HINSTANCE hModule, HINSTANCE hSLG, WORD& slgLangID, char* is
 BOOL CLanguage::Init(const char* fileName, HINSTANCE modul)
 {
     BOOL ret = FALSE;
-    char path[MAX_PATH];
+    std::wstring modulePath;
     if (modul == NULL)
         modul = HInstance;
-    GetModuleFileName(modul, path, MAX_PATH);
-    sprintf(strrchr(path, '\\') + 1, "lang\\%s", fileName);
+    DWORD pathError = ERROR_SUCCESS;
+    try
+    {
+        if (!Salamander::TryResolveLanguageModulePath(modul, fileName, modulePath, pathError))
+        {
+            SetLastError(pathError);
+            return FALSE;
+        }
+    }
+    catch (const std::bad_alloc&)
+    {
+        SetLastError(ERROR_NOT_ENOUGH_MEMORY);
+        return FALSE;
+    }
+    const char* path = fileName; // diagnostic leaf only, never an I/O path
 
-    HINSTANCE hLib = HANDLES(LoadLibrary(path));
+    HINSTANCE hLib = HANDLES(LoadLibraryW(modulePath.c_str()));
     if (hLib != NULL)
     {
         WORD langID;

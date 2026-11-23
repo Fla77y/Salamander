@@ -28,6 +28,7 @@ if ($source -notmatch '(?s)function Set-VerifiedNavigationClipboard.*?Set-Native
     throw 'Navigation must use non-OLE global UTF-16 clipboard memory.'
 }
 Add-Type -TypeDefinition $match.Groups[1].Value -ErrorAction Stop
+Add-Type -Path (Join-Path $PSScriptRoot 'Clipboard-Snapshot.cs')
 
 $root = Join-Path ([IO.Path]::GetTempPath()) ('OpenSal-ClipboardTest-' + [guid]::NewGuid().ToString('N'))
 [void][IO.Directory]::CreateDirectory($root)
@@ -35,7 +36,7 @@ $reader = Join-Path $root 'reader.ps1'
 $original = $null
 $owner = [SalamanderGuiClipboardOwner]::new()
 try {
-    $original = [Windows.Forms.Clipboard]::GetDataObject()
+    $original = [SalamanderClipboardSnapshot]::Capture()
     $text = 'C:\Release-F3_東京_😀\normal'
     if ($owner.OwnerThreadId -eq [Threading.Thread]::CurrentThread.ManagedThreadId) {
         throw 'Clipboard owner must have an independent STA message pump.'
@@ -133,7 +134,7 @@ catch {
             '-Sta', '-NoLogo', '-NoProfile', '-NonInteractive', '-File',
             ('"' + $reader + '"'), ('"' + $readOutput + '"'),
             ('"' + $stageFile + '"'), $mode
-        ) -PassThru
+        ) -WindowStyle Hidden -PassThru
         try {
             if (-not $process.WaitForExit(15000)) {
                 $stage = if ([IO.File]::Exists($stageFile)) {
@@ -214,7 +215,7 @@ finally {
         $args = @('-NoLogo', '-NoProfile', '-NonInteractive', '-File',
                   ('"' + $holderPath + '"'), '-Ready', ('"' + $readyPath + '"'),
                   '-HoldMilliseconds', [string]$HoldMilliseconds)
-        $child = Start-Process -FilePath (Join-Path $PSHOME 'pwsh.exe') -ArgumentList $args -PassThru
+        $child = Start-Process -FilePath (Join-Path $PSHOME 'pwsh.exe') -ArgumentList $args -WindowStyle Hidden -PassThru
         $deadline = [DateTime]::UtcNow.AddSeconds(5)
         while (-not [IO.File]::Exists($readyPath)) {
             if ($child.HasExited -or [DateTime]::UtcNow -ge $deadline) {
@@ -324,13 +325,17 @@ finally {
 finally {
     try {
         if ($null -ne $original) {
-            [Windows.Forms.Clipboard]::SetDataObject($original, $true)
-        }
-        else {
-            [Windows.Forms.Clipboard]::Clear()
+            $original.Restore()
         }
     }
-    catch { Write-Warning "Could not restore clipboard after native regression: $($_.Exception.Message)" }
-    $owner.Dispose()
-    Remove-Item -LiteralPath $root -Force -Recurse -ErrorAction SilentlyContinue
+    finally {
+        if ($null -ne $original) { $original.Dispose() }
+        $owner.Dispose()
+        $absolute = [IO.Path]::GetFullPath($root)
+        $parent = [IO.Path]::GetFullPath([IO.Path]::GetTempPath())
+        if (-not $absolute.StartsWith($parent + 'OpenSal-ClipboardTest-', [StringComparison]::OrdinalIgnoreCase)) {
+            throw 'Unsafe clipboard fixture cleanup path.'
+        }
+        Remove-Item -LiteralPath $absolute -Force -Recurse -ErrorAction SilentlyContinue
+    }
 }

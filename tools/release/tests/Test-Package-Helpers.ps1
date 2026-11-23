@@ -140,7 +140,8 @@ $allModes = @(Get-AutomatedGuiModes -RequestedSet $selected)
 
 # Assert: all registered and future automated tests, but no manual/setup/run
 # actions, are selected; full suite covers both binary configurations.
-foreach ($required in @('--test', $futureOption) + $guiModes) {
+foreach ($required in @('--test', '--test-pictview', '--test-pictview-window',
+                       '--test-plugin-exports', $futureOption) + $guiModes) {
     if (-not $selected.Contains($required)) {
         throw "--test-all failed to include automated test '$required'."
     }
@@ -172,8 +173,10 @@ Expand-AutomatedTestActions -RequestedSet $withoutAll -AvailableOptions $registe
 if ($withoutAll.Count -ne 1 -or -not $withoutAll.Contains('--test-gui-baseline')) {
     throw 'Existing individual GUI test switches must not be expanded.'
 }
+# Include the entire automated GUI dispatch loop. Starting at a specific
+# test mode would silently omit any mode registered before that mode.
 $guiSectionStart = $managerSource.IndexOf(
-    'if ($requestedSet.Contains(''--test-gui-baseline''))',
+    'foreach ($guiMode in $automatedGuiModes) {',
     [StringComparison]::Ordinal)
 $manualStart = $managerSource.IndexOf(
     'if ($requestedSet.Contains(''--test-gui-manual''))',
@@ -218,6 +221,16 @@ if ($guiDriver -notmatch 'SendMessageTimeout' -or
     throw 'GUI test must synchronize clipboard commands with the main window.'
 }
 
+# The F8 deletion test must be a real GUI operation on a nested long Unicode
+# fixture, not merely a .NET cleanup check after test completion.
+if ($guiDriver -notmatch '\[switch\]\$TemporaryDirectoryDeletionOnly' -or
+    $guiDispatch -notmatch "'-TemporaryDirectoryDeletionOnly'" -or
+    $guiDriver -notmatch 'if \(\$TemporaryDirectoryDeletionOnly\)' -or
+    $guiDriver -notmatch 'Wait-Until \{ -not \[IO\.Directory\]::Exists\(\$temporaryDirectory\) \}' -or
+    $guiDriver -notmatch "Send-Keys '\{F8\}'") {
+    throw 'GUI temporary long-path directory deletion regression is not correctly registered or asserted.'
+}
+
 
 
 # A single Shift+Up marks only the previously focused row in Salamander.
@@ -247,14 +260,42 @@ if ([string]::IsNullOrEmpty($navigationBlock) -or
     $guiDriver -notmatch '(?s)function Read-PanelPath\s*\{.*?Invoke-SalamanderCommand -CommandId 711.*?for \(\$attempt') {
     throw 'GUI navigation must bound clipboard retries, reject modal errors and verify an idempotent retry.'
 }
-foreach ($prefix in @(
-    'Cannot activate verified test Salamander',
-    'Salamander command {0} did not complete',
-    'GUI navigation failed: {0}',
-    'GUI startup failed: {0}'
-)) {
-    if ($guiDriver -notmatch [regex]::Escape('throw (("' + $prefix)) {
-        throw "GUI diagnostics must format the entire error message: $prefix"
+# Arrange: each diagnostic belongs to the correct GUI driver function.
+# Regressions must not silently lose formatted PID/HWND/error details.
+$diagnostics = @(
+    @{ Function = 'Focus-TestProcess'; Prefix = '{0}: Cannot activate verified Salamander HWND=0x{1:X} PID={2} ' },
+    @{ Function = 'Invoke-SalamanderCommand'; Prefix = 'Salamander command {0} did not complete' },
+    @{ Function = 'Go-ToPath'; Prefix = 'GUI navigation failed: {0}' },
+    @{ Function = '<main>'; Prefix = 'GUI startup failed: {0}' }
+)
+foreach ($diagnostic in $diagnostics) {
+    # Act: inspect the diagnostic throw within its own function, not another
+    # unrelated error message or a comment elsewhere in the driver.
+    $functionPattern = '(?ms)^function\s+' + [regex]::Escape($diagnostic.Function) +
+                       '\s*\{(?<body>.*?)(?=^function\s+|\z)'
+    $body = if ($diagnostic.Function -eq '<main>') {
+        $guiDriver
+    }
+    else {
+        [regex]::Match($guiDriver, $functionPattern).Groups['body'].Value
+    }
+    $formatPattern = '(?s)throw\s+\(\(\s*"' +
+                     [regex]::Escape($diagnostic.Prefix) + '.*?\)\s*-f\s'
+    # Assert: the full diagnostic is formatted before it is thrown.
+    # Startup diagnostics are formatted into a variable before additional
+    # isolated-startup details are appended at the throw site.
+    if ($diagnostic.Function -eq '<main>') {
+        $startupFormat = '(?s)\$startupMessage\s*=\s*\(\(\s*"' +
+                         [regex]::Escape($diagnostic.Prefix) +
+                         '.*?\)\s*-f\s+.*?\)'
+        $startupThrow = 'throw\s*\(\$startupMessage\s*\+'
+        if ($body -notmatch $startupFormat -or $body -notmatch $startupThrow) {
+            throw 'GUI startup diagnostic must format its complete message before appending isolation details.'
+        }
+        continue
+    }
+    if ([string]::IsNullOrEmpty($body) -or $body -notmatch $formatPattern) {
+        throw "GUI diagnostics must format the entire error message in $($diagnostic.Function): $($diagnostic.Prefix)"
     }
 }
 
@@ -842,16 +883,22 @@ if ($pluginDispatch -notmatch 'HasUnsupportedLegacyPluginSelection' -or
     throw 'F3: all legacy plugin menu paths must block unsafe disk identities.'
 }
 
-# Search roots must be transferred from the complete W control value and
-# rejected if the ACP round-trip loses characters or exceeds the buffer.
-if ($findDialog1 -notmatch 'GetWindowTextW\(hLookInWnd' -or
-    $findDialog1 -notmatch 'IsExactAnsiName\(exactInput, wideInput\.c_str\(\)\)' -or
+# Search roots must be transferred from the complete W control value.
+# Any ANSI copy used by legacy actions still requires an exact round-trip.
+$findWorker = Get-Content -LiteralPath (Join-Path $toolsDir '..\..\src\find.cpp') -Raw
+$findQuery = Get-Content -LiteralPath (Join-Path $toolsDir '..\..\src\common\legacy_find_query.h') -Raw
+if ($findDialog1 -notmatch 'const std::wstring roots = ReadFindEdit\(lookIn\)' -or
+    $findWorker -notmatch 'TryResolveLegacyFindDirectory\(root, directory, error\)' -or
+    $findQuery -notmatch 'Utf16DiskPath::TryCreateAbsolute\(utf16, valid, pathError\)' -or
+    $findWorker -notmatch 'TryGetFindDirectoryLabel\(directory, label\);' -or
+    $findWorker -notmatch 'IsExactAnsiName\(output, text\.c_str\(\)\)' -or
+    $findWorker -notmatch 'FindFirstFileW\(extended\.c_str\(\), &file\)' -or
     $findDialog1 -notmatch 'ti\.ErrorOn\(IDC_FIND_LOOKIN\)') {
     throw 'F2: search root validation must not silently truncate or best-fit Unicode.'
 }
 
-# F2: real disk searches must reach the new W-owned result model, and the
-# native 32700-unit fixture must exercise the same search implementation.
+# The secondary Unicode Find command and the native near-limit fixture
+# must reach the same W-owned search implementation.
 $wideFind = Get-Content -LiteralPath (
     Join-Path $toolsDir '..\..\src\common\win32_unicode_find.h') -Raw
 $wideFindWindow = Get-Content -LiteralPath (

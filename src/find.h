@@ -4,6 +4,10 @@
 
 #pragma once
 
+#include "common/legacy_find_utf16_identity.h"
+#include "common/legacy_find_masks.h"
+#include <vector>
+
 // structure for adding messages to the Find Log; sent as the message parameter
 // of WM_USER_ADDLOG; parameters will be copied into the log data (can be deallocated after returning)
 #define FLI_INFO 0x00000000   // INFORMATION item
@@ -25,8 +29,9 @@ struct FIND_LOG_ITEM
 extern BOOL IsNotAlpha[256];
 
 #define ITEMNAME_TEXT_LEN MAX_PATH + MAX_PATH + 10
-#define NAMED_TEXT_LEN MAX_PATH  // maximum text length in the combobox
-#define LOOKIN_TEXT_LEN MAX_PATH // maximum text length in the combobox
+#define NAMED_TEXT_LEN MAX_PATH // UTF-16 units including the terminator
+// A root list can contain a full-length path with escaped semicolons.
+#define LOOKIN_TEXT_LEN 65536   // UTF-16 units including the terminator
 #define GREP_TEXT_LEN 201        // maximum text length in the combobox; NOTE: should match FIND_TEXT_LEN
 #define GREP_LINE_LEN 10000      // maximum line length for regular expressions (viewer uses a different macro)
 
@@ -36,11 +41,15 @@ extern BOOL IsNotAlpha[256];
 
 // history for the Named combobox
 #define FIND_NAMED_HISTORY_SIZE 30 // number of remembered strings
-extern char* FindNamedHistory[FIND_NAMED_HISTORY_SIZE];
+extern std::wstring FindNamedHistory[FIND_NAMED_HISTORY_SIZE];
 
 // history for the LookIn combobox
 #define FIND_LOOKIN_HISTORY_SIZE 30 // number of remembered strings
-extern char* FindLookInHistory[FIND_LOOKIN_HISTORY_SIZE];
+extern std::wstring FindLookInHistory[FIND_LOOKIN_HISTORY_SIZE];
+
+void LoadFindTextHistory(HKEY key, const char* name, std::wstring history[], int count, int textLimit);
+void SaveFindTextHistory(HKEY key, const char* name, const std::wstring history[], int count, BOOL clear);
+std::vector<std::wstring> GetFindTextHistory(std::wstring history[], int count, const std::wstring* newEntry);
 
 // history for the Containing combobox
 #define FIND_GREP_HISTORY_SIZE 30 // number of remembered strings
@@ -71,29 +80,19 @@ class CMenuBar;
 
 struct CSearchForData
 {
-    char Dir[MAX_PATH];
-    CMaskGroup MasksGroup;
+    std::wstring Directory;
+    Salamander::LegacyFindMasks MasksGroup;
     BOOL IncludeSubDirs;
 
-    CSearchForData(const char* dir, const char* masksGroup, BOOL includeSubDirs)
+    CSearchForData(std::wstring directory, const Salamander::LegacyFindMasks& masks, BOOL includeSubDirs)
+        : Directory(std::move(directory)), MasksGroup(masks), IncludeSubDirs(includeSubDirs)
     {
-        Set(dir, masksGroup, includeSubDirs);
-    }
-
-    void Set(const char* dir, const char* masksGroup, BOOL includeSubDirs);
-    const char* GetText(int i)
-    {
-        switch (i)
-        {
-        case 0:
-            return MasksGroup.GetMasksString();
-        case 1:
-            return Dir;
-        default:
-            return IncludeSubDirs ? LoadStr(IDS_INCLUDESUBDIRSYES) : LoadStr(IDS_INCLUDESUBDIRSNO);
-        }
     }
 };
+
+int CompareLegacyFindNames(std::wstring_view a, std::wstring_view b);
+bool TryFindTextToAnsi(const std::wstring& text, char* output, int capacity);
+bool TryLegacyFindWorkerRoot(const std::wstring& directory, char (&path)[MAX_PATH]);
 
 //*********************************************************************************
 //
@@ -194,15 +193,12 @@ public:
 
     BOOL AutoLoad;
 
-    char NamedText[NAMED_TEXT_LEN];
-    char LookInText[LOOKIN_TEXT_LEN];
+    std::wstring NamedText;
+    std::wstring LookInText;
     char GrepText[GREP_TEXT_LEN];
 
 public:
     CFindOptionsItem();
-    // WARNING! Once the object contains allocated data the code for moving items
-    // in the Options Manager stops working because temporary items get destroyed
-
     CFindOptionsItem& operator=(const CFindOptionsItem& s);
 
     // builds name of the item (ItemName) based on NamedText and LookInText
@@ -261,7 +257,7 @@ public:
 
     // the following data are not saved; they are initialized in Prepare()
     CFindIgnoreItemType Type;
-    int Len;
+    std::wstring PreparedPath;
 
 public:
     CFindIgnoreItem();
@@ -293,7 +289,7 @@ public:
     // only items with 'Enabled' == TRUE are evaluated
     // returns FALSE if no such item is found
     // Note: the method must receive the full path with a trailing slash
-    BOOL Contains(const char* path, int startPathLen);
+    BOOL Contains(std::wstring_view path, size_t startPathLen);
 
     // adds the path only if it does not already exist in the list
     BOOL AddUnique(BOOL enabled, const char* path);
@@ -497,6 +493,18 @@ struct CFoundFilesData
 {
     char* Name;
     char* Path;
+
+    // Authoritative native identity. Name and Path are optional exact ACP
+    // projections for legacy actions; an empty field means no exact projection.
+    Salamander::LegacyFindUtf16Identity UnicodeIdentity;
+
+    bool TrySetUnicodeIdentity(std::u16string_view directory,
+                               std::u16string_view name)
+    {
+        Salamander::Utf16PathError error;
+        return Salamander::LegacyFindUtf16Identity::TryCreate(
+            directory, name, UnicodeIdentity, error);
+    }
     CQuadWord Size;
     DWORD Attr;
     FILETIME LastWrite;
@@ -535,6 +543,9 @@ struct CFoundFilesData
     }
     BOOL Set(const char* path, const char* name, const CQuadWord& size, DWORD attr,
              const FILETIME* lastWrite, BOOL isDir);
+    int CompareName(const CFoundFilesData& other) const;
+    bool CanUseLegacyPath() const;
+    bool CopyLegacyFullPath(char (&path)[MAX_PATH]) const;
     // if 'i' refers to Name or Path, returns a pointer to the corresponding variable
     // otherwise fills the buffer 'text' (must be at least 50 characters long) with the appropriate value
     // and returns a pointer to 'text'
@@ -569,6 +580,7 @@ public:
     void SortItems(int sortBy);
 
     void QuickSortDuplicates(int left, int right, BOOL byName);
+    void FindWideViewerResult();
     int CompareDuplicatesFunc(CFoundFilesData* f1, CFoundFilesData* f2, BOOL byName);
     void SetDifferentByGroup(); // sets the Different bit based on Group so that the Different bit alternates at group boundaries
 
@@ -711,7 +723,7 @@ protected:
 
     // additional data
     BOOL DlgFailed;
-    BOOL InitRootTooLong; // original search root cannot fit the ANSI dialog model
+    BOOL InitRootTooLong; // escaped initial root exceeds the Look in edit limit
     CMenuPopup* MainMenu;
     CMenuBar* MenuBar;
     HWND HStatusBar;
@@ -720,6 +732,7 @@ protected:
                        //    CFindAdvancedDialog FindAdvanced;
     CFoundFilesListView* FoundFilesListView;
     char FoundFilesDataTextBuffer[MAX_PATH]; // for obtaining text from CFoundFilesData::GetText
+    std::wstring FoundFilesDataWideText; // storage for the owner-data notification
     CFindTBHeader* TBHeader;
     BOOL SearchInProgress;
     BOOL CanClose; // the window can be closed (we are not inside a method of this object)
@@ -755,7 +768,7 @@ public:
     CStateOfFindCloseQueryEnum StateOfFindCloseQuery; // main thread asks the Find thread whether the window can close; unsynchronized, used only during shutdown, more than enough...
 
 public:
-    CFindDialog(HWND hCenterAgainst, const char* initPath);
+    CFindDialog(HWND hCenterAgainst, std::wstring_view initPath);
     ~CFindDialog();
 
     virtual void Validate(CTransferInfo& ti);
@@ -807,8 +820,9 @@ protected:
 
     void StartSearch(WORD command);
     void StopSearch();
+    void UpdateSearchCaption(bool showCount);
 
-    void BuildSerchForData(); // fills the SearchForData list
+    BOOL BuildSerchForData(); // fills the SearchForData list
 
     void EnableControls(BOOL nextIsButton = FALSE);
     void EnableToolBar();
@@ -879,7 +893,10 @@ public:
 // externs
 //
 
-BOOL OpenFindDialog(HWND hCenterAgainst, const char* initPath);
+BOOL OpenFindDialog(HWND hCenterAgainst, std::wstring_view initPath);
+#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
+void SignalIsolatedFindCancellation();
+#endif
 
 extern CFindOptions FindOptions;
 extern CFindIgnore FindIgnore;

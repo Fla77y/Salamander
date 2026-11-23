@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include "common/worker_copy_paths.h"
+
 #define CREATE_DIR_SIZE CQuadWord(4096, 0) // operation cost estimates (uncached measurements based on worker thread runtimes)
 #define MOVE_DIR_SIZE CQuadWord(5050, 0)
 #define DELETE_DIR_SIZE CQuadWord(2400, 0)
@@ -212,6 +214,7 @@ enum COperationCode
 #define OPFL_TGTPATH_IS_NET 0x00000020       // the target path is a network path
 #define OPFL_TGTPATH_IS_FAST 0x00000040      // the target path is a disk, USB disk, flash drive, flash-card reader, CD, DVD, or RAM disk (not a network or floppy)
 #define OPFL_IGNORE_INVALID_NAME 0x00000080  // skip the name validity test (for directories: unchanged name = do not flag as invalid)
+#define OPFL_UTF16_COPY_PATHS 0x00000100     // SourceName/TargetName are non-path tokens owned by UnicodeCopyPaths
 
 struct COperation
 {
@@ -227,6 +230,13 @@ struct COperation
 class COperations : public TDirectArray<COperation>
 {
 public:
+    Salamander::WorkerCopyPathStore UnicodeCopyPaths;
+    std::string UnicodeCopyNotificationPath; // full panel path, never truncated to WorkPath1
+#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
+    HANDLE CopyTestReached = NULL;
+    HANDLE CopyTestContinue = NULL;
+    BOOL CopyTestGateUsed = FALSE;
+#endif
     CQuadWord TotalSize;      // WARNING: not the byte size of the files (usable only for progress calculations)
     CQuadWord CompressedSize; // sum of file sizes after compression
     CQuadWord OccupiedSpace;  // space occupied on disk
@@ -306,7 +316,16 @@ private:
 
 public:
     COperations(int base, int delta, char* waitInQueueSubject, char* waitInQueueFrom, char* waitInQueueTo);
-    ~COperations() { HANDLES(DeleteCriticalSection(&StatusCS)); }
+    ~COperations()
+    {
+#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
+        if (CopyTestReached != NULL)
+            HANDLES(CloseHandle(CopyTestReached));
+        if (CopyTestContinue != NULL)
+            HANDLES(CloseHandle(CopyTestContinue));
+#endif
+        HANDLES(DeleteCriticalSection(&StatusCS));
+    }
 
     void SetWorkPath1(const char* path, BOOL inclSubDirs)
     {
@@ -400,6 +419,12 @@ HANDLE StartWorker(COperations* script, HWND hDlg, CChangeAttrsData* attrsData,
                    BOOL* cancelWorker, int* operationProgress, int* summaryProgress);
 
 void FreeScript(COperations* script);
+
+// Prepare one regular UTF-16 copy before starting the existing progress/worker
+// threads. Failure leaves ownership with the caller, which must FreeScript().
+BOOL PrepareUnicodeFileCopy(COperations* script, const Salamander::Utf16DiskPath& source,
+                            const Salamander::Utf16DiskPath& target,
+                            const WIN32_FILE_ATTRIBUTE_DATA& attributes, BOOL ignoreADS, DWORD& error);
 
 //
 // File information classes and Io Status block (see NTDDK.H)

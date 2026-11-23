@@ -33,8 +33,6 @@ extern BOOL FirstInstance_3_or_later;
 #pragma pack(push, enter_include_tasklist) // make the structures independent of the current alignment setting
 #pragma pack(4)
 
-extern HANDLE HSalmonProcess;
-
 // WARNING, x64 and x86 processes communicate through the structure; mind the types
 // (e.g. HANDLE) that have different widths
 struct CProcessListItem
@@ -45,8 +43,7 @@ struct CProcessListItem
     BYTE SID_MD5[16];     // MD5 calculated from the process SID, distinguishes processes running under different users; SID has an unknown length, hence this workaround
     DWORD ProcessState;   // State Salamander is currently in; see PROCESS_STATE_xxx
     UINT64 HMainWindow;   // (x64 friendly) Handle of the main window, if it already/still exists (set during creation/destruction)
-    DWORD SalmonPID;      // Salmon ProcessID, so the process that breaks in can guarantee it has
-                          // permission to call SetForegroundWindow
+    DWORD ReservedReporterPID; // legacy shared-memory slot; keep the 4-byte field for older instances
 
     CProcessListItem()
     {
@@ -56,9 +53,7 @@ struct CProcessListItem
         GetSidMD5(SID_MD5);
         ProcessState = PROCESS_STATE_STARTING;
         HMainWindow = NULL;
-        SalmonPID = 0;
-        if (HSalmonProcess != NULL)
-            SalmonPID = SalGetProcessId(HSalmonProcess); // at this moment Salmon is already running
+        ReservedReporterPID = 0; // no external reporter; preserve the shared-memory layout
     }
 };
 

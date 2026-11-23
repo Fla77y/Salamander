@@ -43,10 +43,108 @@ bool PathRejected(std::u16string_view input, Utf16PathError expected)
     return !Utf16DiskPath::TryCreateAbsolute(input, path, error) &&
            error == expected && path.Value().empty();
 }
+
+bool FileName_WhenInputAliasesOutput_PreservesExactUtf16()
+{
+    // Arrange
+    const std::u16string inputs[] = {u"東\U0001F600", std::u16string(251, u'東') + u".txt"};
+    for (const auto& expected : inputs)
+    {
+        Utf16FileName name;
+        Utf16PathError error;
+        if (!Utf16FileName::TryCreate(expected, name, error))
+            return false;
+        // Act
+        const bool accepted = Utf16FileName::TryCreate(name.Value(), name, error);
+        // Assert
+        if (!accepted || error != Utf16PathError::None || name.Value() != expected)
+            return false;
+    }
+    return true;
+}
+
+bool DiskPath_WhenInputAliasesOutput_PreservesExactUtf16()
+{
+    // Arrange
+    const std::u16string expected = u"\\\\server\\share\\東京-\U0001F600";
+    Utf16DiskPath path;
+    Utf16PathError error;
+    if (!Utf16DiskPath::TryCreateAbsolute(expected, path, error))
+        return false;
+    // Act
+    const bool accepted = Utf16DiskPath::TryCreateAbsolute(path.Value(), path, error);
+    // Assert
+    return accepted && error == Utf16PathError::None && path.Value() == expected;
+}
+
+bool FileName_WhenInputIsOutputSubview_PreservesExactUtf16()
+{
+    // Arrange
+    Utf16FileName name;
+    Utf16PathError error;
+    if (!Utf16FileName::TryCreate(u"prefix-東京-\U0001F600.txt", name, error))
+        return false;
+    const auto suffix = std::u16string_view(name.Value()).substr(7);
+    // Act
+    const bool accepted = Utf16FileName::TryCreate(suffix, name, error);
+    // Assert
+    return accepted && error == Utf16PathError::None && name.Value() == u"東京-\U0001F600.txt";
+}
+
+bool FileName_WhenAliasedSubviewSplitsSurrogate_ClearsOutput()
+{
+    // Arrange
+    Utf16FileName name;
+    Utf16PathError error;
+    if (!Utf16FileName::TryCreate(u"\U0001F600.txt", name, error))
+        return false;
+    const auto invalid = std::u16string_view(name.Value()).substr(0, 1);
+    // Act
+    const bool accepted = Utf16FileName::TryCreate(invalid, name, error);
+    // Assert
+    return !accepted && error == Utf16PathError::InvalidUtf16 && name.Value().empty();
+}
+
+bool DiskPath_WhenAliasedPrefixIsRelative_ClearsOutput()
+{
+    // Arrange
+    Utf16DiskPath path;
+    Utf16PathError error;
+    if (!Utf16DiskPath::TryCreateAbsolute(u"C:\\東京", path, error))
+        return false;
+    const auto relative = std::u16string_view(path.Value()).substr(0, 2);
+    // Act
+    const bool accepted = Utf16DiskPath::TryCreateAbsolute(relative, path, error);
+    // Assert
+    return !accepted && error == Utf16PathError::InvalidInput && path.Value().empty();
+}
 }
 
 int main()
 {
+    bool aliasesPreserved = true;
+    if (!FileName_WhenInputAliasesOutput_PreservesExactUtf16())
+    {
+        Fail("UTF-16 filename must support input aliasing its output");
+        aliasesPreserved = false;
+    }
+    if (!DiskPath_WhenInputAliasesOutput_PreservesExactUtf16())
+    {
+        Fail("UTF-16 disk path must support input aliasing its output");
+        aliasesPreserved = false;
+    }
+    if (!FileName_WhenInputIsOutputSubview_PreservesExactUtf16())
+    {
+        Fail("UTF-16 filename must support a view into its output");
+        aliasesPreserved = false;
+    }
+    if (!aliasesPreserved)
+        return 1;
+    if (!FileName_WhenAliasedSubviewSplitsSurrogate_ClearsOutput())
+        return Fail("invalid aliased UTF-16 name must clear output with the correct error");
+    if (!DiskPath_WhenAliasedPrefixIsRelative_ClearsOutput())
+        return Fail("invalid aliased path must clear output with the correct error");
+
     // Arrange: Unicode names are distinct, even when ANSI would replace them.
     const std::u16string tokyo = u"Größe_東京_\U0001F600.txt";
     const std::u16string osaka = u"Größe_大阪_\U0001F600.txt";

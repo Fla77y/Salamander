@@ -8,13 +8,100 @@
 #include "plugins.h"
 #include "fileswnd.h"
 #include "cfgdlg.h"
-#include "dialogs.h"
+#include "common/win32_utf16_static_text.h"
 #include "worker.h"
+#include "dialogs.h"
 #include "usermenu.h"
 #include "execute.h"
 #include "gui.h"
 #include "menu.h"
 #include "consts.h"
+
+namespace
+{
+BOOL SetQueuedWorkerPath(CStaticText* control, COperations* script, const char* token)
+{
+    if (control == NULL)
+        return TRUE;
+    try
+    {
+        std::wstring path;
+        if (script->UnicodeCopyPaths.GetDisplayPath(token, path))
+            return Salamander::SetUtf16StaticText(control->HWindow, path.c_str());
+        control->SetTextToDblQuotesIfNeeded(token);
+        return TRUE;
+    }
+    catch (const std::bad_alloc&)
+    {
+        return FALSE;
+    }
+}
+
+// Reuse the original resources, controls and button handlers. Only path statics
+// whose text is a known script token receive the opt-in Unicode presentation.
+template <class Dialog>
+class CWorkerPathDialog : public Dialog
+{
+public:
+    template <typename... Args>
+    CWorkerPathDialog(COperations* script, Args&&... args)
+        : Dialog(std::forward<Args>(args)...), Script(script) {}
+
+protected:
+    INT_PTR DialogProc(UINT message, WPARAM wParam, LPARAM lParam) override
+    {
+        const INT_PTR result = Dialog::DialogProc(message, wParam, lParam);
+        if (message == WM_INITDIALOG && Script != NULL)
+        {
+            try
+            {
+                Context context{Script, std::vector<char>(4 * 32768 + 128), TRUE};
+                EnumChildWindows(this->HWindow, AdaptPath, reinterpret_cast<LPARAM>(&context));
+                if (!context.Success)
+                    EndDialog(this->HWindow, IDCANCEL);
+            }
+            catch (const std::bad_alloc&)
+            {
+                EndDialog(this->HWindow, IDCANCEL);
+            }
+        }
+        return result;
+    }
+
+private:
+    struct Context
+    {
+        COperations* Script;
+        std::vector<char> Buffer;
+        BOOL Success;
+    };
+
+    static BOOL CALLBACK AdaptPath(HWND control, LPARAM parameter)
+    {
+        auto& context = *reinterpret_cast<Context*>(parameter);
+        try
+        {
+            // One extra byte accommodates the legacy CStaticText terminator.
+            const LRESULT length = SendMessageA(control, WM_GETTEXT,
+                context.Buffer.size() - 1, reinterpret_cast<LPARAM>(context.Buffer.data()));
+            if (length < 0 || static_cast<std::size_t>(length) >= context.Buffer.size() - 1)
+                return TRUE;
+            context.Buffer[static_cast<std::size_t>(length)] = 0;
+            std::wstring path;
+            if (context.Script->UnicodeCopyPaths.GetDisplayPath(context.Buffer.data(), path) &&
+                !Salamander::SetUtf16StaticText(control, path.c_str()))
+                context.Success = FALSE;
+        }
+        catch (const std::bad_alloc&)
+        {
+            context.Success = FALSE;
+        }
+        return context.Success;
+    }
+
+    COperations* Script; // worker is blocked in SendMessage until this dialog closes
+};
+} // namespace
 
 CConfiguration Configuration;
 
@@ -307,6 +394,16 @@ unsigned ThreadProgressDlgBody(void* parameter)
     char workPath2[MAX_PATH];
     lstrcpyn(workPath2, data->Script->WorkPath2, MAX_PATH);
     BOOL workPath2InclSubDirs = data->Script->WorkPath2InclSubDirs;
+    std::string unicodeNotification;
+    try
+    {
+        unicodeNotification = data->Script->UnicodeCopyNotificationPath;
+    }
+    catch (const std::bad_alloc&)
+    {
+        SetEvent(data->ContEvent); // ownership has not transferred to a worker
+        return 0;
+    }
 
     CProgressDialog dlg(NULL, data->Script, data->Caption, attrsData, convertData, TRUE, data);
     INT_PTR res = dlg.Execute();
@@ -317,6 +414,8 @@ unsigned ThreadProgressDlgBody(void* parameter)
         MainWindow->PostChangeOnPathNotification(workPath1, workPath1InclSubDirs);
     if (workPath2[0] != 0)
         MainWindow->PostChangeOnPathNotification(workPath2, workPath2InclSubDirs);
+    if (!unicodeNotification.empty())
+        MainWindow->PostChangeOnPathNotification(unicodeNotification.c_str(), TRUE);
     TRACE_I("End");
     return 0;
 }
@@ -473,17 +572,42 @@ BOOL CProgressDialog::FlushCachedData()
             OperationText->SetText(OperationCache);
         if (Source != NULL && Script != NULL)
         {
-            if (Script->RemapNameFrom != NULL)
+            if (!SourceCacheW.empty())
+            {
+                if (!Salamander::SetUtf16StaticText(Source->HWindow, SourceCacheW.c_str()))
+                {
+                    CancelWorker = TRUE;
+                    SetEvent(WorkerNotSuspended);
+                }
+            }
+            else if (Script->RemapNameFrom != NULL)
             {
                 char name[MAX_PATH];
                 Source->SetTextToDblQuotesIfNeeded(RemapNames(name, MAX_PATH, SourceCache, Script));
             }
             else
+            {
+                Salamander::SetUtf16StaticText(Source->HWindow, NULL);
                 Source->SetTextToDblQuotesIfNeeded(SourceCache);
+            }
         }
         SetWindowText(HPreposition, PrepositionCache);
         if (Target != NULL)
-            Target->SetTextToDblQuotesIfNeeded(TargetCache);
+        {
+            if (!TargetCacheW.empty())
+            {
+                if (!Salamander::SetUtf16StaticText(Target->HWindow, TargetCacheW.c_str()))
+                {
+                    CancelWorker = TRUE;
+                    SetEvent(WorkerNotSuspended);
+                }
+            }
+            else
+            {
+                Salamander::SetUtf16StaticText(Target->HWindow, NULL);
+                Target->SetTextToDblQuotesIfNeeded(TargetCache);
+            }
+        }
         CacheIsDirty = FALSE;
     }
 
@@ -662,11 +786,19 @@ CProgressDialog::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
                 {
                     if (OperationText != NULL)
                         OperationText->SetText(LoadStr(IDS_COPYINGFROM));
-                    if (Source != NULL)
-                        Source->SetTextToDblQuotesIfNeeded(Script->WaitInQueueFrom);
                     SetWindowText(HPreposition, LoadStr(IDS_COPYINGTO));
-                    if (Target != NULL)
-                        Target->SetTextToDblQuotesIfNeeded(Script->WaitInQueueTo);
+                    if (!SetQueuedWorkerPath(Source, Script, Script->WaitInQueueFrom) ||
+                        !SetQueuedWorkerPath(Target, Script, Script->WaitInQueueTo))
+                    {
+                        OperationsQueue.OperationEnded(HWindow, TRUE, NULL);
+                        IsInQueue = FALSE;
+                        HANDLES(CloseHandle(WorkerNotSuspended));
+                        WorkerNotSuspended = NULL;
+                        HANDLES(CloseHandle(WContinue));
+                        WContinue = NULL;
+                        EndDialog(HWindow, IDABORT);
+                        break;
+                    }
                 }
             }
         }
@@ -723,6 +855,22 @@ CProgressDialog::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
             lstrcpyn(PrepositionCache, data->Preposition, 100);
             lstrcpyn(SourceCache, data->Source, 2 * MAX_PATH);
             lstrcpyn(TargetCache, data->Target, 2 * MAX_PATH);
+            try
+            {
+                SourceCacheW.clear();
+                TargetCacheW.clear();
+                if (Script != NULL)
+                {
+                    Script->UnicodeCopyPaths.GetDisplayPath(data->Source, SourceCacheW);
+                    Script->UnicodeCopyPaths.GetDisplayPath(data->Target, TargetCacheW);
+                }
+            }
+            catch (const std::bad_alloc&)
+            {
+                CancelWorker = TRUE;
+                SetEvent(WorkerNotSuspended);
+                return FALSE;
+            }
             CacheIsDirty = TRUE;
         }
 
@@ -793,7 +941,7 @@ CProgressDialog::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
         {
         case 0:
         {
-            CFileErrorDlg dlg(HWindow, data[1], data[2], data[3]);
+            CWorkerPathDialog<CFileErrorDlg> dlg(Script, HWindow, data[1], data[2], data[3]);
             *(int*)data[0] = (int)dlg.Execute();
             break;
         }
@@ -813,84 +961,84 @@ CProgressDialog::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
                 filename1 = data[1];
                 filename2 = data[3];
             }
-            COverwriteDlg dlg(HWindow, filename1, data[2], filename2, data[4]);
+            CWorkerPathDialog<COverwriteDlg> dlg(Script, HWindow, filename1, data[2], filename2, data[4]);
             *(int*)data[0] = (int)dlg.Execute();
             break;
         }
 
         case 2:
         {
-            CHiddenOrSystemDlg dlg(HWindow, data[1], data[2], data[3]);
+            CWorkerPathDialog<CHiddenOrSystemDlg> dlg(Script, HWindow, data[1], data[2], data[3]);
             *(int*)data[0] = (int)dlg.Execute();
             break;
         }
 
         case 3:
         {
-            CCannotMoveDlg dlg(HWindow, IDD_CANNOTMOVE, data[1], data[2], data[3]);
+            CWorkerPathDialog<CCannotMoveDlg> dlg(Script, HWindow, IDD_CANNOTMOVE, data[1], data[2], data[3]);
             *(int*)data[0] = (int)dlg.Execute();
             break;
         }
 
         case 4:
         {
-            CCannotMoveDlg dlg(HWindow, IDD_RENAMEDIR, data[1], data[2], data[3]);
+            CWorkerPathDialog<CCannotMoveDlg> dlg(Script, HWindow, IDD_RENAMEDIR, data[1], data[2], data[3]);
             *(int*)data[0] = (int)dlg.Execute();
             break;
         }
 
         case 5:
         {
-            CFileErrorDlg dlg(HWindow, data[0], data[1], data[2], FALSE, IDD_ERROR3);
+            CWorkerPathDialog<CFileErrorDlg> dlg(Script, HWindow, data[0], data[1], data[2], FALSE, IDD_ERROR3);
             dlg.Execute();
             break;
         }
 
         case 6:
         {
-            CErrorReadingADSDlg dlg(HWindow, data[1], data[2]);
+            CWorkerPathDialog<CErrorReadingADSDlg> dlg(Script, HWindow, data[1], data[2]);
             *(int*)data[0] = (int)dlg.Execute();
             break;
         }
 
         case 7:
         {
-            COverwriteDlg dlg(HWindow, data[1], data[2], data[3], data[4], FALSE, TRUE);
+            CWorkerPathDialog<COverwriteDlg> dlg(Script, HWindow, data[1], data[2], data[3], data[4], FALSE, TRUE);
             *(int*)data[0] = (int)dlg.Execute();
             break;
         }
 
         case 8:
         {
-            CFileErrorDlg dlg(HWindow, data[1], data[2], data[3], FALSE, IDD_CANNOTOPENADS);
+            CWorkerPathDialog<CFileErrorDlg> dlg(Script, HWindow, data[1], data[2], data[3], FALSE, IDD_CANNOTOPENADS);
             *(int*)data[0] = (int)dlg.Execute();
             break;
         }
 
         case 9:
         {
-            CErrorSettingAttrsDlg dlg(HWindow, data[1], (DWORD)(DWORD_PTR)data[2], (DWORD)(DWORD_PTR)data[3]);
+            CWorkerPathDialog<CErrorSettingAttrsDlg> dlg(Script, HWindow, data[1], (DWORD)(DWORD_PTR)data[2], (DWORD)(DWORD_PTR)data[3]);
             *(int*)data[0] = (int)dlg.Execute();
             break;
         }
 
         case 10:
         {
-            CErrorCopyingPermissionsDlg dlg(HWindow, data[1], data[2], (DWORD)(DWORD_PTR)data[3]);
+            CWorkerPathDialog<CErrorCopyingPermissionsDlg> dlg(Script, HWindow, data[1], data[2], (DWORD)(DWORD_PTR)data[3]);
             *(int*)data[0] = (int)dlg.Execute();
             break;
         }
 
         case 11:
         {
-            CErrorCopyingDirTimeDlg dlg(HWindow, data[1], (DWORD)(DWORD_PTR)data[2]);
+            CWorkerPathDialog<CErrorCopyingDirTimeDlg> dlg(Script, HWindow, data[1], (DWORD)(DWORD_PTR)data[2]);
             *(int*)data[0] = (int)dlg.Execute();
             break;
         }
 
         case 12:
         {
-            CConfirmEncryptionLossDlg dlg(HWindow, (BOOL)(INT_PTR)data[1], data[2], (BOOL)(INT_PTR)data[3]);
+            CWorkerPathDialog<CConfirmEncryptionLossDlg> dlg(Script, HWindow, (BOOL)(INT_PTR)data[1], data[2], (BOOL)(INT_PTR)data[3]);
             *(int*)data[0] = (int)dlg.Execute();
             break;
         }

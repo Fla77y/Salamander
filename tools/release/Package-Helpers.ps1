@@ -1,5 +1,6 @@
 # Internal helpers for the Windows x64 build and distribution pipeline.
 Set-StrictMode -Version Latest
+. (Join-Path $PSScriptRoot 'Production-Binary-Contract.ps1')
 
 function Find-Executable {
     param([string]$Name, [string[]]$Candidates)
@@ -23,16 +24,35 @@ function Invoke-Checked {
 }
 
 function Get-VisualStudio2026 {
+    # A VS 2026 Developer PowerShell already identifies its active installation.
+    # Prefer it over vswhere's optional component registration when MSBuild exists.
+    $candidates = [System.Collections.Generic.List[string]]::new()
+    if (-not [string]::IsNullOrWhiteSpace($env:VSINSTALLDIR)) {
+        $candidates.Add($env:VSINSTALLDIR)
+    }
+
     $installerDir = Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) 'Microsoft Visual Studio\Installer'
     $vswhere = Join-Path $installerDir 'vswhere.exe'
-    if (-not (Test-Path -LiteralPath $vswhere -PathType Leaf)) {
-        throw "Visual Studio Installer discovery tool not found: $vswhere"
+    if (Test-Path -LiteralPath $vswhere -PathType Leaf) {
+        $found = @(& $vswhere -products '*' -version '[18.0,19.0)' -property installationPath)
+        if ($LASTEXITCODE -ne 0) {
+            throw "Visual Studio discovery failed: $vswhere (exit code $LASTEXITCODE)."
+        }
+        foreach ($path in $found) {
+            if (-not [string]::IsNullOrWhiteSpace($path)) { $candidates.Add($path.Trim()) }
+        }
     }
-    $result = @(& $vswhere -latest -products '*' -version '[18.0,19.0)' -requires Microsoft.Component.MSBuild -property installationPath)
-    if ($LASTEXITCODE -ne 0 -or $result.Count -ne 1 -or [string]::IsNullOrWhiteSpace($result[0])) {
-        throw 'Visual Studio 2026 installation with MSBuild was not found.'
+
+    foreach ($candidate in $candidates) {
+        $root = [IO.Path]::GetFullPath($candidate).TrimEnd('\', '/')
+        # Do not accidentally select VS 2022 or an unrelated MSBuild installation.
+        if ($root -notmatch '(?i)[\\/]Microsoft Visual Studio[\\/]18[\\/]') { continue }
+        $msbuild = Join-Path $root 'MSBuild\Current\Bin\MSBuild.exe'
+        if (Test-Path -LiteralPath $msbuild -PathType Leaf) { return $root }
     }
-    return $result[0].Trim()
+
+    throw ('Visual Studio 2026 MSBuild.exe not found. Checked installation roots: ' +
+           ($candidates -join '; ') + '. VSINSTALLDIR=' + $env:VSINSTALLDIR)
 }
 
 function Get-MsvcRuntimeFolders {
@@ -163,8 +183,35 @@ function Assert-CoreHelpMappings {
     }
 }
 
+# Determines whether a CHM output can safely be reused across all variants.
+function Test-HelpNeedsBuild {
+    param([Parameter(Mandatory)][string]$ProjectPath,
+          [Parameter(Mandatory)][string]$CompiledName,
+          [Parameter(Mandatory)][string[]]$OutputDirectories)
+    $sourceRoot = Split-Path -Parent $ProjectPath
+    $inputs = @(Get-ChildItem -LiteralPath $sourceRoot -Recurse -File |
+        Where-Object { $_.Extension -notin @('.chm', '.log', '.tmp') })
+    $projectText = [IO.File]::ReadAllText($ProjectPath)
+    foreach ($match in [regex]::Matches($projectText, '(?mi)^\s*(?:Full text search stop list file|Contents file|Index file)\s*=\s*(.+?)\s*$')) {
+        $reference = $match.Groups[1].Value.Trim().Trim('"')
+        if ([IO.Path]::IsPathRooted($reference)) { return $true }
+        $source = [IO.Path]::GetFullPath((Join-Path $sourceRoot $reference))
+        if (-not (Test-Path -LiteralPath $source -PathType Leaf)) { return $true }
+        $inputs += Get-Item -LiteralPath $source
+    }
+    $latest = ($inputs | Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1).LastWriteTimeUtc
+    foreach ($directory in $OutputDirectories) {
+        $output = Join-Path $directory (Join-Path 'help\english' $CompiledName)
+        if (-not (Test-Path -LiteralPath $output -PathType Leaf)) { return $true }
+        $item = Get-Item -LiteralPath $output
+        if ($item.Length -lt 1024 -or $item.LastWriteTimeUtc -lt $latest) { return $true }
+    }
+    return $false
+}
+
 function Build-CompiledHelp {
-    param([string]$Repository, [string]$HhcExe, [string[]]$OutputDirectories)
+    param([string]$Repository, [string]$HhcExe, [string[]]$OutputDirectories,
+          [switch]$Incremental)
     Assert-CoreHelpMappings -Repository $Repository
     $mainHelp = Get-Item -LiteralPath (Join-Path $Repository 'help\src\salamand.hhp')
     $pluginHelp = @(Get-ChildItem -LiteralPath (Join-Path $Repository 'src\plugins') -File -Filter '*.hhp' -Recurse |
@@ -180,6 +227,11 @@ function Build-CompiledHelp {
         if ([IO.Path]::GetFileName($compiledName) -ne $compiledName -or
             -not $compiledName.EndsWith('.chm', [StringComparison]::OrdinalIgnoreCase)) {
             throw "Unsafe or unsupported CHM output name in $($project.FullName): $compiledName"
+        }
+        if ($Incremental -and -not (Test-HelpNeedsBuild -ProjectPath $project.FullName `
+                -CompiledName $compiledName -OutputDirectories $OutputDirectories)) {
+            Write-Host "  Reusing unchanged help: $compiledName"
+            continue
         }
         $compiledFile = Join-Path $project.DirectoryName $compiledName
         Remove-Item -LiteralPath $compiledFile -Force -ErrorAction SilentlyContinue
@@ -204,10 +256,14 @@ function New-DistributionStage {
     if (-not (Test-Path -LiteralPath (Join-Path $BuiltDirectory 'salamand.exe'))) {
         throw "Build output is missing salamand.exe: $BuiltDirectory"
     }
+    Assert-ProductionBinary -Path (Join-Path $BuiltDirectory 'salamand.exe')
     if (Test-Path -LiteralPath $Stage) { Remove-Item -LiteralPath $Stage -Recurse -Force }
     New-Item -ItemType Directory -Path $Stage -Force | Out-Null
+    # Incremental build outputs can retain deleted reporter binaries.
+    # Never include them in a portable archive or installer.
     $copyArgs = @($BuiltDirectory, $Stage, '/E', '/XD', 'Intermediate',
-                  '/XF', '*.obj', '*.pch', '*.idb', '*.ilk', '*.tlog', '*.lastbuildstate')
+                  '/XF', '*.obj', '*.pch', '*.idb', '*.ilk', '*.tlog', '*.lastbuildstate',
+                  'salmon.exe', 'salmon.pdb', 'salmon.lib', 'salmon.exp')
     if ($Configuration -eq 'Release') {
         # Keep private debug symbols and linker intermediates in the original
         # build output, not in end-user archives or installers. Developer-only
@@ -222,6 +278,9 @@ function New-DistributionStage {
 
 function Test-DistributionStage {
     param([string]$Stage, [string]$Configuration, [string]$DumpbinExe)
+    if (Test-Path -LiteralPath (Join-Path $Stage 'utils\salmon.exe') -PathType Leaf) {
+        throw 'Distribution contains the removed SalMon crash reporter.'
+    }
     # Version 5.2 promises native WIC PictView. Its plug-in, language
     # resource, and native EXIF sidecar must actually ship in both variants.
     foreach ($required in @('salamand.exe', 'help\english\salamand.chm',
@@ -233,6 +292,7 @@ function Test-DistributionStage {
             throw "Distribution is incomplete. Missing: $required in $Stage"
         }
     }
+    Assert-ProductionBinary -Path (Join-Path $Stage 'salamand.exe')
     if ($Configuration -eq 'Debug') {
         foreach ($required in @('vcruntime140d.dll', 'msvcp140d.dll', 'ucrtbased.dll', 'INTERNAL-TEST-ONLY.txt')) {
             if (-not (Test-Path -LiteralPath (Join-Path $Stage $required) -PathType Leaf)) {

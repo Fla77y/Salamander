@@ -119,10 +119,12 @@ class CViewerWindow : public CWindow
 public:
     CViewerWindow(const char* fileName, CViewType type, const char* caption,
                   BOOL wholeCaption, CObjectOrigin origin, int enumFileNamesSourceUID,
-                  int enumFileNamesLastFileIndex);
+                  int enumFileNamesLastFileIndex, BOOL unicodeWindow = FALSE);
     ~CViewerWindow();
 
     void OpenFile(const char* file, const char* caption, BOOL wholeCaption); // does not manage Lock
+    bool OpenWideFindFile(std::wstring path);
+    std::wstring StartupFindPath; // set before the viewer thread starts
 
     virtual BOOL Is(int type) { return type == otViewerWindow || CWindow::Is(type); }
     BOOL IsGood() { return Buffer != NULL && ViewerFont != NULL; }
@@ -307,7 +309,12 @@ protected:
     int SalMessageBoxViewerPaintBlocked(HWND hParent, LPCTSTR lpText, LPCTSTR lpCaption, UINT uType);
 
     unsigned char* Buffer; // buffer with size VIEW_BUFFER_SIZE
-    char* FileName;        // currently viewed file
+    char* FileName;        // currently viewed file, empty while viewing a W-only disk path
+    std::wstring WideFindPath;
+    std::wstring ExtendedFindPath;
+    HANDLE OpenCurrentFile();
+    void ResetFileView();
+    bool GetAdjacentWideFindFile(WORD command, int& index, std::wstring& path);
     __int64 Seek,          // offset of byte 0 in Buffer within the file
         Loaded,            // number of valid bytes in Buffer
         OriginX,           // first displayed column (in characters)
@@ -415,6 +422,7 @@ void ClearViewerHistory(BOOL dataOnly); // clears histories; for dataOnly==FALSE
 void UpdateViewerColors(SALCOLOR* colors);
 
 extern const char* CVIEWERWINDOW_CLASSNAME; // viewer window class
+extern const wchar_t* CVIEWERWINDOW_WIDECLASSNAME;
 
 extern CWindowQueue ViewerWindowQueue; // list of all viewer windows
 
@@ -439,4 +447,4 @@ extern HANDLE ViewerContinue; // helper event - waiting for the message-loop thr
 BOOL OpenViewer(const char* name, CViewType mode, int left, int top, int width, int height,
                 UINT showCmd, BOOL returnLock, HANDLE* lock, BOOL* lockOwner,
                 CSalamanderPluginViewerData* viewerData, int enumFileNamesSourceUID,
-                int enumFileNamesLastFileIndex);
+                int enumFileNamesLastFileIndex, const wchar_t* wideFindPath = NULL);

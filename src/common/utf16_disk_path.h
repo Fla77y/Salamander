@@ -102,15 +102,20 @@ inline Utf16PathError ValidateComponent(std::u16string_view value) noexcept
 class Utf16FileName
 {
 public:
+    // Input may refer to output.Value(), including a substring. Validation
+    // failure clears output; successful replacement retains the exact units.
     static bool TryCreate(std::u16string_view input,
                           Utf16FileName& output,
                           Utf16PathError& error)
     {
-        output.value_.clear();
         error = Utf16DiskDetail::ValidateComponent(input);
         if (error != Utf16PathError::None)
+        {
+            output.value_.clear();
             return false;
-        output.value_.assign(input);
+        }
+        std::u16string validated(input);
+        output.value_ = std::move(validated);
         return true;
     }
 
@@ -126,10 +131,14 @@ private:
 class Utf16DiskPath
 {
 public:
+    // Retain input before clearing output: the view may refer to its storage.
+    // Invalid paths still clear output and report the original validation error.
     static bool TryCreateAbsolute(std::u16string_view input,
                                   Utf16DiskPath& output,
                                   Utf16PathError& error)
     {
+        std::u16string retained(input);
+        input = retained;
         output.value_.clear();
         error = Utf16PathError::InvalidInput;
 
@@ -194,7 +203,7 @@ public:
         }
 
         error = Utf16PathError::None;
-        output.value_.assign(input);
+        output.value_ = std::move(retained);
         return true;
     }
 

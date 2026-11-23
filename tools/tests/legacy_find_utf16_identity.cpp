@@ -1,0 +1,215 @@
+// SPDX-FileCopyrightText: 2026 Open Salamander Authors
+// SPDX-License-Identifier: GPL-2.0-or-later
+
+// Arrange / Act / Assert: search results must retain their original UTF-16
+// filesystem identity, independently of display buffers and ANSI code pages.
+#include "../../src/common/legacy_find_utf16_identity.h"
+#include "../../src/common/legacy_find_query.h"
+
+#include <cassert>
+#include <iostream>
+#include <string>
+
+namespace
+{
+bool FindIdentity_WhenInputsAliasOutput_PreservesExactUtf16()
+{
+    // Arrange
+    Salamander::LegacyFindUtf16Identity identity;
+    Salamander::Utf16PathError error;
+    const std::u16string directory = u"C:\\";
+    const std::u16string name = u"東\U0001F600";
+    if (!Salamander::LegacyFindUtf16Identity::TryCreate(directory, name, identity, error))
+        return false;
+    // Act
+    const bool accepted = Salamander::LegacyFindUtf16Identity::TryCreate(
+        identity.Directory(), identity.Name(), identity, error);
+    // Assert
+    return accepted && error == Salamander::Utf16PathError::None &&
+           identity.Directory() == directory && identity.Name() == name &&
+           identity.FullPath() == directory + name;
+}
+
+bool FindIdentity_WhenAliasedNameSplitsSurrogate_ClearsOutput()
+{
+    // Arrange
+    Salamander::LegacyFindUtf16Identity identity;
+    Salamander::Utf16PathError error;
+    if (!Salamander::LegacyFindUtf16Identity::TryCreate(u"C:\\", u"\U0001F600", identity, error))
+        return false;
+    const auto invalid = std::u16string_view(identity.Name()).substr(0, 1);
+    // Act
+    const bool accepted = Salamander::LegacyFindUtf16Identity::TryCreate(
+        identity.Directory(), invalid, identity, error);
+    // Assert
+    return !accepted && error == Salamander::Utf16PathError::InvalidUtf16 &&
+           !identity.IsValid() && identity.Directory().empty() && identity.Name().empty() &&
+           identity.FullPath().empty();
+}
+
+void ParseRoots_WhenEscapedAndSeparated_PreservesIndividualIdentities()
+{
+    // Arrange
+    const std::wstring root = L"C:\\\u6771\u4eac;\U0001F600";
+    const std::wstring network = L"\\\\server\\share\\\u00e9";
+    const std::wstring query = L" ; " + Salamander::EscapeLegacyFindRoot(root) +
+        L"  ; " + network + L"\\\\  ; ";
+    // Act
+    const auto parsed = Salamander::ParseLegacyFindRoots(query);
+    // Assert
+    const std::vector<std::wstring> expected{root, network + L"\\"};
+    assert(parsed == expected);
+}
+
+void ParseRoots_WhenPastMaxPath_PreservesEveryUtf16Unit()
+{
+    // Arrange
+    const std::wstring root = L"\\\\?\\C:\\" + std::wstring(200, L'x') +
+        L"\\" + std::wstring(200, L';') + L"\U0001F600";
+    const std::wstring query = Salamander::EscapeLegacyFindRoot(root);
+    // Act
+    const auto parsed = Salamander::ParseLegacyFindRoots(query);
+    // Assert
+    assert(query.size() == root.size() + 200);
+    assert(parsed.size() == 1 && parsed.front() == root);
+}
+
+void ParseRoots_WhenBlank_ReturnsNoRoots()
+{
+    // Arrange
+    const std::wstring query = L" ; ;  ";
+    // Act
+    const auto parsed = Salamander::ParseLegacyFindRoots(query);
+    // Assert
+    assert(parsed.empty());
+}
+
+bool ParseRoots_WhenMissingUncServer_DoesNotTurnIntoCurrentDriveRoot()
+{
+    // Arrange
+    const std::wstring query = L"\\\\";
+    // Act
+    const auto parsed = Salamander::ParseLegacyFindRoots(query);
+    // Assert
+    return parsed.size() == 1 && parsed.front() == query;
+}
+
+void ResolveRoots_WhenLongDriveOrExplicitUnc_PreservesTheIdentity()
+{
+    // Arrange
+    const std::wstring drive = L"C:\\Test\\" + std::wstring(180, L'x') +
+        L"\\" + std::wstring(180, L'y') + L"-\U0001F600";
+    const std::wstring unc = L"\\\\server\\share\\\u6771\u4EAC";
+    std::wstring resolved;
+    DWORD error = ERROR_INVALID_NAME;
+    // Act and assert
+    assert(Salamander::TryResolveLegacyFindDirectory(drive, resolved, error));
+    assert(resolved == drive && error == ERROR_SUCCESS);
+    resolved = L"\\\\?\\" + drive;
+    assert(Salamander::TryResolveLegacyFindDirectory(resolved, resolved, error));
+    assert(resolved == drive && error == ERROR_SUCCESS);
+    assert(Salamander::TryResolveLegacyFindDirectory(L"\\\\?\\UNC\\" + unc.substr(2), resolved, error));
+    assert(resolved == unc && error == ERROR_SUCCESS);
+}
+
+void ResolveRoots_WhenExtendedNamespaceIsInvalid_RejectsWithoutNormalizing()
+{
+    // Arrange
+    const std::wstring embeddedNull = std::wstring(L"C:\\data") + L'\0' + L"\\other";
+    const std::wstring inputs[]{L"\\\\?\\C:\\data\\..\\other", L"\\\\?\\\\\\server\\share",
+        L"\\\\?\\GLOBALROOT\\Device\\Volume", L"\\\\.\\C:\\", L"", embeddedNull};
+    std::wstring resolved;
+    DWORD error = ERROR_SUCCESS;
+    // Act and assert
+    for (const auto& input : inputs)
+    {
+        resolved = L"C:\\previous";
+        assert(!Salamander::TryResolveLegacyFindDirectory(input, resolved, error));
+        assert(resolved.empty() && error == ERROR_INVALID_NAME);
+    }
+}
+}
+
+int main()
+{
+    ResolveRoots_WhenLongDriveOrExplicitUnc_PreservesTheIdentity();
+    ResolveRoots_WhenExtendedNamespaceIsInvalid_RejectsWithoutNormalizing();
+    ParseRoots_WhenEscapedAndSeparated_PreservesIndividualIdentities();
+    ParseRoots_WhenPastMaxPath_PreservesEveryUtf16Unit();
+    ParseRoots_WhenBlank_ReturnsNoRoots();
+    if (!ParseRoots_WhenMissingUncServer_DoesNotTurnIntoCurrentDriveRoot())
+    {
+        std::cerr << "FAIL: malformed UNC root must not become the current drive root\n";
+        return 1;
+    }
+
+    if (!FindIdentity_WhenInputsAliasOutput_PreservesExactUtf16())
+    {
+        std::cerr << "FAIL: legacy Find identity must support inputs aliasing its output\n";
+        return 1;
+    }
+    if (!FindIdentity_WhenAliasedNameSplitsSurrogate_ClearsOutput())
+    {
+        std::cerr << "FAIL: invalid aliased Find name must clear identity with the correct error\n";
+        return 1;
+    }
+
+    using Salamander::LegacyFindUtf16Identity;
+    using Salamander::Utf16PathError;
+
+    // Arrange: supplementary-plane code point, CJK and non-ASCII directory.
+    const std::u16string root = u"C:\\Data\\東京";
+    const std::u16string name = u"Größe-大阪-\U0001F600.txt";
+    LegacyFindUtf16Identity identity;
+    Utf16PathError error = Utf16PathError::InvalidInput;
+
+    // Act
+    assert(LegacyFindUtf16Identity::TryCreate(root, name, identity, error));
+    // Assert
+    assert(error == Utf16PathError::None);
+    assert(identity.Directory() == root);
+    assert(identity.Name() == name);
+    assert(identity.FullPath() == root + u"\\" + name);
+
+    // Long paths are not capped at MAX_PATH; the Win32 extended limit is
+    // checked by the shared Utf16DiskPath value object.
+    std::u16string deep = u"C:\\";
+    for (int i = 0; i != 85; ++i)
+        deep += std::u16string(60, u'x') + u"\\";
+    assert(deep.size() > 260);
+    assert(LegacyFindUtf16Identity::TryCreate(deep, name, identity, error));
+    assert(identity.FullPath().size() > 260);
+
+    // Invalid input MUST clear old identity so it cannot accidentally be
+    // reused for a different search result.
+    assert(!LegacyFindUtf16Identity::TryCreate(
+        u"C:\\Data\\..\\Other", name, identity, error));
+    assert(!identity.IsValid());
+    assert(identity.FullPath().empty());
+
+    // The name is a component, never a relative path or wildcard.
+    assert(!LegacyFindUtf16Identity::TryCreate(
+        root, u"..\\secret.txt", identity, error));
+    assert(!LegacyFindUtf16Identity::TryCreate(
+        root, u"file?.txt", identity, error));
+    assert(!LegacyFindUtf16Identity::TryCreate(
+        root, std::u16string(256, u'a'), identity, error));
+    assert(!LegacyFindUtf16Identity::TryCreate(
+        root, std::u16string(1, static_cast<char16_t>(0xD800)), identity, error));
+
+    // Root delimiters must not cause doubled backslashes in full paths.
+    assert(LegacyFindUtf16Identity::TryCreate(
+        u"C:\\", u"file.txt", identity, error));
+    assert(identity.FullPath() == u"C:\\file.txt");
+
+    // Refuse paths beyond the NT-wide limit rather than truncating them.
+    std::u16string excessive = u"C:\\";
+    for (int i = 0; i < 132; ++i)
+        excessive += std::u16string(250, u'z') + u"\\";
+    assert(excessive.size() > 30000);
+    assert(!LegacyFindUtf16Identity::TryCreate(
+        excessive, std::u16string(250, u'z'), identity, error));
+    assert(!identity.IsValid());
+
+    std::cout << "PASS: legacy Find roots and result identities retain UTF-16 and long paths\n";
+}

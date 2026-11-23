@@ -48,9 +48,16 @@ $values = @(
     $arguments = @('-NoLogo', '-NoProfile', '-NonInteractive',
                    '-File', ('"' + $probe + '"'), ('"' + $result + '"'))
     $process = Start-Process -FilePath (Join-Path $PSHOME 'pwsh.exe') `
-        -ArgumentList $arguments -Environment @{ TEMP = $childTemp; TMP = $childTemp } `
-        -PassThru -Wait
+        -ArgumentList $arguments -WindowStyle Hidden -Environment @{ TEMP = $childTemp; TMP = $childTemp } `
+        -PassThru
     try {
+        # Only this probe matters. Start-Process -Wait can get stuck waiting
+        # on its Windows job after the probe has already exited.
+        if (!$process.WaitForExit(15000)) {
+            if (!$process.HasExited) { $process.Kill() }
+            [void]$process.WaitForExit(5000)
+            throw 'TEMP isolation child did not exit within 15 seconds.'
+        }
         if ($process.ExitCode -ne 0) {
             throw "TEMP isolation child exited with $($process.ExitCode)."
         }

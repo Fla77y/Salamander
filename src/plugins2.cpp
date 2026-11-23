@@ -14,6 +14,7 @@
 #include "zip.h"
 #include "pack.h"
 #include "dialogs.h"
+#include "common/win32_plugin_module_path.h"
 
 // header for saving a DIB to the registry
 
@@ -1934,27 +1935,12 @@ CPlugins::GetPluginDataFromSuffix(const char* dllSuffix)
     CALL_STACK_MESSAGE2("CPlugins::GetPluginDataFromSuffix(%s)", dllSuffix);
     if (dllSuffix != NULL)
     {
-        // obtain the full name of the plugins directory
-        char fullDLLName[MAX_PATH];
-        GetModuleFileName(HInstance, fullDLLName, MAX_PATH);
-        char* name = strrchr(fullDLLName, '\\') + 1;
-        strcpy(name, "plugins\\");
-        name += strlen(name);
-
-        int sufLen = (int)strlen(dllSuffix);
         int i;
         for (i = 0; i < Data.Count; i++)
         {
             CPluginData* data = Data[i];
-            char* s = data->DLLName;
-            if ((*s != '\\' || *(s + 1) != '\\') && // not UNC
-                (*s == 0 || *(s + 1) != ':'))       // not "c:" -> realtive path to plugins
-            {
-                strcpy(name, data->DLLName);
-                s = fullDLLName;
-            }
-            int len = (int)strlen(s);
-            if (len >= sufLen && StrNICmp(s + len - sufLen, dllSuffix, sufLen) == 0)
+            DWORD pathError = ERROR_SUCCESS;
+            if (Salamander::PluginModulePathHasSuffix(HInstance, data->DLLName, dllSuffix, pathError))
             {
                 return data; // found
             }
@@ -3187,20 +3173,6 @@ void CPlugins::RemoveNoLongerExistingPlugins(BOOL canDelPluginRegKey, BOOL loadA
                                              int maxNotLoadedPluginNames, int* numOfSkippedNotLoadedPluginNames,
                                              HWND parent)
 {
-    char buf[MAX_PATH + 20];
-    GetModuleFileName(HInstance, buf, MAX_PATH);
-    char* s = strrchr(buf, '\\');
-    if (s != NULL)
-    {
-        strcpy(s + 1, "plugins\\");
-        s = s + strlen(s);
-    }
-    else
-    {
-        TRACE_E("Unexpected situation in CPlugins::RemoveNoLongerExistingPlugins().");
-        return; // should not happen
-    }
-
     if (notLoadedPluginNames != NULL && notLoadedPluginNamesSize > 0)
         *notLoadedPluginNames = 0;
     if (numOfSkippedNotLoadedPluginNames != NULL)
@@ -3226,18 +3198,9 @@ void CPlugins::RemoveNoLongerExistingPlugins(BOOL canDelPluginRegKey, BOOL loadA
 #endif // _WIN64
         )
         {
-            char* fullName = Data[i]->DLLName;
-            if ((*fullName != '\\' || *(fullName + 1) != '\\') && // not UNC
-                (*fullName == 0 || *(fullName + 1) != ':'))       // not "c:" -> path relative to the plugins subdirectory
-            {
-                strcpy(s, fullName);
-                fullName = buf;
-            }
-
-            DWORD attr = SalGetFileAttributes(fullName);
-            DWORD err = GetLastError();
-            if (attr == INVALID_FILE_ATTRIBUTES &&
-                (err == ERROR_FILE_NOT_FOUND || err == ERROR_PATH_NOT_FOUND || err == ERROR_BAD_PATHNAME))
+            DWORD pathError = ERROR_SUCCESS;
+            const auto presence = Salamander::ProbePluginModulePresence(HInstance, Data[i]->DLLName, pathError);
+            if (presence == Salamander::PluginModulePresence::Missing)
             {
                 char pluginName[MAX_PATH];
                 pluginName[0] = 0;

@@ -1,0 +1,80 @@
+#requires -Version 7.4
+# SPDX-FileCopyrightText: 2026 Open Salamander Authors
+# SPDX-License-Identifier: GPL-2.0-or-later
+
+# Preserve the original Ctrl+F dialog and all existing search capabilities
+# throughout the staged UTF-16 migration. Source contract only: this does
+# not claim that the current dialog supports Unicode or long paths yet.
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+$root = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..\..\..')).ProviderPath
+$source1 = Get-Content -LiteralPath (Join-Path $root 'src\finddlg1.cpp') -Raw
+$source2 = Get-Content -LiteralPath (Join-Path $root 'src\finddlg2.cpp') -Raw
+$header = Get-Content -LiteralPath (Join-Path $root 'src\find.h') -Raw
+$worker = Get-Content -LiteralPath (Join-Path $root 'src\find.cpp') -Raw
+$dispatch = Get-Content -LiteralPath (Join-Path $root 'src\fileswn5.cpp') -Raw
+$mainDispatch = Get-Content -LiteralPath (Join-Path $root 'src\mainwnd3.cpp') -Raw
+$ctrlLetters = Get-Content -LiteralPath (Join-Path $root 'src\mainwnd4.cpp') -Raw
+$accelerators = Get-Content -LiteralPath (Join-Path $root 'src\salamand.rc') -Raw
+$resource = Get-Content -LiteralPath (Join-Path $root 'src\resource.rh2') -Raw
+
+$checks = [ordered]@{
+    OriginalDialog = $source1 -match 'CCommonDialog\(HLanguage, IDD_FIND,'
+    AdvancedControls = $source1 -match 'case IDC_FIND_ADVANCED:' -and
+        $source1 -match 'IDC_FIND_ADVANCED_TEXT'
+    Regex = $source1 -match 'IDC_FIND_REGULAR' -and
+        $source1 -match 'GrepData\.RegExp\.Set'
+    GrepAndHex = $source1 -match 'IDC_FIND_GREP' -and
+        $source1 -match 'IDC_FIND_HEX' -and
+        $source1 -match 'IDC_FIND_WHOLE'
+    Subdirectories = $source1 -match 'IDC_FIND_INCLUDE_SUBDIR'
+    FilterCriteria = $source1 -match 'memmove\(&GrepData\.Criteria, &Data\.Criteria'
+    FindDuplicates = $source1 -match 'case CM_FIND_DUPLICATES:'
+    FindRefinement = ($source1 -match 'case CM_FIND_INTERSECT:' -and
+                      $source1 -match 'case CM_FIND_SUBTRACT:' -and
+                      $source1 -match 'case CM_FIND_APPEND:')
+    FindOptionsAndIgnore = $header -match 'class CFindAdvancedDialog' -and
+        $source1 -match 'FindOptions\.InitMenu' -and
+        $source2 -match 'CFindIgnoreDialog::'
+    DialogActions = $resource -match 'CM_FIND_DELETE' -and
+        $resource -match 'CM_FIND_FOCUS' -and
+        $resource -match 'CM_FIND_CLIPCOPYFULLPATH'
+    LegacyWorkerPresent = $worker -match 'GrepThreadFBody' -and
+        $worker -match 'SearchDirectory\('
+    OriginalDialogDefault = $ctrlLetters -match "case 'F':\s+cmd = CM_FINDFILE;" -and
+        $mainDispatch -match 'activePanel->FindFile\(LOWORD\(wParam\) == CM_FINDUNICODEFILE\)' -and
+        $dispatch -match 'if \(!unicodeDialog\)\s*\{\s*OpenFindDialog\(owner, wideRoot\);\s*return;'
+    FindAccelerators = $accelerators -match 'VK_F7,\s+CM_FINDFILE,\s+VIRTKEY,\s+ALT\s*\r?\n' -and
+        $accelerators -match 'VK_F7,\s+CM_FINDUNICODEFILE,\s+VIRTKEY,\s+ALT,\s+SHIFT'
+    UnicodeIdentityModel = $header -match 'LegacyFindUtf16Identity UnicodeIdentity'
+}
+foreach ($check in $checks.Keys) {
+    $value = $checks[$check]
+    if (-not $value) { throw "Legacy Ctrl+F feature contract missing: $check" }
+}
+Write-Host 'PASS: original Find dispatch, Advanced, regex, grep, filters and result contracts.'
+
+# Inspect the real manager CLI and dispatch, without executing a build or GUI.
+$managerPath = Join-Path $root 'tools\Manage-Salamander.ps1'
+$managerSource = Get-Content -LiteralPath $managerPath -Raw
+$registry = [regex]::Match($managerSource, '(?s)\$validOptions\s*=\s*@\((.*?)\)')
+if (!$registry.Groups[1].Value.Contains("'--test-gui-legacy-find'") -or
+    $managerSource -notmatch '(?s)\$requestedSet\.Contains\(''--test-gui-legacy-find''\).*?Invoke-IsolatedLegacyFind\.ps1.*?-Configuration'', \$guiMode') {
+    throw 'Legacy Find GUI scenarios must run through the automated manager dispatch.'
+}
+
+$driver = Get-Command -Name (Join-Path $PSScriptRoot 'Test-SalamanderGui-LongPaths.ps1')
+$driverCases = ($driver.Parameters['LegacyFindScenario'].Attributes |
+    Where-Object { $_ -is [System.Management.Automation.ValidateSetAttribute] }).ValidValues
+$runner = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'Invoke-IsolatedLegacyFind.ps1') -Raw
+if (!$runner.Contains("Parameters['LegacyFindScenario'].Attributes") -or
+    !$runner.Contains('-IsolatedConfiguration -LegacyFindScenario $case') -or
+    !$runner.Contains('if ($LASTEXITCODE -ne 0)')) {
+    throw 'The Legacy Find runner must discover driver scenarios, isolate config and propagate failures.'
+}
+foreach ($case in 'Baseline','UnicodeMasks','UnicodeRootIgnore','FocusLong','ViewMixed','ViewStale') {
+    if ($case -notin $driverCases -or $runner -match ("'{0}'" -f $case)) {
+        throw "Expected '$case' in the automatically discovered Legacy Find suite."
+    }
+}
+Write-Host 'PASS: --test-all dispatches isolated, automatically discovered Legacy Find GUI scenarios.'

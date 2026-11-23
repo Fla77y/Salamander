@@ -1287,7 +1287,7 @@ public:
     void Convert(); // converts character sets and line endings
     // handlerID specifies which viewer/editor should open the file; 0xFFFFFFFF = no preference
     void ViewFile(char* name, BOOL altView, DWORD handlerID, int enumFileNamesSourceUID,
-                  int enumFileNamesLastFileIndex);           // name == NULL -> item under the cursor in the panel
+                  int enumFileNamesLastFileIndex, const wchar_t* wideFindPath = NULL);           // name == NULL -> item under the cursor in the panel
     void EditFile(char* name, DWORD handlerID = 0xFFFFFFFF); // name == NULL -> item under the cursor in the panel
     void EditNewFile();
     // fills a popup based on available viewers
@@ -1308,7 +1308,7 @@ public:
     // edit-file-with: opens a menu for selecting an editor; name == NULL -> item under the cursor in the panel;
     // handlerID != NULL -> returns only the selected handler ID (does not open the viewer); on failure returns 0xFFFFFFFF
     void EditFileWith(char* name, HWND hMenuParent, const POINT* menuPos, DWORD* handlerID = NULL);
-    void FindFile();
+    void FindFile(bool unicodeDialog);
     void DriveInfo();
     void OpenActiveFolder();
 
@@ -1323,6 +1323,9 @@ public:
     // Same-volume F6 of one ordinary directory; Win32 renames the entire
     // subtree atomically, without the legacy ANSI recursive engine.
     BOOL TryUnicodeSingleDirectoryMove(CActionType type, CFilesWindow* target);
+    // One exactly resolved Unicode/long-path directory. Preserve configured
+    // Recycle Bin semantics; permanent deletion requires explicit consent.
+    BOOL TryUnicodeSingleDirectoryDelete();
     // Bounded multi-selection of ordinary Unicode disk files; any unsupported
     // selection remains behind the legacy ANSI fail-closed operation gate.
     BOOL TryUnicodeMultiFileTransfer(CActionType type, CFilesWindow* target);
@@ -1525,6 +1528,8 @@ public:
     // 'scroll' to partially (TRUE) or fully (FALSE) visible
     // forcePaint ensures repaint even when the index does not change
     void SetCaretIndex(int index, BOOL scroll, BOOL forcePaint = FALSE);
+    BOOL FocusFindResult(const CFocusFindResultData& result);
+    void ViewWideFindResult(const COpenWideFindViewerData& result, BOOL alternate);
     int GetCaretIndex();
 
     void SetDropTarget(int index);       // marks where files will be dropped

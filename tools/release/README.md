@@ -205,6 +205,17 @@ for the sole purpose of debugging and testing. Never upload the Debug
 archive or setup as a public release or customer download. See Microsoft
 Learn: "Prepare a test machine to run a debug executable".
 
+### Crash diagnostics after the SalMon removal
+
+Release and Debug packages must not contain `utils\salmon.exe`, including
+when incremental output directories retain older binaries. Salamander uses
+Windows Error Reporting for unhandled exceptions. Local WER minidumps can be
+enabled explicitly by a machine administrator using
+[`Configure-LocalCrashDumps.ps1`](Configure-LocalCrashDumps.ps1);
+the registration is not an installer action and does not modify global WER
+policy. See [WER troubleshooting](../../docs/maintenance/WER-Local-Crash-Dumps.md).
+No application-owned crash-report upload UI remains.
+
 ## Automated checks
 
 1. Working tree is clean before a fast-forward-only Git update.

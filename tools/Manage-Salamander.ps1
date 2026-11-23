@@ -13,7 +13,8 @@ $repository = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Provide
 $buildRoot = 'D:\Build\OpenSal'
 $configuration = 'Release'
 $validOptions = @('--update', '--build', '--test', '--setup', '--run',
-                  '--debug', '--release', '--all', '--test-all', '--test-gui', '--test-gui-max-path', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-recycle-restore', '--test-plugin-exports', '--test-plugin-load', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-unicode-find', '--test-gui-manual', '--test-pictview', '--test-pictview-window', '--test-pictview-host', '--help', '-h', '/?')
+                  '--test-gui-large-unicode-copy', '--test-gui-legacy-find', '--test-clipboard-snapshot',
+                  '--debug', '--release', '--all', '--build-delta', '--build-clean', '--test-all', '--test-gui', '--test-gui-max-path', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-recycle-restore', '--test-plugin-exports', '--test-plugin-load', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-unicode-find', '--test-gui-manual', '--test-gui-temp-delete', '--test-pictview', '--test-pictview-window', '--test-pictview-host', '--diagnose-gui', '--help', '-h', '/?')
 $requestedSet = [System.Collections.Generic.HashSet[string]]::new(
     [StringComparer]::OrdinalIgnoreCase)
 
@@ -31,10 +32,16 @@ function Write-Usage {
 Open Salamander – Verwaltung für Visual Studio 2026
 
   manage.cmd --update       Aktuellen Git-Branch sicher aktualisieren (nur fast-forward)
-  manage.cmd --build        Debug und Release, jeweils x64, neu erstellen; CHM-Hilfe bauen
+  manage.cmd --build        Debug und Release x64 vollstaendig neu bauen (MSBuild Rebuild)
+  manage.cmd --build-delta  Schneller inkrementeller Build (MSBuild Build)
+  manage.cmd --build-clean  Output-Ordner loeschen und vollstaendig neu bauen
   manage.cmd --test         Windows-Dateisystem-/Namens-Tests und Projekt-Regressionstests
   manage.cmd --test-all     Alle automatisierten Tests: --test und sämtliche GUI-Modi
                             (Release und Debug x64; --release/--debug begrenzt die GUI-Modi)
+                            Legacy-Suche und große Unicode-Kopien: isolierte Testbuilds im Worktree
+  manage.cmd --test-gui-large-unicode-copy  32-MiB-Kopie, Pause/Abbruch, Zielkollision und gesperrte Quelle
+  manage.cmd --test-gui-legacy-find  Legacy-Suche (Strg+F), Filter, Unicode, Focus File und Viewer
+  manage.cmd --test-clipboard-snapshot  Native Zwischenablage-Sicherung/-Wiederherstellung prüfen
   manage.cmd --setup        Debug- und Release-7z plus Inno-Setup-Pakete erzeugen
   manage.cmd --test-pictview  WIC-Decoder, GDI, Frames, Export, Clipboard, Transforms: MSVC x86/x64
   manage.cmd --test-pictview-window  Zusätzlich echten WIC-Viewer-HWND testen
@@ -60,6 +67,9 @@ Open Salamander – Verwaltung für Visual Studio 2026
   manage.cmd --test-gui-unicode-directory-rename  F2-Umbenennung eines Unicode-Verzeichnisses prüfen
   manage.cmd --test-gui-unsafe-unicode-operations  F2/F5/F6/F8 mit nicht darstellbaren Unicode-Namen sicher abweisen
   manage.cmd --test-gui-unicode-find  Neues F2-Unicode-Suchfenster: Suche, Pfade, Copy/Move/Rename, Kollisionsschutz
+  manage.cmd --test-gui-temp-delete  GUI-Löschpfad via F8-Handler (CM_DELETEFILES), ohne Desktop-Fokus
+  manage.cmd --diagnose-gui  Einzeltest vs. --test-all-Vorlauf vergleichen (Release x64);
+                            --debug waehlt Debug x64; optional lokale Hang-Dumps
   manage.cmd --test-gui-manual  Testdaten behalten und Salamander zum manuellen Test starten
   manage.cmd --run          Release-Version starten
   manage.cmd --run --debug  Debug-Version starten
@@ -67,7 +77,7 @@ Open Salamander – Verwaltung für Visual Studio 2026
   manage.cmd --help         Diese Hilfe anzeigen
 
 Mehrere Aktionen kombinieren:
-  manage.cmd --update --build --test --setup
+  manage.cmd --update --build --test-all --setup
   manage.cmd --build --test --run
   manage.cmd --build --test-all  Vollständige Suite auf beiden x64-Binaries
   manage.cmd --test-pictview  WIC-Tests lokal mit x86 und x64 kompilieren und ausführen
@@ -102,6 +112,8 @@ function Expand-AutomatedTestActions {
     [void]$RequestedSet.Add('--test')
     [void]$RequestedSet.Add('--test-pictview')
     [void]$RequestedSet.Add('--test-pictview-window')
+    [void]$RequestedSet.Add('--test-plugin-exports')
+    [void]$RequestedSet.Add('--test-clipboard-snapshot')
     foreach ($option in $AvailableOptions) {
         if ($option.StartsWith('--test-gui', [StringComparison]::OrdinalIgnoreCase) -and
             $option -ne '--test-gui-manual') {
@@ -169,6 +181,7 @@ function Update-Branch {
     if ($before -ne $after) {
         $managedFiles = @('manage.cmd', 'tools/Manage-Salamander.ps1',
                           'tools/release/Package-Helpers.ps1',
+                          'tools/release/Build-Helpers.ps1',
                           'tools/release/Update-Build-Test-Package.ps1')
         $changed = @(& git -C $repository diff --name-only $before $after -- @managedFiles)
         if ($LASTEXITCODE -ne 0) { throw 'Git-Diff der Verwaltungsskripte fehlgeschlagen.' }
@@ -185,39 +198,30 @@ function Get-VariantDirectory {
 }
 
 function Build-Variants {
-    Write-Host '=== BUILD DEBUG + RELEASE x64, inklusive Hilfe ==='
+    param([ValidateSet('Delta', 'Rebuild', 'Clean')][string]$Mode = 'Rebuild')
     $vs = Get-VisualStudio2026
     $msbuild = Join-Path $vs 'MSBuild\Current\Bin\MSBuild.exe'
     if (-not (Test-Path -LiteralPath $msbuild -PathType Leaf)) {
         throw "MSBuild.exe nicht gefunden: $msbuild"
     }
     $solution = Join-Path $repository 'src\vcxproj\salamand.sln'
-    $env:OPENSAL_BUILD_DIR = $buildRoot.TrimEnd('\') + '\'
-    foreach ($mode in @('Debug', 'Release')) {
-        Write-Host "=== MSBUILD $mode | x64 ==="
-        Invoke-Native $msbuild @(
-            $solution, '/t:Rebuild', "/p:Configuration=$mode",
-            '/p:Platform=x64', '/p:PreferredToolArchitecture=x64',
-            '/m', '/nr:false', '/v:minimal'
-        )
-        $app = Join-Path (Get-VariantDirectory $mode) 'salamand.exe'
-        if (-not (Test-Path -LiteralPath $app -PathType Leaf)) {
-            throw "MSBuild meldet Erfolg, aber salamand.exe fehlt: $app"
+    Invoke-SalamanderBuild -Msbuild $msbuild -Solution $solution -Repository $repository `
+        -BuildRoot $buildRoot -Mode $Mode -Invoke {
+            param($Executable, $Arguments)
+            Invoke-Native $Executable $Arguments
         }
-        # Verify the compiled PE VERSIONINFO, not only the source macros.
+    foreach ($variant in @('Debug', 'Release')) {
+        $binary = Join-Path (Get-VariantDirectory $variant) 'salamand.exe'
         $productVersionTest = Join-Path $repository 'tools\release\tests\Test-ProductVersion.ps1'
         Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $productVersionTest,
-                                  '-BinaryPath', $app)
+                                  '-BinaryPath', $binary)
     }
-
     $pf86 = [Environment]::GetFolderPath('ProgramFilesX86')
-    $hhc = Find-Executable 'hhc.exe' @(
-        (Join-Path $pf86 'HTML Help Workshop\hhc.exe')
-    )
+    $hhc = Find-Executable 'hhc.exe' @((Join-Path $pf86 'HTML Help Workshop\hhc.exe'))
     Build-CompiledHelp -Repository $repository -HhcExe $hhc -OutputDirectories @(
         (Get-VariantDirectory 'Debug'), (Get-VariantDirectory 'Release')
-    )
-    Write-Host 'Build + Haupt- und Plugin-Hilfe erstellt.'
+    ) -Incremental:($Mode -eq 'Delta')
+    Write-Host "Build ($Mode) und HTML-Hilfe abgeschlossen."
 }
 
 function Run-Tests {
@@ -231,12 +235,52 @@ function Run-Tests {
     $productVersionTest = Join-Path $repository 'tools\release\tests\Test-ProductVersion.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $productVersionTest)
 
+    $productionBinaryContract = Join-Path $repository 'tools\release\tests\Test-ProductionBinary-Contract.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $productionBinaryContract)
+
+    $buildModesTest = Join-Path $repository 'tools\release\tests\Test-BuildModes.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $buildModesTest)
+
+    $vsDiscoveryTest = Join-Path $repository 'tools\release\tests\Test-VS2026Discovery.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $vsDiscoveryTest)
+
     $pictviewContract = Join-Path $repository 'tools\release\tests\Test-PictView-Management.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $pictviewContract)
+
+    # Guard the active VS 2026 solution metadata and every referenced C++
+    # project against accidental reintroduction of unsupported old toolsets.
+    $vs2026Contract = Join-Path $repository 'tools\release\tests\Test-VS2026-ProjectMetadata.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $vs2026Contract)
+
+    # Guard the original, fully featured Ctrl+F dialog while its worker and
+    # result identities are migrated away from ANSI/MAX_PATH.
+    $legacyFindContract = Join-Path $repository 'tools\release\tests\Test-LegacyFind-UiContract.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $legacyFindContract)
+
+    $pluginModuleContract = Join-Path $repository 'tools\release\tests\Test-PluginModulePaths-Contract.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $pluginModuleContract)
+
+    $guiConfigContract = Join-Path $repository 'tools\release\tests\Test-GuiConfig-Isolation.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $guiConfigContract)
+
+    $handlesLoaderLockContract = Join-Path $repository 'tools\release\tests\Test-HandlesLoaderLock-Contract.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $handlesLoaderLockContract)
 
     $guiDriverContract = Join-Path $repository 'tools\release\tests\Test-GuiDriver-Contract.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $guiDriverContract)
 
+    $werContract = Join-Path $repository 'tools\release\tests\Test-WerCrashReporting-Contract.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $werContract)
+
+    $unicodeCopyContract = Join-Path $repository 'tools\release\tests\Test-Manage-UnicodeCopy.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $unicodeCopyContract)
+
+    $guiReliabilityContract = Join-Path $repository 'tools\release\tests\Test-GuiReliability-Contract.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $guiReliabilityContract)
+
+    # Test-Package-Helpers.ps1 invokes the independent release/GUI contract
+    # regressions, including the cross-process clipboard test in STA.
+    # Running them separately here duplicates work and test side effects.
     $regression = Join-Path $repository 'tools\release\tests\Test-Package-Helpers.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $regression)
 
@@ -256,6 +300,13 @@ function Run-Tests {
         'tools\tests\win32_unicode_recycle.cpp',
         'tools\tests\shell_file_operation_name_list.cpp',
         'tools\tests\long_path_io.cpp',
+        'tools\tests\unicode_directory_delete.cpp',
+        'tools\tests\legacy_find_utf16_identity.cpp',
+        'tools\tests\plugin_module_path.cpp',
+        'tools\tests\isolated_test_configuration.cpp',
+        'tools\tests\worker_copy_paths.cpp',
+        'tools\tests\worker_copy_io.cpp',
+        'tools\tests\win32_utf16_static_text.cpp',
         'tools\tests\unicode_find.cpp',
         'tools\tests\win32_max_path.cpp',
         'tools\tests\bug_report_path.cpp'
@@ -382,13 +433,29 @@ try {
 
         Expand-AutomatedTestActions -RequestedSet $requestedSet -AvailableOptions $validOptions
 
+        if ($requestedSet.Contains('--diagnose-gui')) {
+            $allowedDiagnosticOptions = @('--diagnose-gui', '--release', '--debug')
+            foreach ($action in $requestedSet) {
+                if ($action -notin $allowedDiagnosticOptions) {
+                    throw '--diagnose-gui kann nur mit --release oder --debug kombiniert werden.'
+                }
+            }
+        }
+
         . (Join-Path $repository 'tools\release\Package-Helpers.ps1')
+        . (Join-Path $repository 'tools\release\Build-Helpers.ps1')
+        $null = Get-BuildMode -RequestedSet $requestedSet
         $buildRoot = [IO.Path]::GetFullPath($buildRoot)
         New-Item -ItemType Directory -Path $buildRoot -Force | Out-Null
 
         if ($requestedSet.Contains('--update')) { Update-Branch }
-        if ($requestedSet.Contains('--build')) { Build-Variants }
+        $buildMode = Get-BuildMode -RequestedSet $requestedSet
+        if ($buildMode -ne 'None') { Build-Variants -Mode $buildMode }
         if ($requestedSet.Contains('--test')) { Run-Tests }
+        if ($requestedSet.Contains('--test-clipboard-snapshot')) {
+            $snapshotTest = Join-Path $repository 'tools\release\tests\Test-ClipboardSnapshot.ps1'
+            Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $snapshotTest)
+        }
         # Separate acceptance gate: these built plug-ins are inspected but
         # never loaded, and missing artifacts must fail rather than skip.
         if ($requestedSet.Contains('--test-plugin-exports')) {
@@ -465,6 +532,23 @@ try {
         }
         $automatedGuiModes = @(Get-AutomatedGuiModes -RequestedSet $requestedSet)
         foreach ($guiMode in $automatedGuiModes) {
+            if ($requestedSet.Contains('--test-gui-legacy-find')) {
+                $legacyFindTest = Join-Path $repository 'tools\release\tests\Invoke-IsolatedLegacyFind.ps1'
+                Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $legacyFindTest,
+                                          '-Configuration', $guiMode)
+            }
+            if ($requestedSet.Contains('--test-gui-large-unicode-copy')) {
+                $largeCopyTest = Join-Path $repository 'tools\release\tests\Invoke-IsolatedUnicodeCopy.ps1'
+                Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $largeCopyTest,
+                                          '-Configuration', $guiMode)
+            }
+            if ($requestedSet.Contains('--test-gui-temp-delete')) {
+                Write-Host '=== GUI F8 DELETE HANDLER (FOREGROUND-INDEPENDENT CM_DELETEFILES) ==='
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                          '-SalamanderExe', $testedExe, '-TemporaryDirectoryDeletionOnly')
+            }
             if ($requestedSet.Contains('--test-gui-baseline')) {
                 Write-Host '=== SALAMANDER-GUI-TESTTREIBER, KURZPFAD-BASIS ==='
                 $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
@@ -589,8 +673,17 @@ try {
             Write-Host 'Die Testdateien werden bewusst NICHT automatisch entfernt.'
             Write-Warning 'Die GUI-Prüfung ist manuell; diese Ausgabe bescheinigt KEIN Bestehen.'
         }
+        # Explicit, diagnostic-only: compare identical F8 GUI runs with and
+        # without the non-GUI --test-all prelude. Keep this out of --test-all,
+        # which must not recursively invoke its own management entry point.
+        if ($requestedSet.Contains('--diagnose-gui')) {
+            $diagnostic = Join-Path $repository 'tools\release\tests\Invoke-GuiReliability.ps1'
+            Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $diagnostic,
+                                      '-Configuration', $configuration,
+                                      '-CaptureHangDump')
+        }
         if ($requestedSet.Contains('--setup')) {
-            Build-Setups -AlreadyBuilt:$requestedSet.Contains('--build')
+            Build-Setups -AlreadyBuilt:($buildMode -ne 'None')
         }
         if ($requestedSet.Contains('--run')) { Run-Salamander }
 
@@ -606,14 +699,22 @@ finally {
         Write-Host "Protokoll: $logPath"
         Write-Host 'Die gesamte protokollierte Ausgabe wird nun in die Zwischenablage kopiert.'
         Stop-Transcript | Out-Null
-        try {
-            $completeOutput = Get-Content -LiteralPath $logPath -Raw -Encoding UTF8
-            Set-Clipboard -Value $completeOutput -ErrorAction Stop
+        # Nested GUI A/B tests must not publish their entire management
+        # transcript to the global clipboard between comparisons. The outer
+        # management invocation retains the established default behavior.
+        if ($env:OPENSAL_MANAGE_SKIP_CLIPBOARD -eq '1') {
+            Write-Host 'Diagnostic child: clipboard copy skipped; full log retained on disk.'
         }
-        catch {
-            # Preserve build/test exit codes; the log is still available.
-            [Console]::Error.WriteLine(
-                "WARNUNG: Clipboard-Kopie nicht möglich. Log: $logPath. $($_.Exception.Message)")
+        else {
+            try {
+                $completeOutput = Get-Content -LiteralPath $logPath -Raw -Encoding UTF8
+                Set-Clipboard -Value $completeOutput -ErrorAction Stop
+            }
+            catch {
+                # Preserve build/test exit codes; the log is still available.
+                [Console]::Error.WriteLine(
+                    "WARNUNG: Clipboard-Kopie nicht möglich. Log: $logPath. $($_.Exception.Message)")
+            }
         }
     }
 }

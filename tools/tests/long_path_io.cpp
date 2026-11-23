@@ -59,6 +59,14 @@ int main()
                            : (exactNavigation || !legacyProjection.empty()))
         return Fail("panel navigation permits only an exact Windows code page projection");
 
+    // Arrange: the caller may request in-place path expansion.
+    std::wstring aliasedPath = L"C:\\東京\\😀.txt";
+    DWORD aliasError = ERROR_SUCCESS;
+    // Act / Assert: retaining the input precedes clearing the destination.
+    if (!Salamander::TryMakeExtendedLengthPath(aliasedPath.c_str(), aliasedPath, aliasError) ||
+        aliasError != ERROR_SUCCESS || aliasedPath != L"\\\\?\\C:\\東京\\😀.txt")
+        return Fail("in-place extended Unicode path expansion must retain its input");
+
     // Arrange / Act / Assert: syntactic transformation and invalid paths.
     std::wstring result;
     if (!Convert(L"C:\\folder\\name.txt", result) || result != L"\\\\?\\C:\\folder\\name.txt")

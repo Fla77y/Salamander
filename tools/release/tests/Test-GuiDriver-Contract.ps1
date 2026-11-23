@@ -57,6 +57,157 @@ if ($driverText -match 'Go-ToPath\s+\$source\s+Assert-True\s+\(\(Read-PanelPath\
 if ($driverText -notmatch 'Go-ToPath\s+\$source') {
     throw 'Baseline must still navigate and verify its short ASCII source path.'
 }
+# A visible HWND and WaitForInputIdle do not prove that Salamander's main
+# GUI thread pumps messages. Require a bounded, side-effect-free WM_NULL
+# readiness check before focus, clipboard mutation or any file operation.
+$readiness = Get-FunctionSource 'Wait-ForGuiResponsive'
+$readinessText = $readiness.Extent.Text
+$isolatedStart = $driverText.IndexOf('    # Process.MainWindowHandle/MainWindowTitle', [StringComparison]::Ordinal)
+$isolatedEnd = $driverText.IndexOf('    # A visible top-level window is not evidence', [StringComparison]::Ordinal)
+if ($isolatedStart -lt 0 -or $isolatedEnd -le $isolatedStart -or
+    $driverText.Substring($isolatedStart, $isolatedEnd - $isolatedStart) -notmatch
+        '(?s)GetValue\(''Configuration'', 0\).*?GetValue\(''Save In Progress''.*?IsWindowEnabled\(\$mainWindowHandle\)') {
+    throw 'Isolated startup must wait for the version upgrade, the end of the registry save and an enabled main window.'
+}
+$startupStart = $driverText.IndexOf(
+    '    # A visible top-level window is not evidence', [StringComparison]::Ordinal)
+if ($startupStart -lt 0) { throw 'GUI startup acceptance block is missing.' }
+$navigationStart = $driverText.IndexOf(
+    '    Go-ToPath $source', $startupStart, [StringComparison]::Ordinal)
+if ($navigationStart -le $startupStart) {
+    throw 'GUI startup acceptance block is missing.'
+}
+$startupText = $driverText.Substring($startupStart, $navigationStart - $startupStart)
+if ($startupText -notmatch '(?s)-not \$IsolatedConfiguration -and -not \$process\.WaitForInputIdle\(10000\).*?Wait-ForGuiResponsive.*?Focus-TestProcess' -or
+    $readinessText -notmatch 'SendMessageTimeout' -or
+    $readinessText -notmatch 'GetLastWin32Error' -or
+    $readinessText -notmatch 'Get-TestDialog' -or
+    $readinessText -notmatch 'Get-ProcessWindowSummary' -or
+    $readinessText -notmatch 'SalamanderGuiWaitChain' -or
+    $readinessText -notmatch 'Start-Sleep' -or
+    $readinessText -notmatch 'GUI startup remained unresponsive') {
+    throw 'GUI must prove bounded message-loop readiness and preserve hang diagnostics before clipboard navigation.'
+}
+$largeCopySource = (Get-FunctionSource 'Test-LargeUnicodeCopy').Extent.Text
+if ($largeCopySource -notmatch '(?s)throw\s+\(\(\s*"Large Unicode F5 confirmation unavailable:.*?No second F5 command was sent\."\)\s*-f\s*\$reason,\s*\$windows,\s*\$foreground,\s*\$blockingDialog') {
+    throw 'F5 timeout diagnostics must format the complete message, including the failure reason and owned windows.'
+}
+# A failed SendMessageTimeoutW may leave LastError unchanged. Clear it before
+# probing, capture the result immediately and format the complete error text.
+# The failure must retain HWND/owner diagnostics; never treat a failed WM_NULL
+# as proof that the GUI is responsive.
+$nativeClearError = $driverText -match '(?m)^\s*public static extern void SetLastError\(uint'
+$readinessFormat = '(?s)throw\s+\(\(\s*"GUI WM_NULL readiness.*?No navigation command sent\."\s*\)\s*-f\s*\$Context,'
+if (-not $nativeClearError -or
+    $readinessText -notmatch '(?s)SetLastError\(\[uint32\]0\).*?SendMessageTimeout\(.*?GetLastWin32Error\(' -or
+    $readinessText -notmatch $readinessFormat -or
+    $readinessText -notmatch 'GetWindowThreadProcessId' -or
+    $readinessText -notmatch 'IsHungAppWindow') {
+    throw 'WM_NULL failure must preserve the original Win32 error and format complete HWND/owner diagnostics without sending input.'
+}
+# Arrange: SMTO_ABORTIFHUNG can fail while LastError remains zero.
+# Act/Assert: retry only this ambiguous result and ERROR_TIMEOUT (1460) with
+# the existing fixed deadline. All other errors remain immediately fatal.
+# A permanently unresponsive GUI must still fail without navigating.
+if ($readinessText -notmatch '\$lastErrorCode -ne 1460 -and \$lastErrorCode -ne 0' -or
+    $readinessText -notmatch '(?s)Start-Sleep -Milliseconds 250.*?\} while \(\[DateTime\]::UtcNow -lt \$deadline\)' -or
+    $readinessText -notmatch 'IsHungAppWindow=\{[0-9]+\}' -or
+    $readinessText -notmatch 'genericFailures=\{[0-9]+\}') {
+    throw 'WM_NULL code zero and timeouts must remain bounded retries with a full hang diagnosis and no navigation.'
+}
+# Regression: MessageBoxW(HWindow) in CFilesWindow uses the panel as owner.
+# Get-TestDialog may report no popup while the main HWND remains enabled.
+# The actual 32-MiB copy confirmation must be discovered on the launched
+# process, with the full UTF-16 filename/destination validated by WM_GETTEXT.
+$largeCopySource = (Get-FunctionSource 'Test-LargeUnicodeCopy').Extent.Text
+if ($driverText -notmatch 'public static IntPtr FindVerifiedLargeCopyConfirmation' -or
+    $driverText -notmatch '(?s)FindVerifiedLargeCopyConfirmation.*?SendMessageTimeoutReadText' -or
+    $driverText -notmatch 'IsOwnedLargeCopyDialog' -or
+    $largeCopySource -notmatch 'FindVerifiedLargeCopyConfirmation' -or
+    $largeCopySource -notmatch 'ConfirmVerifiedLargeCopy' -or
+    $largeCopySource -notmatch 'Get-ProcessWindowSummary' -or
+    $largeCopySource -notmatch 'Get-ForegroundWindowSummary' -or
+    $largeCopySource.Contains("return `$dialog -match 'Copy the Unicode file to the other panel'")) {
+    throw 'Large Unicode F5 must verify its own modal prompt, not depend on Get-TestDialog/main-window enabled state.'
+}
+Write-Host 'PASS: large Unicode F5 confirmation is process-owned and read through bounded WM_GETTEXT.'
+
+Write-Host 'PASS: ambiguous WM_NULL failures retry only until the bounded deadline.'
+
+Write-Host 'PASS: WM_NULL failures capture fresh Win32 status and format complete diagnostic details.'
+
+# Arrange: a GUI hang needs a native stack trace to identify the blocking
+# startup component. A minidump can contain process-private data, so capture
+# must be explicit opt-in, limited to our launched process and never bundled.
+$dumpSource = (Get-FunctionSource 'Save-GuiHangMiniDump').Extent.Text
+if ($driverText -notmatch '(?s)DllImport\("dbghelp\.dll".*?MiniDumpWriteDump' -or
+    $dumpSource -notmatch 'OPENSAL_GUI_CAPTURE_HANG_DUMP' -or
+    $dumpSource -notmatch "'1'" -or
+    $dumpSource -notmatch 'MiniDumpWriteDump' -or
+    $dumpSource -notmatch 'GetTempPath' -or
+    $dumpSource -notmatch 'SafeFileHandle' -or
+    $driverText -notmatch '(?s)catch\s*\{\s*Write-Warning "GUI integration FAILED:.*?Save-FailureScreenshot.*?Save-GuiHangMiniDump.*?throw') {
+    throw 'Native GUI hang dumps must be opt-in, scoped to the test process, saved outside disposable fixtures, and collected before cleanup.'
+}
+Write-Host 'PASS: native GUI hang dump is explicit opt-in and precedes test-owned process cleanup.'
+
+# A failure screenshot is diagnostic evidence. The new temp-directory test
+# removes its fixture after failure, so evidence must be stored outside it.
+$screenshot = (Get-FunctionSource 'Save-FailureScreenshot').Extent.Text
+if ($screenshot.Contains('Join-Path $root ''gui-failure.png''') -or
+    $screenshot -notmatch 'GetTempPath' -or
+    $screenshot -notmatch 'gui-failure') {
+    throw 'Failed GUI test must retain a screenshot outside its deleted disposable fixture.'
+}
+# Regression for a visible, empty-caption Salamander window during WM_CREATE/
+# LoadConfig. The real application first creates CMAINWINDOW_CLASSNAME with
+# an empty title. Identifying it by caption alone loses the wait-chain evidence.
+$mainClassSource = Get-Content -LiteralPath (
+    Join-Path $PSScriptRoot '..\..\..\src\salamdr1.cpp') -Raw
+$expectedMainClass = [regex]::Match(
+    $mainClassSource, 'CMAINWINDOW_CLASSNAME\s*=\s*"([^"]+)"').Groups[1].Value
+if ([string]::IsNullOrEmpty($expectedMainClass)) {
+    throw 'Main window class is not declared in src/salamdr1.cpp.'
+}
+$mainWindowMethod = [regex]::Match($driverText,
+    '(?s)public static IntPtr FindMainWindow\(uint processId\).*?^    }',
+    [Text.RegularExpressions.RegexOptions]::Multiline)
+$titleGate = Get-FunctionSource 'Wait-ForGuiTitle'
+if (-not $mainWindowMethod.Success -or
+    -not $mainWindowMethod.Value.Contains('ClassName(window.Handle)') -or
+    -not $mainWindowMethod.Value.Contains('GetProcessWindows(processId)') -or
+    -not $mainWindowMethod.Value.Contains($expectedMainClass) -or
+    $mainWindowMethod.Value.Contains('Title.IndexOf("Open Salamander"') -or
+    $startupText -notmatch '(?s)Wait-ForGuiResponsive.*?Wait-ForGuiTitle.*?Focus-TestProcess' -or
+    $titleGate.Extent.Text -notmatch 'GetWindowCaption' -or
+    $titleGate.Extent.Text -notmatch 'Get-TestDialog' -or
+    $titleGate.Extent.Text -notmatch 'SalamanderGuiWaitChain' -or
+    $titleGate.Extent.Text -notmatch 'GUI startup did not publish its main window title' -or
+    $startupText -notmatch '(?s)WaitForInputIdle\(10000\).*?SalamanderGuiWaitChain.*?Wait-ForGuiResponsive') {
+    throw 'GUI startup must identify the exact app class without a caption, then require verified title and responsiveness before input.'
+}
+Write-Host 'PASS: empty-caption startup window is identified by app class and diagnosed before any destructive input.'
+
+# Regression: a successfully initialized Salamander may stop pumping messages
+# while the clipboard is published. A one-off 2500 ms WM_NULL is not a
+# conclusive hang. Observe the GUI before clipboard publication, and retry
+# read-only WM_NULL after publication for a bounded interval; never dispatch
+# clipboard navigation unless the GUI is responsive again.
+$command = (Get-FunctionSource 'Invoke-SalamanderCommand').Extent.Text
+$goto = (Get-FunctionSource 'Go-ToPath').Extent.Text
+if ($goto -notmatch '(?s)Focus-TestProcess.*?Wait-ForGuiResponsive\s+-Context\s+''BeforeClipboard''.*?Set-VerifiedNavigationClipboard.*?Invoke-SalamanderCommand\s+-CommandId\s+775' -or
+    $command -notmatch "Wait-ForGuiResponsive\s+-Context\s+'PreCommand775'" -or
+    $command -match '2500,\s*\[ref\]\$preflightResult' -or
+    $readinessText -notmatch '\[ValidateSet\(''Startup'', ''BeforeClipboard'', ''PreCommand775'', ''AfterDirectoryDelete''\)\]' -or
+    $readinessText -notmatch 'GUI startup remained unresponsive' -or
+    $readinessText -notmatch 'wait chain' -or
+    $readinessText -notmatch 'Context') {
+    throw 'GUI pre-navigation readiness must be bounded and measured before and after clipboard publication.'
+}
+Write-Host 'PASS: GUI clipboard navigation waits for verified responsiveness before and after clipboard publication.'
+
+Write-Host 'PASS: GUI startup readiness is bounded and failure screenshot survives fixture cleanup.'
+
 Write-Host 'PASS: GUI baseline has no redundant read after verified navigation.'
 
 Write-Host 'PASS: GUI navigation reuses the observed path without a redundant WM_COMMAND.'
@@ -78,6 +229,144 @@ if ($verifyPosition -lt 0 -or $dispatchPosition -lt 0 -or
     $clipboardSource -match 'Invoke-SalamanderCommand') {
     throw 'GUI navigation must verify exact clipboard round-trip before dispatching WM_COMMAND 775.'
 }
+# A successful first F8 must not count as proof for the second ASCII-GUID
+# fixture. Verify it and its payload still exist before refreshing the panel,
+# and require a round-trip through the test-owned parent before re-selection.
+$deleteStart = $driverText.IndexOf(
+    '        # Act: exercise Salamander', [StringComparison]::Ordinal)
+$deleteEnd = $driverText.IndexOf(
+    "        Write-Host 'PASS: Salamander F8 recursively deleted", $deleteStart,
+    [StringComparison]::Ordinal)
+if ($deleteStart -lt 0 -or $deleteEnd -le $deleteStart) {
+    throw 'GUI F8 temporary-directory scenario is missing.'
+}
+$deleteCase = $driverText.Substring($deleteStart, $deleteEnd - $deleteStart)
+$firstDelete = $deleteCase.IndexOf(
+    "Wait-Until { -not [IO.Directory]::Exists(" + '$temporaryDirectory)',
+    [StringComparison]::Ordinal)
+$verifySibling = $deleteCase.IndexOf(
+    "Assert-True ([IO.Directory]::Exists(" + '$asciiTemporaryDirectory)',
+    [StringComparison]::Ordinal)
+$verifyPayload = $deleteCase.IndexOf(
+    'Assert-True (Test-Content $asciiLeaf)', [StringComparison]::Ordinal)
+$parentRoundtrip = $deleteCase.IndexOf('Go-ToPath $root', [StringComparison]::Ordinal)
+$sourceRoundtrip = $deleteCase.IndexOf('Go-ToPath $source', $parentRoundtrip + 1,
+    [StringComparison]::Ordinal)
+$secondDelete = $deleteCase.IndexOf(
+    'Focus-DirectoryRow -Name $asciiTemporaryName', [StringComparison]::Ordinal)
+if ($firstDelete -lt 0 -or $verifySibling -le $firstDelete -or
+    $verifyPayload -le $verifySibling -or
+    $parentRoundtrip -le $verifyPayload -or
+    $sourceRoundtrip -le $parentRoundtrip -or
+    $secondDelete -le $sourceRoundtrip) {
+    throw 'F8 GUI test must preserve the ASCII sibling and reload its source panel before selecting the second folder.'
+}
+# Assert that the *destructive* F8 scenario no longer blindly presses
+# Enter after a fixed delay. A GUI focus loss must not confirm an unrelated
+# dialog. Wait for one verified native directory-delete dialog and post IDOK
+# only to that exact HWND, then verify filesystem state.
+$f8Confirmation = $driverText.Substring($deleteStart, $deleteEnd - $deleteStart)
+$confirmNative = [regex]::Match($driverText,
+    '(?s)public static void PostVerifiedDirectoryDeleteConfirmation\(IntPtr dialog, uint processId\).*?^    }',
+    [Text.RegularExpressions.RegexOptions]::Multiline)
+$findNative = [regex]::Match($driverText,
+    '(?s)public static IntPtr FindUnicodeDirectoryDeleteDialog\(uint processId\).*?^    }',
+    [Text.RegularExpressions.RegexOptions]::Multiline)
+$confirmPowerShell = (Get-FunctionSource 'Confirm-DirectoryDeleteDialog').Extent.Text
+if (-not $confirmNative.Success -or -not $findNative.Success -or
+    $findNative.Value -notmatch 'GetProcessWindows\(processId\)' -or
+    $findNative.Value -notmatch 'Unicode directory deletion' -or
+    $findNative.Value -notmatch '#32770' -or
+    $confirmNative.Value -notmatch 'GetWindowThreadProcessId' -or
+    $confirmNative.Value -notmatch 'GetDlgItem' -or
+    $confirmNative.Value -notmatch 'PostMessageW' -or
+    $confirmPowerShell -notmatch 'Wait-Until' -or
+    $confirmPowerShell -notmatch 'PostVerifiedDirectoryDeleteConfirmation' -or
+    ([regex]::Matches($f8Confirmation, 'Confirm-DirectoryDeleteDialog')).Count -ne 2 -or
+    $f8Confirmation -match 'Send-Keys\s+''\{ENTER\}''' -or
+    $f8Confirmation -match 'Start-Sleep\s+-Milliseconds\s+350') {
+    throw 'F8 GUI test must wait for and confirm only the verified own delete dialog; blind Enter is unsafe.'
+}
+Write-Host 'PASS: F8 confirmations target a verified own dialog without fixed sleeps or global Enter.'
+# A last-active popup is not necessarily a modal dialog. After a
+# completed F8 a visible Salamander "Status" window may remain while the
+# owner is enabled. Preserve error and true modal refusals, but do not
+# let an enabled owner's stale Status popup block all subsequent GUI tests.
+$dialogSource = (Get-FunctionSource 'Get-TestDialog').Extent.Text
+$afterF8 = (Get-FunctionSource 'Wait-ForCompletedDirectoryDelete').Extent.Text
+if ($driverText -notmatch 'public static extern bool IsWindowEnabled\(IntPtr window\)' -or
+    $dialogSource -notmatch 'Error Changing Directory' -or
+    $dialogSource -notmatch 'Error Loading Configuration' -or
+    $dialogSource -notmatch 'IsWindowEnabled\(\$main\)' -or
+    $dialogSource -notmatch 'GetLastActivePopup' -or
+    $dialogSource -notmatch 'Salamander main window is disabled by an unidentified dialog' -or
+    $afterF8 -notmatch 'FindUnicodeDirectoryDeleteDialog' -or
+    $afterF8 -notmatch 'IsWindowEnabled' -or
+    $afterF8 -notmatch 'Wait-Until' -or
+    $afterF8 -notmatch 'Wait-ForGuiResponsive' -or
+    ([regex]::Matches($f8Confirmation, 'Wait-ForCompletedDirectoryDelete')).Count -ne 2) {
+    throw 'F8 must await modal closure and treat only the verified, nonmodal Status popup as nonblocking.'
+}
+Write-Host 'PASS: F8 waits for modal completion and distinguishes nonmodal Status from blocking dialogs.'
+# The Win32 foreground belongs to the entire desktop, not to Salamander.
+# For the destructive Unicode directory regression, drive only verified
+# Salamander window/control handles and prove the filename and source path
+# before posting exactly one CM_DELETEFILES command. Keep real keystroke tests
+# separate: WM_COMMAND exercises the same application handler, not F8 binding.
+$noFocusGo = (Get-FunctionSource 'Go-ToPath').Extent.Text
+$noFocusRows = (Get-FunctionSource 'Focus-DirectoryRow').Extent.Text
+$noFocusReads = (Get-FunctionSource 'Read-FocusedClipboardValue').Extent.Text
+$noFocusConfirm = (Get-FunctionSource 'Confirm-DirectoryDeleteDialog').Extent.Text
+$noFocusDlg = (Get-FunctionSource 'Get-TestDialog').Extent.Text
+$noFocusNative = [regex]::Match($driverText,
+    '(?s)public static void PostVerifiedDirectoryDeleteCommand\(IntPtr mainWindow, uint processId\).*?^    }',
+    [Text.RegularExpressions.RegexOptions]::Multiline)
+$noFocusKey = [regex]::Match($driverText,
+    '(?s)public static void SendVerifiedFileListKey\(IntPtr mainWindow, uint processId, uint virtualKey\).*?^    }',
+    [Text.RegularExpressions.RegexOptions]::Multiline)
+if ($noFocusGo -notmatch 'NoForeground' -or
+    $noFocusRows -notmatch 'VerifiedBackground' -or
+    $noFocusReads -notmatch 'AllowVerifiedBackground' -or
+    $noFocusConfirm -notmatch 'ExpectedName' -or
+    $noFocusConfirm -notmatch 'DescribeWindow' -or
+    $noFocusDlg -notmatch 'IsWindowEnabled' -or
+    $noFocusDlg -notmatch 'GetLastActivePopup' -or
+    -not $noFocusNative.Success -or
+    $noFocusNative.Value -notmatch 'GetWindowThreadProcessId' -or
+    $noFocusNative.Value -notmatch 'PostMessageW' -or
+    $noFocusNative.Value -notmatch '729' -or
+    -not $noFocusKey.Success -or
+    $noFocusKey.Value -notmatch 'SendMessageTimeout' -or
+    $noFocusKey.Value -notmatch 'SalamanderItemsBox' -or
+    $f8Confirmation -notmatch 'PostVerifiedDirectoryDeleteCommand' -or
+    $f8Confirmation -match "Send-Keys '\{F8\}'" -or
+    $f8Confirmation -notmatch 'VerifiedBackground' -or
+    $f8Confirmation -notmatch 'Go-ToPath \$root -NoForeground') {
+    throw 'Background-safe GUI directory integration must address verified HWNDs, not desktop focus.'
+}
+Write-Host 'PASS: directory integration uses HWND-bound navigation, row selection and delete commands.'
+# Verify the source-level assumptions of background automation. -p 2
+# selects the right panel; 729 invokes Salamander's actual F8 handler.
+$resourceHeader = Get-Content -LiteralPath (
+    Join-Path $PSScriptRoot '..\..\..\src\resource.rh2') -Raw
+$nativeMain = Get-Content -LiteralPath (
+    Join-Path $PSScriptRoot '..\..\..\src\mainwnd3.cpp') -Raw
+if ($resourceHeader -notmatch '(?m)^#define\s+CM_DELETEFILES\s+729\b' -or
+    $nativeMain -notmatch 'case CM_DELETEFILES:\s*// delete files and directories' -or
+    $nativeMain -notmatch 'cmdLineParams->ActivatePanel == 2 && GetActivePanel\(\) == LeftPanel' -or
+    $driverText -notmatch '(?s)\$startupArgs = .*?-p 2') {
+    throw 'Background directory control assumptions differ from Salamander native code.'
+}
+Write-Host 'PASS: background GUI test targets the real active panel and F8 delete handler.'
+
+
+
+
+
+
+
+Write-Host 'PASS: F8 GUI test verifies sibling integrity and refreshes the panel before the next selection.'
+
 Write-Host 'PASS: GUI navigation verifies exact clipboard content and retries only safe clipboard writes.'
 
 # A live Salamander can lose foreground focus to a browser while a
@@ -206,6 +495,59 @@ if ($mainGuiSource -notmatch 'GetGUIThreadInfo' -or
     throw 'Long-directory Enter test must capture focus/path and never retry an unconfirmed Enter.'
 }
 Write-Host 'PASS: long-directory Enter failure captures actual GUI focus and observed path.'
+
+# Arrange: execute the driver's real, side-effect-free fixture calculation for
+# different TEMP roots. Fixed names fail when a longer worktree moves the second
+# level past MAX_PATH before the intended third Enter.
+$fixtureAssignment = @($tree.FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.AssignmentStatementAst] -and
+    $node.Left -is [System.Management.Automation.Language.VariableExpressionAst] -and
+    $node.Left.VariablePath.UserPath -ceq 'boundaryDirectoryNames'
+}, $true))
+if ($fixtureAssignment.Count -ne 1) { throw 'Expected one boundary-directory fixture assignment.' }
+$fixtureHelper = @($tree.FindAll({
+    param($node)
+    $node -is [System.Management.Automation.Language.FunctionDefinitionAst] -and
+    $node.Name -ceq 'Get-BoundaryDirectoryNames'
+}, $true))
+$fixtureProgram = (($fixtureHelper | ForEach-Object { $_.Extent.Text }) -join "`n") + "`n" +
+    $fixtureAssignment[0].Extent.Text + '; $boundaryDirectoryNames'
+$fixtureCalculation = [scriptblock]::Create($fixtureProgram)
+$fixtureBases = @(116, 3, 40, 80, 170, 225, 239) | ForEach-Object {
+    if ($_ -eq 3) { 'C:\' } else { 'C:\' + ('p' * ($_ - 3)) }
+}
+$fixtureBases += ('C:\Größe_東京_😀\').PadRight(116, 'p')
+foreach ($source in $fixtureBases) {
+    $baseLength = $source.Length
+    # Act
+    $names = @(& $fixtureCalculation)
+    $paths = @()
+    $parent = $source
+    foreach ($name in $names) {
+        if ($name.Length -lt 1 -or $name.Length -gt 255 -or $name -match '[\\/:*?]') {
+            throw 'Boundary fixture produced an invalid directory component.'
+        }
+        $parent = Join-Path $parent $name
+        $paths += $parent
+    }
+    # Assert: the transition must happen on the third Enter, independent of TEMP.
+    if ($names.Count -ne 4 -or $paths[1].Length -ge 260 -or $paths[2].Length -le 260) {
+        $lengths = ($paths | ForEach-Object { $_.Length }) -join ','
+        throw "Boundary fixture crosses MAX_PATH at the wrong Enter for parent length $baseLength; level lengths: $lengths."
+    }
+}
+# Arrange / Act / Assert: an impossible short-parent fixture must fail clearly,
+# rather than manufacturing invalid components or silently changing the test.
+$source = 'C:\' + ('p' * 237)
+$refused = $false
+try { $null = & $fixtureCalculation }
+catch {
+    if ($_.Exception.Message -notlike 'GUI fixture parent is too long*') { throw }
+    $refused = $true
+}
+if (-not $refused) { throw 'An overlong fixture parent must be explicitly refused.' }
+Write-Host 'PASS: nested GUI fixture crosses MAX_PATH on the third Enter for short and long TEMP roots.'
 
 # Wait-Until invokes a supplied scriptblock using &, which creates a
 # child scope. A scalar assignment within the poll must not be used after
@@ -381,10 +723,11 @@ Write-Host 'PASS: GUI driver captures the original SendMessageTimeout Win32 erro
 # Windows Wait Chain Traversal diagnostics; do not mutate app state on failure.
 $dispatchSource = $dispatch.Extent.Text
 if ($dispatchSource -notmatch '\$CommandId -eq 775' -or
-    $dispatchSource -notmatch 'Salamander GUI unresponsive BEFORE clipboard command 775' -or
-    $dispatchSource -notmatch 'GUI responds to WM_NULL' -or
-    $dispatchSource -notmatch 'SalamanderGuiWaitChain\]::Describe' -or
-    $dispatchSource -notmatch 'wait chain=\[' -or
+    $dispatchSource -notmatch "Wait-ForGuiResponsive -Context 'PreCommand775'" -or
+    $readinessText -notmatch 'GUI startup remained unresponsive' -or
+    $readinessText -notmatch 'GUI responds to WM_NULL' -or
+    $readinessText -notmatch 'SalamanderGuiWaitChain\]::Describe' -or
+    $readinessText -notmatch 'wait chain=\[' -or
     $driverText -notmatch 'OpenThreadWaitChainSession' -or
     $driverText -notmatch 'GetThreadWaitChain' -or
     $driverText -notmatch 'GetWindowThreadProcessId') {
@@ -546,6 +889,84 @@ Write-Host 'PASS: F6 directory GUI assertions use the valid byte-comparison help
 
 
 
+# Arrange: the existing F2 command opens CCopyMoveDialog with a ComboBox
+# (IDE_PATH=210), not the separate inline quick-rename editor. F2 used to
+# press Ctrl+A/Ctrl+V/Enter globally after an arbitrary sleep, risking input
+# in a foreign window while its own modal dialog was still open.
+$shortF2Start = $driverText.IndexOf(
+    'Exact ASCII file selected before F2', [StringComparison]::Ordinal)
+$shortF2End = $driverText.IndexOf(
+    "'ASCII F2 rename'", $shortF2Start, [StringComparison]::Ordinal)
+if ($shortF2Start -lt 0 -or $shortF2End -le $shortF2Start) {
+    throw 'Short F2 GUI regression block is missing.'
+}
+$shortF2 = $driverText.Substring($shortF2Start, $shortF2End - $shortF2Start)
+if ($shortF2 -notmatch 'FindVerifiedQuickRenameDialog' -or
+    $shortF2 -notmatch 'ConfirmVerifiedQuickRename' -or
+    $shortF2 -match "Send-Keys\s+'(?:\^a|\^v|\{ENTER\})'" -or
+    $shortF2 -match 'Start-Sleep') {
+    throw 'F2 must identify and confirm its own modal Quick Rename dialog, never send global text/Enter after a fixed delay.'
+}
+$renameInterop = [regex]::Match(
+    $driverText,
+    '(?s)public static IntPtr FindVerifiedQuickRenameDialog\(.*?\r?\n    \}')
+$renameConfirm = [regex]::Match(
+    $driverText,
+    '(?s)public static void ConfirmVerifiedQuickRename\(.*?\r?\n    \}')
+if (-not $renameInterop.Success -or -not $renameConfirm.Success -or
+    $renameInterop.Value -notmatch 'GetProcessWindows\(processId\)' -or
+    $renameInterop.Value -notmatch 'ClassName' -or
+    $renameInterop.Value -notmatch 'GetWindow\(' -or
+    $renameInterop.Value -notmatch 'MatchesDialogTitle\(window.Title, "Quick Rename"\)' -or
+    $renameInterop.Value -notmatch 'ReadQuickRenameText\(subject\)' -or
+    $renameInterop.Value -notmatch '210' -or
+    $renameInterop.Value -notmatch '209' -or
+    $renameConfirm.Value -notmatch 'SendMessageTimeout' -or
+    $renameConfirm.Value -notmatch 'PostMessageW' -or
+    $renameConfirm.Value -notmatch 'VerifiedChild\(dialog, processId, 1\)') {
+    throw 'Quick Rename automation must verify process, parent, title, resource controls and original name before writing and confirming.'
+}
+Write-Host 'PASS: F2 drives only its verified modal Quick Rename dialog, with no global text or Enter.'
+
+$copyCancel = (Get-FunctionSource 'Test-LargeUnicodeCopy').Extent.Text
+if ($copyCancel -notmatch 'MatchesDialogTitle\(.*?\x27Question\x27\)' -or
+    $copyCancel -notmatch 'HasVerifiedStaticText\(.*?\x27Do you want to cancel this operation\?\x27\)') {
+    throw 'Copy cancellation must match the decorated caption and read the owned prompt through bounded WM_GETTEXT.'
+}
+
+# Arrange: Debug x86 previously timed out before copy when its configuration
+# migration and plugin initialization had not published the expected version.
+# Assert that startup detects early exit instead of waiting blindly, records
+# the actual registry state, and can capture an explicitly opted-in dump even
+# when no application main HWND exists yet.
+$startupUpgradeEnd = $driverText.IndexOf(
+    "'Salamander saved its upgraded isolated configuration and enabled its main window'",
+    [StringComparison]::Ordinal)
+if ($startupUpgradeEnd -lt 0) {
+    throw 'Isolated startup upgrade wait is missing.'
+}
+$startupUpgradeStart = $driverText.LastIndexOf('Wait-Until {', $startupUpgradeEnd, [StringComparison]::Ordinal)
+if ($startupUpgradeStart -lt 0) { throw 'Isolated startup upgrade wait has no condition.' }
+$startupUpgradePrefix = $driverText.Substring(
+    $startupUpgradeStart, $startupUpgradeEnd - $startupUpgradeStart)
+$startupDiag = (Get-FunctionSource 'Get-IsolatedStartupDiagnostics').Extent.Text
+$mainCatchMatch = [regex]::Match(
+    $driverText, '(?s)catch \{\r?\n    Write-Warning "GUI integration FAILED:.*')
+if (-not $mainCatchMatch.Success) {
+    throw 'Main GUI failure cleanup/diagnostic handler is missing.'
+}
+$mainCatch = $mainCatchMatch.Value
+if ($startupUpgradePrefix -notmatch '\$process\.Refresh\(\)' -or
+    $startupUpgradePrefix -notmatch '\$process\.HasExited' -or
+    $startupDiag -notmatch 'Configuration' -or
+    $startupDiag -notmatch 'Get-ProcessWindowSummary' -or
+    $startupDiag -notmatch 'Get-ProcessThreadSummary' -or
+    $mainCatch -notmatch 'Save-GuiHangMiniDump' -or
+    $mainCatch -notmatch 'startup') {
+    throw 'Isolated startup must distinguish early exit, registry progress and no-HWND hangs without increasing timeouts.'
+}
+Write-Host 'PASS: isolated GUI startup diagnoses early exit and missing HWND before any copy input.'
+
 # Compile the embedded C# Win32 interop in the headless Windows test process.
 # PowerShell's AST check alone would not catch invalid P/Invoke signatures.
 $interopSource = [regex]::Match(
@@ -559,6 +980,14 @@ if ($interopSource.Groups[1].Value -match 'System.Windows.Forms\.') {
     throw 'GUI C# interop must not depend on WinForms compiler assemblies.'
 }
 Add-Type -TypeDefinition $interopSource.Groups[1].Value -ErrorAction Stop
+# Arrange / Act / Assert: exercise the real PowerShell -> C# string boundary.
+# $null is converted to String.Empty; an unspecified caption must match Yes.
+if (-not [SalamanderGuiNative]::MatchesRequestedCopyDialogText('&Yes', $null) -or
+    -not [SalamanderGuiNative]::MatchesRequestedCopyDialogText('東京😀', '東京😀') -or
+    [SalamanderGuiNative]::MatchesRequestedCopyDialogText('別名', '東京😀')) {
+    throw 'Copy dialog lookup must accept an unspecified caption and preserve exact Unicode comparisons.'
+}
+Write-Host 'PASS: copy dialog lookup handles PowerShell null strings and exact Unicode captions.'
 if ($driverText -match 'Get-GuiInteropReferences|guiInteropReferences|ReferencedAssemblies') {
     throw 'GUI driver must retain the default Add-Type framework references.'
 }
@@ -581,6 +1010,18 @@ if ($focusText -notmatch 'TryActivateVerifiedWindow' -or
     $focusText -notmatch 'window no longer belongs to launched Salamander' -or
     $focusText -notmatch 'attempts') {
     throw 'Focus recovery must retry only a verified Salamander HWND and report foreground ownership.'
+}
+# Repeatedly attempting to steal focus from a persistent system popup does
+# not improve GUI reliability. The test must distinguish desktop contention
+# from a Salamander bug and wait passively for a foreground-owner change.
+if ($focusText -notmatch 'GUI_ENVIRONMENT_BLOCKED' -or
+    $focusText -notmatch 'GUI_FOCUS_FAILURE' -or
+    $focusText -notmatch '\[Math\]::Min\(10, \$TimeoutSeconds\)' -or
+    $focusText -notmatch 'GetForegroundWindow' -or
+    $focusText -notmatch 'foregroundChanged' -or
+    $focusText -notmatch 'activationCount' -or
+    $focusText -notmatch 'Get-ActiveProcessId') {
+    throw 'Focus retry must bound activation attempts and classify external desktop interference distinctly.'
 }
 $sendKeys = (Get-FunctionSource 'Send-Keys').Extent.Text
 if ($sendKeys -notmatch 'Get-ActiveProcessId' -or
@@ -619,15 +1060,17 @@ if ($driverText -notmatch '\[switch\]\$UnicodeFindOnly' -or
     $driverText -notmatch 'FindUnicodeSearchWindow' -or
     $driverText -notmatch 'GetWindowThreadProcessId\(child' -or
     $driverText -notmatch 'SelectSingleFindResult' -or
-    $driverText -notmatch 'WindowFromPoint\(point\) != list' -or
     $driverText -notmatch 'LVM_GETSELECTEDCOUNT' -or
     $driverText -notmatch 'LVM_ENSUREVISIBLE' -or
-    $driverText -notmatch 'WaitForFindSelection' -or
     $driverText -notmatch 'WM_KEYDOWN / VK_HOME' -or
-    $driverText -notmatch 'Unicode Find selected result via safe ListView keyboard fallback' -or
     $findQuery -notmatch 'Wait-FindCompleted' -or
     $findSelection -notmatch 'SENTINEL_NOT_A_FIND_PATH' -or
-    $findGui -notmatch 'Restore-FilePanelFocus' -or
+    $findSelection -notmatch 'Set-NativeNavigationClipboard' -or
+    $findSelection -notmatch 'GetClipboardSequenceNumber\(\)' -or
+    $driverText -notmatch '\$backgroundCommandsOnly = .* -or \$UnicodeFindOnly' -or
+    $driverText -notmatch 'Go-ToPath \$source -NoForeground:\$backgroundCommandsOnly' -or
+    $findGui -notmatch 'Go-ToPath \$findRoot -NoForeground' -or
+    $findGui -notmatch 'PostUnicodeFindCommand\(' -or
     $findGui -notmatch 'unique-utf16-probe' -or
     $findGui -notmatch 'Unicode Find refuses destination overwrite' -or
     $findGui -notmatch 'PostFindButton.*5113' -or
@@ -638,20 +1081,19 @@ if ($driverText -notmatch '\[switch\]\$UnicodeFindOnly' -or
 }
 Write-Host 'PASS: Unicode Find modeless GUI test is registered and guards UTF-16 search, result selection and no-overwrite actions.'
 
-# Only one mouse click is allowed: repeating a physical click on the same
-# row could be interpreted as a double-click and open the selected file.
-# The fallback is a non-destructive Home key sent to the verified ListView.
+# Selection must work independently of the foreground window. Use a
+# non-destructive Home key sent directly to the verified ListView.
 $selectInterop = [regex]::Match(
     $driverText, '(?s)public static int SelectSingleFindResult\(.*?\r?\n    \}')
 if (-not $selectInterop.Success -or
-    [regex]::Matches($selectInterop.Value, 'mouse_event\(').Count -ne 2 -or
     $selectInterop.Value -notmatch 'VerifiedChild\(window, pid, 5117\)' -or
-    $selectInterop.Value -notmatch 'WaitForFindSelection' -or
+    $selectInterop.Value -notmatch 'SelectedFindIndex\(list\)' -or
+    $selectInterop.Value -match 'GetForegroundWindow|TryActivateVerifiedWindow|mouse_event' -or
     $selectInterop.Value -notmatch '0x0100' -or
     $selectInterop.Value -notmatch '0x0101') {
-    throw 'Unicode Find selection must use a single checked click and a safe keyboard fallback.'
+    throw 'Unicode Find selection must use a verified ListView and work in the background.'
 }
-Write-Host 'PASS: Unicode Find selection is bounded, diagnosed and never retries a potentially opening mouse click.'
+Write-Host 'PASS: Unicode Find selection uses verified, foreground-independent ListView messages.'
 
 
 # The new Find GUI gate covers explicitly unsupported shell and legacy
@@ -676,6 +1118,7 @@ if ($driverText -notmatch 'FindUnicodeNotice' -or
     $findGui -notmatch '5108' -or
     $findGui -notmatch 'Search cancelled:' -or
     $findGui -notmatch 'joins an active search worker' -or
+    $findGui -notmatch 'IsWindow\(\$script:findWindow\)' -or
     $findGui -notmatch 'cancelProbePath' -or
     $findGui -notmatch '\[IO\.File\]::Delete\(\$cancelProbePath\)') {
     throw 'Unicode Find GUI integration must preserve safe refusals, stale-hit protection and observable cancellation.'

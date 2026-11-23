@@ -2066,10 +2066,10 @@ void CMainWindow::SaveConfig(HWND parent)
                     GlobalSaveWaitWindow->SetProgressPos(++GlobalSaveWaitWindowProgress); // 4
                 //TRACE_I("analysing.SetProgressPos() savingProgress="<<savingProgress);
 
-                SaveHistory(actKey, CONFIG_NAMEDHISTORY_REG, FindNamedHistory,
-                            FIND_NAMED_HISTORY_SIZE, !Configuration.SaveHistory);
-                SaveHistory(actKey, CONFIG_LOOKINHISTORY_REG, FindLookInHistory,
-                            FIND_LOOKIN_HISTORY_SIZE, !Configuration.SaveHistory);
+                SaveFindTextHistory(actKey, CONFIG_NAMEDHISTORY_REG, FindNamedHistory,
+                                    FIND_NAMED_HISTORY_SIZE, !Configuration.SaveHistory);
+                SaveFindTextHistory(actKey, CONFIG_LOOKINHISTORY_REG, FindLookInHistory,
+                                    FIND_LOOKIN_HISTORY_SIZE, !Configuration.SaveHistory);
                 SaveHistory(actKey, CONFIG_GREPHISTORY_REG, FindGrepHistory,
                             FIND_GREP_HISTORY_SIZE, !Configuration.SaveHistory);
                 SaveHistory(actKey, CONFIG_SELECTHISTORY_REG, Configuration.SelectHistory,
@@ -3692,8 +3692,10 @@ BOOL CMainWindow::LoadConfig(BOOL importingOldConfig, const CCommandLineParams* 
                 SetFont();
             }
 
-            LoadHistory(actKey, CONFIG_NAMEDHISTORY_REG, FindNamedHistory, FIND_NAMED_HISTORY_SIZE);
-            LoadHistory(actKey, CONFIG_LOOKINHISTORY_REG, FindLookInHistory, FIND_LOOKIN_HISTORY_SIZE);
+            LoadFindTextHistory(actKey, CONFIG_NAMEDHISTORY_REG, FindNamedHistory,
+                                FIND_NAMED_HISTORY_SIZE, NAMED_TEXT_LEN);
+            LoadFindTextHistory(actKey, CONFIG_LOOKINHISTORY_REG, FindLookInHistory,
+                                FIND_LOOKIN_HISTORY_SIZE, LOOKIN_TEXT_LEN);
             LoadHistory(actKey, CONFIG_GREPHISTORY_REG, FindGrepHistory, FIND_GREP_HISTORY_SIZE);
             LoadHistory(actKey, CONFIG_SELECTHISTORY_REG, Configuration.SelectHistory, SELECT_HISTORY_SIZE);
             //      Guys (Honza Patera, Tomas Jelinek) didn't like this because when they

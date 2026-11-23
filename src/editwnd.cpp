@@ -255,7 +255,91 @@ BOOL AttachBackspaceHandler(HWND hwndEdit)
     return FALSE;
 }
 
-BOOL InstallWordBreakProc(HWND hWindow)
+static bool IsWidePathDelimiter(wchar_t ch)
+{
+    return ch <= 127 && IsCharacterDelimiter(static_cast<char>(ch));
+}
+
+static int CALLBACK WidePathWordBreak(wchar_t* text, int current, int length, int code)
+{
+    if (length <= 0)
+        return 0;
+    static thread_local bool rightBreak = false;
+    if (code == WB_ISDELIMITER)
+    {
+        rightBreak = true;
+        return current < length && IsWidePathDelimiter(text[current]);
+    }
+    if (code == WB_LEFT)
+    {
+        bool seenWord = false;
+        while (current > 0)
+        {
+            --current;
+            if (current == 0)
+                return 0;
+            if (!IsWidePathDelimiter(text[current]))
+            {
+                rightBreak = false;
+                seenWord = true;
+            }
+            else if (rightBreak || seenWord)
+                return current + 1;
+        }
+        return 0;
+    }
+    if (code == WB_RIGHT)
+    {
+        rightBreak = false;
+        bool seenWord = current < length && !IsWidePathDelimiter(text[current]);
+        while (++current < length)
+        {
+            if (IsWidePathDelimiter(text[current]))
+                seenWord = false;
+            else if (!seenWord)
+                break;
+        }
+        return current < length ? current : length;
+    }
+    return length;
+}
+
+static LRESULT CALLBACK WidePathBackspace(HWND edit, UINT message, WPARAM wParam, LPARAM lParam,
+                                          UINT_PTR subclassId, DWORD_PTR)
+{
+    if (message == WM_NCDESTROY)
+        RemoveWindowSubclass(edit, WidePathBackspace, subclassId);
+    if (message == WM_CHAR && wParam == 127)
+        return 0;
+    if (message == WM_KEYDOWN && wParam == VK_BACK &&
+        (GetKeyState(VK_CONTROL) & 0x8000) != 0 &&
+        (GetKeyState(VK_MENU) & 0x8000) == 0 &&
+        (GetKeyState(VK_SHIFT) & 0x8000) == 0)
+    {
+        DWORD start = 0;
+        DWORD end = 0;
+        SendMessageW(edit, EM_GETSEL, reinterpret_cast<WPARAM>(&start), reinterpret_cast<LPARAM>(&end));
+        try
+        {
+            std::wstring text(static_cast<size_t>(GetWindowTextLengthW(edit)) + 1, L'\0');
+            const int length = GetWindowTextW(edit, text.data(), static_cast<int>(text.size()));
+            if (end <= static_cast<DWORD>(length))
+            {
+                const int left = WidePathWordBreak(text.data(), static_cast<int>(end), length, WB_LEFT);
+                SendMessageW(edit, EM_SETSEL, left, end);
+                SendMessageW(edit, EM_REPLACESEL, TRUE, reinterpret_cast<LPARAM>(L""));
+                return 0;
+            }
+        }
+        catch (const std::bad_alloc&)
+        {
+            TRACE_E(LOW_MEMORY);
+        }
+    }
+    return DefSubclassProc(edit, message, wParam, lParam);
+}
+
+BOOL InstallWordBreakProc(HWND hWindow, BOOL preserveUnicode)
 {
     CALL_STACK_MESSAGE2("InstallWordBreakProc(0x%p)", hWindow);
 
@@ -277,6 +361,14 @@ BOOL InstallWordBreakProc(HWND hWindow)
             return FALSE;
         }
     }
+    if (preserveUnicode)
+    {
+        if (!IsWindowUnicode(hWindow) || !SetWindowSubclass(hWindow, WidePathBackspace, 0, 0))
+            return FALSE;
+        SendMessageW(hWindow, EM_SETWORDBREAKPROC, 0, reinterpret_cast<LPARAM>(WidePathWordBreak));
+        return TRUE;
+    }
+
     // Under Windows XP and .NET with common controls 6, EditWordBreakProc receives UNICODE text
     if (CCVerMajor >= 6)
         SendMessage(hWindow, EM_SETWORDBREAKPROC, NULL, (LPARAM)EditWordBreakProcUNICODE);

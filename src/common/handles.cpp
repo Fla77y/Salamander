@@ -2088,16 +2088,76 @@ BOOL C__Handles::TlsFree(DWORD dwTlsIndex)
 HINSTANCE
 C__Handles::LoadLibrary(LPCTSTR lpLibFileName)
 {
+#ifdef MULTITHREADED_HANDLES_ENABLE
+    // The Windows loader can call into other DLLs and wait for worker threads.
+    // Never hold the global handle-monitor lock across DLL initialization.
+    // Restore the calling thread's tracking metadata before CheckCreate().
+    C__HandlesOutputType tmpOutputType = OutputType;
+    C__HandlesData tmpTemporaryHandle = TemporaryHandle;
+    ::LeaveCriticalSection(&CriticalSection);
+#endif // MULTITHREADED_HANDLES_ENABLE
+
     HINSTANCE ret = ::LoadLibrary(lpLibFileName);
-    CheckCreate(ret != NULL, __htLibrary, __hoLoadLibrary, ret, GetLastError(), TRUE, lpLibFileName);
+    DWORD loadError = ::GetLastError();
+
+#ifdef MULTITHREADED_HANDLES_ENABLE
+    ::EnterCriticalSection(&CriticalSection);
+    OutputType = tmpOutputType;
+    TemporaryHandle = tmpTemporaryHandle;
+#endif // MULTITHREADED_HANDLES_ENABLE
+
+    // Reacquiring the lock may overwrite the Win32 status from LoadLibrary.
+    ::SetLastError(loadError);
+    CheckCreate(ret != NULL, __htLibrary, __hoLoadLibrary, ret, loadError, TRUE, lpLibFileName);
+    return ret;
+}
+
+HINSTANCE
+C__Handles::LoadLibraryW(LPCWSTR lpLibFileName)
+{
+#ifdef MULTITHREADED_HANDLES_ENABLE
+    C__HandlesOutputType tmpOutputType = OutputType;
+    C__HandlesData tmpTemporaryHandle = TemporaryHandle;
+    ::LeaveCriticalSection(&CriticalSection);
+#endif // MULTITHREADED_HANDLES_ENABLE
+
+    HINSTANCE ret = ::LoadLibraryW(lpLibFileName);
+    DWORD loadError = ::GetLastError();
+
+#ifdef MULTITHREADED_HANDLES_ENABLE
+    ::EnterCriticalSection(&CriticalSection);
+    OutputType = tmpOutputType;
+    TemporaryHandle = tmpTemporaryHandle;
+#endif // MULTITHREADED_HANDLES_ENABLE
+
+    ::SetLastError(loadError);
+    CheckCreate(ret != NULL, __htLibrary, __hoLoadLibrary, ret, loadError, TRUE, "UTF-16 module path");
+    ::SetLastError(loadError);
     return ret;
 }
 
 HINSTANCE
 C__Handles::LoadLibraryEx(LPCTSTR lpLibFileName, HANDLE hFile, DWORD dwFlags)
 {
+#ifdef MULTITHREADED_HANDLES_ENABLE
+    // Match LoadLibrary and FreeLibrary: do not call the Windows loader while
+    // holding the handle-monitor lock used by Salamander's icon threads.
+    C__HandlesOutputType tmpOutputType = OutputType;
+    C__HandlesData tmpTemporaryHandle = TemporaryHandle;
+    ::LeaveCriticalSection(&CriticalSection);
+#endif // MULTITHREADED_HANDLES_ENABLE
+
     HINSTANCE ret = ::LoadLibraryEx(lpLibFileName, hFile, dwFlags);
-    CheckCreate(ret != NULL, __htLibrary, __hoLoadLibraryEx, ret, GetLastError(), TRUE, lpLibFileName);
+    DWORD loadError = ::GetLastError();
+
+#ifdef MULTITHREADED_HANDLES_ENABLE
+    ::EnterCriticalSection(&CriticalSection);
+    OutputType = tmpOutputType;
+    TemporaryHandle = tmpTemporaryHandle;
+#endif // MULTITHREADED_HANDLES_ENABLE
+
+    ::SetLastError(loadError);
+    CheckCreate(ret != NULL, __htLibrary, __hoLoadLibraryEx, ret, loadError, TRUE, lpLibFileName);
     return ret;
 }
 
@@ -2427,7 +2487,21 @@ C__Handles::_beginthreadex(void* security, unsigned stack_size,
 HRESULT
 C__Handles::RegisterDragDrop(HWND hwnd, IDropTarget* pDropTarget)
 {
+#ifdef MULTITHREADED_HANDLES_ENABLE
+    C__HandlesOutputType tmpOutputType = OutputType;
+    C__HandlesData tmpTemporaryHandle = TemporaryHandle;
+    ::LeaveCriticalSection(&CriticalSection);
+#endif // MULTITHREADED_HANDLES_ENABLE
+
+    // OLE can dispatch window messages during registration.
     HRESULT ret = ::RegisterDragDrop(hwnd, pDropTarget);
+
+#ifdef MULTITHREADED_HANDLES_ENABLE
+    ::EnterCriticalSection(&CriticalSection);
+    OutputType = tmpOutputType;
+    TemporaryHandle = tmpTemporaryHandle;
+#endif // MULTITHREADED_HANDLES_ENABLE
+
     CheckCreate(ret == S_OK, __htDropTarget, __hoRegisterDragDrop, hwnd);
     return ret;
 }
@@ -2435,7 +2509,21 @@ C__Handles::RegisterDragDrop(HWND hwnd, IDropTarget* pDropTarget)
 HRESULT
 C__Handles::RevokeDragDrop(HWND hwnd)
 {
+#ifdef MULTITHREADED_HANDLES_ENABLE
+    C__HandlesOutputType tmpOutputType = OutputType;
+    C__HandlesData tmpTemporaryHandle = TemporaryHandle;
+    ::LeaveCriticalSection(&CriticalSection);
+#endif // MULTITHREADED_HANDLES_ENABLE
+
+    // OLE can call back into the drop target when releasing it.
     HRESULT ret = ::RevokeDragDrop(hwnd);
+
+#ifdef MULTITHREADED_HANDLES_ENABLE
+    ::EnterCriticalSection(&CriticalSection);
+    OutputType = tmpOutputType;
+    TemporaryHandle = tmpTemporaryHandle;
+#endif // MULTITHREADED_HANDLES_ENABLE
+
     CheckClose(ret == S_OK, hwnd, __htDropTarget, "RevokeDragDrop");
     return ret;
 }
