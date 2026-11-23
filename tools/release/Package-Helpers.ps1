@@ -282,6 +282,50 @@ function New-DistributionStage {
     Copy-Runtime -Stage $Stage -Configuration $Configuration -CrtFolders $CrtFolders
 }
 
+# Verify the complete SPL set against the actual build output. Robocopy's
+# success code alone cannot prove no built plug-in was lost or modified.
+# No plug-in is loaded or executed by this comparison.
+function Assert-StagedBuiltPlugins {
+    param(
+        [Parameter(Mandatory)][string]$BuiltDirectory,
+        [Parameter(Mandatory)][string]$Stage
+    )
+    $sourceRoot = Join-Path $BuiltDirectory 'plugins'
+    $stageRoot = Join-Path $Stage 'plugins'
+    if (-not (Test-Path -LiteralPath $sourceRoot -PathType Container) -or
+        -not (Test-Path -LiteralPath $stageRoot -PathType Container)) {
+        throw 'Built or staged plug-in directory is missing.'
+    }
+
+    $expected = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $built = @(Get-ChildItem -LiteralPath $sourceRoot -Recurse -File -Filter '*.spl')
+    if ($built.Count -eq 0) { throw 'No built plug-ins were found for release staging.' }
+
+    foreach ($source in $built) {
+        $relative = [IO.Path]::GetRelativePath($sourceRoot, $source.FullName).Replace('\', '/')
+        if (-not $expected.Add($relative)) {
+            throw "Duplicate built plug-in identity: $relative"
+        }
+        $destination = Join-Path $stageRoot $relative
+        if (-not (Test-Path -LiteralPath $destination -PathType Leaf)) {
+            throw "Built plug-in missing from distribution: $relative"
+        }
+        $sourceHash = (Get-FileHash -LiteralPath $source.FullName -Algorithm SHA256).Hash
+        $stageHash = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash
+        if ($sourceHash -cne $stageHash) {
+            throw "Staged plug-in content differs from build: $relative"
+        }
+    }
+
+    foreach ($file in @(Get-ChildItem -LiteralPath $stageRoot -Recurse -File -Filter '*.spl')) {
+        $relative = [IO.Path]::GetRelativePath($stageRoot, $file.FullName).Replace('\', '/')
+        if (-not $expected.Contains($relative)) {
+            throw "Unbuilt plug-in unexpectedly included in distribution: $relative"
+        }
+    }
+    Write-Host "PASS: all $($built.Count) built SPL modules were staged with exact SHA-256 content."
+}
+
 function Test-DistributionStage {
     param([string]$Stage, [string]$Configuration, [string]$DumpbinExe)
     if (Test-Path -LiteralPath (Join-Path $Stage 'utils\salmon.exe') -PathType Leaf) {
