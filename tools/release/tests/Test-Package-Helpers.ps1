@@ -882,11 +882,25 @@ if ([string]::IsNullOrEmpty($derivedDeclaration) -or
     $filesHeader -match '(?s)BOOL HasLongDiskPath\(\).*?BOOL HasUnsupportedLegacyPluginSelection\(\).*?class CFilesWindow\s*:') {
     throw 'C2509 regression: legacy plug-in selection method must be declared in CFilesWindow, not its ancestor.'
 }
+# Inspect the guard itself rather than matching an unrelated use elsewhere.
+# The unsafe predicate takes 'entry'; selected/caret rows are named 'item'.
+$pluginGateStart = $hostPanel.IndexOf(
+    'BOOL CFilesWindow::HasUnsupportedLegacyPluginSelection()', [StringComparison]::Ordinal)
+$pluginGateEnd = $hostPanel.IndexOf(
+    'void CFilesWindow::FilesAction(', [StringComparison]::Ordinal)
+$pluginGate = if ($pluginGateStart -ge 0 -and $pluginGateEnd -gt $pluginGateStart) {
+    $hostPanel.Substring($pluginGateStart, $pluginGateEnd - $pluginGateStart)
+} else { '' }
 if ($pluginDispatch -notmatch 'HasUnsupportedLegacyPluginSelection' -or
     $pluginDeferred -notmatch 'HasUnsupportedLegacyPluginSelection' -or
     $pluginPosted -notmatch 'HasUnsupportedLegacyPluginSelection' -or
-    $hostPanel -notmatch 'BOOL CFilesWindow::HasUnsupportedLegacyPluginSelection\(' -or
-    $hostPanel -notmatch 'UnicodeDiskNames\.IsUnsafeAnsiName\(item\.Name\)') {
+    [string]::IsNullOrEmpty($pluginGate) -or
+    $pluginGate -notmatch 'HasLongDiskPath\(\)' -or
+    $pluginGate -notmatch 'pathLength\s*\+\s*entry\.NameLen\s*\+\s*1\s*>=\s*MAX_PATH' -or
+    $pluginGate -notmatch 'UnicodeDiskNames\.IsUnsafeAnsiName\(entry\.Name\)' -or
+    $pluginGate -notmatch 'GetCaretIndex\(\)' -or
+    $pluginGate -notmatch 'GetSelCount\(\)' -or
+    $pluginGate -notmatch 'item\.Selected\s*&&\s*unsafe\(item\)') {
     throw 'F3: all legacy plugin menu paths must block unsafe disk identities.'
 }
 
