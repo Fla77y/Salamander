@@ -39,7 +39,7 @@ beweist nicht, dass dieser Test auf dem aktuellen Commit ausgeführt wurde.
 | Bezug | Stand / Beleg | Bewertung |
 | --- | --- | --- |
 | Vorheriger Referenzstand | `baseline/test-all-pass-2026-11-23` → `37a5cc595e45c37b32ad8460148717d975bc600b`; protokollierter Windows-`--test-all`-Lauf vom 23.11.2026 | Historisch grün |
-| Aktueller Referenzstand | `baseline/test-all-pass-2026-11-23-f5-f6` → `a7ab5b40d859509ffe5fead2d8f00739399a5067` | Grüner `--test-all`-Stand laut ausgewertetem Nutzer-Testprotokoll |
+| Aktueller Referenzstand | `baseline/test-all-pass-2026-11-23-f5-f6` → `a7ab5b40d859509ffe5fead2d8f00739399a5067`; Benutzerprotokoll `manage-20261123-181433-866-c973b8.log`, 18:14:33–18:26:22 CET (nicht im Git versioniert) | Tatsächlich erfolgreicher `--test-all`-Stand mit Windows-Testausgabe |
 | Verifizierte Teilbereiche | 36 isolierte Legacy-Find-GUI-Szenarien je Release/Debug x64 (72); native Unicode-/WIC-Tests; F2/F5/F6/F8; 263-UTF-16-Pfad und F6-Datei >17 MiB mit SHA-256; umfangreiche Max-Pfad-/GUI-Tests | **Nur** die konkret ausgeführten Szenarien |
 | Ausstehende Erweiterungen | [Draft-PR #14](https://github.com/Fla77y/Salamander/pull/14) (`test/coverage-validation-2026-11-23`, zuletzt `bbf2c39e158acbc38e5192b5efc3e0e07c394f01`) | Nicht in `a7ab5b40` enthalten; Tests/CI auf finalem Merge-Stand nachzuholen |
 | Endnutzer-Release | `tools/release/Release-5.2-Gates.md` enthält offene Prüf- und Entscheidungspunkte | **NO-GO** bis alle zutreffenden Gates belegt |
