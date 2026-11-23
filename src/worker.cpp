@@ -8549,7 +8549,8 @@ DWORD WINAPI ThreadWorker(void* param)
 BOOL PrepareUnicodeFileCopy(COperations* script, const Salamander::Utf16DiskPath& source,
                             const Salamander::Utf16DiskPath& target,
                             const WIN32_FILE_ATTRIBUTE_DATA& attributes, BOOL ignoreADS, DWORD& error,
-                            BOOL moveAfterCopy)
+                            BOOL moveAfterCopy,
+                            const BY_HANDLE_FILE_INFORMATION* expectedSource)
 {
     if (script == NULL ||
         (attributes.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0)
@@ -8567,6 +8568,16 @@ BOOL PrepareUnicodeFileCopy(COperations* script, const Salamander::Utf16DiskPath
     Salamander::WorkerCopyPaths* paths = script->UnicodeCopyPaths.Add(source, target, error);
     if (paths == NULL)
         return FALSE;
+    if (expectedSource != nullptr)
+    {
+        if (!Salamander::UnicodeFileOperationsDetail::HasRegularFileIdentity(*expectedSource))
+        {
+            error = ERROR_FILE_INVALID;
+            return FALSE;
+        }
+        paths->SourceIdentity = *expectedSource;
+        paths->HasSourceIdentity = true;
+    }
     CopyIo::Scope pathScope(paths);
     paths->CaptureTargetIdentity = moveAfterCopy != FALSE;
     DWORD sourceFlags, targetFlags;
