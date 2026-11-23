@@ -90,6 +90,22 @@ alle zusätzlichen Sprachen, Hilfebinaries, Rechte, Signaturen noch die
 Vollständigkeit der tatsächlich vorgesehenen Release-Module; **PKG-01**
 bleibt deshalb eine separate obligatorische Freigabeprüfung.
 
+**UP-02 – Quellseitige SDK-Exportinventarisierung (vorbereitet):**
+Für alle 35 Solution-Plugins wurde eine .def-Datei im Repository
+gefunden. 34 liegen direkt unter src/plugins/[Modul]/[Modul].def;
+die DiskMap-Definition liegt unter
+src/plugins/diskmap/DiskMapPlugin/DiskMapPlugin.def.
+Alle sind jetzt durch den erweiterten Test-PluginExport-Parser.ps1
+auf die deklarierten SalamanderPluginEntry- und
+SalamanderPluginGetReqVer-Namen prüfbar. Der Parser berücksichtigt
+sowohl einzeilige Exportdefinitionen als auch herkömmliche EXPORTS-Blöcke
+mit Ordinalzahlen, PRIVATE, Kommentaren und Aliasnamen.
+Die fünf bestehenden x64-Binärtests verwenden denselben Quellparser,
+prüfen aber weiterhin nur fünf tatsächliche PE-Dateien.
+**Keine Aussage über 35 gebaute PE-Exporttabellen oder über die
+Unicode-/Langpfadfunktion beziehungsweise den Plugin-Host.**
+Die neue PowerShell-Ausführung steht aus.
+
 ## 3. Mindestmatrix für jedes ausgelieferte Plugin
 
 | Feld | Benötigter Beleg |
