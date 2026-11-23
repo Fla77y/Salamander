@@ -8,6 +8,8 @@
 #include <array>
 #include <cstdio>
 #include <string>
+#include <vector>
+#include <cstdint>
 
 namespace
 {
@@ -16,6 +18,93 @@ bool Check(bool condition, const char* message)
     if (!condition)
         std::fprintf(stderr, "FAIL: %s\n", message);
     return condition;
+}
+
+// Test-owned encoded images are small, so comparing the complete bytes
+// verifies a refused Save Copy did not silently change file metadata/payload.
+bool ReadSmallFile(const std::wstring& path, std::vector<std::uint8_t>& bytes)
+{
+    HANDLE handle = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ,
+                                nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (handle == INVALID_HANDLE_VALUE)
+        return false;
+    LARGE_INTEGER size{};
+    const bool sizeOk = GetFileSizeEx(handle, &size) != FALSE &&
+                        size.QuadPart > 0 && size.QuadPart <= 1024 * 1024;
+    bool readOk = false;
+    if (sizeOk)
+    {
+        bytes.resize(static_cast<std::size_t>(size.QuadPart));
+        DWORD count = 0;
+        readOk = ReadFile(handle, bytes.data(), static_cast<DWORD>(bytes.size()),
+                          &count, nullptr) != FALSE && count == bytes.size();
+    }
+    const bool closeOk = CloseHandle(handle) != FALSE;
+    return sizeOk && readOk && closeOk;
+}
+
+// BMP/JPEG/TIFF must actually encode pixels, not just return a valid suffix.
+// Every format must also preserve an existing destination byte-for-byte.
+bool TestAdditionalWicExportFormats(const std::wstring& directory)
+{
+    using pictview::wic::ImageFileFormat;
+    const struct
+    {
+        const wchar_t* extension;
+        ImageFileFormat format;
+    } cases[] = {
+        {L"bmp", ImageFileFormat::Bmp},
+        {L"jpg", ImageFileFormat::Jpeg},
+        {L"tif", ImageFileFormat::Tiff}
+    };
+
+    pictview::wic::DecodedImage red;
+    red.width = 2;
+    red.height = 1;
+    red.stride = 8;
+    red.bgra = {0, 0, 255, 255, 0, 0, 255, 255};
+    bool success = true;
+
+    for (const auto& test : cases)
+    {
+        // Arrange
+        const std::wstring path = directory + L"\\export-東京." + test.extension;
+        const HRESULT saved = pictview::wic::SaveNewImage(path.c_str(), red, test.format);
+        std::vector<std::uint8_t> originalBytes;
+        const bool snapshot = SUCCEEDED(saved) && ReadSmallFile(path, originalBytes);
+        pictview::wic::DecodedImage decoded;
+        const HRESULT opened = snapshot
+            ? pictview::wic::DecodeFirstFrame(path.c_str(), decoded) : E_FAIL;
+        const bool decodedOk = SUCCEEDED(opened) && decoded.width == 2 &&
+            decoded.height == 1 && decoded.stride == 8 &&
+            decoded.bgra.size() == 8 && decoded.bgra[2] >= 190 &&
+            decoded.bgra[3] == 255 && decoded.bgra[7] == 255;
+        if (!Check(decodedOk, "WIC BMP/JPEG/TIFF Save Copy produces a readable opaque image"))
+            success = false;
+
+        if (snapshot)
+        {
+            // Act: a different source must not overwrite the existing export.
+            pictview::wic::DecodedImage green = red;
+            green.bgra = {0, 255, 0, 255, 0, 255, 0, 255};
+            const HRESULT collision =
+                pictview::wic::SaveNewImage(path.c_str(), green, test.format);
+            std::vector<std::uint8_t> after;
+            const bool unchanged = ReadSmallFile(path, after) && after == originalBytes;
+
+            // Assert
+            if (!Check((collision == HRESULT_FROM_WIN32(ERROR_FILE_EXISTS) ||
+                        collision == HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS)) &&
+                       unchanged, "WIC BMP/JPEG/TIFF export collision preserves exact bytes"))
+                success = false;
+        }
+        else
+            success = false;
+
+        if (!DeleteFileW(path.c_str()) && GetLastError() != ERROR_FILE_NOT_FOUND)
+            success = false;
+    }
+    return success;
 }
 
 bool Tests()
@@ -95,6 +184,8 @@ bool Tests()
                 "invalid stride rejected");
     ok &= Check(GetFileAttributesW(rejected.c_str()) == INVALID_FILE_ATTRIBUTES,
                 "invalid export leaves no artifact");
+
+    ok &= TestAdditionalWicExportFormats(unique);
 
     DeleteFileW(output.c_str());
     RemoveDirectoryW(unique);
