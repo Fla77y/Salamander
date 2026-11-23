@@ -257,6 +257,11 @@ function Run-Tests {
     $legacyFindContract = Join-Path $repository 'tools\release\tests\Test-LegacyFind-UiContract.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $legacyFindContract)
 
+    # Verify all-built-SPL discovery, including nonstandard DEF layouts,
+    # before inspecting the actual x64 PE exports.
+    $pluginInventoryTest = Join-Path $repository 'tools\release\tests\Test-PluginBinary-Inventory.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $pluginInventoryTest)
+
     $pluginModuleContract = Join-Path $repository 'tools\release\tests\Test-PluginModulePaths-Contract.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $pluginModuleContract)
 
