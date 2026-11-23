@@ -4042,6 +4042,12 @@ try {
     [void][IO.Directory]::CreateDirectory($processTemp)
     if ($IsolatedConfiguration) {
         Initialize-IsolatedGuiConfiguration
+        if ($LegacyFindScenario -eq 'Baseline') {
+            # A0-02: populate only this process's GUID-scoped old Config1.
+            # The live 5.0 HKCU profile is never accessed.
+            . (Join-Path $PSScriptRoot 'LegacyConfig-Canary.ps1')
+            $script:legacyConfigCanaryDigest = New-IsolatedLegacyConfigCanary -TestConfigurationKey $testConfigurationKey
+        }
         if ($LegacyFindScenario -in 'Baseline','UnicodeRootIgnore') {
             . (Join-Path $PSScriptRoot 'LegacyFind-GuiCases.ps1')
             Initialize-LegacyFindBaseline
@@ -4161,6 +4167,13 @@ try {
     }
     Wait-ForGuiResponsive
     Wait-ForGuiTitle
+    if ($LegacyFindScenario -eq 'Baseline') {
+        # The actual 5.2 GUI has finished the configuration upgrade.
+        # Require the legacy 5.0 byte/string/key tree to remain untouched.
+        Assert-IsolatedLegacyConfigPreserved -TestConfigurationKey $testConfigurationKey `
+            -ExpectedDigest $script:legacyConfigCanaryDigest
+        Write-Host 'PASS: real 5.2 GUI startup preserved test-owned 5.0 registry configuration'
+    }
     $process.Refresh()
     $testIsAdmin = [Security.Principal.WindowsPrincipal]::new(
         [Security.Principal.WindowsIdentity]::GetCurrent()
