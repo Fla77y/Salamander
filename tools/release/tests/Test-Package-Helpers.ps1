@@ -468,6 +468,7 @@ foreach ($required in @(
 }
 if (-not $wideWorkerPaths.Contains('CaptureTargetIdentity') -or
     -not $wideWorkerIo.Contains('Current->HasTargetIdentity') -or
+    -not $wideWorkerIo.Contains('firstMoveTargetWrite ? CREATE_NEW') -or
     -not $wideFileOps.Contains('TryDeleteUnicodeFileWithIdentity(source, expectedSource, error)') -or
     -not $filesActionSource.Contains('crossVolumeRequiresWorker') -or
     -not $filesActionSource.Contains('return startWideWorker()')) {
