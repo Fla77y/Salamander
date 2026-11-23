@@ -323,6 +323,39 @@ Commits `3033bf3eabbe380137fcb773ffcd579f88f2f2e4`,
 `b334aed524174a39110da4146408744871faa740`,
 `9489c961c9152cc3a6fad80a51b5554f611cae98`.
 
+**UP-01 / PKG-01 – tatsächlicher kombinierter Windows-Testlauf
+(23.11.2026, FAIL in synthetischem Fixture):**
+`manage.cmd --build-clean --test-all --setup` wurde auf sauberem
+Checkout `2be48a3b7cc0a5817d0706433c885dc3b21d1125`
+ausgeführt. Log:
+`D:\Build\OpenSal\logs\manage-20261123-222759-498-541926.log`,
+22:27:59 bis 22:30:48 Uhr. Debug und Release x64 wurden
+sauber gebaut, alle 35 Solution-Plugin-SPLs je Konfiguration
+ausgegeben und die HTML-Hilfe kompiliert. Die vor dem
+Fehler ausgeführten statischen und Managementtests meldeten PASS,
+unter anderem VS2026-Projekt-/Matrixverträge, PictView-WIC-Quellvertrag,
+Legacy-Dialog-/Find-Verträge und die 35 inventarisierten Gap-IDs.
+Der Ablauf brach in
+`tools/release/tests/Test-PluginCoverageInventory.ps1:214`
+ab: `File.WriteAllBytes` konnte die synthetische
+`build\plugins\beta\beta.spl` nicht erstellen, weil das
+Elternverzeichnis im Test-Fixture fehlte. Kein produktiver
+Build- oder Unicode-/Viewer-Fehler. **Nachfolgende Tests,
+reale Paketierung und Setup liefen nicht; kein Gesamt-PASS.**
+
+Der Test initialisiert nun auch das leere
+`build\plugins\beta`-Verzeichnis vor seinem bewusst
+zunächst fehlenden Beta-Binärtest (Fix
+`73323465111158e88be31524821e2a0db20f9e9b`).
+Die beiden auf PowerShell 7.7 als veraltet gemeldeten
+`Export-Csv -NoTypeInformation`-Schalter wurden entfernt
+(Fix `844236183e2906b80640c6b4287a8085bd09a856`).
+**Fix noch nicht auf Windows ausgeführt.**
+Vor der nächsten vollständigen Abnahme zuerst isoliert
+`Test-PluginCoverageInventory.ps1` und anschließend
+`manage.cmd --build-clean --test-all --setup` auf demselben
+neuen Source-SHA ausführen.
+
 **Nächster Schritt nach dieser Quellbasis:** Neue Regressionen auf
 Windows ausführen; anschließend tatsächliche Built-/Staged-/Shipped-SPLs
 auf dem **selben** Commit nachweisen, pro Modul Funktionen
@@ -485,8 +518,10 @@ und Unicode-/Langpfad-Grenzen klassifizieren.
   befindliches Plugin; SHA-256 aller Module; ABI/Export-Prüfung.
 - **Abnahme:** Stagingliste = Buildliste, SHA-256 je Modul gleich,
   alle Pflichtplugins enthalten; negative Regressionen erzwingen FAIL.
-  **PR #14** enthält vorbereitete Staging-/Plugin-Inventarprüfungen;
-  vor Merge Code-Review, Integration und Windows-Ausführung durchführen.
+  Die Staging-/Plugin-Inventarprüfungen aus PR #14 und #16
+  wurden in `bugfix/v5.2` integriert. Der kombinierte Windows-Lauf
+  scheiterte noch vor der Paketphase an einem synthetischen
+  Verzeichnis-Fixture; echte Paketabnahme steht aus.
 
 ### [ ] PKG-02 – Allowlist, Abhängigkeiten, Lizenzdateien (**P0**, TEILBELEGT)
 - **Fälle:** Release-only-Manifest; verbotene `.pdb/.lib/.exp/.obj/.pch/
