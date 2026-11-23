@@ -29,6 +29,9 @@ struct WorkerCopyPaths
     DWORD IoFailure = ERROR_SUCCESS; // worker-only failure that prevents further path I/O
     bool HasSourceIdentity = false;
     BY_HANDLE_FILE_INFORMATION SourceIdentity = {}; // worker-only, pinned across retries/ADS
+    bool CaptureTargetIdentity = false; // only for verified F6 copy-then-delete
+    bool HasTargetIdentity = false;
+    BY_HANDLE_FILE_INFORMATION TargetIdentity = {};
 
     const wchar_t* Resolve(const char* token) const
     {
