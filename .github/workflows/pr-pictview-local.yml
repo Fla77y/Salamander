@@ -1,6 +1,8 @@
 name: Product 5.2 and local PictView acceptance commands
 
 on:
+  push:
+    branches: ["bugfix/v5.2"]
   pull_request:
     branches: ["**"]
     paths:
