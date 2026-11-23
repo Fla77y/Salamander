@@ -152,7 +152,9 @@ BOOL CFilesWindow::TryUnicodeSingleFileDelete()
         : Configuration.UseRecycleBin;
     if (recycleMode == 2)
         return FALSE; // Per-file RecycleMasks require the original policy engine.
-    const bool recycle = recycleMode == 1 && GetPathDriveType() == DRIVE_FIXED;
+    if (recycleMode == 1 && GetPathDriveType() != DRIVE_FIXED)
+        return FALSE; // Never downgrade a requested recycle to permanent deletion.
+    const bool recycle = recycleMode == 1;
 
     if (CheckPath(TRUE) != ERROR_SUCCESS)
         return TRUE; // The panel may change during CheckPath; never fall back
