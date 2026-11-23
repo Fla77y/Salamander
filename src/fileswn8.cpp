@@ -723,6 +723,7 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
         ? Salamander::TryCopyUnicodeFileNoOverwrite(source, destination, error)
         : Salamander::TryMoveUnicodeFileNoOverwrite(source, destination, error);
     bool crossVolumeCopyAttempted = false;
+    bool crossVolumeTooLarge = false;
     if (!succeeded && type == atMove && error == ERROR_NOT_SAME_DEVICE)
     {
         // Reuse the existing Unicode clipboard transfer transaction instead
@@ -730,14 +731,17 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
         // source identity, stages the copy without overwriting, verifies the
         // destination and deletes only the original handle. A failed delete
         // may leave both files; never silently remove the published copy.
-        crossVolumeCopyAttempted = true;
         const ULONGLONG currentBytes =
             (static_cast<ULONGLONG>(currentAttributes.nFileSizeHigh) << 32) |
             currentAttributes.nFileSizeLow;
         if (currentBytes > MaxSynchronousTransferBytes)
+        {
+            crossVolumeTooLarge = true;
             error = ERROR_FILE_TOO_LARGE; // No unbounded UI-thread copy.
+        }
         else
         {
+            crossVolumeCopyAttempted = true;
             std::size_t completed = 0;
             succeeded = Salamander::TryTransferUnicodeClipboardFiles(
                 {source}, targetDir, DROPEFFECT_MOVE, completed, error) &&
@@ -750,7 +754,12 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
     if (!succeeded)
     {
         wchar_t detail[320];
-        if (crossVolumeCopyAttempted)
+        if (crossVolumeTooLarge)
+            swprintf_s(detail, _countof(detail),
+                       L"Cross-volume Unicode move requires a background "
+                       L"worker for files over 16 MiB. No copy was started "
+                       L"and neither file was changed.");
+        else if (crossVolumeCopyAttempted)
             swprintf_s(detail, _countof(detail),
                        L"Cross-volume Unicode move failed (Win32 error %lu). "
                        L"Check both locations: the verified destination copy "
