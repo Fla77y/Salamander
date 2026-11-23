@@ -167,6 +167,38 @@ inline bool PublishVerifiedCopy(const std::wstring& temporary, const std::wstrin
 }
 } // namespace UnicodeFileOperationsDetail
 
+// Resolve a regular file by its Win32 volume/file ID without ever using its
+// ANSI alias. Capture before displaying a modal operation confirmation,
+// and compare again before starting any destructive action.
+inline bool TryReadUnicodeRegularFileIdentity(
+    const Utf16DiskPath& file, BY_HANDLE_FILE_INFORMATION& identity, DWORD& error)
+{
+    identity = {};
+    std::wstring path;
+    if (!UnicodeFileOperationsDetail::TryGetExtendedPath(file, path, error))
+        return false;
+    const HANDLE handle = CreateFileW(
+        path.c_str(), FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+    if (handle == INVALID_HANDLE_VALUE)
+    {
+        error = GetLastError();
+        return false;
+    }
+    const BOOL inspected = GetFileInformationByHandle(handle, &identity);
+    error = inspected ? ERROR_SUCCESS : GetLastError();
+    CloseHandle(handle);
+    if (!inspected)
+        return false;
+    if (!UnicodeFileOperationsDetail::HasRegularFileIdentity(identity))
+    {
+        error = ERROR_FILE_INVALID;
+        return false;
+    }
+    return true;
+}
+
 // All operations use fully qualified validated UTF-16 paths and reject an
 // existing destination. They never access or truncate a legacy ANSI path.
 // These helpers are not a replacement for Salamander's file-operation engine:
