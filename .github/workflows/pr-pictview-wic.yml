@@ -25,6 +25,7 @@ on:
       - "src/plugins/pictview/thumbs.cpp"
       - "src/plugins/pictview/vcxproj/pictview.vcxproj"
       - "tools/tests/pictview_wic_decode.cpp"
+      - "tools/tests/pictview_wic_formats.cpp"
       - ".github/workflows/pr-pictview-wic.yml"
   workflow_dispatch:
 
@@ -50,6 +51,13 @@ jobs:
           cl /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /Fe:"%RUNNER_TEMP%\pictview_wic_decode.exe" tools\tests\pictview_wic_decode.cpp src\plugins\pictview\WicImageDecoder.cpp windowscodecs.lib ole32.lib
           if errorlevel 1 exit /b 1
           "%RUNNER_TEMP%\pictview_wic_decode.exe"
+          if errorlevel 1 exit /b 1
+      - name: Verify advertised PictView codecs and long-path image decoding
+        shell: cmd
+        run: |
+          cl /nologo /W4 /WX /std:c++17 /EHsc /utf-8 /Fe:"%RUNNER_TEMP%\pictview_wic_formats.exe" tools\tests\pictview_wic_formats.cpp src\plugins\pictview\WicImageDecoder.cpp windowscodecs.lib ole32.lib
+          if errorlevel 1 exit /b 1
+          "%RUNNER_TEMP%\pictview_wic_formats.exe"
           if errorlevel 1 exit /b 1
       - name: Compile and execute WIC GDI presentation regressions
         shell: cmd
