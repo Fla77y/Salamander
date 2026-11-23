@@ -19,6 +19,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 if (-not $IsWindows) { throw 'This integration test requires Windows.' }
 . (Join-Path $PSScriptRoot '..\Plugin-Export-Parser.ps1')
+. (Join-Path $PSScriptRoot '..\Plugin-Binary-Inventory.ps1')
 
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
 $toolchainRoot = Join-Path $VisualStudioRoot 'VC\Tools\MSVC'
@@ -39,35 +40,26 @@ $requiredExports = @('SalamanderPluginEntry', 'SalamanderPluginGetReqVer')
 # Keep the five mandatory built-in modules as hard requirements. In
 # addition, inspect every other SPL actually built by the solution.
 $requiredPlugins = @('7zip', 'checksum', 'filecomp', 'renamer', 'pictview')
-$pluginRoot = Join-Path $BuildDirectory 'plugins'
-if (-not (Test-Path -LiteralPath $pluginRoot -PathType Container)) {
-    throw "Missing built plug-in directory: $pluginRoot"
-}
-$builtModules = @(Get-ChildItem -LiteralPath $pluginRoot -Recurse -File -Filter '*.spl')
-$builtNames = foreach ($module in $builtModules) {
-    # Reject unexpected placement instead of silently ignoring another SPL.
-    $relative = [IO.Path]::GetRelativePath($pluginRoot, $module.FullName)
-    $pieces = @($relative -split '[\\/]')
-    if ($pieces.Count -ne 2 -or
-        -not [string]::Equals($pieces[0], [IO.Path]::GetFileNameWithoutExtension($pieces[1]),
-                             [StringComparison]::OrdinalIgnoreCase)) {
-        throw "Unexpected built plug-in binary location: $($module.FullName)"
-    }
-    $pieces[0]
-}
+$builtNames = @(Get-BuiltPluginNames -BuildDirectory $BuildDirectory)
 $pluginNames = @($requiredPlugins + $builtNames | Sort-Object -Unique)
 foreach ($name in $pluginNames) {
     # Arrange: both the source export declaration and the built plug-in
     # must exist; missing binaries are failures, never optional skips.
     $declaration = Join-Path $repository "src\plugins\$name\$name.def"
     $binary = Join-Path $BuildDirectory "plugins\$name\$name.spl"
-    if (-not (Test-Path -LiteralPath $declaration -PathType Leaf)) {
-        throw "Missing plug-in export definition: $declaration"
+    # Source .def declarations are mandatory for the established five. Other
+    # built modules can use a different file name/location (DiskMapPlugin.def)
+    # or linker directives; verify their actual PE export table instead.
+    if ($name -in $requiredPlugins -and
+        -not (Test-Path -LiteralPath $declaration -PathType Leaf)) {
+        throw "Missing required plug-in export definition: $declaration"
     }
     if (-not (Test-Path -LiteralPath $binary -PathType Leaf)) {
         throw "Missing built plug-in binary: $binary"
     }
-    $source = Get-Content -LiteralPath $declaration -Raw -Encoding UTF8
+    $source = if ($name -in $requiredPlugins) {
+        Get-Content -LiteralPath $declaration -Raw -Encoding UTF8
+    } else { $null }
 
     # Act: dumpbin only reads the image; it cannot run DllMain or any
     # SalamanderPluginEntry callback. Preserve its real native exit code.
@@ -82,7 +74,7 @@ foreach ($name in $pluginNames) {
         throw "Plug-in is not a supported x64 PE image: $binary"
     }
     foreach ($symbol in $requiredExports) {
-        if (-not [regex]::IsMatch($source,
+        if ($name -in $requiredPlugins -and -not [regex]::IsMatch($source,
                 "(?im)^\s*EXPORTS\s+$([regex]::Escape($symbol))\s*$")) {
             throw "Export $symbol missing in $declaration"
         }
