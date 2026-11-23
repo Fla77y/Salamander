@@ -542,6 +542,40 @@ exit /b 0
         Set-Content -LiteralPath $fixtureFile -Value 'test fixture' -Encoding ascii
     }
     Test-DistributionStage -Stage $stage -Configuration Release -DumpbinExe $fakeDumpbin
+    # Arrange: a test-owned reference build and its package stage must contain
+    # the same plug-in files, not just matching names.
+    $builtPlugins = Join-Path $root 'reference-build\plugins\pictview'
+    [void][IO.Directory]::CreateDirectory($builtPlugins)
+    $builtPictView = Join-Path $builtPlugins 'pictview.spl'
+    $stagedPictView = Join-Path $stage 'plugins\pictview\pictview.spl'
+    Copy-Item -LiteralPath $stagedPictView -Destination $builtPictView
+    # Act / Assert
+    Assert-StagedBuiltPlugins -BuiltDirectory (Join-Path $root 'reference-build') -Stage $stage
+
+    # A changed byte must not be accepted merely because the file exists.
+    [IO.File]::WriteAllBytes($stagedPictView, [Text.Encoding]::ASCII.GetBytes('modified plugin'))
+    Assert-Throws {
+        Assert-StagedBuiltPlugins -BuiltDirectory (Join-Path $root 'reference-build') -Stage $stage
+    } 'Distribution must reject byte-modified plug-in binaries'
+    Copy-Item -LiteralPath $builtPictView -Destination $stagedPictView -Force
+
+    Remove-Item -LiteralPath $stagedPictView -Force
+    Assert-Throws {
+        Assert-StagedBuiltPlugins -BuiltDirectory (Join-Path $root 'reference-build') -Stage $stage
+    } 'Distribution must reject any built plug-in missing from the stage'
+    Copy-Item -LiteralPath $builtPictView -Destination $stagedPictView
+
+    $unknown = Join-Path $stage 'plugins\unexpected\unexpected.spl'
+    [void][IO.Directory]::CreateDirectory((Split-Path -Parent $unknown))
+    [IO.File]::WriteAllBytes($unknown, [byte[]](0,1,2))
+    Assert-Throws {
+        Assert-StagedBuiltPlugins -BuiltDirectory (Join-Path $root 'reference-build') -Stage $stage
+    } 'Distribution must reject an SPL not present in the build output'
+    Remove-Item -LiteralPath $unknown -Force
+    Assert-StagedBuiltPlugins -BuiltDirectory (Join-Path $root 'reference-build') -Stage $stage
+    Write-Host 'PASS: staged plug-in integrity, omissions and unbuilt modules are rejected.'
+
+
     # Regression: a Release package without third-party notices must fail
     # before archiving even when all binaries and other resources are present.
     $noticesFixture = Join-Path $stage 'THIRD_PARTY_LICENSES.txt'
