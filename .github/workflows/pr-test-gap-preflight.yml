@@ -1,11 +1,11 @@
 name: Test-gap source and registry preflight (Windows)
 
-# This branch-only check is not a substitute for the interactive GUI suite
-# or the clean Windows 11 release VM. It exists to execute new PR #16 tests.
+# These source/registry contracts run for direct bugfix/v5.2 updates.
+# They do not replace interactive GUI, full MSBuild, or clean-VM release tests.
 on:
   push:
     branches:
-      - work/test-gap-m0-a0-up01
+      - bugfix/v5.2
     paths:
       - 'tools/release/**'
       - 'docs/maintenance/**'
