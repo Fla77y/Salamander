@@ -89,18 +89,23 @@ struct TestFixture
     }
 };
 
-bool WriteBytes(const std::wstring& path, const unsigned char* data,
-                std::size_t length)
+HRESULT WriteBytes(const std::wstring& path, const unsigned char* data,
+                   std::size_t length)
 {
     HANDLE file = CreateFileW(path.c_str(), GENERIC_WRITE, 0, nullptr,
                               CREATE_NEW, FILE_ATTRIBUTE_NORMAL, nullptr);
     if (file == INVALID_HANDLE_VALUE)
-        return false;
+        return HRESULT_FROM_WIN32(GetLastError());
     DWORD written = 0;
-    const bool ok = WriteFile(file, data, static_cast<DWORD>(length),
-                              &written, nullptr) != FALSE && written == length;
+    const bool writtenCompletely =
+        WriteFile(file, data, static_cast<DWORD>(length),
+                  &written, nullptr) != FALSE && written == length;
+    const DWORD writeError = writtenCompletely ? ERROR_SUCCESS : GetLastError();
     const bool closed = CloseHandle(file) != FALSE;
-    return ok && closed;
+    const DWORD closeError = closed ? ERROR_SUCCESS : GetLastError();
+    if (!writtenCompletely)
+        return HRESULT_FROM_WIN32(writeError == ERROR_SUCCESS ? ERROR_WRITE_FAULT : writeError);
+    return closed ? S_OK : HRESULT_FROM_WIN32(closeError);
 }
 
 // Make a real 1x1 red image using Windows' encoder for the requested
@@ -181,7 +186,7 @@ bool TestFormat(TestFixture& fixture, const FormatCase& format)
     const std::wstring file = fixture.root + L"\\Bild-\u6771\u4eac-\U0001f600." + format.extension;
     fixture.files.push_back(file);
     const HRESULT encoded = format.embedded
-        ? (WriteBytes(file, format.embedded, format.embeddedSize) ? S_OK : HRESULT_FROM_WIN32(GetLastError()))
+        ? WriteBytes(file, format.embedded, format.embeddedSize)
         : EncodeRedImage(file, *format.encoder);
     if (FAILED(encoded))
     {
