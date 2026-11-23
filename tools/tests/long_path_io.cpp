@@ -1512,8 +1512,42 @@ int main()
         !MoveFileExW(asideForWorker.c_str(), sourceForWorker.c_str(), 0))
         return Fail("restore original Unicode move source");
 
-    // Both identities now match. A successful move removes exactly the
-    // original source and retains the fully copied target.
+    // Same file ID and size are NOT sufficient: another writer may alter
+    // bytes in place after the worker completed. The finalizer must compare
+    // the actual streams while both handles deny writes.
+    HANDLE alteredTarget = CreateFileW(targetForWorker.c_str(), GENERIC_WRITE,
+                                       0, nullptr, OPEN_EXISTING,
+                                       FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (alteredTarget == INVALID_HANDLE_VALUE)
+        return Fail("open worker destination for in-place byte corruption test");
+    const char corrupted = 'X';
+    DWORD alteredCount = 0;
+    const bool altered = WriteFile(alteredTarget, &corrupted, 1, &alteredCount, nullptr) &&
+                         alteredCount == 1;
+    CloseHandle(alteredTarget);
+    if (!altered)
+        return Fail("corrupt one byte without changing Unicode target identity");
+    if (Salamander::TryCompleteUnicodeMoveAfterCopy(
+            ownedWorkerSource, ownedWorkerTarget, expectedWorkerSource,
+            expectedWorkerTarget, operationError) ||
+        operationError != ERROR_CRC ||
+        GetFileAttributesW(sourceForWorker.c_str()) == INVALID_FILE_ATTRIBUTES)
+        return Fail("worker move must reject same-sized but byte-different destination");
+    alteredTarget = CreateFileW(targetForWorker.c_str(), GENERIC_WRITE,
+                                0, nullptr, OPEN_EXISTING,
+                                FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (alteredTarget == INVALID_HANDLE_VALUE)
+        return Fail("reopen owned Unicode destination for test restoration");
+    alteredCount = 0;
+    const char originalByte = workerPayload[0];
+    const bool restored = WriteFile(alteredTarget, &originalByte, 1,
+                                    &alteredCount, nullptr) && alteredCount == 1;
+    CloseHandle(alteredTarget);
+    if (!restored)
+        return Fail("restore exact Unicode destination bytes before success test");
+
+    // Both identities and all data bytes now match. A successful move
+    // removes exactly the original source and retains the target.
     if (!Salamander::TryCompleteUnicodeMoveAfterCopy(
             ownedWorkerSource, ownedWorkerTarget, expectedWorkerSource,
             expectedWorkerTarget, operationError) ||
