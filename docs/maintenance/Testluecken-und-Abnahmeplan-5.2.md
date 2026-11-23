@@ -672,6 +672,43 @@ und Unicode-/Langpfad-Grenzen klassifizieren.
   kaschieren. Fremde Prozesse nicht beenden.
 - **Quelle:** `tools/release/tests/Invoke-GuiReliability.ps1`.
 
+**QA-03 / FIND-04 – GUI-Ausfall aus realem Lauf (23.11.2026):**
+Der vom Benutzer bereitgestellte vollständige Transkriptlauf
+`--build-clean --test-all --setup` auf Source-SHA
+`2be91b27032a2f4cb4619a606b42b0af7c8ea6c1`
+begann um 21:42:30 Uhr und endete um 21:53:06 Uhr
+**mit Exitcode 1**. Debug x64 und Release x64 wurden
+sauber gebaut; die vorherigen nativen Tests und die bereits
+abgeschlossenen Release-Legacy-Find-Fälle meldeten PASS.
+Die **Debug-x64-`ViewUnicode`-Regression** brach nach
+korrekter Find-Ergebnisidentität ab: `Timeout waiting for Viewer
+copied the exact bytes from the named result`. Der Test sicherte
+einen Screenshot und ließ sein eindeutig benanntes Testfixture
+zur Diagnose bestehen. Der Abbruch erfolgte **vor** der geplanten
+Setup-/Paketphase; `--setup` ist dadurch **nicht validiert**.
+Die Fehlerursache (kein Clipboard-Wechsel, falsche Bytes,
+Viewer-Zustand oder Ereignisreihenfolge) ist aus dem
+Transkript nicht nachweisbar.
+
+Zur Eingrenzung stellt `Assert-LegacyViewerContents` nun ohne
+zusätzliche Kommandos, Timeouterhöhung, Datenkopie im Log
+oder abgeschwächte Vergleiche die Metadaten
+`ClipboardSequenceChanged`, `ClipboardTextKind`,
+`ObservedUtf16Length`, `ExpectedUtf16Length`
+und `ViewerStillMatches` bereit. Der Zustand wird wegen
+des Scope-Wechsels von `Wait-Until` in einem gemeinsamen
+Hashtable gehalten. Der Quellvertrag ist in
+`Test-LegacyFind-UiContract.ps1` ergänzt; der Parser des
+`Test-Package-Helpers.ps1` kontrolliert die GUI-Dateien.
+Test `354977963aadb34961f989c1f34566d908825b70`,
+Diagnose `1fe54e1f2aee063d0660cfd8be83ce405fd2d463`,
+Scope-Regression `4a0494c4c765e1bb84dc504bc5207a886ae46464`,
+Parser-Vorprüfung `c355c4f9c73559edf19b9a0510c94502130f1c51`.
+**Noch nicht unter Windows ausgeführt, keine Ursachenbehebung
+behauptet.** Wiederholung des isolierten Debug-`ViewUnicode`-
+Falls auf dem aktuellen PR-SHA erforderlich, danach vollständiger
+`--test-all --setup`-Lauf auf demselben SHA.
+
 ### [ ] QA-04 – Umgebungs-/Locale-Matrix (**P1**, OFFEN)
 - **Fälle:** Windows 11 Build, CP1252 und nichtwesteuropäische
   ACP, LongPathsEnabled ein/aus, 100/125/200 %-DPI,
