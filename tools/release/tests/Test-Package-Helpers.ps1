@@ -29,6 +29,21 @@ if (-not (Test-Path -LiteralPath $notices -PathType Leaf) -or
     throw 'Third-party license notices source is absent or empty.'
 }
 
+# PKG-01: a checked build-to-stage SPL manifest gate must run before
+# any Release or Debug archive/installer is produced.
+# Arrange: inspect the packaging entrypoint (the suite below uses synthetic payloads).
+$stageCall = $packagingScript.IndexOf('New-DistributionStage -BuiltDirectory', [StringComparison]::Ordinal)
+$payloadGate = $packagingScript.IndexOf('Invoke-PluginCoverageInventory.ps1', [StringComparison]::Ordinal)
+$archiveCreation = $packagingScript.IndexOf("Invoke-Checked `$sevenZipExe", [StringComparison]::Ordinal)
+$requiredToken = "-RequiredShippedModules @('7zip','checksum','filecomp','renamer','pictview')"
+# Act / Assert: missing/bypassed/late gates are a release contract error.
+if ($stageCall -lt 0 -or $payloadGate -le $stageCall -or
+    $archiveCreation -le $payloadGate -or
+    -not $packagingScript.Contains('-RequireMatchingPayloads') -or
+    -not $packagingScript.Contains($requiredToken)) {
+    throw 'PKG-01: package creation must validate byte-identical mandatory staged SPL modules before archiving.'
+}
+
 if (-not $releaseWorkflow.Contains('OpenSal\public-release\SHA256SUMS-Release.txt') -or
     -not $packagingScript.Contains("'SHA256SUMS-Release.txt'") -or
     -not $packagingScript.Contains('OpenSalamander-Release-x64.7z') -or
