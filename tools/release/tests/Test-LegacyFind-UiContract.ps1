@@ -63,6 +63,21 @@ if (!$registry.Groups[1].Value.Contains("'--test-gui-legacy-find'") -or
     throw 'Legacy Find GUI scenarios must run through the automated manager dispatch.'
 }
 
+# Regression: closing the duplicate-criteria modal does not guarantee that
+# its owner has finished dispatching the search. Require a bounded, read-only
+# window-message barrier before reading the results.
+$legacyGuiCases = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'LegacyFind-GuiCases.ps1') -Raw
+$duplicateCase = [regex]::Match($legacyGuiCases,
+    '(?s)function Test-LegacyFindDuplicates\s*\{(.*?)\n\}\s*\nfunction Test-LegacyFindDirectoryLinkCycle').Groups[1].Value
+$barrierAt = $duplicateCase.IndexOf('::SendMessageTimeout(', [StringComparison]::Ordinal)
+$assertAt = $duplicateCase.IndexOf('Assert-LegacyFindCount', [StringComparison]::Ordinal)
+if ([string]::IsNullOrEmpty($duplicateCase) -or $barrierAt -lt 0 -or
+    $assertAt -le $barrierAt -or
+    $duplicateCase -notmatch '\[uint32\]0,\s*\[UIntPtr\]::Zero' -or
+    $duplicateCase -notmatch '\[uint32\]5000') {
+    throw 'Legacy Find duplicate GUI test must synchronize modal owner dispatch before reading results.'
+}
+
 $driver = Get-Command -Name (Join-Path $PSScriptRoot 'Test-SalamanderGui-LongPaths.ps1')
 $driverCases = ($driver.Parameters['LegacyFindScenario'].Attributes |
     Where-Object { $_ -is [System.Management.Automation.ValidateSetAttribute] }).ValidValues
