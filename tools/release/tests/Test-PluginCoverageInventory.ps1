@@ -142,6 +142,27 @@ EndProject
     } -Reason 'SPL outside plugin tree' -ExpectedError 'Unexpected built SPL outside plugins tree'
     [IO.File]::Delete($rootSPL)
 
+    # PKG-01 RED: hidden SPL files are still package files and must be
+    # included in the inventory, not silently skipped by Get-ChildItem.
+    $hiddenDir = Join-Path $stage 'plugins\hidden'
+    [void][IO.Directory]::CreateDirectory($hiddenDir)
+    $hiddenSPL = Join-Path $hiddenDir 'hidden.spl'
+    [IO.File]::WriteAllBytes($hiddenSPL, [byte[]](8,7,6))
+    [IO.File]::SetAttributes($hiddenSPL, [IO.FileAttributes]::Hidden)
+    try {
+        $hiddenInventory = @(Get-SalamanderPluginInventory -Repository $fake -BuiltDirectory $build -StagedDirectory $stage)
+        $detectedHidden = @($hiddenInventory | Where-Object {
+            $_.Plugin -eq 'hidden' -and $_.PayloadStatus -ceq 'MISSING_BUILT'
+        })
+        if ($detectedHidden.Count -ne 1) {
+            throw 'Hidden staged SPL was omitted from the package inventory.'
+        }
+    }
+    finally {
+        [IO.File]::SetAttributes($hiddenSPL, [IO.FileAttributes]::Normal)
+        [IO.File]::Delete($hiddenSPL)
+    }
+
     Assert-InventoryRejected -Action {
         Get-SalamanderPluginInventory -Repository $fake -StagedDirectory $stage
     } -Reason 'stage without build context' -ExpectedError 'Staged plug-ins require a build directory'
