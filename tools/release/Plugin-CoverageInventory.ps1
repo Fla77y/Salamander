@@ -21,7 +21,7 @@ function Get-SplInventory {
         [StringComparer]::OrdinalIgnoreCase)
     # Include all SPLs in the provided output tree, not just plugins/.
     # Unexpected root-level binaries would otherwise disappear from reports.
-    foreach ($file in @(Get-ChildItem -LiteralPath $Directory -File -Recurse -Filter '*.spl')) {
+    foreach ($file in @(Get-ChildItem -LiteralPath $Directory -File -Force -Recurse -Filter '*.spl')) {
         $underPluginRoot = $file.FullName.StartsWith(
             ([IO.Path]::GetFullPath($root).TrimEnd('\') + '\'),
             [StringComparison]::OrdinalIgnoreCase)
@@ -190,7 +190,7 @@ function Assert-SalamanderPluginSidecarParity {
     $builtRoot = Join-Path $BuiltDirectory 'plugins'
     $stagedRoot = Join-Path $StagedDirectory 'plugins'
     $extensions = @('.dll', '.exe', '.slg', '.chm')
-    $sidecars = @(Get-ChildItem -LiteralPath $builtRoot -File -Recurse |
+    $sidecars = @(Get-ChildItem -LiteralPath $builtRoot -File -Force -Recurse |
         Where-Object { $_.Extension -in $extensions } |
         Sort-Object FullName)
     foreach ($source in $sidecars) {
