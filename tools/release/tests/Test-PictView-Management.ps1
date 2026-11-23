@@ -134,7 +134,7 @@ foreach ($required in @('PictViewHostWindows', 'GetWindowThreadProcessId',
                        'Get-PictViewHostFailureHint', 'PictView-HostDiagnostics.ps1',
                        'Test-owned windows', 'before sending F3',
                        'EnumChildWindows', 'GetDialogDetails',
-                       'Error dialog after F3', 'single BMP fixture',
+                       'Error dialog after F3', 'exactly one isolated',
                        'TryActivateVerifiedWindow', 'AttachThreadInput',
                        'BringWindowToTop', 'GetCurrentThreadId',
                        'Focus-TestOwnedSalamander', 'useSharedInputFallback',
@@ -143,6 +143,24 @@ foreach ($required in @('PictViewHostWindows', 'GetWindowThreadProcessId',
         throw "PictView host smoke is missing safety contract: $required"
     }
 }
+# The real F3 host smoke is deliberately opt-in and must exercise the
+# common WIC formats through isolated GUI processes. No format may be skipped
+# by successful native decoding alone.
+foreach ($imageFormat in @('Bmp','Png','Jpeg','Gif','Tiff','Ico')) {
+    if (-not $managerText.Contains("'$imageFormat'") -or
+        -not $hostText.Contains("'$imageFormat'")) {
+        throw "PictView opt-in F3 host acceptance omits $imageFormat."
+    }
+}
+if (-not $hostText.Contains('[string]$ImageFormat') -or
+    -not $hostText.Contains('$bitmap.Save($fixture, $imageCodec)') -or
+    -not $hostText.Contains('[IO.File]::WriteAllBytes($fixture, $iconBytes)') -or
+    -not $managerText.Contains("'-ImageFormat', $imageFormat") -or
+    -not $managerText.Contains("if ($requestedSet.Contains('--test-pictview-host'))")) {
+    throw 'PictView format host acceptance must use F3 with a real single-image fixture.'
+}
+Write-Host 'PASS: opt-in PictView F3 host smoke covers BMP, PNG, JPEG, GIF, TIFF and ICO.'
+
 # The PR #8 'Test All' guard must not require the unavailable PVW32
 # converter after the new WIC viewer passed a real in-host acceptance.
 $runtimePath = Join-Path $root 'tools\release\Plugin-Runtime-Prerequisites.ps1'
