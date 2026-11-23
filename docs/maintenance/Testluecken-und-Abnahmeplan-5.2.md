@@ -516,9 +516,9 @@ Fehlt das zweite Volume, meldet er `SKIP`, nicht `PASS`.
 **Ausführung unter Windows noch offen.**
 
 **Weitere C++-Implementierung (24.11.2026, noch ohne Windows-Build):**
-\`TryUnicodeSingleDirectoryCopy\` führt einen eindeutig über die
+`TryUnicodeSingleDirectoryCopy` führt einen eindeutig über die
 UTF-16-Verzeichnisliste identifizierten Einzelordner durch die
-bereits vorhandene stagingbasierte \`TryTransferUnicodeClipboardFiles\`-
+bereits vorhandene stagingbasierte `TryTransferUnicodeClipboardFiles`-
 Routine. Nur Unicode-/Langpfadfälle werden umgeleitet; gewöhnliche
 kurze ANSI-Verzeichnisoperationen behalten den ursprünglichen Dialog
 und die vollständige Altlogik. Der synchrone Weg bleibt auf
@@ -529,9 +529,9 @@ im ANSI-Panel nicht exakt darstellbares Unicode-Verzeichnis kann
 nun auch per F6 auf demselben Volume verschoben werden; die
 individuelle W-Verifikation der Identität bleibt erforderlich.
 GUI-Regression: der bestehende isolierte
-\`-ShortUnicodeDirectoryRenameOnly\`-Fall führt jetzt F2,
+`-ShortUnicodeDirectoryRenameOnly`-Fall führt jetzt F2,
 native F5-Verzeichniskopie und F6-Verzeichnisverschiebung aus.
-Produkt-Commit \`070f480d5370ff68711693d13882a4207aa69a4a\`.
+Produkt-Commit `070f480d5370ff68711693d13882a4207aa69a4a`.
 
 Bei bis zu 16 vorab geprüften regulären Dateien und insgesamt
 maximal 16 MiB kann Unicode-F6 im Mehrfachtransfer den
@@ -539,8 +539,8 @@ Copy-and-Delete-Fallback für verschiedene Volumes verwenden,
 mit expliziter Teiltransferdiagnose. Ein optionaler echter
 Zwei-Volume-Nativtest prüft zwei Dateien, identische Bytes und
 die vollständige Batch-Zielkollisionsprüfung.
-Produkt-Commit \`3526dfc7d44b72cb2da5fd3932a4df24a7dcf503\`,
-Test-Commit \`e9cc1610c72861313495026cc401fa5a8f82cd8e\`.
+Produkt-Commit `3526dfc7d44b72cb2da5fd3932a4df24a7dcf503`,
+Test-Commit `e9cc1610c72861313495026cc401fa5a8f82cd8e`.
 
 **Noch offen:** große asynchrone Cross-Volume-F6-Moves,
 unbegrenzte Mehrfachauswahlen, große Verzeichnisbäume,
@@ -577,24 +577,33 @@ nativen Dateipfad der bestehenden Umschaltregel für
 Papierkorb versus permanentes Löschen. Der permanente
 W-F8-Pfad merkt sich vor dem Bestätigungsdialog die
 Win32-Dateiidentität und führt die Löschung über
-\`TryDeleteUnicodeFileWithIdentity\` mit unmittelbar vor
-\`FileDispositionInfo\` geprüfter Volume-/File-ID durch.
+`TryDeleteUnicodeFileWithIdentity` mit unmittelbar vor
+`FileDispositionInfo` geprüfter Volume-/File-ID durch.
 Die ursprüngliche Quelle darf zwischen Bestätigung und
 Ausführung nicht unter gleichem Namen ausgetauscht werden.
 Ein nativer Regressionstest verschiebt die ursprüngliche
 Datei, setzt einen anderen Inode unter denselben UTF-16-Namen
-und verlangt \`ERROR_FILE_INVALID\` statt Löschung.
+und verlangt `ERROR_FILE_INVALID` statt Löschung.
 Ein eigener GUID-isolierter GUI-Test
-\`-ShortUnicodePermanentDeleteOnly\` ist in
-\`manage.cmd --test-all\` für Debug/Release x64 aufgenommen;
+`-ShortUnicodePermanentDeleteOnly` ist in
+`manage.cmd --test-all` für Debug/Release x64 aufgenommen;
 bei aktiver Recycle-Policy prüft er zusätzlich das explizite
-Shift+F8-Verhalten. Änderungen: \`8f0c1370792631b3abb275e04bc9b4176b28da1b\`,
-\`bd3d268f43c7f5d801ab250f54e540e389301e05\`,
-\`b77035cf4db75c59a9752f9f0aeb440cde65b3d1\`,
-\`27c8fe5afc57357bbe4f4068ee3e1d3374bb9f30\`.
+Shift+F8-Verhalten. Änderungen: `8f0c1370792631b3abb275e04bc9b4176b28da1b`,
+`bd3d268f43c7f5d801ab250f54e540e389301e05`,
+`b77035cf4db75c59a9752f9f0aeb440cde65b3d1`,
+`27c8fe5afc57357bbe4f4068ee3e1d3374bb9f30`.
 **Nicht als bestanden markieren:** RecycleMasks (Modus 2),
 Unicode-Multifile-F8, Shell-Open/Properties/externes Editieren,
 Netzwerk- und Vollintegrationsfälle sind weiterhin offen.
+
+**Weitere Grenzen:** Unter kurzen Unicode-Elternpfaden wird
+`Copy Full Name`/Pfad jetzt über W-Clipboard ausgeführt;
+der alte ANSI-Dateiöffner/Archiv-Association-Handler wird
+bewusst vor einer verfälschten Pfadübergabe geschützt,
+kann die betreffende Datei aber weiterhin **nicht öffnen**.
+Die vollständige Wide-Integration dieses Übergangs,
+externen Editierens, Kopieren als UNC, Drag/Drop und
+der Shell-Properties steht noch aus.
 
 ### [ ] UP-06 – Shell, Zwischenablage, externe Programme, Dateiattribute (**P1**, OFFEN)
 - **Fälle:** Datei-Eigenschaften, Öffnen, Drag/Drop, Viewer/Editor,
@@ -627,6 +636,33 @@ ausgeführt; dies ersetzt **weder** das originale MSVC-
 Testprogramm **noch** Windows-GUI-Abnahme. UP-07 bleibt
 TEILBELEGT; echte UNC-/EFS-/Near-Limit-Aktionen und
 LongPathsEnabled-Matrix sind weiterhin offen.
+
+**Weitere Hauptprogramm-Korrektur (24.11.2026, Windows-Test offen):**
+Nicht nur überlange Pfade, sondern auch kurze Verzeichnisse mit
+verlustbehafteter ANSI-Projektion müssen die UTF-16-Identität bewahren.
+Das betrifft selbst Dateinamen, die nur aus ASCII bestehen.
+Die exakte ACP-Rückkonvertierung des vollständigen Panelpfads
+steuert jetzt F5/F6/F8, F2, `CheckPath`, Verzeichnisaufzählung,
+Clipboard-Copy/Paste, Kopieren des vollständigen Namens und
+den vorläufigen Schutz des ANSI-Association-/Archiv-Handlers.
+Die alte Systemicon-/Thumbnail-Ladeschicht bekommt keine
+verlustbehafteten Elternpfade; die entsprechende Wide-Migration
+der Icon-/Shell-Schnittstellen steht **noch aus**.
+Ein neuer GUID-isolierter GUI-Test
+`--test-gui-unicode-parent` prüft F2/F5/F6 sowie
+die exakt in die Zwischenablage kopierten UTF-16-Pfade
+und ist über `manage.cmd --test-all` eingebunden.
+Bei ACP-Konfigurationen mit verlustfreiem Unicode-Roundtrip
+wird nur dieser spezielle Negativpfad als `SKIP` gekennzeichnet.
+Commits: `6782912ad96cc0f79162199df50c7014f166eee0`,
+`5d2868628c264446a6f141b3f2062b4df9e30693`,
+`c6d5587c8e84d3acfe7fb74c882c3fb816d0c1a7`,
+`e42fddb3f7efdf000fad890880a24293fa6f4143`,
+`483b201439f3eeaa77400312346a3c7b7b5c106b`,
+`f1820ae4525668c9bfb33f291c23d7d6e20903cf`.
+**Weder ein vollständiger MSVC-Build noch eine
+Windows-Ausführung liegt für diese Commits vor.**
+UP-07 bleibt TEILBELEGT.
 
 ### [ ] UP-07 – Pfadgrenzwerte und Dateisystembedingungen (**P1**, TEILBELEGT)
 - **Fälle:** 259/260/263, 255-Komponentenlimit, echte 32.700er-Pfade,
