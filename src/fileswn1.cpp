@@ -88,7 +88,12 @@ CFilesWindowAncestor::CheckPath(BOOL echo, const char* path, DWORD err, BOOL pos
     if (path == NULL)
         path = GetPath();
 
-    if (Is(ptDisk) && (currentPath ? HasLongDiskPath() : strlen(path) >= MAX_PATH - 2))
+    const bool needsNativeCurrentPath =
+        currentPath &&
+        (HasLongDiskPath() ||
+         !Salamander::IsExactAnsiName(GetPath(), GetDiskPathW().c_str()));
+    if (Is(ptDisk) &&
+        (currentPath ? needsNativeCurrentPath : strlen(path) >= MAX_PATH - 2))
     {
         // The legacy SalCheckPath path recovery uses fixed ANSI buffers.
         // Long paths are checked through their exact, extended W identity.
