@@ -85,6 +85,13 @@ if (-not $installerSmokeSource.Contains('$uninstallAttempted') -or
 $scriptFiles = @(
     (Join-Path $toolsDir 'Package-Helpers.ps1'),
     (Join-Path $toolsDir 'Update-Build-Test-Package.ps1'),
+    (Join-Path $toolsDir 'Invoke-PluginCoverageInventory.ps1'),
+    (Join-Path $toolsDir 'Plugin-CoverageInventory.ps1'),
+    (Join-Path $toolsDir 'Plugin-Export-Parser.ps1'),
+    (Join-Path $toolsDir 'tests\Test-PluginCoverageInventory.ps1'),
+    (Join-Path $toolsDir 'tests\Test-PluginExport-Parser.ps1'),
+    (Join-Path $toolsDir 'tests\Test-PluginBinary-Contract.ps1'),
+    (Join-Path $toolsDir 'tests\Test-VS2026-ProjectMetadata.ps1'),
     (Join-Path $toolsDir '..\Manage-Salamander.ps1'),
     (Join-Path $toolsDir 'tests\Test-ReleaseChecksumManifest.ps1'),
     (Join-Path $toolsDir 'tests\Test-ReleaseInstaller.ps1'),
