@@ -157,7 +157,14 @@ inline HANDLE OpenRaw(const char* name, DWORD access, DWORD share, LPSECURITY_AT
             ? OPEN_EXISTING :
         disposition == CREATE_ALWAYS ? OPEN_ALWAYS :
         disposition == TRUNCATE_EXISTING ? OPEN_EXISTING : disposition;
-    HANDLE file = CreateFileW(path, access, share, security, safeDisposition,
+    // Keep the source stable during a destructive cross-volume move.
+    // A writer opened concurrently must not change bytes in a file that the
+    // worker intends to remove after copying. Ordinary F5 retains its share
+    // contract; W-only F6 rejects conflicting writers with sharing violation.
+    const DWORD effectiveShare =
+        Current->CaptureTargetIdentity && Current->SourceToken == name
+        ? share & ~(FILE_SHARE_WRITE | FILE_SHARE_DELETE) : share;
+    HANDLE file = CreateFileW(path, access, effectiveShare, security, safeDisposition,
         attributes | FILE_FLAG_OPEN_REPARSE_POINT, templateFile);
     const DWORD openError = GetLastError();
     if (file != INVALID_HANDLE_VALUE)
