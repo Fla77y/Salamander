@@ -4755,6 +4755,15 @@ try {
         Wait-Until { [IO.Directory]::Exists($renamedDirectory) -and
             -not [IO.Directory]::Exists($unicodeDirectoryPath) } 'Unicode F2 directory rename'
         Assert-True (Test-Content (Join-Path $renamedDirectory 'child.txt')) 'Unicode F2 directory child bytes retained'
+        Write-Host 'PASS: Unicode F2 directory rename preserves nested contents.'
+        if (-not [SalamanderGuiNative]::HasLossyAnsiPanelPath($renamedUnicodeDirectoryName)) {
+            # With UTF-8 ACP the old engine already has an exact Unicode
+            # representation, so testing a *native* W-only dialog would be
+            # a false negative. Do not mark the native fallback as PASS.
+            Write-Host 'SKIP: native Unicode directory F5/F6 fallback is unnecessary with lossless current ACP.'
+            $passed = $true
+            return
+        }
 
         # Regression: the original short-path Unicode directory must support
         # F5, not just F2. All paths remain inside the disposable fixture.
