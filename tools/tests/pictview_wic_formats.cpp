@@ -30,6 +30,25 @@ constexpr std::array<unsigned char, 43> kGif = {
     0x04, 0x00, 0x3B
 };
 
+// Two independently encoded 1x1 GIF frames: red followed by green.
+// Both palettes and the 80/120 ms frame delays are in the source image.
+constexpr std::array<unsigned char, 107> kAnimatedGif = {
+    0x47, 0x49, 0x46, 0x38, 0x39, 0x61, 0x01, 0x00,
+    0x01, 0x00, 0x81, 0x00, 0x00, 0xFF, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x21, 0xFF, 0x0B, 0x4E, 0x45, 0x54, 0x53,
+    0x43, 0x41, 0x50, 0x45, 0x32, 0x2E, 0x30, 0x03,
+    0x01, 0x00, 0x00, 0x00, 0x21, 0xF9, 0x04, 0x08,
+    0x08, 0x00, 0x00, 0x00, 0x2C, 0x00, 0x00, 0x00,
+    0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x08, 0x04,
+    0x00, 0x01, 0x04, 0x04, 0x00, 0x21, 0xF9, 0x04,
+    0x08, 0x0C, 0x00, 0x00, 0x00, 0x2C, 0x00, 0x00,
+    0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x81, 0x00,
+    0xFF, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x00, 0x08, 0x04, 0x00, 0x01, 0x04,
+    0x04, 0x00, 0x3B
+};
+
 constexpr std::array<unsigned char, 70> kIcon = {
     0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x01, 0x01,
     0x00, 0x00, 0x01, 0x00, 0x20, 0x00, 0x30, 0x00,
@@ -283,6 +302,40 @@ bool TestDecodeFailuresAreAtomic(TestFixture& fixture)
            VerifyInvalidDecode(valid, corrupt.c_str(), "truncated WIC image");
 }
 
+// A real two-frame GIF must expose both frames through the production
+// decoder, not just report an image for a .gif file extension.
+bool TestAnimatedGifFrameNavigation(TestFixture& fixture)
+{
+    // Arrange
+    const std::wstring path = fixture.root + L"\\Animation-東京-😀.gif";
+    fixture.files.push_back(path);
+    if (FAILED(WriteBytes(path, kAnimatedGif.data(), kAnimatedGif.size())))
+        return false;
+    std::vector<unsigned char> before, after;
+    if (!ReadFixtureBytes(path, before))
+        return false;
+
+    // Act: decode both frames in sequence into the same output object.
+    pictview::wic::DecodedImage image;
+    UINT count = 0;
+    const HRESULT red = pictview::wic::DecodeFrame(path.c_str(), 0, image, &count);
+
+    // Assert
+    const bool first = SUCCEEDED(red) && count == 2 && image.width == 1 &&
+                       image.height == 1 && image.bgra.size() == 4 &&
+                       image.bgra[0] == 0 && image.bgra[1] == 0 &&
+                       image.bgra[2] == 255 && image.bgra[3] == 255;
+    const HRESULT green = pictview::wic::DecodeFrame(path.c_str(), 1, image, &count);
+    const bool second = SUCCEEDED(green) && count == 2 &&
+                        image.bgra.size() == 4 && image.bgra[0] == 0 &&
+                        image.bgra[1] == 255 && image.bgra[2] == 0 &&
+                        image.bgra[3] == 255;
+    if (!first || !second)
+        std::fprintf(stderr, "FAIL: second animated GIF frame has green pixels\n");
+    return first && second && ReadFixtureBytes(path, after) && before == after &&
+           TestInvalidFrameDoesNotReturnPixels(path);
+}
+
 bool TestFormat(TestFixture& fixture, const FormatCase& format)
 {
     // Arrange
@@ -371,6 +424,8 @@ bool RunTests()
     for (const auto& format : kFormats)
         if (!TestFormat(fixture, format))
             success = false;
+    if (!TestAnimatedGifFrameNavigation(fixture))
+        success = false;
     if (!TestDecodeFailuresAreAtomic(fixture))
         success = false;
     if (!TestLongPath(fixture))
