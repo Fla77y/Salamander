@@ -1421,10 +1421,19 @@ public static class SalamanderGuiNative
     public static void SelectLegacyFindRow(IntPtr window, uint pid, int index)
     {
         IntPtr list = VerifiedChild(window, pid, 2510);
-        if (index < 0 || index >= LegacyFindResultCount(window, pid) ||
-            (GetKeyState(0x10) & 0x8000) != 0 || (GetKeyState(0x11) & 0x8000) != 0 ||
-            (GetKeyState(0x12) & 0x8000) != 0)
-            throw new InvalidOperationException("Cannot safely select the original Find result");
+        int count = LegacyFindResultCount(window, pid);
+        short shiftState = GetKeyState(0x10);
+        short controlState = GetKeyState(0x11);
+        short altState = GetKeyState(0x12);
+        if (index < 0 || index >= count ||
+            (shiftState & 0x8000) != 0 || (controlState & 0x8000) != 0 ||
+            (altState & 0x8000) != 0)
+            throw new InvalidOperationException(
+                "Cannot safely select the original Find result (index=" + index +
+                ", resultCount=" + count +
+                ", shift=0x" + ((ushort)shiftState).ToString("X4") +
+                ", control=0x" + ((ushort)controlState).ToString("X4") +
+                ", alt=0x" + ((ushort)altState).ToString("X4") + ")");
         SendChecked(window, 0x0028, new UIntPtr((ulong)list.ToInt64()), new IntPtr(1)); // WM_NEXTDLGCTL
         SendChecked(list, 0x0100, new UIntPtr(0x24), new IntPtr(1)); // VK_HOME
         for (int row = 0; row < index; ++row)
