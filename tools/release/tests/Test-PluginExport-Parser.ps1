@@ -137,3 +137,15 @@ foreach ($plugin in $names) {
     }
 }
 Write-Host "PASS: $($names.Count) declared plug-ins contain both required SDK exports in their .def files."
+
+
+# UP-02 / RED: release ABI verification must discover every built SPL,
+# not silently retain the historic five-module whitelist as complete coverage.
+$binaryContract = Get-Content -LiteralPath (
+    Join-Path $PSScriptRoot 'Test-PluginBinary-Contract.ps1') -Raw
+if (-not $binaryContract.Contains('Get-SalamanderPluginInventory') -or
+    -not $binaryContract.Contains('$plugin.BuiltPath') -or
+    -not $binaryContract.Contains('Missing required built plug-in binary')) {
+    throw 'UP-02: binary ABI audit does not enumerate every built SPL and enforce mandatory plug-ins.'
+}
+Write-Host 'PASS: built ABI scanner is inventory-driven and preserves mandatory modules.'
