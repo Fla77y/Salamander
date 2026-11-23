@@ -12,6 +12,7 @@
 #include <array>
 #include <cstdint>
 #include <cstdio>
+#include <cwchar>
 #include <string>
 #include <vector>
 
@@ -88,6 +89,31 @@ struct TestFixture
         return result.size() > MAX_PATH;
     }
 };
+
+// Verify that WIC decoding is read-only even for non-ACP names and extended
+// paths. All fixtures are test-owned and at most 1 MiB.
+bool ReadFixtureBytes(const std::wstring& path, std::vector<unsigned char>& bytes)
+{
+    HANDLE handle = CreateFileW(path.c_str(), GENERIC_READ, FILE_SHARE_READ,
+                                nullptr, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+    if (handle == INVALID_HANDLE_VALUE)
+        return false;
+
+    LARGE_INTEGER size{};
+    const bool validSize = GetFileSizeEx(handle, &size) &&
+                           size.QuadPart > 0 && size.QuadPart <= 1024 * 1024;
+    bool validRead = false;
+    if (validSize)
+    {
+        bytes.resize(static_cast<std::size_t>(size.QuadPart));
+        DWORD received = 0;
+        validRead = ReadFile(handle, bytes.data(),
+                             static_cast<DWORD>(bytes.size()), &received, nullptr) &&
+                    received == bytes.size();
+    }
+    const bool closed = CloseHandle(handle) != FALSE;
+    return validSize && validRead && closed;
+}
 
 HRESULT WriteBytes(const std::wstring& path, const unsigned char* data,
                    std::size_t length)
@@ -273,9 +299,13 @@ bool TestFormat(TestFixture& fixture, const FormatCase& format)
     }
 
     // Act
+    std::vector<unsigned char> before, after;
+    if (!ReadFixtureBytes(file, before))
+        return false;
     pictview::wic::DecodedImage image;
     UINT frames = 0;
     const HRESULT decoded = pictview::wic::DecodeFrame(file.c_str(), 0, image, &frames);
+    const bool sourcePreserved = ReadFixtureBytes(file, after) && before == after;
 
     // Assert: the advertised extension must produce actual decoded pixels.
     // JPEG and JPEG XR are lossy; only require an opaque red-dominant pixel.
@@ -288,7 +318,10 @@ bool TestFormat(TestFixture& fixture, const FormatCase& format)
         std::fwprintf(stderr, L"FAIL: PictView WIC .%ls decode (HRESULT 0x%08lX, frames=%u, pixels=%zu)\n",
                       format.extension, static_cast<unsigned long>(decoded),
                       frames, image.bgra.size());
-    return valid && TestInvalidFrameDoesNotReturnPixels(file);
+    if (!sourcePreserved)
+        std::fwprintf(stderr, L"FAIL: PictView .%ls decoder modified its source bytes\n",
+                      format.extension);
+    return valid && sourcePreserved && TestInvalidFrameDoesNotReturnPixels(file);
 }
 
 bool TestLongPath(TestFixture& fixture)
@@ -311,11 +344,15 @@ bool TestLongPath(TestFixture& fixture)
     }
 
     // Act / Assert
+    std::vector<unsigned char> before, after;
+    if (!ReadFixtureBytes(file, before))
+        return false;
     pictview::wic::DecodedImage image;
     const HRESULT hr = pictview::wic::DecodeFirstFrame(file.c_str(), image);
     const bool valid = SUCCEEDED(hr) && image.width == 1 &&
                        image.height == 1 && image.bgra.size() == 4 &&
-                       image.bgra[2] == 255 && image.bgra[3] == 255;
+                       image.bgra[2] == 255 && image.bgra[3] == 255 &&
+                       ReadFixtureBytes(file, after) && before == after;
     if (!valid)
         std::fprintf(stderr, "FAIL: WIC PNG decode from >MAX_PATH UTF-16 path (0x%08lX)\n",
                      static_cast<unsigned long>(hr));
