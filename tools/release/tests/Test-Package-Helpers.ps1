@@ -447,6 +447,18 @@ if ([string]::IsNullOrEmpty($filesActionBlock) -or
     throw 'F5/F6 must not reach the ANSI engine with a long target panel.'
 }
 
+# Unicode F8 must respect the user's exact Recycle Bin configuration.
+# Refusing a non-fixed drive when recycle is selected is safer than silently
+# switching to permanent deletion. The actual W deletion uses a pinned ID.
+$unicodeFileDeleteBlock = [regex]::Match($filesActionSource,
+    '(?s)BOOL CFilesWindow::TryUnicodeSingleFileDelete\(\)(.*?)BOOL CFilesWindow::TryUnicodeMultiFileTransfer').Groups[1].Value
+if ([string]::IsNullOrEmpty($unicodeFileDeleteBlock) -or
+    -not $unicodeFileDeleteBlock.Contains('recycleMode == 1 && GetPathDriveType() != DRIVE_FIXED') -or
+    -not $unicodeFileDeleteBlock.Contains('TryDeleteUnicodeFileWithIdentity(') -or
+    -not $unicodeFileDeleteBlock.Contains('TryRecycleUnicodeFile(')) {
+    throw 'UTF-16 F8 must keep recycle policy and verify original file identity before permanent deletion.'
+}
+
 # CM_CLIPPASTE first checks for files, then falls back to clipboard text path
 # navigation. Route supported file transfers to the Unicode transfer path.
 # Plain CF_UNICODETEXT must still reach the navigation fallback without a dialog.
