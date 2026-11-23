@@ -137,9 +137,10 @@ void PluginFSConvertPathToExternal(char* path)
     }
 }
 
-// A Unicode F8 path must preserve the user's configured Recycle Bin policy.
-// Unsupported cases return FALSE and stay behind the legacy fail-closed guard.
-BOOL CFilesWindow::TryUnicodeSingleFileRecycle()
+// A uniquely identified Unicode F8 file follows the existing Recycle Bin
+// policy. Permanent removal requires an explicit confirmation and deletes
+// only the file identity observed before that confirmation.
+BOOL CFilesWindow::TryUnicodeSingleFileDelete()
 {
     if (!Is(ptDisk))
         return FALSE;
@@ -148,8 +149,9 @@ BOOL CFilesWindow::TryUnicodeSingleFileRecycle()
     const int recycleMode = invertRecycleBin
         ? (Configuration.UseRecycleBin == 0 ? 1 : 0)
         : Configuration.UseRecycleBin;
-    if (recycleMode != 1 || GetPathDriveType() != DRIVE_FIXED)
-        return FALSE; // Never silently replace permanent-delete semantics
+    if (recycleMode == 2)
+        return FALSE; // Per-file RecycleMasks require the original policy engine.
+    const bool recycle = recycleMode == 1 && GetPathDriveType() == DRIVE_FIXED;
 
     if (CheckPath(TRUE) != ERROR_SUCCESS)
         return TRUE; // The panel may change during CheckPath; never fall back
@@ -199,11 +201,37 @@ BOOL CFilesWindow::TryUnicodeSingleFileRecycle()
         resolvedName != originalName)
         return FALSE;
 
-    const std::wstring prompt =
-        L"Move this Unicode file to the Windows Recycle Bin?\n\n" +
-        originalName + L"\n\nThe Windows shell may warn if recycling is "
-        L"unavailable. Cancel that warning to avoid permanent deletion.";
-    if (MessageBoxW(HWindow, prompt.c_str(), L"Recycle Unicode file",
+    // Capture the exact file identity BEFORE the modal dialog. After a
+    // confirmation only that file may be deleted, even if the pathname
+    // was replaced in the meantime. Recycle Bin calls remain shell-owned.
+    BY_HANDLE_FILE_INFORMATION originalInfo{};
+    if (!recycle)
+    {
+        std::wstring extended;
+        DWORD identityError = ERROR_SUCCESS;
+        if (!Salamander::UnicodeFileOperationsDetail::TryGetExtendedPath(
+                source, extended, identityError))
+            return FALSE;
+        const HANDLE handle = CreateFileW(
+            extended.c_str(), FILE_READ_ATTRIBUTES,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+        if (handle == INVALID_HANDLE_VALUE)
+            return FALSE;
+        const bool identified = GetFileInformationByHandle(handle, &originalInfo) != FALSE;
+        CloseHandle(handle);
+        if (!identified || !Salamander::UnicodeFileOperationsDetail::HasRegularFileIdentity(originalInfo))
+            return FALSE;
+    }
+
+    const std::wstring prompt = recycle
+        ? L"Move this Unicode file to the Windows Recycle Bin?\n\n" +
+          originalName + L"\n\nThe Windows shell may warn if recycling is "
+          L"unavailable. Cancel that warning to avoid permanent deletion."
+        : L"Permanently delete this Unicode file?\n\n" + originalName +
+          L"\n\nThis action cannot be undone.";
+    const wchar_t* title = recycle ? L"Recycle Unicode file" : L"Delete Unicode file";
+    if (MessageBoxW(HWindow, prompt.c_str(), title,
                     MB_OKCANCEL | MB_ICONWARNING) != IDOK)
         return TRUE;
 
@@ -216,28 +244,37 @@ BOOL CFilesWindow::TryUnicodeSingleFileRecycle()
         resolvedName != originalName)
     {
         MessageBoxW(HWindow, L"The Unicode identity changed or became ambiguous. "
-                    L"No file operation was started.", L"Recycle Unicode file",
+                    L"No file operation was started.", title,
                     MB_OK | MB_ICONWARNING);
         return TRUE;
     }
 
     BeginSuspendMode();
     BeginStopRefresh();
-    HRESULT error = S_OK;
-    const bool succeeded = Salamander::TryRecycleUnicodeFile(
-        source, MainWindow->HWindow, error);
+    HRESULT recycleError = S_OK;
+    DWORD deleteError = ERROR_SUCCESS;
+    const bool succeeded = recycle
+        ? Salamander::TryRecycleUnicodeFile(
+              source, MainWindow->HWindow, recycleError)
+        : Salamander::TryDeleteUnicodeFileWithIdentity(
+              source, originalInfo, deleteError);
     EndStopRefresh();
     EndSuspendMode();
 
     if (!succeeded)
     {
-        wchar_t message[190];
-        swprintf_s(message, _countof(message),
-                   L"Windows could not complete the Unicode Recycle Bin operation "
-                   L"(HRESULT 0x%08lX). Check whether the file still exists.",
-                   static_cast<unsigned long>(error));
-        MessageBoxW(HWindow, message, L"Recycle Unicode file",
-                    MB_OK | MB_ICONWARNING);
+        wchar_t message[220];
+        if (recycle)
+            swprintf_s(message, _countof(message),
+                       L"Windows could not recycle the Unicode file "
+                       L"(HRESULT 0x%08lX). Check whether it still exists.",
+                       static_cast<unsigned long>(recycleError));
+        else
+            swprintf_s(message, _countof(message),
+                       L"Permanent Unicode deletion failed (Win32 %lu). "
+                       L"If the file identity changed, nothing was deleted.",
+                       deleteError);
+        MessageBoxW(HWindow, message, title, MB_OK | MB_ICONWARNING);
         return TRUE;
     }
 
@@ -1327,7 +1364,7 @@ void CFilesWindow::FilesAction(CActionType type, CFilesWindow* target, int count
              TryUnicodeSingleFileTransfer(type, target) ||
              TryUnicodeSingleDirectoryCopy(type, target) ||
              TryUnicodeSingleDirectoryMove(type, target) ||
-             (type == atDelete && TryUnicodeSingleFileRecycle())))
+             (type == atDelete && TryUnicodeSingleFileDelete())))
             return;
         SalMessageBox(HWindow,
                       "This long directory requires a native Unicode file operation. "
@@ -1378,7 +1415,7 @@ void CFilesWindow::FilesAction(CActionType type, CFilesWindow* target, int count
                  TryUnicodeSingleFileTransfer(type, target) ||
                  TryUnicodeSingleDirectoryCopy(type, target) ||
                  TryUnicodeSingleDirectoryMove(type, target) ||
-                 (type == atDelete && TryUnicodeSingleFileRecycle())))
+                 (type == atDelete && TryUnicodeSingleFileDelete())))
                 return;
             SalMessageBox(HWindow,
                           "This disk filename cannot be represented safely by the "
