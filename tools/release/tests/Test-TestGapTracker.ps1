@@ -34,9 +34,9 @@ function Assert-TrackedGaps {
         # a real source SHA, executed command and log reference.
         if ($match.Groups['check'].Value -in @('x','X')) {
             $start = $match.Index
-            $next = $Text.IndexOf([Environment]::NewLine + '### [', $start + $match.Length,
-                                  [StringComparison]::Ordinal)
-            $end = if ($next -lt 0) { $Text.Length } else { $next }
+            $next = [regex]::new('(?m)^#{1,3}\s').Match(
+                $Text, $start + $match.Length)
+            $end = if ($next.Success) { $next.Index } else { $Text.Length }
             $section = $Text.Substring($start, $end - $start)
             if ($section -notmatch '(?m)^-\s+\*\*Nachweis:\*\*\s+SHA=[0-9a-f]{40};\s+Test=[^;]+;\s+Log=[^;\r\n]+') {
                 throw "Checked test-gap $id lacks exact SHA / executed command / log evidence."
