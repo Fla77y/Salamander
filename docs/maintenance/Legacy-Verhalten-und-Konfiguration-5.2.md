@@ -95,6 +95,24 @@ vorherigen Fingerabdruck verglichen. Außerdem muss der neue `Config0`
 die **Versionsnummer 105** haben. Der ursprüngliche Registry-Root
 der installierten Version 5.0 wird **nie gelesen oder beschrieben**.
 
+### Separat offener Löschpfad beim echten Konfigurationsimport
+
+Der aktuelle Produktcode `src/mainwnd2.cpp`,
+`CMainWindow::DeleteOldConfigurations`, kann einen als zu löschend
+ausgewählten alten Registry-Root entfernen. Zusätzlich kann der
+`autoImportConfig`-Pfad den importierten Original-Root löschen, wenn
+`doNotDeleteImportedCfg` nicht gesetzt ist. Die Aufrufstelle befindet
+sich in `src/salamdr1.cpp`, unmittelbar nach `SaveConfig()`.
+
+Das ist **nicht** durch den neuen `Config0`-vorhanden-Canary-Test
+abgedeckt, weil `FindLatestConfiguration` bei vorhandenem
+`Config0\Configuration` bereits vor dem Import älterer Roots zurückkehrt.
+Für die verbindliche Release-Abnahme („5.0-Konfiguration erhalten“)
+muss in einem **separaten VM-Snapshot** die echte 5.0→5.2-Importentscheidung
+einschließlich des Löschpfads und des Neustarts von 5.0 geprüft werden.
+Eine Änderung der originalen Importdialog- oder Löschsemantik
+ohne abgestimmten Kompatibilitätsvertrag wäre ein A0-Risiko.
+
 **Grenze:** Dieser Test beweist nur die Nichtveränderung einer synthetischen
 alten Konfiguration beim 5.2-Start. Ein 5.0→5.2-Datenimport, tatsächliche
 5.0-Plugin-Einstellungen, 5.0-VM-Neustart und Rollback bleiben
