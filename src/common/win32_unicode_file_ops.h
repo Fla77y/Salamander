@@ -342,6 +342,43 @@ inline bool TryMoveUnicodeDirectoryNoOverwrite(const Utf16DiskPath& source,
     return true;
 }
 
+// Permanently delete only the file whose identity was confirmed before the
+// user's modal F8 prompt. Reopen with DELETE and revalidate by handle in the
+// same operation so path replacement cannot redirect deletion to another file.
+inline bool TryDeleteUnicodeFileWithIdentity(
+    const Utf16DiskPath& file, const BY_HANDLE_FILE_INFORMATION& expected,
+    DWORD& error)
+{
+    std::wstring path;
+    if (!UnicodeFileOperationsDetail::TryGetExtendedPath(file, path, error))
+        return false;
+    const HANDLE handle = CreateFileW(
+        path.c_str(), DELETE | FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+        nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+    if (handle == INVALID_HANDLE_VALUE)
+    {
+        error = GetLastError();
+        return false;
+    }
+
+    BY_HANDLE_FILE_INFORMATION actual{};
+    bool deleted = false;
+    if (!GetFileInformationByHandle(handle, &actual))
+        error = GetLastError();
+    else if (!UnicodeFileOperationsDetail::IsSameRegularFile(expected, actual))
+        error = ERROR_FILE_INVALID;
+    else
+    {
+        FILE_DISPOSITION_INFO disposition{TRUE};
+        deleted = SetFileInformationByHandle(
+            handle, FileDispositionInfo, &disposition, sizeof(disposition)) != FALSE;
+        error = deleted ? ERROR_SUCCESS : GetLastError();
+    }
+    CloseHandle(handle);
+    return deleted;
+}
+
 inline bool TryDeleteUnicodeFile(const Utf16DiskPath& file, DWORD& error)
 {
     std::wstring path;
