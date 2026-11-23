@@ -159,6 +159,19 @@ foreach ($required in @('PictViewHostWindows', 'GetWindowThreadProcessId',
         throw "PictView host smoke is missing safety contract: $required"
     }
 }
+
+# Ensure the actual Save Copy encoder (not just suffix selection) is exercised
+# for every format the WIC viewer offers for export.
+$writerSource = Get-Content -LiteralPath (Join-Path $root 'tools\tests\pictview_wic_writer.cpp') -Raw
+foreach ($required in @('TestAdditionalWicExportFormats',
+    'ImageFileFormat::Bmp', 'ImageFileFormat::Jpeg',
+    'ImageFileFormat::Tiff', 'ERROR_FILE_EXISTS',
+    'DecodeFirstFrame')) {
+    if (-not $writerSource.Contains($required)) {
+        throw "PictView Save Copy lacks executable format regression: $required"
+    }
+}
+
 # The real F3 host smoke is deliberately opt-in and must exercise the
 # common WIC formats through isolated GUI processes. No format may be skipped
 # by successful native decoding alone.
