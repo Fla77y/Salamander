@@ -225,6 +225,19 @@ Alle 35 erwarteten Hauptprojektdateien wurden in der GitHub-Quelle
 einzeln gefunden. **Nur statische Dateiexistenz, noch keine Windows-
 PowerShell-/MSBuild-Ausführung auf diesem Stand.**
 
+**BUILD-01 – Vierfach-Solution-Abdeckung statisch gesichert:**
+Im aktuellen `src/vcxproj/salamand.sln` enthalten alle 35
+Plugin-Hauptprojekte jeweils eine zugehörige `Build.0`-Zuordnung
+für `Debug|Win32`, `Debug|x64`, `Release|Win32` und
+`Release|x64` (zusammen 140 geprüfte Deklarationen).
+`Test-VS2026-ProjectMetadata.ps1` prüft nun zusätzlich diesen
+Vertrag gegen die versionierte Liste und simuliert fehlende und
+falsch umgeleitete Build-Zuordnungen. Commit
+`6975cd5aee072efbfe2e3d39163750837d3434df`;
+Windows-CI-Einbindung `17fe8218ade9f3c35ce42898e515dbf4e163b0ee`.
+Dies ist **ausschließlich ein statischer Lösungs-/Konfigurationsnachweis**,
+kein absolvierter MSBuild-Vierfach-Build; BUILD-01 bleibt offen.
+
 **Nächster Schritt nach dieser Quellbasis:** Neue Regressionen auf
 Windows ausführen; anschließend tatsächliche Built-/Staged-/Shipped-SPLs
 auf dem **selben** Commit nachweisen, pro Modul Funktionen
