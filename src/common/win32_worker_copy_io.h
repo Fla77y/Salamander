@@ -153,6 +153,29 @@ inline HANDLE OpenRaw(const char* name, DWORD access, DWORD share, LPSECURITY_AT
             SetLastError(ERROR_INVALID_PARAMETER);
             return INVALID_HANDLE_VALUE;
         }
+        // F6's copy-then-delete is allowed only for the exact destination
+        // object opened for writing by the copy worker. Retain the first
+        // created identity; a replacement during retries must fail closed.
+        if (Current->CaptureTargetIdentity && Current->TargetToken == name &&
+            (access & (GENERIC_WRITE | FILE_WRITE_DATA | FILE_APPEND_DATA |
+                       FILE_WRITE_ATTRIBUTES | WRITE_DAC | WRITE_OWNER)) != 0)
+        {
+            if (information.nFileIndexHigh == 0 && information.nFileIndexLow == 0)
+            {
+                CloseHandle(file);
+                SetLastError(ERROR_FILE_INVALID);
+                return INVALID_HANDLE_VALUE;
+            }
+            if (Current->HasTargetIdentity &&
+                !SameIdentity(Current->TargetIdentity, information))
+            {
+                CloseHandle(file);
+                SetLastError(ERROR_FILE_INVALID);
+                return INVALID_HANDLE_VALUE;
+            }
+            Current->TargetIdentity = information;
+            Current->HasTargetIdentity = true;
+        }
         if (truncate && !SetEndOfFile(file)) // a newly opened handle is positioned at zero
         {
             const DWORD truncateError = GetLastError();
