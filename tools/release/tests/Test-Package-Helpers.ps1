@@ -469,7 +469,11 @@ foreach ($required in @(
 if (-not $wideWorkerPaths.Contains('CaptureTargetIdentity') -or
     -not $wideWorkerIo.Contains('Current->HasTargetIdentity') -or
     -not $wideWorkerIo.Contains('firstMoveTargetWrite ? CREATE_NEW') -or
-    -not $wideFileOps.Contains('TryDeleteUnicodeFileWithIdentity(source, expectedSource, error)') -or
+    -not $wideFileOps.Contains('TryCompleteUnicodeMoveAfterCopy(') -or
+    -not $wideFileOps.Contains('sourceGuard.handle, FileDispositionInfo') -or
+    -not $wideFileOps.Contains('std::memcmp(sourceBytes, targetBytes, chunk)') -or
+    -not $wideFileOps.Contains('cancelRequested != nullptr && *cancelRequested') -or
+    -not $wideWorkerSource.Contains('dlgData.WorkerNotSuspended') -or
     -not $filesActionSource.Contains('crossVolumeRequiresWorker') -or
     -not $filesActionSource.Contains('return startWideWorker()')) {
     throw 'Cross-volume Unicode F6 must retain W source/target identities and the existing progress worker.'
