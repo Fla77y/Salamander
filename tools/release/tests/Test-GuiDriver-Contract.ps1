@@ -1135,6 +1135,7 @@ foreach ($required in @(
     'Find-VerifiedRecycledFixtureItem -RecycleFolder',
     'Recycle unsupported or refused',
     'Unicode Find recycle refusal preserves test file bytes',
+    'Unicode Find refused recycle fixture removed without altering unrelated files',
     'Unicode Find recycling preserves unrelated original file bytes'
 )) {
     if (-not $findGui.Contains($required)) {
