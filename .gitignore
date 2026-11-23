@@ -1,7 +1,7 @@
 # OS files
 .DS_Store
 .cache
-.Build
+/.Build/
 Thumbs.db
 # Python artifacts
 /tools/salamander_tools.egg-info/
