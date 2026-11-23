@@ -63,8 +63,7 @@ foreach ($name in $pluginNames) {
         throw "Plug-in is not a supported x64 PE image: $binary"
     }
     foreach ($symbol in $requiredExports) {
-        if (-not [regex]::IsMatch($source,
-                "(?im)^\s*EXPORTS\s+$([regex]::Escape($symbol))\s*$")) {
+        if (-not (Test-ModuleDefinitionExport -Definition $source -Name $symbol)) {
             throw "Export $symbol missing in $declaration"
         }
         if (-not (Test-PeNamedExport -Report $report -Name $symbol)) {
