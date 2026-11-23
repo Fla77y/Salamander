@@ -84,6 +84,98 @@ function Get-SalamanderPluginInventory {
         $expected = "../plugins/$project/vcxproj/$project.vcxproj"
         if ([string]::Equals($relative, $expected,
                              [StringComparison]::OrdinalIgnoreCase)) {
+            if ($project -cnotmatch '^[A-Za-z0-9][A-Za-z0-9_-]*
+                throw "Duplicate Salamander plug-in project: $project"
+            }
+        }
+    }
+
+    $built = $null
+    $staged = $null
+    if (-not [string]::IsNullOrWhiteSpace($BuiltDirectory)) {
+        $built = Get-SplInventory -Directory $BuiltDirectory -Description 'built'
+    }
+    if (-not [string]::IsNullOrWhiteSpace($StagedDirectory)) {
+        $staged = Get-SplInventory -Directory $StagedDirectory -Description 'staged'
+    }
+
+    $names = [Collections.Generic.HashSet[string]]::new(
+        [StringComparer]::OrdinalIgnoreCase)
+    foreach ($name in $sourceNames) { [void]$names.Add($name) }
+    foreach ($name in $projectNames) { [void]$names.Add($name) }
+    if ($null -ne $built) {
+        foreach ($name in $built.Keys) { [void]$names.Add($name) }
+    }
+    if ($null -ne $staged) {
+        foreach ($name in $staged.Keys) { [void]$names.Add($name) }
+    }
+
+    foreach ($name in @($names | Sort-Object)) {
+        $hasBuilt = $null -ne $built -and $built.ContainsKey($name)
+        $hasStaged = $null -ne $staged -and $staged.ContainsKey($name)
+
+        $builtHash = if ($hasBuilt -and $null -ne $staged) {
+            (Get-FileHash -LiteralPath $built[$name] -Algorithm SHA256).Hash
+        } else { '' }
+        $stagedHash = if ($hasStaged) {
+            (Get-FileHash -LiteralPath $staged[$name] -Algorithm SHA256).Hash
+        } else { '' }
+        $payloadStatus = if ($null -eq $staged) { 'NOT_CHECKED' }
+                         elseif (-not $hasBuilt -and -not $hasStaged) { 'NOT_SHIPPED' }
+                         elseif (-not $hasBuilt) { 'MISSING_BUILT' }
+                         elseif (-not $hasStaged) { 'MISSING_STAGED' }
+                         elseif ($builtHash -cne $stagedHash) { 'HASH_MISMATCH' }
+                         else { 'MATCH' }
+        [pscustomobject]@{
+            Plugin               = $name
+            SourceDirectory      = $sourceNames.Contains($name)
+            SolutionProject      = $projectNames.Contains($name)
+            BuiltModule          = if ($null -eq $built) { 'NOT_CHECKED' }
+                                   elseif ($hasBuilt) { 'PRESENT' } else { 'ABSENT' }
+            StagedModule         = if ($null -eq $staged) { 'NOT_CHECKED' }
+                                   elseif ($hasStaged) { 'PRESENT' } else { 'ABSENT' }
+            BuiltPath            = if ($hasBuilt) { $built[$name] } else { '' }
+            StagedPath           = if ($hasStaged) { $staged[$name] } else { '' }
+            BuiltSHA256          = $builtHash
+            StagedSHA256         = $stagedHash
+            PayloadStatus        = $payloadStatus
+            Capabilities         = 'NOT_ASSESSED'
+            UnicodeAcceptance    = 'NOT_TESTED'
+            LongPathAcceptance   = 'NOT_TESTED'
+            Evidence             = ''
+        }
+    }
+}
+
+function Get-SalamanderPluginOperationMatrix {
+    [CmdletBinding()]
+    param([Parameter(Mandatory,ValueFromPipeline)][psobject]$InputObject)
+
+    process {
+        # Applicability is deliberately unresolved until each plug-in API
+        # is inspected. A name such as "zip" is not evidence of capability.
+        foreach ($operation in @('List','Open','Copy','Move','Rename','Delete',
+                                 'Find','Pack','Extract','View','Thumbnail','Menu')) {
+            [pscustomobject]@{
+                Plugin = [string]$InputObject.Plugin
+                Operation = $operation
+                Applicable = 'NOT_ASSESSED'
+                UnicodeStatus = 'NOT_TESTED'
+                LongPathStatus = 'NOT_TESTED'
+                NegativeCases = 'NOT_TESTED'
+                Evidence = ''
+            }
+        }
+    }
+}
+) {
+                throw "Invalid Salamander plug-in project name: $project"
+            }
+            # A stale Solution entry is not a real buildable project.
+            $projectFile = Join-Path $pluginSources "$project\vcxproj\$project.vcxproj"
+            if (-not (Test-Path -LiteralPath $projectFile -PathType Leaf)) {
+                throw "Declared Salamander plug-in project missing: $projectFile"
+            }
             if (-not $projectNames.Add($project)) {
                 throw "Duplicate Salamander plug-in project: $project"
             }
