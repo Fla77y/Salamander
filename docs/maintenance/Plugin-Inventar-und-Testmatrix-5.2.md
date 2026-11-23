@@ -100,8 +100,13 @@ auf die deklarierten SalamanderPluginEntry- und
 SalamanderPluginGetReqVer-Namen prüfbar. Der Parser berücksichtigt
 sowohl einzeilige Exportdefinitionen als auch herkömmliche EXPORTS-Blöcke
 mit Ordinalzahlen, PRIVATE, Kommentaren und Aliasnamen.
-Die fünf bestehenden x64-Binärtests verwenden denselben Quellparser,
-prüfen aber weiterhin nur fünf tatsächliche PE-Dateien.
+Der bisherige x64-Binärtest verwendet jetzt den gemeinsamen Quellparser
+und durchläuft alle im angegebenen Build-Verzeichnis tatsächlich gebauten
+SPL-Module. Die fünf bisherigen Pflichtmodule bleiben ausdrücklich
+verpflichtend. Fremde SPLs ohne deklarierte Solution-Zugehörigkeit
+werden nicht als automatisch vertrauenswürdig akzeptiert.
+**Diese Ausführung wurde auf dem aktuellen Stand nicht unter Windows
+nachgewiesen; die Build-/PE-/Runtime-Matrix aller 35 Module bleibt offen.**
 **Keine Aussage über 35 gebaute PE-Exporttabellen oder über die
 Unicode-/Langpfadfunktion beziehungsweise den Plugin-Host.**
 Die neue PowerShell-Ausführung steht aus.
