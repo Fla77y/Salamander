@@ -32,6 +32,29 @@ function Assert-ResourceIds {
     }
 }
 
+# Preserve original 5.0 keyboard bindings, including repeats across groups.
+function Assert-OriginalAcceleratorBindings {
+    param([Parameter(Mandatory)][string]$Text,
+          [Parameter(Mandatory)][string[]]$OriginalBindings)
+
+    $counts = [Collections.Generic.Dictionary[string,int]]::new(
+        [StringComparer]::Ordinal)
+    $entryPattern = '(?m)^\s*(VK_[A-Z0-9_]+|"[^"]+")\s*,\s*([A-Z0-9_]+)\s*,\s*(.*?)\s*$'
+    foreach ($match in [regex]::Matches($Text, $entryPattern)) {
+        $flags = ($match.Groups[3].Value -replace '//.*$', '') -replace '\s+', ''
+        $name = '{0}|{1}|{2}' -f $match.Groups[1].Value,
+                                      $match.Groups[2].Value, $flags
+        if ($counts.ContainsKey($name)) { $counts[$name]++ }
+        else { $counts.Add($name, 1) }
+    }
+    foreach ($name in $OriginalBindings) {
+        if (-not $counts.ContainsKey($name) -or $counts[$name] -le 0) {
+            throw "Original 5.0 accelerator binding missing: $name"
+        }
+        $counts[$name]--
+    }
+}
+
 $dialogRc = Get-Content -LiteralPath (Join-Path $repository 'src\lang\lang.rc') -Raw
 $acceleratorRc = Get-Content -LiteralPath (Join-Path $repository 'src\salamand.rc') -Raw
 $dialogPattern = '(?m)^\s*(IDD_[A-Z0-9_]+)\s+DIALOGEX?\b'
@@ -41,6 +64,11 @@ $dialogs = @(Get-ResourceIdentifiers -Source $dialogRc -Pattern $dialogPattern)
 $accelerators = @(Get-ResourceIdentifiers -Source $acceleratorRc -Pattern $acceleratorPattern)
 Assert-ResourceIds -Expected $baseline.dialogResourceNames -Actual $dialogs -Category 'Win32 dialogs'
 Assert-ResourceIds -Expected $baseline.acceleratorGroupNames -Actual $accelerators -Category 'Win32 accelerators'
+if ($baseline.originalSourceReference.commit -cne '3945ecf7a655b2dbb0a50e189a2682e1e336352e' -or
+    $baseline.originalSourceReference.productVersion -cne '5.0') {
+    throw 'Unrecognized original 5.0 source characterization baseline.'
+}
+Assert-OriginalAcceleratorBindings -Text $acceleratorRc -OriginalBindings $baseline.originalSourceReference.originalMainAcceleratorEntries
 
 foreach ($id in @('IDD_FIND','IDD_FINDADVANCED','IDD_FINDIGNORE','IDD_FINDSETTINGS',
                   'IDD_COPYMOVEDIALOG','IDD_PACK','IDD_UNPACK','IDD_PLUGINS')) {
@@ -81,5 +109,21 @@ catch {
 if (-not $rejected) {
     throw 'Missing IDD_FIND was not rejected by the actual resource contract.'
 }
+# Negative: simulate deletion of F5 Copy from the original resource source.
+$withoutCopyKey = [regex]::new(
+    '(?m)^\s*VK_F5,\s+CM_COPYFILES,\s+VIRTKEY\s*$').Replace($acceleratorRc, '', 1)
+$rejected = $false
+try {
+    Assert-OriginalAcceleratorBindings -Text $withoutCopyKey -OriginalBindings $baseline.originalSourceReference.originalMainAcceleratorEntries
+}
+catch {
+    if ($_.Exception.Message -notmatch 'Original 5.0 accelerator binding missing') { throw }
+    $rejected = $true
+}
+if (-not $rejected) {
+    throw 'Removing the historical F5 copy accelerator was not rejected.'
+}
+
 Write-Host "PASS: $($dialogs.Count) Win32 dialog resources, $($accelerators.Count) accelerator groups and critical legacy shortcuts are source-characterized."
+Write-Host 'PASS: all 89 original 5.0 keyboard bindings remain declared, including duplicates.'
 Write-Host 'NOTE: Original 5.0 visual and interactive UI parity remains open (A0-01).'
