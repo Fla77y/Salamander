@@ -55,6 +55,18 @@ function Assert-OriginalAcceleratorBindings {
     }
 }
 
+# The 5.0 dialog resource was unchanged except for the 5.2 UTF-8 BOM.
+# Reconstruct its canonical Git blob hash independent of Windows CRLF.
+function Get-CanonicalGitBlobSha {
+    param([Parameter(Mandatory)][string]$Text)
+    $canonical = $Text.TrimStart([char]0xfeff).Replace("`r`n", "`n")
+    $payload = [Text.Encoding]::UTF8.GetBytes($canonical)
+    $prefix = [Text.Encoding]::ASCII.GetBytes('blob ' + $payload.Length)
+    $toHash = [byte[]]::new($prefix.Length + 1 + $payload.Length)
+    [Array]::Copy($prefix, 0, $toHash, 0, $prefix.Length)
+    [Array]::Copy($payload, 0, $toHash, $prefix.Length + 1, $payload.Length)
+    return [Convert]::ToHexString([Security.Cryptography.SHA1]::HashData($toHash)).ToLowerInvariant()
+}
 $dialogRc = Get-Content -LiteralPath (Join-Path $repository 'src\lang\lang.rc') -Raw
 $acceleratorRc = Get-Content -LiteralPath (Join-Path $repository 'src\salamand.rc') -Raw
 $dialogPattern = '(?m)^\s*(IDD_[A-Z0-9_]+)\s+DIALOGEX?\b'
@@ -63,6 +75,11 @@ $acceleratorPattern = '(?m)^\s*(IDA_[A-Z0-9_]+)\s+ACCELERATORS\b'
 $dialogs = @(Get-ResourceIdentifiers -Source $dialogRc -Pattern $dialogPattern)
 $accelerators = @(Get-ResourceIdentifiers -Source $acceleratorRc -Pattern $acceleratorPattern)
 Assert-ResourceIds -Expected $baseline.dialogResourceNames -Actual $dialogs -Category 'Win32 dialogs'
+$originalDialogBlob = $baseline.originalSourceReference.langDialogRcGitBlobSha
+if ((Get-CanonicalGitBlobSha -Text $dialogRc) -cne $originalDialogBlob) {
+    throw 'Original 5.0 Win32 dialog resource text/controls changed without review.'
+}
+
 Assert-ResourceIds -Expected $baseline.acceleratorGroupNames -Actual $accelerators -Category 'Win32 accelerators'
 if ($baseline.originalSourceReference.commit -cne '3945ecf7a655b2dbb0a50e189a2682e1e336352e' -or
     $baseline.originalSourceReference.productVersion -cne '5.0') {
@@ -126,4 +143,12 @@ if (-not $rejected) {
 
 Write-Host "PASS: $($dialogs.Count) Win32 dialog resources, $($accelerators.Count) accelerator groups and critical legacy shortcuts are source-characterized."
 Write-Host 'PASS: all 89 original 5.0 keyboard bindings remain declared, including duplicates.'
+
+# Negative: changes to dialog caption, layout or controls must be rejected.
+$modifiedDialog = $dialogRc.Replace('IDD_FIND DIALOGEX', 'IDD_FIND DIALOGEX_CHANGED')
+if ($modifiedDialog -ceq $dialogRc -or
+    (Get-CanonicalGitBlobSha -Text $modifiedDialog) -ceq $originalDialogBlob) {
+    throw 'Changing the original dialog declaration did not alter its Git blob hash.'
+}
+Write-Host 'PASS: complete 5.0 Win32 dialog resource content is unchanged except BOM/CRLF.'
 Write-Host 'NOTE: Original 5.0 visual and interactive UI parity remains open (A0-01).'
