@@ -601,6 +601,44 @@ Dateiauswahlen, tatsächlicher ADS-/ACL-/EFS-Support und
 Abbruch-/Fehlerpfade auf realen Volumes. **Keine
 Freigabe und kein formaler Abschluss von UP-04.**
 
+**Sicherheitsnachtrag zum asynchronen F6 (24.11.2026; nicht
+Windows-verifiziert):** Die Dateiauswahl wird vor dem modalen
+Bestätigungsdialog über `TryReadUnicodeRegularFileIdentity`
+an die Win32-Volume-/File-ID gebunden. Dieselbe Identität
+gilt für Einzeldateien und Mehrfachauswahlen, für den
+synchronen Handle-Rename, für den Copy-and-Delete-
+Zwischenablagepfad sowie für die erste W-Dateiöffnung
+des Hintergrundworkers. Eine nach Dialogöffnung unter
+identischem Namen neu angelegte Datei darf nicht
+kopiert oder gelöscht werden.
+Beim Cross-Volume-F6 muss der Worker außerdem
+alle Alternate Data Streams berücksichtigen
+(`ignoreADS = FALSE` für Moves), darf während des
+Kopierens keine Fremdschreibzugriffe auf die Quelle
+zulassen und darf einen von Dritten entfernten oder
+ausgetauschten Zielpfad nicht bei einem Retry
+neu erzeugen/überschreiben. Nach dem regulären
+Worker-Copy werden Quell- und Ziel-Datei über
+geöffnete W-Handles gegen Write/Delete gesperrt,
+IDs und Größen verglichen und die primären
+Dateiinhalte blockweise und bytegenau geprüft.
+Erst danach wird die Originalquelle durch den
+**selben** Quellhandle per `FileDispositionInfo`
+zur Löschung markiert. Pause/Cancel wird auch während
+der Nachprüfung berücksichtigt. Bei Abweichung
+(`ERROR_FILE_INVALID`/`ERROR_CRC`) bleibt die
+Quelle erhalten, der Benutzer wird über mögliche
+Teilkopien informiert. Erweiterte native
+Regressionen prüfen identische Ersatznamen/-bytes
+und abweichende Bytes trotz gleicher IDs/Größen.
+Die Nachprüfung kostet zusätzlich ungefähr
+einen vollständigen Lesevorgang auf Quelle und
+Ziel; dies ist eine bewusste Datenintegritäts-
+abwägung. Die ADS-Kopie selbst folgt dem
+bestehenden Worker-Vertrag.
+**Ein vollständiger Build, alle neuen GUI-Tests
+und das echte zweite Volume sind noch ausstehend.**
+
 ### [ ] UP-04 – Kopieren/Bewegen über Volume- und Worker-Grenzen (**P0**, TEILBELEGT)
 - **Lücke:** F5/F6 mit 263 UTF-16-Einheiten und >17 MiB Same-Volume-Move
   bestanden; das beweist **keinen** Cross-Volume-Move großer Dateien.
