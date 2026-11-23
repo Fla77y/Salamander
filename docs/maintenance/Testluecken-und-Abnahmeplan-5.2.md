@@ -215,6 +215,16 @@ kein abrufbarer Erfolgsnachweis für den aktuellen Commit.**
 Die vollständigen Visual-Studio-2026-, GUI-, Plugin-Host- und
 VM-Abnahmeprüfungen werden hierdurch nicht ersetzt.
 
+**UP-01 – Projektdatei-Existenz geprüft:** Ein weiteres
+synthetisches Fehlerszenario verhindert, dass ein verwaister
+`.sln`-Eintrag ohne Haupt-`.vcxproj` als tatsächlich
+vorhandenes Projekt gezählt wird. Test-Commit
+`9d468b454943ea329756a87b95335d3a88f3ff11`, Quellkorrektur
+`4de015f7117f92fa5da9d1bf8f75753cb17da5fb`.
+Alle 35 erwarteten Hauptprojektdateien wurden in der GitHub-Quelle
+einzeln gefunden. **Nur statische Dateiexistenz, noch keine Windows-
+PowerShell-/MSBuild-Ausführung auf diesem Stand.**
+
 **Nächster Schritt nach dieser Quellbasis:** Neue Regressionen auf
 Windows ausführen; anschließend tatsächliche Built-/Staged-/Shipped-SPLs
 auf dem **selben** Commit nachweisen, pro Modul Funktionen
