@@ -128,7 +128,7 @@ if (-not [string]::IsNullOrWhiteSpace($ReportRoot)) {
     $report = Join-Path $ReportRoot (
         'Salamander-PluginCoverage-' + [Guid]::NewGuid().ToString('N'))
     [void][IO.Directory]::CreateDirectory($report)
-    $inventory | Export-Csv -LiteralPath (Join-Path $report 'plugins.csv') -NoTypeInformation -Encoding UTF8
-    $operations | Export-Csv -LiteralPath (Join-Path $report 'operations.csv') -NoTypeInformation -Encoding UTF8
+    $inventory | Export-Csv -LiteralPath (Join-Path $report 'plugins.csv') -Encoding UTF8
+    $operations | Export-Csv -LiteralPath (Join-Path $report 'operations.csv') -Encoding UTF8
     Write-Host "Generated read-only inventory reports: $report"
 }
