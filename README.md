@@ -12,6 +12,18 @@ Please bear with us as Salamander was our first major project where we learned t
 
 We would like to thank [Fine company](https://www.finesoftware.eu/) for making the open sourced Salamander release possible.
 
+## Test coverage and release readiness
+
+The current, actionable [Salamander 5.2 test-gap and acceptance plan](docs/maintenance/Testluecken-und-Abnahmeplan-5.2.md)
+tracks requirements A0–A7 by stable IDs, priorities, regression cases, owners of
+test evidence, prerequisites, and release blockers. Consult it before test,
+plug-in, Unicode/long-path, PictView, and packaging changes; update its
+status/evidence in the same change. A passing `manage.cmd --test-all` does
+not imply complete product or clean-VM release acceptance. The historical
+[audit snapshot](docs/maintenance/test-coverage-audit-2026-11-23.md) remains
+available separately, and [the release gates](tools/release/Release-5.2-Gates.md)
+remain mandatory.
+
 ## Development
 
 ### Prerequisites
