@@ -631,6 +631,30 @@ STDMETHODIMP CImpDropTarget::QueryInterface(REFIID refiid, void FAR* FAR* ppv)
     }
 }
 
+static bool ReportUnicodeDropEffect(IDataObject* data, const wchar_t* formatName, DWORD effect)
+{
+    const auto id = static_cast<CLIPFORMAT>(RegisterClipboardFormatW(formatName));
+    HGLOBAL memory = id ? GlobalAlloc(GMEM_MOVEABLE, sizeof(effect)) : nullptr;
+    if (!memory)
+        return false;
+    auto* value = static_cast<DWORD*>(GlobalLock(memory));
+    if (!value)
+    {
+        GlobalFree(memory);
+        return false;
+    }
+    *value = effect;
+    GlobalUnlock(memory);
+    FORMATETC format{id, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
+    STGMEDIUM medium{};
+    medium.tymed = TYMED_HGLOBAL;
+    medium.hGlobal = memory;
+    const bool accepted = data->SetData(&format, &medium, TRUE) == S_OK;
+    if (!accepted)
+        GlobalFree(memory);
+    return accepted;
+}
+
 bool CImpDropTarget::HandleUnicodeDiskDrop(IDataObject* data, POINTL pt, DWORD keys,
                                           DWORD& effect, bool execute)
 {
@@ -658,9 +682,15 @@ bool CImpDropTarget::HandleUnicodeDiskDrop(IDataObject* data, POINTL pt, DWORD k
     const DWORD allowed = effect;
     effect = DROPEFFECT_NONE;
     panel->SetDropTarget(-1);
-    if (!data || OldDataObjectIsFake || !(allowed & DROPEFFECT_COPY) ||
-        (keys & (MK_SHIFT | MK_ALT)) ||
+    const DWORD offered = allowed & (DROPEFFECT_COPY | DROPEFFECT_MOVE);
+    const bool shift = (keys & MK_SHIFT) != 0;
+    const bool control = (keys & MK_CONTROL) != 0;
+    if (!data || OldDataObjectIsFake || !offered || (keys & MK_ALT) || (shift && control) ||
         (!child && index >= 0 && index < panel->Dirs->Count + panel->Files->Count))
+        return true;
+    DWORD requested = shift ? DROPEFFECT_MOVE : control || (offered & DROPEFFECT_COPY)
+        ? DROPEFFECT_COPY : DROPEFFECT_MOVE;
+    if (!(offered & requested))
         return true;
 
     Salamander::Utf16DiskPath directory;
@@ -686,14 +716,16 @@ bool CImpDropTarget::HandleUnicodeDiskDrop(IDataObject* data, POINTL pt, DWORD k
     if (!execute)
     {
         panel->SetDropTarget(child ? index : -1);
-        effect = DROPEFFECT_COPY;
+        effect = requested;
         return true;
     }
     if (ConfirmDrop != NULL && (RButton || (ConfirmDropEnable && *ConfirmDropEnable)))
     {
-        DWORD copy = DROPEFFECT_COPY;
-        DWORD preferred = DROPEFFECT_COPY;
-        if (!ConfirmDrop(copy, preferred, keys) || copy != DROPEFFECT_COPY)
+        DWORD choice = offered;
+        if (!ConfirmDrop(choice, requested, keys))
+            return true;
+        requested = Salamander::UnicodeClipboardTransferEffect(choice);
+        if (!(offered & requested))
             return true;
     }
     STGMEDIUM payload{};
@@ -708,21 +740,46 @@ bool CImpDropTarget::HandleUnicodeDiskDrop(IDataObject* data, POINTL pt, DWORD k
         GlobalUnlock(payload.hGlobal);
     ReleaseStgMedium(&payload);
 
+    // The target removes the source during an optimized move. Tell the
+    // source not to delete anything, and never return MOVE from Drop.
+    const bool moving = requested == DROPEFFECT_MOVE;
+    if (parsed && moving && !ReportUnicodeDropEffect(data, L"Performed DropEffect", DROPEFFECT_NONE))
+    {
+        MessageBoxW(OwnerWindow, L"The drag source did not accept the Windows shell move protocol.",
+                    L"Move dropped items", MB_OK | MB_ICONWARNING);
+        return true;
+    }
     std::size_t completed = 0;
-    if (parsed && Salamander::TryTransferUnicodeClipboardFiles(sources, directory, DROPEFFECT_COPY, completed, error))
-        effect = DROPEFFECT_COPY;
-    if (completed)
+    const bool success = parsed && Salamander::TryTransferUnicodeClipboardFiles(
+        sources, directory, requested, completed, error);
+    if (success && moving)
+        ReportUnicodeDropEffect(data, L"Logical Performed DropEffect", DROPEFFECT_MOVE);
+    if (success && !moving)
+        effect = requested;
+    if (parsed)
     {
         const auto& path = directory.Value();
         std::string legacy;
         if (Salamander::TryMakeExactAnsiPanelPath(std::wstring(path.begin(), path.end()), legacy))
             MainWindow->PostChangeOnPathNotification(legacy.c_str(), FALSE);
     }
-    if (effect == DROPEFFECT_NONE)
+    if (completed && moving)
+    {
+        for (const auto& file : sources)
+        {
+            const auto& source = file.Value();
+            const auto separator = source.find_last_of(u'\\');
+            const std::wstring path(source.begin(), source.begin() + (separator == 2 ? 3 : separator));
+            std::string legacy;
+            if (Salamander::TryMakeExactAnsiPanelPath(path, legacy))
+                MainWindow->PostChangeOnPathNotification(legacy.c_str(), FALSE);
+        }
+    }
+    if (!success)
     {
         wchar_t message[160];
-        swprintf_s(message, L"Copied %zu files (Win32 error %lu).", completed, error);
-        MessageBoxW(OwnerWindow, message, L"Copy dropped files", MB_OK | MB_ICONWARNING);
+        swprintf_s(message, L"Transferred %zu items (Win32 error %lu).", completed, error);
+        MessageBoxW(OwnerWindow, message, L"Transfer dropped items", MB_OK | MB_ICONWARNING);
     }
     return true;
 }

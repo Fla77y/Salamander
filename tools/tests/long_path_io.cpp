@@ -455,8 +455,80 @@ int main()
         return Fail("create the empty Unicode clipboard source");
     CloseHandle(emptyFile);
     if (!Salamander::TryTransferUnicodeClipboardFiles({emptyOwned}, pasteTarget, DROPEFFECT_COPY, copied, error) ||
-        copied != 1 || !DeleteFileW(emptyTargetPath.c_str()) || !DeleteFileW(emptySourceExtended.c_str()))
+        copied != 1 || !DeleteFileW(emptyTargetPath.c_str()))
         return Fail("prove source identity even when copying an empty file");
+    Salamander::Utf16DiskPath crossVolumeTarget;
+    BY_HANDLE_FILE_INFORMATION crossVolumeSourceInfo{};
+    if (!OwnPath(pastePath + L"\\empty_\U0001F600.txt", crossVolumeTarget))
+        return Fail("prepare copy-then-delete destination");
+    HANDLE guardedSource = Salamander::OpenUnicodeClipboardSource(
+        emptySourceExtended, DROPEFFECT_COPY, crossVolumeSourceInfo, error, true);
+    if (guardedSource == INVALID_HANDLE_VALUE)
+        return Fail("hold source against writers during copy-then-delete");
+    const bool movedByCopy = Salamander::MoveUnicodeClipboardFileByCopy(
+        emptyOwned, crossVolumeTarget, crossVolumeSourceInfo, error);
+    CloseHandle(guardedSource);
+    if (!movedByCopy || GetFileAttributesW(emptySourceExtended.c_str()) != INVALID_FILE_ATTRIBUTES ||
+        !DeleteFileW(emptyTargetPath.c_str()))
+        return Fail("verified copy-then-delete preserves an empty file and removes only its source");
+    if (!CopyFileW(result.c_str(), emptySourceExtended.c_str(), TRUE) ||
+        !SetFileAttributesW(emptySourceExtended.c_str(), FILE_ATTRIBUTE_READONLY))
+        return Fail("prepare a source whose deletion must fail");
+    guardedSource = Salamander::OpenUnicodeClipboardSource(
+        emptySourceExtended, DROPEFFECT_COPY, crossVolumeSourceInfo, error, true);
+    if (guardedSource == INVALID_HANDLE_VALUE)
+        return Fail("hold read-only move source");
+    const bool unexpectedlyRemoved = Salamander::MoveUnicodeClipboardFileByCopy(
+        emptyOwned, crossVolumeTarget, crossVolumeSourceInfo, error);
+    CloseHandle(guardedSource);
+    if (unexpectedlyRemoved || error != ERROR_ACCESS_DENIED ||
+        GetFileAttributesW(emptySourceExtended.c_str()) == INVALID_FILE_ATTRIBUTES ||
+        GetFileAttributesW(emptyTargetPath.c_str()) == INVALID_FILE_ATTRIBUTES ||
+        !SetFileAttributesW(emptyTargetPath.c_str(), FILE_ATTRIBUTE_NORMAL) || !DeleteFileW(emptyTargetPath.c_str()) ||
+        !SetFileAttributesW(emptySourceExtended.c_str(), FILE_ATTRIBUTE_NORMAL) || !DeleteFileW(emptySourceExtended.c_str()))
+        return Fail("failed source removal keeps both the original and the verified copy");
+
+    wchar_t otherVolume[MAX_PATH];
+    const DWORD otherLength = GetEnvironmentVariableW(L"OPENSAL_TEST_OTHER_VOLUME", otherVolume, MAX_PATH);
+    if (otherLength)
+    {
+        if (otherLength >= MAX_PATH || otherLength < 3 || otherVolume[1] != L':' || otherVolume[2] != L'\\')
+            return Fail("second-volume fixture must be in a supplied local directory");
+        const std::wstring otherRoot = std::wstring(otherVolume) + L"\\OpenSal-VolumeMove-" +
+            std::to_wstring(GetCurrentProcessId()) + L"-" + std::to_wstring(GetTickCount64());
+        Salamander::Utf16DiskPath otherTarget;
+        std::wstring otherRootExtended;
+        if (!OwnPath(otherRoot, otherTarget) || !Convert(otherRoot, otherRootExtended) ||
+            !CreateDirectoryW(otherRootExtended.c_str(), nullptr) ||
+            !CopyFileW(result.c_str(), emptySourceExtended.c_str(), TRUE))
+            return Fail("create disposable volume-move fixtures");
+        const HANDLE sourceVolumeHandle = CreateFileW(emptySourceExtended.c_str(), FILE_READ_ATTRIBUTES,
+            FILE_SHARE_READ, nullptr, OPEN_EXISTING, 0, nullptr);
+        const HANDLE targetVolumeHandle = CreateFileW(otherRootExtended.c_str(), FILE_READ_ATTRIBUTES,
+            FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+        if (sourceVolumeHandle == INVALID_HANDLE_VALUE || targetVolumeHandle == INVALID_HANDLE_VALUE)
+            return Fail("inspect the actual volumes of the move fixtures");
+        const auto sourceVolumeName = Salamander::UnicodeClipboardVolumeName(sourceVolumeHandle);
+        const auto targetVolumeName = Salamander::UnicodeClipboardVolumeName(targetVolumeHandle);
+        CloseHandle(targetVolumeHandle);
+        CloseHandle(sourceVolumeHandle);
+        if (sourceVolumeName.empty() || targetVolumeName.empty() || sourceVolumeName == targetVolumeName)
+            return Fail("test move requires two distinct volume device paths");
+        if (!Salamander::TryTransferUnicodeClipboardFiles({emptyOwned}, otherTarget, DROPEFFECT_MOVE, copied, error) ||
+            copied != 1 || GetFileAttributesW(emptySourceExtended.c_str()) != INVALID_FILE_ATTRIBUTES)
+            return Fail("clipboard move selects copy-then-delete on a different volume");
+        const auto transferred = otherRootExtended + L"\\empty_\U0001F600.txt";
+        HANDLE moved = CreateFileW(transferred.c_str(), GENERIC_READ, FILE_SHARE_READ, nullptr,
+                                  OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, nullptr);
+        if (moved == INVALID_HANDLE_VALUE)
+            return Fail("open exact cross-volume Unicode destination");
+        const bool contentMatches = ReadFile(moved, actual, sizeof(actual), &read, nullptr) &&
+            read == sizeof(payload) && std::memcmp(actual, payload, sizeof(payload)) == 0;
+        CloseHandle(moved);
+        if (!contentMatches || !DeleteFileW(transferred.c_str()) || !RemoveDirectoryW(otherRootExtended.c_str()))
+            return Fail("verified cross-volume destination and cleanup");
+        std::puts("PASS: clipboard move across distinct physical volume identities");
+    }
 
     const std::wstring cutDirectory = current + L"\\cut_\U0001F600";
     const std::wstring movedDirectory = pastePath + L"\\cut_\U0001F600";
@@ -469,6 +541,11 @@ int main()
     const auto movedChild = movedDirectoryExtended + L"\\content.txt";
     if (!CopyFileW(result.c_str(), cutChild.c_str(), TRUE))
         return Fail("prepare content in the long cut directory");
+    if (!Salamander::TryTransferUnicodeClipboardFiles({cutDirectoryOwned}, pasteTarget, DROPEFFECT_COPY, copied, error) ||
+        copied != 1 || GetFileAttributesW(cutChild.c_str()) == INVALID_FILE_ATTRIBUTES ||
+        GetFileAttributesW(movedChild.c_str()) == INVALID_FILE_ATTRIBUTES ||
+        !DeleteFileW(movedChild.c_str()) || !RemoveDirectoryW(movedDirectoryExtended.c_str()))
+        return Fail("recursively copy a long Unicode directory without modifying its contents");
     if (!Salamander::TryTransferUnicodeClipboardFiles({cutDirectoryOwned}, pasteTarget, DROPEFFECT_MOVE, copied, error) ||
         copied != 1 || GetFileAttributesW(cutDirectoryExtended.c_str()) != INVALID_FILE_ATTRIBUTES ||
         GetFileAttributesW(movedChild.c_str()) == INVALID_FILE_ATTRIBUTES ||

@@ -48,7 +48,7 @@ inline bool TryMakeUnicodeDirectoryWatchPath(const std::wstring& directory,
 // An empty directory is a successful result with zero entries.
 inline bool TryEnumerateLongDirectory(const wchar_t* absoluteDirectory,
                                       std::vector<LongDirectoryEntry>& entries,
-                                      DWORD& error)
+                                      DWORD& error, std::size_t maxEntries = SIZE_MAX)
 {
     entries.clear();
 
@@ -91,6 +91,12 @@ inline bool TryEnumerateLongDirectory(const wchar_t* absoluteDirectory,
         if (wcscmp(data.cFileName, L".") != 0 &&
             wcscmp(data.cFileName, L"..") != 0)
         {
+            if (entries.size() == maxEntries)
+            {
+                entries.clear();
+                error = ERROR_BUFFER_OVERFLOW;
+                return false;
+            }
             LongDirectoryEntry entry;
             entry.name.assign(data.cFileName);
             entry.attributes = data.dwFileAttributes;

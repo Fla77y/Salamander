@@ -4,6 +4,7 @@
 #pragma once
 
 #include "win32_unicode_file_ops.h"
+#include "win32_long_directory.h"
 
 #include <shlobj.h>
 #include <cstring>
@@ -114,11 +115,13 @@ inline bool TryReadUnicodeClipboardFiles(const void* data, std::size_t bytes,
 // Keep the validated file open until the transfer completes. A copy also
 // prevents writes while its size and identity are used by the copy engine.
 inline HANDLE OpenUnicodeClipboardSource(const std::wstring& path, DWORD effect,
-                                         BY_HANDLE_FILE_INFORMATION& info, DWORD& error)
+                                         BY_HANDLE_FILE_INFORMATION& info, DWORD& error,
+                                         bool allowDelete = false, bool allowDirectories = false)
 {
     const bool moving = effect == DROPEFFECT_MOVE;
     HANDLE source = CreateFileW(path.c_str(), moving ? DELETE | FILE_READ_ATTRIBUTES : GENERIC_READ,
-        moving ? FILE_SHARE_READ | FILE_SHARE_WRITE : FILE_SHARE_READ, nullptr, OPEN_EXISTING,
+        moving ? FILE_SHARE_READ | FILE_SHARE_WRITE : FILE_SHARE_READ | (allowDelete ? FILE_SHARE_DELETE : 0),
+        nullptr, OPEN_EXISTING,
         FILE_FLAG_OPEN_REPARSE_POINT | FILE_FLAG_BACKUP_SEMANTICS, nullptr);
     if (source == INVALID_HANDLE_VALUE)
     {
@@ -129,7 +132,7 @@ inline HANDLE OpenUnicodeClipboardSource(const std::wstring& path, DWORD effect,
     if (!GetFileInformationByHandle(source, &info))
         error = GetLastError();
     else if ((info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) ||
-             (!moving && (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)))
+             (!moving && !allowDirectories && (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)))
         error = ERROR_NOT_SUPPORTED;
     else if (!moving && !info.nFileIndexHigh && !info.nFileIndexLow)
         error = ERROR_FILE_INVALID;
@@ -142,11 +145,237 @@ inline HANDLE OpenUnicodeClipboardSource(const std::wstring& path, DWORD effect,
     return INVALID_HANDLE_VALUE;
 }
 
+// Hold a read handle that allows deletion but denies writes throughout this
+// operation. A separate handle pins the exact name before deleting the source.
+inline bool MoveUnicodeClipboardFileByCopy(const Utf16DiskPath& source,
+                                           const Utf16DiskPath& destination,
+                                           const BY_HANDLE_FILE_INFORMATION& expected, DWORD& error)
+{
+    std::wstring path;
+    HANDLE copiedFile = INVALID_HANDLE_VALUE;
+    if (!UnicodeFileOperationsDetail::TryGetExtendedPath(source, path, error) ||
+        !TryCopyUnicodeFileNoOverwrite(source, destination, error, &expected, &copiedFile))
+        return false;
+
+    struct CopyGuard { HANDLE file; ~CopyGuard() { CloseHandle(file); } } copy{copiedFile};
+    const HANDLE original = CreateFileW(path.c_str(), DELETE | FILE_READ_ATTRIBUTES,
+        FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+    if (original == INVALID_HANDLE_VALUE)
+    {
+        error = GetLastError();
+        return false;
+    }
+
+    BY_HANDLE_FILE_INFORMATION actual{};
+    if (!GetFileInformationByHandle(original, &actual))
+        error = GetLastError();
+    else if (!UnicodeFileOperationsDetail::IsSameRegularFile(expected, actual))
+        error = ERROR_FILE_INVALID;
+    else
+    {
+        FILE_DISPOSITION_INFO disposition{TRUE};
+        error = SetFileInformationByHandle(original, FileDispositionInfo, &disposition, sizeof(disposition))
+            ? ERROR_SUCCESS : GetLastError();
+    }
+    CloseHandle(original);
+    return error == ERROR_SUCCESS;
+}
+
 inline bool RenameUnicodeClipboardSource(HANDLE source, const Utf16DiskPath& destination, DWORD& error)
 {
     std::wstring target;
     return UnicodeFileOperationsDetail::TryGetExtendedPath(destination, target, error) &&
         UnicodeFileOperationsDetail::TryRenameOpenFileNoOverwrite(source, target, error);
+}
+
+inline std::wstring UnicodeClipboardVolumeName(HANDLE file)
+{
+    // Native device names distinguish cloned volume serials and remain
+    // available on Windows volumes that have no registered GUID path.
+    const DWORD options = VOLUME_NAME_NT | FILE_NAME_OPENED;
+    const DWORD capacity = GetFinalPathNameByHandleW(file, nullptr, 0, options);
+    if (!capacity || capacity > 32767)
+        return {};
+    std::wstring path(capacity, L'\0');
+    const DWORD length = GetFinalPathNameByHandleW(file, path.data(), capacity, options);
+    if (!length || length >= capacity)
+        return {};
+    path.resize(length);
+    constexpr wchar_t prefix[] = L"\\Device\\";
+    if (path.compare(0, _countof(prefix) - 1, prefix) != 0)
+        return {};
+    const auto end = path.find(L'\\', _countof(prefix) - 1);
+    if (end == std::wstring::npos)
+        return {};
+    path.resize(end);
+    if (path.rfind(L"\\Device\\HarddiskVolume", 0) != 0 && path.rfind(L"\\Device\\Volume{", 0) != 0)
+        return {};
+    return path;
+}
+
+inline bool CopyUnicodeClipboardTree(const Utf16DiskPath& source, const Utf16DiskPath& parent,
+                                     const Utf16DiskPath& destination, ULONGLONG& remainingBytes,
+                                     DWORD& error)
+{
+    struct Entry
+    {
+        std::size_t parent = 0;
+        Utf16FileName name;
+        Utf16DiskPath path;
+        BY_HANDLE_FILE_INFORMATION info{};
+    };
+    struct LockedEntries
+    {
+        std::vector<HANDLE> handles;
+        ~LockedEntries() { for (HANDLE handle : handles) CloseHandle(handle); }
+    } locked;
+    constexpr std::size_t maxEntries = 1024;
+    locked.handles.reserve(maxEntries);
+    std::vector<Entry> tree(1);
+    tree.front().path = source;
+    for (std::size_t index = 0; index < tree.size(); ++index)
+    {
+        auto& entry = tree[index];
+        std::wstring extended;
+        if (!UnicodeFileOperationsDetail::TryGetExtendedPath(entry.path, extended, error))
+            return false;
+        const HANDLE handle = OpenUnicodeClipboardSource(extended, DROPEFFECT_COPY, entry.info, error, false, true);
+        if (handle == INVALID_HANDLE_VALUE)
+            return false;
+        locked.handles.push_back(handle);
+        if (!(entry.info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
+        {
+            const ULONGLONG size = (static_cast<ULONGLONG>(entry.info.nFileSizeHigh) << 32) | entry.info.nFileSizeLow;
+            if (size > remainingBytes)
+            {
+                error = ERROR_FILE_TOO_LARGE;
+                return false;
+            }
+            remainingBytes -= size;
+            continue;
+        }
+
+        const auto& value = entry.path.Value();
+        const std::wstring name(value.begin(), value.end());
+        std::vector<LongDirectoryEntry> children;
+        if (!TryEnumerateLongDirectory(name.c_str(), children, error, maxEntries - tree.size()))
+            return false;
+        for (const auto& child : children)
+        {
+            Entry item;
+            item.parent = index;
+            Utf16PathError pathError;
+            if (!Utf16FileName::TryCreate(std::u16string(child.name.begin(), child.name.end()), item.name, pathError) ||
+                !tree[index].path.TryAppend(item.name, item.path, pathError))
+            {
+                error = pathError == Utf16PathError::PathTooLong ? ERROR_FILENAME_EXCED_RANGE : ERROR_INVALID_NAME;
+                return false;
+            }
+            tree.push_back(std::move(item));
+        }
+    }
+
+    static std::atomic<unsigned long long> nextStage{0};
+    wchar_t stageName[64];
+    swprintf_s(stageName, L".opensal-tree-%08lX-%016llX-%016llX", GetCurrentProcessId(),
+               static_cast<unsigned long long>(GetTickCount64()), ++nextStage);
+    Utf16FileName stageComponent;
+    Utf16PathError pathError;
+    std::vector<Utf16DiskPath> staged(tree.size());
+    if (!Utf16FileName::TryCreate(std::u16string(stageName, stageName + wcslen(stageName)), stageComponent, pathError) ||
+        !parent.TryAppend(stageComponent, staged.front(), pathError))
+    {
+        error = ERROR_FILENAME_EXCED_RANGE;
+        return false;
+    }
+    std::wstring stagePath, finalPath;
+    if (!UnicodeFileOperationsDetail::TryGetExtendedPath(staged.front(), stagePath, error) ||
+        !UnicodeFileOperationsDetail::TryGetExtendedPath(destination, finalPath, error))
+        return false;
+    for (std::size_t index = 1; index < tree.size(); ++index)
+    {
+        if (!staged[tree[index].parent].TryAppend(tree[index].name, staged[index], pathError))
+        {
+            error = ERROR_FILENAME_EXCED_RANGE;
+            return false;
+        }
+    }
+    const auto& original = source.Value();
+    const auto& target = destination.Value();
+    const std::wstring originalName(original.begin(), original.end());
+    const std::wstring targetName(target.begin(), target.end());
+    if (target.size() > original.size() && target[original.size()] == u'\\' &&
+        CompareStringOrdinal(targetName.c_str(), static_cast<int>(original.size()),
+                             originalName.c_str(), static_cast<int>(original.size()), TRUE) == CSTR_EQUAL)
+    {
+        error = ERROR_INVALID_PARAMETER;
+        return false;
+    }
+    if (!CreateDirectoryW(stagePath.c_str(), nullptr))
+    {
+        error = GetLastError();
+        return false;
+    }
+    const HANDLE stage = CreateFileW(stagePath.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ | FILE_SHARE_WRITE,
+        nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+    if (stage == INVALID_HANDLE_VALUE)
+    {
+        error = GetLastError();
+        return false;
+    }
+    struct StageGuard
+    {
+        HANDLE handle;
+        ~StageGuard() { if (handle != INVALID_HANDLE_VALUE) CloseHandle(handle); }
+    } stageGuard{stage};
+    BY_HANDLE_FILE_INFORMATION stageInfo{};
+    if (!GetFileInformationByHandle(stage, &stageInfo) ||
+        (stageInfo.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != FILE_ATTRIBUTE_DIRECTORY)
+    {
+        error = ERROR_DIRECTORY;
+        return false;
+    }
+    for (std::size_t index = 1; index < tree.size(); ++index)
+    {
+        const auto& entry = tree[index];
+        if (entry.info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+        {
+            std::wstring path;
+            if (!UnicodeFileOperationsDetail::TryGetExtendedPath(staged[index], path, error))
+                return false;
+            if (!CreateDirectoryW(path.c_str(), nullptr))
+            {
+                error = GetLastError();
+                return false;
+            }
+        }
+        else if (!TryCopyUnicodeFileNoOverwrite(entry.path, staged[index], error, &entry.info))
+            return false;
+    }
+    CloseHandle(stageGuard.handle);
+    stageGuard.handle = CreateFileW(stagePath.c_str(), DELETE | FILE_READ_ATTRIBUTES, FILE_SHARE_READ,
+        nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+    if (stageGuard.handle == INVALID_HANDLE_VALUE)
+    {
+        error = GetLastError();
+        return false;
+    }
+    BY_HANDLE_FILE_INFORMATION published{};
+    if (!GetFileInformationByHandle(stageGuard.handle, &published))
+    {
+        error = GetLastError();
+        return false;
+    }
+    if ((published.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != FILE_ATTRIBUTE_DIRECTORY ||
+        published.dwVolumeSerialNumber != stageInfo.dwVolumeSerialNumber ||
+        published.nFileIndexHigh != stageInfo.nFileIndexHigh || published.nFileIndexLow != stageInfo.nFileIndexLow ||
+        (!published.nFileIndexHigh && !published.nFileIndexLow))
+    {
+        error = ERROR_FILE_INVALID;
+        return false;
+    }
+    // Never clean an unverified subtree after a publication failure.
+    return UnicodeFileOperationsDetail::TryRenameOpenFileNoOverwrite(stageGuard.handle, finalPath, error);
 }
 
 inline bool TryTransferUnicodeClipboardFiles(const std::vector<Utf16DiskPath>& files,
@@ -163,6 +392,7 @@ inline bool TryTransferUnicodeClipboardFiles(const std::vector<Utf16DiskPath>& f
         return false;
     }
     DWORD destinationVolume = 0;
+    std::wstring destinationVolumeName;
     if (effect == DROPEFFECT_MOVE)
     {
         std::wstring extendedDirectory;
@@ -179,6 +409,8 @@ inline bool TryTransferUnicodeClipboardFiles(const std::vector<Utf16DiskPath>& f
         BY_HANDLE_FILE_INFORMATION info{};
         const BOOL inspected = GetFileInformationByHandle(target, &info);
         error = inspected ? ERROR_DIRECTORY : GetLastError();
+        if (inspected)
+            destinationVolumeName = UnicodeClipboardVolumeName(target);
         CloseHandle(target);
         if (!inspected || !(info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY))
             return false;
@@ -203,6 +435,7 @@ inline bool TryTransferUnicodeClipboardFiles(const std::vector<Utf16DiskPath>& f
         std::wstring name;
         Utf16DiskPath path;
         BY_HANDLE_FILE_INFORMATION sourceInfo{};
+        bool copyThenDelete = false;
     };
     std::vector<Destination> destinations;
     destinations.reserve(files.size());
@@ -212,11 +445,35 @@ inline bool TryTransferUnicodeClipboardFiles(const std::vector<Utf16DiskPath>& f
         if (!UnicodeFileOperationsDetail::TryGetExtendedPath(file, source, error))
             return false;
         Destination target;
-        const HANDLE handle = OpenUnicodeClipboardSource(source, effect, target.sourceInfo, error);
+        const HANDLE handle = OpenUnicodeClipboardSource(source, effect, target.sourceInfo, error, false, true);
         if (handle == INVALID_HANDLE_VALUE)
             return false;
         sources.handles.push_back(handle);
-        if (effect == DROPEFFECT_COPY)
+        if (effect == DROPEFFECT_MOVE)
+        {
+            const auto sourceVolumeName = UnicodeClipboardVolumeName(handle);
+            target.copyThenDelete = target.sourceInfo.dwVolumeSerialNumber != destinationVolume ||
+                (!sourceVolumeName.empty() && !destinationVolumeName.empty() &&
+                 sourceVolumeName != destinationVolumeName);
+        }
+        if (target.copyThenDelete)
+        {
+            BY_HANDLE_FILE_INFORMATION readableInfo{};
+            const HANDLE readable = OpenUnicodeClipboardSource(source, DROPEFFECT_COPY, readableInfo, error, true);
+            if (readable == INVALID_HANDLE_VALUE)
+                return false;
+            const bool sameFile = UnicodeFileOperationsDetail::IsSameRegularFile(target.sourceInfo, readableInfo);
+            CloseHandle(handle);
+            sources.handles.back() = readable;
+            if (!sameFile)
+            {
+                error = ERROR_FILE_INVALID;
+                return false;
+            }
+            target.sourceInfo = readableInfo;
+        }
+        if (target.copyThenDelete ||
+            (effect == DROPEFFECT_COPY && !(target.sourceInfo.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)))
         {
             const ULONGLONG bytes = (static_cast<ULONGLONG>(target.sourceInfo.nFileSizeHigh) << 32) |
                                     target.sourceInfo.nFileSizeLow;
@@ -226,11 +483,6 @@ inline bool TryTransferUnicodeClipboardFiles(const std::vector<Utf16DiskPath>& f
                 return false;
             }
             totalBytes += bytes;
-        }
-        else if (target.sourceInfo.dwVolumeSerialNumber != destinationVolume)
-        {
-            error = ERROR_NOT_SAME_DEVICE;
-            return false;
         }
 
         const auto& absolute = file.Value();
@@ -266,12 +518,17 @@ inline bool TryTransferUnicodeClipboardFiles(const std::vector<Utf16DiskPath>& f
         destinations.push_back(std::move(target));
     }
 
+    ULONGLONG remainingBytes = maxSynchronousBytes - totalBytes;
     for (std::size_t index = 0; index < files.size(); ++index)
     {
-        const bool success = effect == DROPEFFECT_MOVE
-            ? RenameUnicodeClipboardSource(sources.handles[index], destinations[index].path, error)
-            : TryCopyUnicodeFileNoOverwrite(files[index], destinations[index].path, error,
-                                           &destinations[index].sourceInfo);
+        const auto& destination = destinations[index];
+        const bool success = effect == DROPEFFECT_COPY
+            ? (destination.sourceInfo.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY)
+                ? CopyUnicodeClipboardTree(files[index], directory, destination.path, remainingBytes, error)
+                : TryCopyUnicodeFileNoOverwrite(files[index], destination.path, error, &destination.sourceInfo)
+            : destination.copyThenDelete
+                ? MoveUnicodeClipboardFileByCopy(files[index], destination.path, destination.sourceInfo, error)
+                : RenameUnicodeClipboardSource(sources.handles[index], destination.path, error);
         if (!success)
         {
             // Each rename is atomic. Undo earlier moves if a later one fails.
@@ -281,7 +538,8 @@ inline bool TryTransferUnicodeClipboardFiles(const std::vector<Utf16DiskPath>& f
                 for (std::size_t moved = index; moved > 0; --moved)
                 {
                     DWORD rollbackError;
-                    if (RenameUnicodeClipboardSource(sources.handles[moved - 1], files[moved - 1], rollbackError))
+                    if (!destinations[moved - 1].copyThenDelete &&
+                        RenameUnicodeClipboardSource(sources.handles[moved - 1], files[moved - 1], rollbackError))
                         --completed;
                 }
             }

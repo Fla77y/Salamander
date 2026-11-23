@@ -524,7 +524,7 @@ reparse loops and permissions before enabling operations on long paths.
 ## Phase 4: Shell and plug-in compatibility
 
 `Ctrl+V` into a long disk-panel path accepts a Unicode `CF_HDROP`
-copy of up to 16 regular files and 16 MiB total using the native copy path.
+copy of up to 16 entries and 16 MiB total using the native copy path.
 The operation checks all destination names before copying, keeps the source
 files open, and compares their identities to the handles opened by Win32's
 copy engine. It verifies the temporary copy again before renaming it by
@@ -537,17 +537,24 @@ reverse order without overwriting any new file at the original location.
 The reported count reflects items still at the destination after rollback.
 Same-volume cut also accepts ordinary directories. The Unicode disk
 selection publishes a wide file-drop list for the clipboard and for copy
-drags. Long drop destinations use that format for native regular-file copies.
-Cross-volume move, recursive clipboard copy, reparse points, link creation,
-and virtual clipboard items still require separate integration.
+drags. Long drop destinations use that format for native copies. They
+accept a move when the source accepts the Shell's optimized-move
+notification. Recursive Unicode copies stage each directory tree before
+publishing it, with a limit of 1,024 entries per tree. A failed copy can
+leave an `.opensal-tree-*` staging directory.
+Cross-volume moves of regular files publish and lock the verified copy
+before deleting the verified source. If the source cannot be removed, both
+copies are retained. Cross-volume directory moves, reparse points, link
+creation, and virtual clipboard items still require separate integration.
 
 Fixed-drive recycling checks the source with extended-length Win32 APIs
 and requires the Windows shell item to resolve to the exact original path.
 Shell support for long source paths depends on the Windows version.
 
-Plugins may resolve the optional host exports
-`SalamanderGetDiskPanelPathW` and `SalamanderChangeDiskPanelPathW` through
-their SDK typedefs. Legacy plugin virtual tables are unchanged.
+Plugins may resolve the optional host exports `SalamanderGetDiskPanelPathW`,
+`SalamanderChangeDiskPanelPathW` and `SalamanderGetDiskPanelItemPathW`
+through their SDK typedefs. The item export uses the original UTF-16 name
+of the specified disk row. Legacy plugin virtual tables are unchanged.
 Internal change notifications retain the full path when refreshing disk
 panels. The legacy plug-in notification interface still receives short paths.
 

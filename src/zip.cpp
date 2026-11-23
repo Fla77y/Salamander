@@ -962,19 +962,52 @@ CSalamanderGeneral::GetPanel(int panel)
     return MainWindow->GetPanel(panel);
 }
 
+static DWORD CopyDiskPanelPathW(const std::wstring& path, wchar_t* buffer, DWORD capacity)
+{
+    if (path.empty())
+        return 0;
+    const DWORD required = static_cast<DWORD>(path.size() + 1);
+    if (buffer && capacity >= required)
+        memcpy(buffer, path.c_str(), required * sizeof(wchar_t));
+    return required;
+}
+
 extern "C" __declspec(dllexport) DWORD __cdecl
 SalamanderGetDiskPanelPathW(int panel, wchar_t* buffer, DWORD capacity)
 {
     if (MainWindow == nullptr || MainThreadID != GetCurrentThreadId())
         return 0;
     CFilesWindow* files = MainWindow->GetPanel(panel);
-    if (!files || !files->Is(ptDisk) || files->GetDiskPathW().empty())
+    if (!files || !files->Is(ptDisk))
         return 0;
+    return CopyDiskPanelPathW(files->GetDiskPathW(), buffer, capacity);
+}
+
+extern "C" __declspec(dllexport) DWORD __cdecl
+SalamanderGetDiskPanelItemPathW(int panel, int index, wchar_t* buffer, DWORD capacity)
+{
+    if (!MainWindow || MainThreadID != GetCurrentThreadId())
+        return 0;
+    CFilesWindow* files = MainWindow->GetPanel(panel);
+    if (!files || !files->Is(ptDisk))
+        return 0;
+    if (index == -1)
+        index = files->GetCaretIndex();
+    const int directories = files->Dirs->Count;
+    if (index < 0 || index >= directories + files->Files->Count)
+        return 0;
+    const CFileData& entry = index < directories ? files->Dirs->At(index) : files->Files->At(index - directories);
     const auto& path = files->GetDiskPathW();
-    const DWORD required = static_cast<DWORD>(path.size() + 1);
-    if (buffer && capacity >= required)
-        memcpy(buffer, path.c_str(), required * sizeof(wchar_t));
-    return required;
+    std::wstring name;
+    Salamander::Utf16DiskPath directory, item;
+    Salamander::Utf16FileName component;
+    Salamander::Utf16PathError error;
+    if (!files->UnicodeDiskNames.TryGetRow(entry.Name, name) ||
+        !Salamander::Utf16DiskPath::TryCreateAbsolute(std::u16string(path.begin(), path.end()), directory, error) ||
+        !Salamander::Utf16FileName::TryCreate(std::u16string(name.begin(), name.end()), component, error) ||
+        !directory.TryAppend(component, item, error))
+        return 0;
+    return CopyDiskPanelPathW(std::wstring(item.Value().begin(), item.Value().end()), buffer, capacity);
 }
 
 extern "C" __declspec(dllexport) BOOL __cdecl

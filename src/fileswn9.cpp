@@ -297,7 +297,7 @@ BOOL CFilesWindow::ClipboardPaste(BOOL onlyLinks, BOOL onlyTest, const char* pas
                     std::u16string(wideTarget.begin(), wideTarget.end()), target, pathError))
                 success = Salamander::TryTransferUnicodeClipboardFiles(files, target, transferEffect, completed, error);
         }
-        if (completed)
+        if (gotFiles)
             MainWindow->PostChangeOnPathNotification(targetPath.c_str(), FALSE);
         if (completed && transferEffect == DROPEFFECT_MOVE)
         {
@@ -326,11 +326,11 @@ BOOL CFilesWindow::ClipboardPaste(BOOL onlyLinks, BOOL onlyTest, const char* pas
         }
         if (!success)
         {
-            wchar_t message[360];
-            swprintf_s(message, L"Transferred %zu files (Win32 error %lu). "
-                       L"Long-path paste can copy up to 16 regular files (16 MiB total) or move "
-                       L"up to 16 files or ordinary directories within the same volume. "
-                       L"Existing items are not replaced.",
+            wchar_t message[420];
+            swprintf_s(message, L"Transferred %zu items (Win32 error %lu). "
+                       L"Copying is limited to 16 MiB total and 1,024 entries per directory tree. "
+                       L"Cross-volume moves support regular files. A failed move can leave a copy. "
+                       L"An interrupted directory copy can leave a .opensal-tree staging folder.",
                        completed, error);
             MessageBoxW(HWindow, message, L"Paste from clipboard", MB_OK | MB_ICONWARNING);
         }

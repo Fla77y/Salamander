@@ -236,7 +236,13 @@ function Build-CompiledHelp {
         $compiledFile = Join-Path $project.DirectoryName $compiledName
         Remove-Item -LiteralPath $compiledFile -Force -ErrorAction SilentlyContinue
         Write-Host "  $($project.FullName)"
-        $process = Start-Process -FilePath $HhcExe -ArgumentList @($project.Name) -WorkingDirectory $project.DirectoryName -Wait -PassThru -NoNewWindow
+        $process = Start-Process -FilePath $HhcExe -ArgumentList @($project.Name) -WorkingDirectory $project.DirectoryName -PassThru -NoNewWindow
+        # Wait for the compiler itself. Start-Process -Wait also waits for
+        # descendant processes, which can outlive a finished help build.
+        if (-not $process.WaitForExit(120000)) {
+            if (-not $process.HasExited) { $process.Kill() }
+            throw "HTML Help Compiler timed out: $($project.FullName)"
+        }
         # hhc.exe can return 1 even on success. Validate the actual new output.
         if (-not (Test-Path -LiteralPath $compiledFile -PathType Leaf) -or
             (Get-Item -LiteralPath $compiledFile).Length -lt 1024) {

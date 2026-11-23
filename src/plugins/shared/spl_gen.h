@@ -260,6 +260,12 @@ typedef DWORD(__cdecl* FSalamanderGetDiskPanelPathW)(int panel, wchar_t* buffer,
 // fails or if the host cannot represent the path in its current panel.
 typedef BOOL(__cdecl* FSalamanderChangeDiskPanelPathW)(int panel, const wchar_t* path);
 
+// Optional host export "SalamanderGetDiskPanelItemPathW". The row index is
+// the input index for GetPanelItem (directories first, then files). Index
+// -1 selects the focused row. The synthetic parent row has no item path.
+// Call on the main thread. Return and buffer rules match GetDiskPanelPathW.
+typedef DWORD(__cdecl* FSalamanderGetDiskPanelItemPathW)(int panel, int index, wchar_t* buffer, DWORD capacity);
+
 // Path types
 #define PATH_TYPE_WINDOWS 1 // Windows path ("c:\path" or UNC path)
 #define PATH_TYPE_ARCHIVE 2 // Path inside an archive (the archive lies on a Windows path)

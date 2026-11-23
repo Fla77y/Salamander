@@ -23,6 +23,7 @@ param(
     [switch]$LongNavigationHistoryOnly,
     [switch]$LongClipboardMoveOnly,
     [switch]$LongRecycleOnly,
+    [switch]$LongRecycleDirectoryOnly,
     [switch]$ShortUnicodeOnly,
     [switch]$ShortUnicodeRenameOnly,
     [switch]$ShortUnicodeRecycleOnly,
@@ -63,7 +64,8 @@ if ([Threading.Thread]::CurrentThread.GetApartmentState() -ne 'STA') {
 if (-not (Test-Path -LiteralPath $SalamanderExe -PathType Leaf)) {
     throw "Salamander executable missing: $SalamanderExe"
 }
-if (($LegacyFindScenario -or $LongNavigationHistoryOnly -or $LongClipboardMoveOnly -or $LongRecycleOnly) -and -not $IsolatedConfiguration) {
+if (($LegacyFindScenario -or $LongNavigationHistoryOnly -or $LongClipboardMoveOnly -or
+     $LongRecycleOnly -or $LongRecycleDirectoryOnly) -and -not $IsolatedConfiguration) {
     throw 'This GUI test requires -IsolatedConfiguration.'
 }
 if (($LegacyFindScenario -eq 'EncryptedFixture') -ne [bool]$LegacyFindEncryptedFixture) {
@@ -2171,7 +2173,7 @@ function Initialize-IsolatedGuiConfiguration {
     $languageKey = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($testConfigurationKey + '\Config0\Configuration')
     try {
         $languageKey.SetValue('Language', 'english.slg', [Microsoft.Win32.RegistryValueKind]::String)
-        if ($LongRecycleOnly) {
+        if ($LongRecycleOnly -or $LongRecycleDirectoryOnly) {
             $languageKey.SetValue('Use Recycle Bin', 1, [Microsoft.Win32.RegistryValueKind]::DWord)
         }
     }
@@ -2198,7 +2200,8 @@ function Wait-Until {
 function Find-VerifiedRecycledFixtureItem {
     param(
         [Parameter(Mandatory)][object]$RecycleFolder,
-        [Parameter(Mandatory)][string]$OriginalFullPath
+        [Parameter(Mandatory)][string]$OriginalFullPath,
+        [switch]$Directory
     )
 
     $expectedDirectory = [IO.Path]::GetDirectoryName($OriginalFullPath).TrimEnd('\')
@@ -2209,7 +2212,7 @@ function Find-VerifiedRecycledFixtureItem {
     $match = $null
     for ($index = 0; $index -lt $items.Count; $index++) {
         $item = $items.Item($index)
-        if ($null -eq $item -or [bool]$item.IsFolder -or
+        if ($null -eq $item -or [bool]$item.IsFolder -ne [bool]$Directory -or
             -not [string]::Equals([string]$item.Name, $expectedName,
                 [StringComparison]::Ordinal)) { continue }
         $deletedFrom = [string]$item.ExtendedProperty('System.Recycle.DeletedFrom')
@@ -4130,7 +4133,7 @@ try {
         $passed = $true
         return
     }
-    $backgroundCommandsOnly = $TemporaryDirectoryDeletionOnly -or $LargeUnicodeCopyOnly -or $UnicodeFindOnly -or $LongNavigationHistoryOnly -or $LongClipboardMoveOnly -or $LongRecycleOnly
+    $backgroundCommandsOnly = $TemporaryDirectoryDeletionOnly -or $LargeUnicodeCopyOnly -or $UnicodeFindOnly -or $LongNavigationHistoryOnly -or $LongClipboardMoveOnly -or $LongRecycleOnly -or $LongRecycleDirectoryOnly
     if (-not $backgroundCommandsOnly) { Focus-TestProcess }
 
     # First validate the GUI driver against a normal short path. If this
@@ -4143,19 +4146,32 @@ try {
     # Go-ToPath already verified the observed panel path. A duplicate
     # WM_COMMAND 711 adds no coverage and can race with GUI processing.
     Write-Host 'PASS: GUI driver can navigate a normal short directory'
-    if ($LongRecycleOnly) {
+    if ($LongRecycleOnly -or $LongRecycleDirectoryOnly) {
+        $recyclePath = $sourceFile
+        $recycleName = $utfName
+        $contentPath = $sourceFile
+        $expectedPrompt = 'Recycle Unicode file'
+        if ($LongRecycleDirectoryOnly) {
+            $recycleName = 'recycle-tree-東京-😀'
+            $recyclePath = Join-Path $deep $recycleName
+            $nestedFolder = Join-Path $recyclePath 'verified-child'
+            [void][IO.Directory]::CreateDirectory($nestedFolder)
+            $contentPath = Join-Path $nestedFolder 'payload.bin'
+            [IO.File]::WriteAllBytes($contentPath, $payload)
+            $expectedPrompt = 'Unicode directory deletion'
+        }
         Go-ToPath $deep -NoForeground
-        Focus-DirectoryRow -Name $utfName -VerifiedBackground
-        Assert-True ((Read-FocusedFullname -AllowVerifiedBackground) -ceq $sourceFile) 'Exact disposable long file before F8'
+        Focus-DirectoryRow -Name $recycleName -VerifiedBackground
+        Assert-True ((Read-FocusedFullname -AllowVerifiedBackground) -ceq $recyclePath) 'Exact disposable long item before F8'
         [SalamanderGuiNative]::PostVerifiedDirectoryDeleteCommand($mainWindowHandle, [uint32]$process.Id)
         $prompt = @{ Window = [IntPtr]::Zero }
         Wait-Until {
             $dialog = Get-TestDialog
             if ($dialog -eq 'Salamander main window is disabled by an unidentified dialog') { return $false }
-            if ($dialog -and $dialog -notmatch 'Recycle Unicode file') {
+            if ($dialog -and $dialog -notmatch $expectedPrompt) {
                 throw "Unexpected dialog for long recycle: $dialog"
             }
-            if ($dialog -and $dialog.Contains($utfName)) {
+            if ($dialog -and $dialog.Contains($recycleName) -and $dialog -match 'Recycle Bin\?') {
                 $prompt.Window = [SalamanderGuiNative]::FindOwnedDialogControl([uint32]$process.Id, 1, $null)
             }
             $prompt.Window -ne [IntPtr]::Zero
@@ -4164,21 +4180,21 @@ try {
         Wait-Until {
             $dialog = Get-TestDialog
             if ($dialog -eq 'Salamander main window is disabled by an unidentified dialog') { return $false }
-            if ($dialog -and ($dialog -notmatch 'Recycle Unicode file' -or $dialog -match 'could not complete')) {
+            if ($dialog -and ($dialog -notmatch $expectedPrompt -or $dialog -match 'could not|failed')) {
                 throw "Windows refused the long recycle operation or requires another confirmation: $dialog"
             }
-            -not [IO.File]::Exists($sourceFile)
+            -not [IO.File]::Exists($recyclePath) -and -not [IO.Directory]::Exists($recyclePath)
         } 'Original long Unicode entry disappears'
         $shell = New-Object -ComObject Shell.Application
         $bin = $shell.NameSpace(10)
         if ($null -eq $bin) { throw 'Recycle Bin shell namespace unavailable' }
         $match = @{ Item = $null }
         Wait-Until {
-            $match.Item = Find-VerifiedRecycledFixtureItem -RecycleFolder $bin -OriginalFullPath $sourceFile
+            $match.Item = Find-VerifiedRecycledFixtureItem -RecycleFolder $bin -OriginalFullPath $recyclePath -Directory:$LongRecycleDirectoryOnly
             $null -ne $match.Item
         } 'Recycle Bin contains the exact file and original long directory'
-        Restore-VerifiedRecycledFixtureItem -Item $match.Item -OriginalFullPath $sourceFile
-        Wait-Until { Test-Content $sourceFile } 'Restored long Unicode file has identical bytes'
+        Restore-VerifiedRecycledFixtureItem -Item $match.Item -OriginalFullPath $recyclePath
+        Wait-Until { Test-Content $contentPath } 'Restored long Unicode item has identical bytes'
         Write-Host 'PASS: long Unicode Recycle Bin round trip'
         $passed = $true
         return
@@ -4201,6 +4217,22 @@ try {
                 -not [IO.File]::Exists($cutSources[0]) -and -not [IO.File]::Exists($cutSources[1])
         } 'CF_HDROP moves both Unicode files into a long path without changing their bytes'
         Write-Host 'PASS: multi-file Unicode cut and paste into a long directory'
+
+        $directoryName = 'copy-tree-東京-😀'
+        $relativeContent = Join-Path 'nested-😀' 'payload.bin'
+        $copySource = Join-Path $destination $directoryName
+        $copyContent = Join-Path $copySource $relativeContent
+        $copiedContent = Join-Path (Join-Path $deep $directoryName) $relativeContent
+        [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($copyContent))
+        [IO.File]::WriteAllBytes($copyContent, $payload)
+        $script:clipboardOwner.SetFileDrop($copySource)
+        Invoke-SalamanderCommand -CommandId 775
+        Wait-Until {
+            $dialog = Get-TestDialog
+            if ($dialog) { throw "Recursive Unicode clipboard copy displayed an error: $dialog" }
+            (Test-Content $copiedContent) -and (Test-Content $copyContent)
+        } 'CF_HDROP copies the nested Unicode directory tree and preserves the source'
+        Write-Host 'PASS: recursive Unicode directory copy into a long path'
 
         # The application must also publish an exact UTF-16 CF_HDROP.
         # Navigate back by command so the cut payload remains intact.

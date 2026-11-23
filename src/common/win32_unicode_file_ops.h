@@ -99,7 +99,8 @@ inline bool TryRenameOpenFileNoOverwrite(HANDLE file, const std::wstring& target
 }
 
 inline bool PublishVerifiedCopy(const std::wstring& temporary, const std::wstring& destination,
-                                const BY_HANDLE_FILE_INFORMATION& expected, DWORD& error)
+                                const BY_HANDLE_FILE_INFORMATION& expected, DWORD& error,
+                                HANDLE* retainDestination = nullptr)
 {
     const HANDLE staged = CreateFileW(temporary.c_str(), DELETE | FILE_READ_ATTRIBUTES | FILE_WRITE_ATTRIBUTES,
         FILE_SHARE_READ, nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
@@ -108,7 +109,7 @@ inline bool PublishVerifiedCopy(const std::wstring& temporary, const std::wstrin
         error = GetLastError();
         return false;
     }
-    struct HandleGuard { HANDLE handle; ~HandleGuard() { CloseHandle(handle); } } guard{staged};
+    struct HandleGuard { HANDLE handle; ~HandleGuard() { if (handle != INVALID_HANDLE_VALUE) CloseHandle(handle); } } guard{staged};
     BY_HANDLE_FILE_INFORMATION actual{};
     if (!GetFileInformationByHandle(staged, &actual))
     {
@@ -122,7 +123,14 @@ inline bool PublishVerifiedCopy(const std::wstring& temporary, const std::wstrin
     }
 
     if (TryRenameOpenFileNoOverwrite(staged, destination, error))
+    {
+        if (retainDestination != nullptr)
+        {
+            *retainDestination = staged;
+            guard.handle = INVALID_HANDLE_VALUE;
+        }
         return true;
+    }
 
     // Delete only the verified staging object and retain the rename error.
     if (actual.dwFileAttributes & FILE_ATTRIBUTE_READONLY)
@@ -144,8 +152,18 @@ inline bool PublishVerifiedCopy(const std::wstring& temporary, const std::wstrin
 inline bool TryCopyUnicodeFileNoOverwrite(const Utf16DiskPath& source,
                                           const Utf16DiskPath& destination,
                                           DWORD& error,
-                                          const BY_HANDLE_FILE_INFORMATION* expectedSource = nullptr)
+                                          const BY_HANDLE_FILE_INFORMATION* expectedSource = nullptr,
+                                          HANDLE* retainDestination = nullptr)
 {
+    if (retainDestination != nullptr)
+    {
+        *retainDestination = INVALID_HANDLE_VALUE;
+        if (expectedSource == nullptr)
+        {
+            error = ERROR_INVALID_PARAMETER;
+            return false;
+        }
+    }
     std::wstring sourcePath, destinationPath;
     if (!UnicodeFileOperationsDetail::TryGetExtendedPath(source, sourcePath, error) ||
         !UnicodeFileOperationsDetail::TryGetExtendedPath(destination, destinationPath, error))
@@ -210,7 +228,8 @@ inline bool TryCopyUnicodeFileNoOverwrite(const Utf16DiskPath& source,
                 error = ERROR_FILE_INVALID;
                 return false;
             }
-            return UnicodeFileOperationsDetail::PublishVerifiedCopy(temporary, destinationPath, check.staging, error);
+            return UnicodeFileOperationsDetail::PublishVerifiedCopy(temporary, destinationPath, check.staging,
+                                                                     error, retainDestination);
         }
 
         if (MoveFileExW(temporary.c_str(), destinationPath.c_str(), 0))
