@@ -542,12 +542,64 @@ die vollständige Batch-Zielkollisionsprüfung.
 Produkt-Commit `3526dfc7d44b72cb2da5fd3932a4df24a7dcf503`,
 Test-Commit `e9cc1610c72861313495026cc401fa5a8f82cd8e`.
 
-**Noch offen:** große asynchrone Cross-Volume-F6-Moves,
-unbegrenzte Mehrfachauswahlen, große Verzeichnisbäume,
-kompletter Progress-/Abbruch-/Masken-/ACL-/ADS-Vertrag,
-echte GUI-/MSVC-Ausführung der neuen Änderungen. Alle
-nicht abgedeckten Fälle bleiben fail-closed und UP-04
-**TEILBELEGT**.
+**Seither erweitert:** Für größere reguläre Unicode-Einzeldateien und
+Mehrfachauswahlen ist der bestehende Hintergrund-Worker jetzt
+verdrahtet (siehe folgenden Nachweisblock). Die vorherige
+16-MiB-Grenze gilt weiterhin für synchrone Transfers und die
+Verzeichnisbaum-Kopierhilfe, nicht für die neuen Workerpfade.
+**Offen bleiben** große Verzeichnisbäume, alle erweiterten
+Masken-/Advanced-, ACL-/EFS-/ADS-/UNC-Grenzfälle und die
+Windows-Build-/GUI-Ausführung. UP-04 bleibt TEILBELEGT.
+
+**UP-04 – neue asynchrone UTF-16-Kernimplementierung (24.11.2026;
+NICHT UNTER WINDOWS VERIFIZIERT):**
+Der bereits vorhandene Salamander-Copy-Worker (`ocCopyFile`,
+`DoCopyFile`, `StartProgressDialog`) wird nun für
+**laufwerksübergreifendes F6 bei großen regulären Dateien**
+weiterverwendet. Bei `ERROR_NOT_SAME_DEVICE` bleibt der
+Same-Volume-Rename unverändert, während Dateien über 16 MiB
+die Hintergrundkopie mit vorhandenem Fortschritt, Pause,
+Abbruch und Fehlerdialog verwenden. Für F6 markiert
+`OPFL_UTF16_MOVE_AFTER_COPY` einen expliziten Copy-then-Delete-
+Vertrag; der Worker prüft `!Error`, `!skipped`,
+`!CancelWorker`, den Pause-/Resume-Zustand und die
+tatsächlich geöffneten Unicode-Dateiidentitäten von **Quelle
+und Ziel**. `TryCompleteUnicodeMoveAfterCopy` öffnet die
+Zieldatei erneut, prüft die bekannte Volume-/File-ID und
+Dateigröße und entfernt die Originalquelle ausschließlich
+über `TryDeleteUnicodeFileWithIdentity`. Misslingt die
+Quellentfernung, verbleibt die Kopie und der Benutzer
+erhält eine explizite Teiltransferwarnung; es wird nicht
+blind zurückgerollt oder eine fremde Datei gelöscht.
+Der erste schreibende Zielzugriff verwendet `CREATE_NEW`,
+um eine nach dem GUI-Preflight von Dritten angelegte
+Zieldatei nicht zu überschreiben.
+
+**Mehrfachauswahlen:** `PrepareUnicodeFileCopy` kann
+mehrere unabhängig gespeicherte UTF-16-Dateipfade in
+demselben `COperations`-Skript vorbereiten. Die Größen,
+Dateizahl und Warteschlangeninformationen werden konsistent
+verwaltet. Auswahlgrößen über 16 Dateien bzw. 16 MiB
+nutzen den bestehenden Worker statt einer synchronen
+GUI-Kopie; kleine Dateien behalten den bisherigen Ablauf.
+Ein erweiterter GUI-Regressionstest prüft eine 17-MiB-
+Zweitdatei mit SHA-256, Fortschrittsabschluss und F5-/F6-
+Quell-/Zielintegrität. Ein nativer Identitätstest simuliert
+das Ersetzen von Quell- und Zieldatei zwischen Kopie und
+Löschung. Statische Quellverträge sichern das Skip-/Cancel-,
+Datei-ID- und `CREATE_NEW`-Verhalten.
+
+**Keine abgeschlossene Abnahme:** Die neuen Quellpfade
+wurden statisch auf Symbolreferenzen und Klammerstruktur
+geprüft, aber nicht mit MSVC gebaut. Der große Cross-Volume-
+F6-Fall benötigt einen tatsächlichen Zwei-Volume-GUI-Test
+auf Windows; das derzeitige 17-MiB-GUI-Batchszenario
+nutzt zwei Verzeichnisse auf demselben Volume. Noch
+ungeklärt sind erweiterte Copy-Masks/Advanced-Regeln,
+allgemeine Verzeichnisbaum-Operationen, gemischte Ordner-/
+Dateiauswahlen, tatsächlicher ADS-/ACL-/EFS-Support und
+Abbruch-/Fehlerpfade auf realen Volumes. **Keine
+Freigabe und kein formaler Abschluss von UP-04.**
 
 ### [ ] UP-04 – Kopieren/Bewegen über Volume- und Worker-Grenzen (**P0**, TEILBELEGT)
 - **Lücke:** F5/F6 mit 263 UTF-16-Einheiten und >17 MiB Same-Volume-Move
