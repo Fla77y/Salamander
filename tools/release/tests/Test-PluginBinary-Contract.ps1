@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: GPL-2.0-or-later
 <#
 .SYNOPSIS
-    Read-only ABI smoke test for the priority x64 plug-ins, including PictView.
+    Read-only ABI smoke test for every built x64 plug-in, including PictView.
 .DESCRIPTION
     Inspects PE headers and export tables with Visual Studio dumpbin.
     Never loads or executes a plug-in DLL. Successful checks do NOT prove
@@ -36,7 +36,26 @@ if ([string]::IsNullOrWhiteSpace($dumpbin)) {
 }
 
 $requiredExports = @('SalamanderPluginEntry', 'SalamanderPluginGetReqVer')
-$pluginNames = @('7zip', 'checksum', 'filecomp', 'renamer', 'pictview')
+# Keep the five mandatory built-in modules as hard requirements. In
+# addition, inspect every other SPL actually built by the solution.
+$requiredPlugins = @('7zip', 'checksum', 'filecomp', 'renamer', 'pictview')
+$pluginRoot = Join-Path $BuildDirectory 'plugins'
+if (-not (Test-Path -LiteralPath $pluginRoot -PathType Container)) {
+    throw "Missing built plug-in directory: $pluginRoot"
+}
+$builtModules = @(Get-ChildItem -LiteralPath $pluginRoot -Recurse -File -Filter '*.spl')
+$builtNames = foreach ($module in $builtModules) {
+    # Reject unexpected placement instead of silently ignoring another SPL.
+    $relative = [IO.Path]::GetRelativePath($pluginRoot, $module.FullName)
+    $pieces = @($relative -split '[\\/]')
+    if ($pieces.Count -ne 2 -or
+        -not [string]::Equals($pieces[0], [IO.Path]::GetFileNameWithoutExtension($pieces[1]),
+                             [StringComparison]::OrdinalIgnoreCase)) {
+        throw "Unexpected built plug-in binary location: $($module.FullName)"
+    }
+    $pieces[0]
+}
+$pluginNames = @($requiredPlugins + $builtNames | Sort-Object -Unique)
 foreach ($name in $pluginNames) {
     # Arrange: both the source export declaration and the built plug-in
     # must exist; missing binaries are failures, never optional skips.
@@ -84,4 +103,4 @@ foreach ($name in $pluginNames) {
     }
     Write-Host "PASS: $name x64 plug-in binary exports required Salamander SDK entry points"
 }
-Write-Host 'PASS: five built plug-in binary ABI contracts inspected without loading plug-in code.'
+Write-Host "PASS: all $($pluginNames.Count) discovered/required x64 plug-in PE/SDK export contracts inspected without loading plug-in code."
