@@ -103,7 +103,10 @@ foreach ($required in @(
     'truncated WIC image',
     'missing WIC image',
     'invalid WIC filename',
-    'out-of-range WIC frame'
+    'out-of-range WIC frame',
+    'ReadFixtureBytes(file, before)',
+    'ReadFixtureBytes(file, after)',
+    'before == after'
 )) {
     if (-not $formatsSource.Contains($required)) {
         throw "PictView native format matrix lacks fail-closed regression: $required"
