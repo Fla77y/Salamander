@@ -238,6 +238,19 @@ Windows-CI-Einbindung `17fe8218ade9f3c35ce42898e515dbf4e163b0ee`.
 Dies ist **ausschließlich ein statischer Lösungs-/Konfigurationsnachweis**,
 kein absolvierter MSBuild-Vierfach-Build; BUILD-01 bleibt offen.
 
+**UP-02 – SDK-Exportdeklarationen erweitert (VORBEREITET):**
+35/35 Solution-Module besitzen eine .def-Quellbeschreibung;
+für diskmap liegt sie in einem Unterordner. Der erweiterte
+DEF-Parser und die Regressionen wurden in den bestehenden
+Pakettest sowie die Windows-Vorprüfung aufgenommen.
+Test 8b48d958b3682626644812d7b83e1b55293f9c84,
+Parser ccf191b441d9895f317e85c004e983420cf18248,
+Binärtest-Wiederverwendung
+0d66e9c28822dccce96921ee11929ae11b54485f.
+**Quellprüfung, noch keine ausgeführte Windows-/PE-Verifikation
+für sämtliche Module.** SDK-Binärkompatibilität, alle
+Unicode-/Langpfad-Operationen und Plugin-Host-Interaktionen bleiben offen.
+
 **Nächster Schritt nach dieser Quellbasis:** Neue Regressionen auf
 Windows ausführen; anschließend tatsächliche Built-/Staged-/Shipped-SPLs
 auf dem **selben** Commit nachweisen, pro Modul Funktionen
