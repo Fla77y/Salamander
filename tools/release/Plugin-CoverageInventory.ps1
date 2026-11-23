@@ -19,7 +19,15 @@ function Get-SplInventory {
 
     $modules = [Collections.Generic.Dictionary[string,string]]::new(
         [StringComparer]::OrdinalIgnoreCase)
-    foreach ($file in @(Get-ChildItem -LiteralPath $root -File -Recurse -Filter '*.spl')) {
+    # Include all SPLs in the provided output tree, not just plugins/.
+    # Unexpected root-level binaries would otherwise disappear from reports.
+    foreach ($file in @(Get-ChildItem -LiteralPath $Directory -File -Recurse -Filter '*.spl')) {
+        $underPluginRoot = $file.FullName.StartsWith(
+            ([IO.Path]::GetFullPath($root).TrimEnd('\') + '\'),
+            [StringComparison]::OrdinalIgnoreCase)
+        if (-not $underPluginRoot) {
+            throw "Unexpected $Description SPL outside plugins tree: $($file.FullName)"
+        }
         $relative = [IO.Path]::GetRelativePath($root, $file.FullName)
         $parts = @($relative -split '[\\/]')
         if ($parts.Count -ne 2 -or
