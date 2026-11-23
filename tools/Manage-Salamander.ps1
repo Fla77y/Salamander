@@ -525,10 +525,16 @@ try {
             Invoke-Native 'pwsh.exe' $pictviewArgs
         }
         if ($requestedSet.Contains('--test-pictview-host')) {
+            # Explicit interactive opt-in, never part of --test-all.
+            # Each supported format gets a fresh verified child process.
             $hostGui = Join-Path $repository 'tools\release\tests\Test-PictView-Host.ps1'
             $targetExe = Join-Path (Get-VariantDirectory $configuration) 'salamand.exe'
-            Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $hostGui,
-                                       '-SalamanderExe', $targetExe)
+            foreach ($imageFormat in @('Bmp','Png','Jpeg','Gif','Tiff','Ico')) {
+                Write-Host "=== PICTVIEW HOST F3: $imageFormat ==="
+                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $hostGui,
+                                           '-SalamanderExe', $targetExe,
+                                           '-ImageFormat', $imageFormat)
+            }
         }
         $automatedGuiModes = @(Get-AutomatedGuiModes -RequestedSet $requestedSet)
         foreach ($guiMode in $automatedGuiModes) {
