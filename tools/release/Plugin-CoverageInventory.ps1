@@ -176,3 +176,34 @@ function Get-SalamanderPluginOperationMatrix {
         }
     }
 }
+
+# Verify the compiled plug-in sidecars that are required at runtime.
+# Repository-added scripts, themes and assets are intentionally outside
+# this build-to-stage comparison and retain separate package checks.
+function Assert-SalamanderPluginSidecarParity {
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory)][string]$BuiltDirectory,
+        [Parameter(Mandatory)][string]$StagedDirectory
+    )
+
+    $builtRoot = Join-Path $BuiltDirectory 'plugins'
+    $stagedRoot = Join-Path $StagedDirectory 'plugins'
+    $extensions = @('.dll', '.exe', '.slg', '.chm')
+    $sidecars = @(Get-ChildItem -LiteralPath $builtRoot -File -Recurse |
+        Where-Object { $_.Extension -in $extensions } |
+        Sort-Object FullName)
+    foreach ($source in $sidecars) {
+        $relative = [IO.Path]::GetRelativePath($builtRoot, $source.FullName)
+        $destination = Join-Path $stagedRoot $relative
+        if (-not (Test-Path -LiteralPath $destination -PathType Leaf)) {
+            throw "Missing staged plug-in runtime sidecar: $relative"
+        }
+        $buildHash = (Get-FileHash -LiteralPath $source.FullName -Algorithm SHA256).Hash
+        $stageHash = (Get-FileHash -LiteralPath $destination -Algorithm SHA256).Hash
+        if ($buildHash -cne $stageHash) {
+            throw "Plug-in runtime sidecar SHA-256 mismatch: $relative"
+        }
+    }
+    Write-Host "PASS: $($sidecars.Count) compiled plug-in runtime sidecars match the distribution stage."
+}
