@@ -77,13 +77,13 @@ und die saubere VM bleiben eigenständige offene Gates.
 
 **Vollständigkeits-Gate für die Solution (PKG-01):**
 Für die beiden Paketvarianten verlangt das Pipeline-Skript nun
-zusätzlich \`-RequireSolutionPluginPayloads\`. Damit müssen alle
+zusätzlich `-RequireSolutionPluginPayloads`. Damit müssen alle
 derzeit **35** als Hauptprojekt in der Solution deklarierten
 Plugin-SPLs in Build und Stage vorhanden und SHA-256-identisch
 sein. Eine in Build *und* Stage fehlende Datei wird nicht länger
-mit \`NOT_SHIPPED\` übersprungen; unbekannte gestagte SPLs ohne
+mit `NOT_SHIPPED` übersprungen; unbekannte gestagte SPLs ohne
 Solution-Zugehörigkeit werden zurückgewiesen. Source-only
-\`winscp\` bleibt unverändert außerhalb dieser Liste, bis es
+`winscp` bleibt unverändert außerhalb dieser Liste, bis es
 einen realen Hauptprojekt-/Distributionsvertrag gibt.
 Die Zahl 35 wird aus dem jeweiligen Solution-Quellbestand
 abgeleitet, nicht in der Paketpipeline hart codiert.
@@ -92,10 +92,19 @@ neuen HEAD aber noch nicht unter Windows ausgeführt**.
 
 Der vom Nutzer bereitgestellte grüne Clean-Build-/Testlauf vom
 23.11.2026 belegt auf dem **älteren** Commit
-\`2be91b27032a2f4cb4619a606b42b0af7c8ea6c1\` exakt
+`2be91b27032a2f4cb4619a606b42b0af7c8ea6c1` exakt
 35 unterschiedliche SPL-Buildausgaben jeweils für Debug und
 Release x64. Er enthält keine danach erstellten Änderungen
-und keine Ausführung von \`--setup\`.
+und keine Ausführung von `--setup`.
+
+**Laufzeitbegleitdateien:** Im strengen Gate werden zusätzlich
+alle im Build-Pluginbaum tatsächlich vorhandenen `.dll`-, `.exe`-,
+`.slg`- und `.chm`-Dateien im Staging auf Vorhandensein und
+bytegleiche SHA-256-Prüfsummen kontrolliert. Zwei neue Testfälle
+simulieren eine fehlende Sprachdatei und eine veränderte Hilfs-DLL.
+Die nicht aus Build-Ausgaben stammenden statischen Ressourcen
+sowie Setup-/Systemabhängigkeiten bleiben separate Prüfpunkte.
+**Keine Windows-Verifikation dieser neuen Gate-Version.**
 
 **Zusätzliche SHA-256-Kontrolle:** Bei expliziter Angabe beider Verzeichnisse
 berechnet das Inventar für tatsächlich vorhandene SPL-Dateien zwei
@@ -107,10 +116,13 @@ gestagtes Modul (z. B. `winscp`) werden als **NOT_SHIPPED** erfasst;
 dies ist ausdrücklich keine Bestätigung, dass diese Auslassung
 produktfachlich zulässig ist.
 
-Dieses Werkzeug vergleicht ausschließlich **SPL-Dateien**. Es prüft weder
-alle zusätzlichen Sprachen, Hilfebinaries, Rechte, Signaturen noch die
-Vollständigkeit der tatsächlich vorgesehenen Release-Module; **PKG-01**
-bleibt deshalb eine separate obligatorische Freigabeprüfung.
+Der allgemeine Inventarvergleich erfasst **SPL-Dateien**.
+Das zusätzliche strenge Paket-Gate kontrolliert außerdem die tatsächlich
+im Build vorhandenen Plugin-Sprachdateien, ausführbaren Hilfsdateien,
+DLLs und CHMs. Diese Kontrollen garantieren weiterhin weder
+alle außerhalb des Pluginbaums liegenden Ressourcen noch Signaturen,
+Redistributionsrechte oder vollständige Clean-VM-Lauffähigkeit;
+**PKG-01** bleibt bis zur echten Paket- und VM-Abnahme offen.
 
 **UP-02 – Quellseitige SDK-Exportinventarisierung (vorbereitet):**
 Für alle 35 Solution-Plugins wurde eine .def-Datei im Repository
