@@ -266,34 +266,50 @@ End-to-End-Nachweis auf diesem HEAD.**
 
 **Neue lokale Ausführungsevidenz (23.11.2026, 20:58–21:12 Uhr):**
 Der bereitgestellte PowerShell-Transkriptlauf
-\`manage.cmd --build-clean --test-all\` meldet auf dem **getesteten**
-Commit \`2be91b27032a2f4cb4619a606b42b0af7c8ea6c1\`
+`manage.cmd --build-clean --test-all` meldet auf dem **getesteten**
+Commit `2be91b27032a2f4cb4619a606b42b0af7c8ea6c1`
 einen sauberen Git-Working-Tree und den vollständigen Abschluss
-\`Alle angeforderten Schritte erfolgreich abgeschlossen.\`.
-Der Text nennt \`D:\Build\OpenSal\logs\manage-20261123-205829-483-5c3b7f.log\`
+`Alle angeforderten Schritte erfolgreich abgeschlossen.`.
+Der Text nennt `D:\Build\OpenSal\logs\manage-20261123-205829-483-5c3b7f.log`
 als lokales Originalprotokoll. Im bereitgestellten Text erscheinen für
-beide Konfigurationen **je 35** verschiedene Solution-\`.spl\`-Buildausgaben
+beide Konfigurationen **je 35** verschiedene Solution-`.spl`-Buildausgaben
 (Debug x64 und Release x64). Ebenso meldet er den erfolgreichen nativen
 und GUI-Testabschluss einschließlich Legacy Find, Unicode, Langpfaden,
 F2/F5/F6/F8 und PictView/WIC. Die damalige ABI-Prüfung prüfte nur
 die fünf vordefinierten Module. Die späteren PR-Änderungen sind
-**nicht durch diesen Lauf gedeckt**; eine finale Paketierung (\`--setup\`)
+**nicht durch diesen Lauf gedeckt**; eine finale Paketierung (`--setup`)
 war **nicht** Teil des Befehls. Daher bleiben alle separaten
 Abnahme- und Clean-VM-Gates offen.
 
 **PKG-01 – korrigierte Quelltools und vollständiges Solution-Gate
 (nicht auf HEAD getestet):** Ein statisch entdeckter
-PowerShell-Quellbruch in \`Plugin-CoverageInventory.ps1\` und
-\`Invoke-PluginCoverageInventory.ps1\` wurde aus der letzten
+PowerShell-Quellbruch in `Plugin-CoverageInventory.ps1` und
+`Invoke-PluginCoverageInventory.ps1` wurde aus der letzten
 unbeschädigten Fassung rekonstruiert. Der zentrale
-\`Test-Package-Helpers.ps1\` überprüft nun deren Parser-Syntax
-vor weiterer Prüfung. \`-RequireSolutionPluginPayloads\` sichert
+`Test-Package-Helpers.ps1` überprüft nun deren Parser-Syntax
+vor weiterer Prüfung. `-RequireSolutionPluginPayloads` sichert
 in der Paketpipeline zusätzlich zu SHA-256 die Existenz aller
 Solution-Projekt-SPLs in Build und Stage und verwirft
 nicht deklarierte gestagte Module. Neu: Negativtests für auf
 beiden Seiten fehlende Solution-SPLs und unbekannte Stage-SPLs.
-Nicht gelöst: Seitenelemente, Runtime- und DLL-Abhängigkeiten,
-Setup-/Uninstall-Clean-VM-Abnahme und Ausführung dieser Änderungen.
+Neu: Auch tatsächlich gebaute Plugin-Hilfsdateien mit den Erweiterungen
+`.dll`, `.exe`, `.slg` und `.chm` werden im strengen Release-Gate
+auf identischen Inhalt im Stage-Baum geprüft. Regressionsfälle
+verwerfen eine fehlende Sprachdatei und eine manipulierte Hilfs-DLL.
+Die ABI-Prüfung fordert nun außerdem **alle** Solution-Plugin-SPLs
+im Build, bevor sie die vorhandenen x64-PE-Exporte inspiziert.
+Nicht gelöst: weitere Repository-Ressourcen und Release-Hinweise,
+Signaturen, vollständige externe Runtime-Abhängigkeiten, die
+Setup-/Uninstall-Clean-VM-Abnahme sowie die Ausführung dieser Änderungen.
+Diese Prüfungen sind trotz grünem Alt-SHA **nicht als PASS markiert**.
+
+Wesentliche neue Commits: Syntax- und Strukturreparatur
+`083a601343202051b49bd3495a8f9a84b4b497a4` /
+`3d15d19fd70be62dbbf6255c56562c7f79976a8c`;
+Pflichtmodule `1261104ee210f51609d972c8dbca3c65965c741f`,
+Paketintegration `680615300407e66b58fb970819511bbba2d1d314`,
+Sidecar-Abgleich `46b18fe15004ec24b2f58506382ce6e8167a7872`,
+ABI-Vollständigkeit `6a17556190825538faacd2ed22e202acdfd7c651`.
 
 **Nächster Schritt nach dieser Quellbasis:** Neue Regressionen auf
 Windows ausführen; anschließend tatsächliche Built-/Staged-/Shipped-SPLs
