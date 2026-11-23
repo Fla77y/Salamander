@@ -92,6 +92,15 @@ inline bool BeforeTargetMutation(const char* token, const wchar_t* path)
         SetLastError(ERROR_INVALID_PARAMETER); // includes a different hard-link name
         return false;
     }
+    // An F6 destination may be replaced by another process while the
+    // background worker is copying. Neither attribute/ACL/ADS mutation nor
+    // any retry may touch an unrelated replacement under the same filename.
+    if (Current->CaptureTargetIdentity && Current->HasTargetIdentity &&
+        !SameIdentity(Current->TargetIdentity, target))
+    {
+        SetLastError(ERROR_FILE_INVALID);
+        return false;
+    }
     return true;
 }
 
