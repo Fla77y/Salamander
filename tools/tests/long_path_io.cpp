@@ -967,8 +967,14 @@ int main()
     if (!contentsSafe || !DeleteFileW(extendedCollision.c_str()))
         return Fail("Unicode F2 collision preserves destination contents");
 
-    // Act / Assert: move then delete only the disposable copy, not source.
-    if (!Salamander::TryMoveUnicodeFileNoOverwrite(unicodeCopy, unicodeMoved, operationError) ||
+    // Act / Assert: move the exact, originally opened Unicode file by its
+    // verified Win32 handle, not a replaceable pathname.
+    BY_HANDLE_FILE_INFORMATION originalCopyIdentity{};
+    if (!Salamander::TryReadUnicodeRegularFileIdentity(
+            unicodeCopy, originalCopyIdentity, operationError))
+        return Fail("capture pre-dialog Unicode F6 file identity");
+    if (!Salamander::TryMoveUnicodeFileNoOverwrite(
+            unicodeCopy, unicodeMoved, operationError, &originalCopyIdentity) ||
         operationError != ERROR_SUCCESS ||
         GetFileAttributesW(extendedCopy.c_str()) != INVALID_FILE_ATTRIBUTES ||
         GetFileAttributesW(extendedMoved.c_str()) == INVALID_FILE_ATTRIBUTES)
