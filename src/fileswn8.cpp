@@ -527,10 +527,14 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
 
     const std::string legacyAlias(entry.Name);
     std::wstring originalName;
-    if (HasLongDiskPath() || target->HasLongDiskPath())
+    if (HasLongDiskPath() || target->HasLongDiskPath() ||
+        Salamander::ExceedsLegacyDiskPathLimit(
+            strlen(GetPath()), entry.NameLen, MAX_PATH))
     {
+        // A short parent plus an ordinary, lossless ANSI name can still
+        // exceed MAX_PATH. TryGetLossy deliberately rejects such names.
         if (!UnicodeDiskNames.TryGetRow(entry.Name, originalName))
-            return FALSE; // never infer a long-path file from its ACP alias
+            return FALSE; // never infer an overlong path from its ACP alias
     }
     else if (!UnicodeDiskNames.TryGetLossy(legacyAlias.c_str(), originalName))
         return FALSE; // missing/colliding aliases stay protected
@@ -597,8 +601,9 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
         (static_cast<ULONGLONG>(attributes.nFileSizeHigh) << 32) |
         attributes.nFileSizeLow;
     const bool useWorker = type == atCopy && fileSize > MaxSynchronousTransferBytes;
-    if (fileSize > MaxSynchronousTransferBytes && !useWorker)
-        return FALSE;
+    // A same-volume F6 move is a metadata rename, not a byte copy. The
+    // no-copy-fallback W helper rejects cross-volume moves explicitly; file
+    // size must not prevent a safe same-volume rename.
 
     std::wstring resolvedName;
     if (Salamander::ResolveUnicodePanelFileName(
@@ -645,8 +650,9 @@ BOOL CFilesWindow::TryUnicodeSingleFileTransfer(CActionType type, CFilesWindow* 
         currentTargetAttributes == INVALID_FILE_ATTRIBUTES ||
         (currentTargetAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0 ||
         (currentTargetAttributes & FILE_ATTRIBUTE_REPARSE_POINT) != 0 ||
-        (!useWorker && ((static_cast<ULONGLONG>(currentAttributes.nFileSizeHigh) << 32) |
-         currentAttributes.nFileSizeLow) > MaxSynchronousTransferBytes))
+        (type == atCopy && !useWorker &&
+         ((static_cast<ULONGLONG>(currentAttributes.nFileSizeHigh) << 32) |
+          currentAttributes.nFileSizeLow) > MaxSynchronousTransferBytes))
     {
         MessageBoxW(HWindow, L"The source file type, size or target directory changed. "
                      L"No files were changed.", L"Unicode transfer",
