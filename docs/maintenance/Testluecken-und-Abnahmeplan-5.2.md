@@ -175,7 +175,7 @@ Es wurden keine GUI-/Win32-Tests für diese neuen Dateien ausgeführt.
   unbelegte [x]-Abschlüsse zurück. Er läuft künftig in manage.cmd --test;
   ein echter Windows-Lauf steht noch aus.
 
-**A0-02 – Registry-Canary-Negativregression (24.11.2026, vorbereitet):**
+**A0-02 – Registry-Canary-Negativregression (23.11.2026, vorbereitet):**
 Eine ergänzte synthetische Probe prüft Wertnamen mit `|` und Zeilenumbruch,
 damit die SHA-256-Snapshot-Serialisierung keine mehrdeutigen Datensätze
 bildet. Eine zweite Probe verwirft `REG_SZ "105"` als Ersatz für die
@@ -183,7 +183,7 @@ erforderliche `REG_DWORD`-Versionsnummer 105. Der Canary kodiert nun
 Registry-Schlüssel- und Wertnamen vor der Digest-Bildung als UTF-16-Base64
 und prüft den Registry-Werttyp explizit.
 Teständerung `7378e5e70abb979d9f7197efe40c6dd6f28a0f6b`;
-Implementierung `10dca3ebc467ca3ede0c56edd6f52f1a7fdfd8bb`.
+Implementierung `10dca3ebc467ca3ede0c56edd6f52f1a7fdfd8bb`; Testpfad-Korrektur `84658d99776aa05597181f3eed08ad6e0be36169`.
 **Statisch geprüft, Windows-/PowerShell-Ausführung ausstehend; kein PASS.**
 Die reale 5.0-Import-/Löschsemantik bleibt ausdrücklich offen.
 
