@@ -379,6 +379,48 @@ inline bool TryDeleteUnicodeFileWithIdentity(
     return deleted;
 }
 
+// Finalize a completed background cross-volume copy without trusting path
+// strings or the original panel snapshot. The copied target is held open
+// against writes and deletion while the original is removed by file ID.
+// An incomplete, skipped, replaced or differently sized copy is never a move.
+inline bool TryCompleteUnicodeMoveAfterCopy(
+    const Utf16DiskPath& source, const Utf16DiskPath& destination,
+    const BY_HANDLE_FILE_INFORMATION& expectedSource,
+    const BY_HANDLE_FILE_INFORMATION& expectedTarget, DWORD& error)
+{
+    if (!UnicodeFileOperationsDetail::HasRegularFileIdentity(expectedSource) ||
+        !UnicodeFileOperationsDetail::HasRegularFileIdentity(expectedTarget))
+    {
+        error = ERROR_FILE_INVALID;
+        return false;
+    }
+
+    std::wstring targetPath;
+    if (!UnicodeFileOperationsDetail::TryGetExtendedPath(destination, targetPath, error))
+        return false;
+    const HANDLE target = CreateFileW(
+        targetPath.c_str(), FILE_READ_ATTRIBUTES, FILE_SHARE_READ,
+        nullptr, OPEN_EXISTING, FILE_FLAG_OPEN_REPARSE_POINT, nullptr);
+    if (target == INVALID_HANDLE_VALUE)
+    {
+        error = GetLastError();
+        return false;
+    }
+    BY_HANDLE_FILE_INFORMATION actualTarget{};
+    bool completed = false;
+    if (!GetFileInformationByHandle(target, &actualTarget))
+        error = GetLastError();
+    else if (!UnicodeFileOperationsDetail::IsSameRegularFile(expectedTarget, actualTarget) ||
+             actualTarget.nFileSizeHigh != expectedSource.nFileSizeHigh ||
+             actualTarget.nFileSizeLow != expectedSource.nFileSizeLow)
+        error = ERROR_FILE_INVALID;
+    else
+        completed = TryDeleteUnicodeFileWithIdentity(source, expectedSource, error);
+
+    CloseHandle(target);
+    return completed;
+}
+
 inline bool TryDeleteUnicodeFile(const Utf16DiskPath& file, DWORD& error)
 {
     std::wstring path;
