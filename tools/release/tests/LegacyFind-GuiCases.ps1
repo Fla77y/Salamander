@@ -876,20 +876,20 @@ function Assert-LegacyViewerContents {
     [SalamanderGuiNative]::LegacyResultViewerCommand($Viewer, $OwnerPid, $Path, 6066)
     [SalamanderGuiNative]::LegacyResultViewerCommand($Viewer, $OwnerPid, $Path, 6062)
 
-    $lastSequence = $sequence
-    $clipboardKind = 'not-read'
-    $observedLength = -1
+    # Wait-Until invokes the predicate in another PowerShell scope.
+    # Mutate one reference object so diagnostics survive that scope.
+    $observed = @{ Sequence = $sequence; Kind = 'not-read'; Utf16Length = -1 }
     try {
         Wait-Until {
-            $lastSequence = [SalamanderGuiNative]::GetClipboardSequenceNumber()
-            if ($lastSequence -eq $sequence) { return $false }
+            $observed.Sequence = [SalamanderGuiNative]::GetClipboardSequenceNumber()
+            if ($observed.Sequence -eq $sequence) { return $false }
             $actual = Get-ClipboardText
-            $observedLength = $actual.Length
+            $observed.Utf16Length = $actual.Length
             if ($actual -ceq $Expected) {
-                $clipboardKind = 'expected'
+                $observed.Kind = 'expected'
                 return $true
             }
-            $clipboardKind = if ($actual -ceq $sentinel) { 'sentinel' }
+            $observed.Kind = if ($actual -ceq $sentinel) { 'sentinel' }
                              elseif ($actual.Length -eq 0) { 'empty' }
                              else { 'different' }
             return $false
@@ -909,10 +909,12 @@ function Assert-LegacyViewerContents {
         catch {
             $viewerStillMatches = 'lookup-failed'
         }
-        $clipboardChanged = $lastSequence -ne $sequence
-        throw ('Viewer Copy timed out: ClipboardSequenceChanged={0}; ClipboardTextKind={1}; ' +
-               'ObservedUtf16Length={2}; ExpectedUtf16Length={3}; ViewerStillMatches={4}.') -f
-            $clipboardChanged, $clipboardKind, $observedLength, $Expected.Length, $viewerStillMatches
+        $clipboardChanged = $observed.Sequence -ne $sequence
+        $diagnostic = [string]::Format(
+            'Viewer Copy timed out: ClipboardSequenceChanged={0}; ClipboardTextKind={1}; ObservedUtf16Length={2}; ExpectedUtf16Length={3}; ViewerStillMatches={4}.',
+            $clipboardChanged, $observed.Kind, $observed.Utf16Length,
+            $Expected.Length, $viewerStillMatches)
+        throw $diagnostic
     }
     Write-Host 'PASS: Viewer copied the exact bytes from the named result'
 }
