@@ -275,6 +275,11 @@ function Run-Tests {
     $pluginModuleContract = Join-Path $repository 'tools\release\tests\Test-PluginModulePaths-Contract.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $pluginModuleContract)
 
+    # A0-02: test real HKCU semantics only in a freshly owned GUID
+    # namespace. Live 5.0 and 5.2 registry roots are never accessed.
+    $legacyConfigCanary = Join-Path $repository 'tools\release\tests\Test-LegacyConfig-Canary.ps1'
+    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $legacyConfigCanary)
+
     $guiConfigContract = Join-Path $repository 'tools\release\tests\Test-GuiConfig-Isolation.ps1'
     Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $guiConfigContract)
 
