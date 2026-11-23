@@ -8,6 +8,7 @@
 #include "worker.h"
 #include "common/shellfileopnames.h"
 #include "common/win32_worker_copy_io.h"
+#include "common/win32_unicode_file_ops.h"
 #ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
 #include "common/isolated_test_configuration.h"
 #endif
@@ -8205,12 +8206,47 @@ unsigned ThreadWorkerBody(void* parameter)
 
                 BOOL lantasticCheck = widePaths == NULL && IsLantasticDrive(op->TargetName, lastLantasticCheckRoot, lastIsLantasticPath);
 
+                const bool unicodeMoveAfterCopy =
+                    (op->OpFlags & OPFL_UTF16_MOVE_AFTER_COPY) != 0;
+                BOOL skipped = FALSE;
                 Error = !DoCopyFile(op, hProgressDlg, buffer, script, totalDone,
-                                    clearReadonlyMask, NULL, lantasticCheck, mustDeleteFileBeforeOverwrite,
+                                    clearReadonlyMask, unicodeMoveAfterCopy ? &skipped : NULL,
+                                    lantasticCheck, mustDeleteFileBeforeOverwrite,
                                     allocWholeFileOnStart, dlgData,
                                     (op->OpFlags & OPFL_COPY_ADS) != 0,
                                     (op->OpFlags & OPFL_AS_ENCRYPTED) != 0,
-                                    FALSE, asyncPar);
+                                    unicodeMoveAfterCopy ? TRUE : FALSE, asyncPar);
+                if (unicodeMoveAfterCopy && !Error && !skipped && !*dlgData.CancelWorker)
+                {
+                    // Copy completion and a matching path are not enough:
+                    // only a fully written, identity-pinned target allows
+                    // deletion of the original W file. If cleanup fails the
+                    // destination is preserved for explicit user inspection.
+                    WaitForSingleObject(dlgData.WorkerNotSuspended, INFINITE);
+                    if (!*dlgData.CancelWorker)
+                    {
+                        DWORD finalizeError = ERROR_FILE_INVALID;
+                        const bool finished =
+                            widePaths != NULL &&
+                            widePaths->HasSourceIdentity && widePaths->HasTargetIdentity &&
+                            Salamander::TryCompleteUnicodeMoveAfterCopy(
+                                widePaths->TypedSource, widePaths->TypedTarget,
+                                widePaths->SourceIdentity, widePaths->TargetIdentity,
+                                finalizeError);
+                        if (!finished)
+                        {
+                            Error = TRUE;
+                            wchar_t warning[300];
+                            swprintf_s(warning, _countof(warning),
+                                L"The Unicode move copied the file, but could not "
+                                L"safely remove its original (Win32 %lu). "
+                                L"Both copies may exist. Inspect both locations "
+                                L"before deleting anything.", finalizeError);
+                            MessageBoxW(hProgressDlg, warning,
+                                        L"Unicode move incomplete", MB_OK | MB_ICONWARNING);
+                        }
+                    }
+                }
                 break;
             }
 
@@ -8513,7 +8549,8 @@ DWORD WINAPI ThreadWorker(void* param)
 
 BOOL PrepareUnicodeFileCopy(COperations* script, const Salamander::Utf16DiskPath& source,
                             const Salamander::Utf16DiskPath& target,
-                            const WIN32_FILE_ATTRIBUTE_DATA& attributes, BOOL ignoreADS, DWORD& error)
+                            const WIN32_FILE_ATTRIBUTE_DATA& attributes, BOOL ignoreADS, DWORD& error,
+                            BOOL moveAfterCopy)
 {
     if (script == NULL || script->Count != 0 ||
         (attributes.dwFileAttributes & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) != 0)
@@ -8525,8 +8562,10 @@ BOOL PrepareUnicodeFileCopy(COperations* script, const Salamander::Utf16DiskPath
     if (paths == NULL)
         return FALSE;
     CopyIo::Scope pathScope(paths);
+    paths->CaptureTargetIdentity = moveAfterCopy != FALSE;
     DWORD sourceFlags, targetFlags;
-    DWORD opFlags = OPFL_UTF16_COPY_PATHS;
+    DWORD opFlags = OPFL_UTF16_COPY_PATHS |
+                    (moveAfterCopy ? OPFL_UTF16_MOVE_AFTER_COPY : 0);
     const auto volumeFlags = [&](const std::wstring& path, DWORD& flags, DWORD networkFlag, DWORD fastFlag) -> BOOL
     {
         std::vector<wchar_t> root(32768);
@@ -8609,8 +8648,9 @@ BOOL PrepareUnicodeFileCopy(COperations* script, const Salamander::Utf16DiskPath
     script->TotalSize = operation.Size;
     script->TotalFileSize = operation.FileSize + adsSize;
     script->FilesCount = 1;
-    script->IsCopyOperation = script->IsCopyOrMoveOperation = script->ShowStatus = TRUE;
-    script->WaitInQueueSubject = DupStr(LoadStr(IDS_COPY));
+    script->IsCopyOperation = moveAfterCopy ? FALSE : TRUE;
+    script->IsCopyOrMoveOperation = script->ShowStatus = TRUE;
+    script->WaitInQueueSubject = DupStr(LoadStr(moveAfterCopy ? IDS_MOVE : IDS_COPY));
     script->WaitInQueueFrom = DupStr(operation.SourceName);
     script->WaitInQueueTo = DupStr(operation.TargetName);
     if (script->WaitInQueueSubject == NULL || script->WaitInQueueFrom == NULL || script->WaitInQueueTo == NULL)
