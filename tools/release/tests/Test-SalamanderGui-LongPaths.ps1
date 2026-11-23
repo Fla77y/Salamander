@@ -3387,15 +3387,49 @@ function Test-UnicodeFindGui {
     Assert-True ((Get-UnicodeFindWindow) -eq $script:findWindow) (
         'Legacy advanced Find refusal preserves the Unicode Find window')
 
-    # Recycle is deliberately unsupported for paths beyond MAX_PATH. Test
-    # the actual GUI command and ensure no permanent deletion occurs.
+    # Exercise Recycle only on a second GUID-scoped disposable file, never
+    # on the source needed by subsequent copy/move and stale-result tests.
+    # Long-path W-shell recycling can legitimately succeed. Accept it only
+    # after proving the exact original file reached the Recycle Bin; otherwise
+    # require an explicit refusal and byte-for-byte preservation.
+    $findRecyclePath = Join-Path $findRoot 'find_recycle_東京_😀.txt'
+    $findRecycleBytes = [Text.Encoding]::UTF8.GetBytes('isolated Unicode Find recycle probe')
+    [IO.File]::WriteAllBytes($findRecyclePath, $findRecycleBytes)
+    Start-FindQuery -Mask ([IO.Path]::GetFileName($findRecyclePath)) -Content '' -ExpectedCount 1
+    Select-VerifiedFindResult -ExpectedPath $findRecyclePath
     [SalamanderGuiNative]::ClickFindButton($script:findWindow, [uint32]$process.Id, 5114)
-    Assert-True ([SalamanderGuiNative]::ReadFindText(
-        $script:findWindow, [uint32]$process.Id, 5118) -like
-        'Recycle unsupported or refused*') 'Unicode Find refuses long-path recycling'
+    $recycleStatus = [SalamanderGuiNative]::ReadFindText(
+        $script:findWindow, [uint32]$process.Id, 5118)
+    if ($recycleStatus -ceq 'File moved to the Recycle Bin.') {
+        Assert-True (-not [IO.File]::Exists($findRecyclePath)) (
+            'Unicode Find recycle success removed only the disposable source')
+        $recycleShell = New-Object -ComObject Shell.Application
+        $recycleFolder = $recycleShell.NameSpace(10) # CSIDL_BITBUCKET
+        if ($null -eq $recycleFolder) {
+            throw 'Unicode Find recycle reported success but the Recycle Bin shell folder is unavailable.'
+        }
+        $recycled = @{ Item = $null }
+        Wait-Until {
+            $recycled.Item = Find-VerifiedRecycledFixtureItem -RecycleFolder $recycleFolder -OriginalFullPath $findRecyclePath
+            return $null -ne $recycled.Item
+        } 'Unicode Find recycled the exact disposable long-path file'
+        Assert-True ($null -ne $recycled.Item) (
+            'Unicode Find recycle success preserves the exact original path in the Recycle Bin')
+        # Restoring shell items is explicitly opt-in, never part of --test-all.
+    }
+    elseif ($recycleStatus.StartsWith('Recycle unsupported or refused', [StringComparison]::Ordinal)) {
+        Assert-True ([IO.File]::Exists($findRecyclePath) -and
+            [Linq.Enumerable]::SequenceEqual[byte](
+                [IO.File]::ReadAllBytes($findRecyclePath), $findRecycleBytes)) (
+            'Unicode Find recycle refusal preserves test file bytes')
+    }
+    else {
+        throw ("Unexpected Unicode Find recycle status '{0}' (disposableExists={1})." -f
+            $recycleStatus, [IO.File]::Exists($findRecyclePath))
+    }
     Assert-True ([Linq.Enumerable]::SequenceEqual[byte](
         [IO.File]::ReadAllBytes($findUtf8Path), $findUtf8Bytes)) (
-        'Recycle refusal preserves the exact original file bytes')
+        'Unicode Find recycling preserves unrelated original file bytes')
 
     Start-FindQuery -Mask '*.txt' -Content 'unique-utf16-probe' -ExpectedCount 1
     Select-VerifiedFindResult -ExpectedPath $findUtf16Path
