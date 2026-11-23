@@ -60,14 +60,14 @@ try {
     # must not inject ambiguous records into the canonical snapshot.
     $separatorName = "Pipe|and`nnewline"
     $canary = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey(
-        "$root\\Config1\\Configuration\\LegacyCanary", $true)
+        "$root\Config1\Configuration\LegacyCanary", $true)
     try {
         $canary.SetValue($separatorName, 'unchanged',
             [Microsoft.Win32.RegistryValueKind]::String)
     }
     finally { $canary.Dispose() }
     $snapshotEntries = [Collections.Generic.List[string]]::new()
-    $snapshotRoot = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey("$root\\Config1", $false)
+    $snapshotRoot = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey("$root\Config1", $false)
     try {
         Add-RegistryCanarySnapshot -Key $snapshotRoot -RelativePath 'Config1' -Entries $snapshotEntries
     }
@@ -79,7 +79,7 @@ try {
         Assert-IsolatedLegacyConfigPreserved -TestConfigurationKey $root -ExpectedDigest $digest
     } -ExpectedText 'configuration changed'
     $canary = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey(
-        "$root\\Config1\\Configuration\\LegacyCanary", $true)
+        "$root\Config1\Configuration\LegacyCanary", $true)
     try { $canary.DeleteValue($separatorName) }
     finally { $canary.Dispose() }
     Assert-IsolatedLegacyConfigPreserved -TestConfigurationKey $root -ExpectedDigest $digest
@@ -133,7 +133,7 @@ try {
 
     # A numeric-looking REG_SZ must not be accepted as REG_DWORD 105.
     $newVersion = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey(
-        "$root\\Config0\\Version", $true)
+        "$root\Config0\Version", $true)
     try {
         $newVersion.SetValue('Configuration', '105',
             [Microsoft.Win32.RegistryValueKind]::String)
@@ -143,7 +143,7 @@ try {
         Assert-IsolatedLegacyConfigPreserved -TestConfigurationKey $root -ExpectedDigest $digest
     } -ExpectedText 'REG_DWORD'
     $newVersion = [Microsoft.Win32.Registry]::CurrentUser.OpenSubKey(
-        "$root\\Config0\\Version", $true)
+        "$root\Config0\Version", $true)
     try {
         $newVersion.SetValue('Configuration', 105,
             [Microsoft.Win32.RegistryValueKind]::DWord)
