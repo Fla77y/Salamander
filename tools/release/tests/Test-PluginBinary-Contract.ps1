@@ -19,6 +19,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 if (-not $IsWindows) { throw 'This integration test requires Windows.' }
 . (Join-Path $PSScriptRoot '..\Plugin-Export-Parser.ps1')
+. (Join-Path $PSScriptRoot '..\Plugin-CoverageInventory.ps1')
 
 $repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
 $toolchainRoot = Join-Path $VisualStudioRoot 'VC\Tools\MSVC'
@@ -36,12 +37,34 @@ if ([string]::IsNullOrWhiteSpace($dumpbin)) {
 }
 
 $requiredExports = @('SalamanderPluginEntry', 'SalamanderPluginGetReqVer')
-$pluginNames = @('7zip', 'checksum', 'filecomp', 'renamer', 'pictview')
-foreach ($name in $pluginNames) {
-    # Arrange: both the source export declaration and the built plug-in
-    # must exist; missing binaries are failures, never optional skips.
-    $declaration = Join-Path $repository "src\plugins\$name\$name.def"
-    $binary = Join-Path $BuildDirectory "plugins\$name\$name.spl"
+$requiredPluginNames = @('7zip', 'checksum', 'filecomp', 'renamer', 'pictview')
+$inventory = @(Get-SalamanderPluginInventory -Repository $repository -BuiltDirectory $BuildDirectory)
+$builtPlugins = @($inventory | Where-Object { $_.BuiltModule -ceq 'PRESENT' })
+if ($builtPlugins.Count -eq 0) {
+    throw 'No built SPL binaries available for ABI verification.'
+}
+# Preserve the existing five-module mandatory ABI contract: a missing
+# required module is a hard failure, never an untested/optional skip.
+foreach ($required in $requiredPluginNames) {
+    if (@($builtPlugins | Where-Object { $_.Plugin -ieq $required }).Count -eq 0) {
+        throw "Missing required built plug-in binary: $required"
+    }
+}
+foreach ($plugin in $builtPlugins) {
+    # Audit all actually built SPLs, not only the five originally selected.
+    # A binary without a corresponding Solution plug-in is untracked and
+    # must not be silently treated as an approved build artifact.
+    $name = [string]$plugin.Plugin
+    if (-not $plugin.SolutionProject) {
+        throw "Built plug-in lacks a Solution declaration: $name"
+    }
+    # DiskMap keeps its original module definition under DiskMapPlugin.
+    $declaration = if ($name -ieq 'diskmap') {
+        Join-Path $repository 'src\plugins\diskmap\DiskMapPlugin\DiskMapPlugin.def'
+    } else {
+        Join-Path $repository "src\plugins\$name\$name.def"
+    }
+    $binary = $plugin.BuiltPath
     if (-not (Test-Path -LiteralPath $declaration -PathType Leaf)) {
         throw "Missing plug-in export definition: $declaration"
     }
@@ -83,4 +106,4 @@ foreach ($name in $pluginNames) {
     }
     Write-Host "PASS: $name x64 plug-in binary exports required Salamander SDK entry points"
 }
-Write-Host 'PASS: five built plug-in binary ABI contracts inspected without loading plug-in code.'
+Write-Host "PASS: $($builtPlugins.Count) built x64 plug-in PE export tables inspected; five mandatory modules enforced."
