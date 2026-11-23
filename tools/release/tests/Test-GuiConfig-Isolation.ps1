@@ -38,6 +38,27 @@ if ($driver -notmatch 'function Initialize-IsolatedGuiConfiguration' -or
     $driver -notmatch 'Primary GUI failure:') {
     throw 'Isolated first-run acceptance needs a deterministic language, real upgrade/plugin initialization, startup wait diagnostics and preserved primary failure.'
 }
+# A0-02: original version-5.0 state is verified only inside the owned
+# CodexTests\GUID\Config1 namespace, never against the actual user 5.0 key.
+$canary = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'LegacyConfig-Canary.ps1') -Raw
+$canaryTest = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'Test-LegacyConfig-Canary.ps1') -Raw
+$seed = $driver.IndexOf('New-IsolatedLegacyConfigCanary -TestConfigurationKey $testConfigurationKey')
+$launch = $driver.IndexOf('Start-Process -FilePath $SalamanderExe', $seed)
+$ready = $driver.IndexOf('    Wait-ForGuiResponsive', $launch)
+$verify = $driver.IndexOf('Assert-IsolatedLegacyConfigPreserved -TestConfigurationKey $testConfigurationKey', $ready)
+$dispatch = $driver.IndexOf('    if ($LegacyFindScenario) {', $verify)
+if ($driver -notmatch "if \(\`$LegacyFindScenario -eq 'Baseline'\)" -or
+    $seed -lt 0 -or $launch -le $seed -or $ready -le $launch -or
+    $verify -le $ready -or $dispatch -le $verify -or
+    $canary -notmatch 'CodexTests' -or
+    $canary -notmatch 'Get-IsolatedLegacyConfigDigest' -or
+    $canary -notmatch 'ExpectedNewConfigVersion = 105' -or
+    $canaryTest -notmatch 'Alt-5.0-' -or
+    $canaryTest -notmatch 'Expected independent 5\.2 configuration version') {
+    throw 'A0-02: isolated real-GUI canary must seed old Config1 before launch and verify its full content after 5.2 startup.'
+}
+Write-Host 'PASS: existing isolated Legacy Find baseline protects old configuration before GUI startup and after 5.2 migration.'
+
 if ($IsWindows) {
     Add-Type -Path (Join-Path $PSScriptRoot 'Clipboard-Snapshot.cs')
     Write-Host 'PASS: native clipboard snapshot helper compiles without accessing the clipboard.'
