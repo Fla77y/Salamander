@@ -91,9 +91,9 @@ Voraussetzungen:
   Für Build: HTML Help Workshop (hhc.exe).
   Für Setup: 7-Zip (7z.exe), Inno Setup (ISCC.exe), Debug-UCRT-Komponenten.
 
-Build-Ausgabe:  D:\Build\OpenSal\salamander\Debug_x64 und Release_x64
-Pakete:        D:\Build\OpenSal\dist
-Protokolle:    D:\Build\OpenSal\logs
+Build-Ausgabe:  <Repository>\.Build\salamander\Debug_x64 und Release_x64
+Pakete:        <Repository>\.Build\dist
+Protokolle:    <Repository>\.Build\logs
 
 Die gesamte Ausgabe einschließlich Fehlern wird zum Schluss in die
 Windows-Zwischenablage kopiert. Bei einem Testfehler wird kein Setup/Run
