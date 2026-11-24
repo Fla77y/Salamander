@@ -4194,6 +4194,7 @@ try {
                 OPENSAL_GUI_COPY_TEST_GATE = $(if ($LargeUnicodeCopyOnly) { '1' } else { '0' })
                 OPENSAL_GUI_FIND_TEST_GATE = $(if ($LegacyFindScenario -eq 'Cancel') { '1' } else { '0' })
                 OPENSAL_GUI_EDITOR_TEST_GATE = $(if ($LegacyFindScenario -in 'ExternalEditor','ExternalEditorNative') { '1' } else { '0' })
+                OPENSAL_GUI_EDITOR_PROBE_EXE = $(if ($LegacyFindScenario -eq 'ExternalEditor') { Join-Path $PSHOME 'pwsh.exe' } else { $null })
             } -PassThru
     }
     else {

@@ -264,6 +264,9 @@ Write-Host 'PASS: targeted ViewUnicode reliability runner records independent pa
 
 foreach ($required in @('#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG',
     'OPENSAL_GUI_EDITOR_TEST_GATE', 'OPENSAL_GUI_TEST_ID', 'OpenFileMappingA(FILE_MAP_WRITE', 'MapViewOfFile(mapping',
+    'OPENSAL_GUI_EDITOR_PROBE_EXE', 'strcmp(command, expected)', '::CreateProcessA(', '::CreateProcessW(',
+    'CREATE_NEW_CONSOLE', 'CREATE_NO_WINDOW', 'CREATE_UNICODE_ENVIRONMENT',
+    'WaitForSingleObject(pi.hProcess, 2000)', 'IsProcessInJob(',
     'expCommand=[%s]', 'expArguments=[%s]', 'expInitDir=[%s]',
     'cmdLine=[%s]', 'lpApplicationName=[%s]',
     'RecordIsolatedEditorLaunch(expCommand, expArguments, expInitDir, cmdLine, application, si);')) {
@@ -271,6 +274,7 @@ foreach ($required in @('#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG',
 }
 if ($dispatch -notmatch '(?s)const char\* application = Salamander::GetExplicitEditorApplicationName\(expCommand\);\s*#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG\s*RecordIsolatedEditorLaunch\([^;]+;\s*#endif\s*if \(!HANDLES\(CreateProcess' -or
     -not $driverText.Contains('OPENSAL_GUI_EDITOR_TEST_GATE = ') -or
+    -not $driverText.Contains('OPENSAL_GUI_EDITOR_PROBE_EXE = ') -or
     -not $driverText.Contains('[IO.MemoryMappedFiles.MemoryMappedFile]::CreateNew(') -or
     -not $driverText.Contains('$editorLaunchMapping.Dispose()') -or
     -not $legacyGuiCases.Contains('Read-IsolatedEditorLaunchRecord') -or

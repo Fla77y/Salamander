@@ -1304,6 +1304,7 @@ function Test-LegacyFindExternalEditor {
     }
     $launch = Read-IsolatedEditorLaunchRecord
     Assert-True ($launch.Contains('lpApplicationName=[') -and $launch.Contains('cmdLine=[')) 'Isolated editor launch parameters were recorded automatically'
+    if (-not $Native) { Write-Host "Editor-launch=[$launch]" }
     Assert-True ([IO.File]::ReadAllText($neighbor) -ceq 'keep this') 'External editor preserves the unselected file'
 }
 

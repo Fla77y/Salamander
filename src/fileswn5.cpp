@@ -28,6 +28,119 @@
 #include "common/win32_editor_process_launch.h"
 
 #ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
+// Only the explicitly configured PowerShell test executable may run these
+// independent, harmless probes. The real Edit action still runs exactly once
+// with its original parameters; probes never open or modify its fixture.
+static void ProbeIsolatedEditorProcess(char* record, size_t capacity, const char* command,
+                                       const char* directory, const STARTUPINFOA& original)
+{
+    char expected[MAX_PATH] = {};
+    DWORD length = GetEnvironmentVariableA("OPENSAL_GUI_EDITOR_PROBE_EXE", expected, _countof(expected));
+    if (length == 0 || length >= _countof(expected) || strcmp(command, expected) != 0)
+        return;
+
+    BOOL inJob = FALSE;
+    const BOOL jobKnown = IsProcessInJob(GetCurrentProcess(), NULL, &inJob);
+    HANDLE threadToken = NULL;
+    const BOOL hasThreadToken = OpenThreadToken(GetCurrentThread(), TOKEN_QUERY, TRUE, &threadToken);
+    const DWORD tokenError = hasThreadToken ? ERROR_SUCCESS : GetLastError();
+    if (hasThreadToken)
+        ::CloseHandle(threadToken);
+    size_t used = strlen(record);
+    _snprintf_s(record + used, capacity - used, _TRUNCATE,
+                "inJob=%d jobKnown=%d threadToken=%d threadTokenError=%lu\r\n",
+                inJob, jobKnown, hasThreadToken, tokenError);
+
+    struct Variant
+    {
+        const char* label;
+        bool wide;
+        bool explicitApplication;
+        bool originalStartup;
+        DWORD flags;
+        bool explicitEnvironment;
+    };
+    const Variant variants[] = {
+        {"A/explicit/original", false, true, true, NORMAL_PRIORITY_CLASS, false},
+        {"A/NULL/original", false, false, true, NORMAL_PRIORITY_CLASS, false},
+        {"W/explicit/original", true, true, true, NORMAL_PRIORITY_CLASS, false},
+        {"W/NULL/original", true, false, true, NORMAL_PRIORITY_CLASS, false},
+        {"W/NULL/plain", true, false, false, NORMAL_PRIORITY_CLASS, false},
+        {"W/NULL/new-console", true, false, false, NORMAL_PRIORITY_CLASS | CREATE_NEW_CONSOLE, false},
+        {"W/NULL/no-window", true, false, false, NORMAL_PRIORITY_CLASS | CREATE_NO_WINDOW, false},
+        {"W/NULL/explicit-env", true, false, true, NORMAL_PRIORITY_CLASS | CREATE_UNICODE_ENVIRONMENT, true},
+    };
+    for (const Variant& variant : variants)
+    {
+        char line[2 * MAX_PATH] = {};
+        if (_snprintf_s(line, _TRUNCATE, "\"%s\" -NoProfile -NonInteractive -Command \"exit 7\"", command) < 0)
+            return;
+        PROCESS_INFORMATION pi = {};
+        BOOL ok = FALSE;
+        DWORD error = ERROR_SUCCESS;
+        if (variant.wide)
+        {
+            wchar_t wideCommand[MAX_PATH], wideLine[2 * MAX_PATH], wideDir[MAX_PATH];
+            if (!MultiByteToWideChar(CP_ACP, MB_ERR_INVALID_CHARS, command, -1, wideCommand, _countof(wideCommand)) ||
+                !MultiByteToWideChar(CP_ACP, MB_ERR_INVALID_CHARS, line, -1, wideLine, _countof(wideLine)) ||
+                !MultiByteToWideChar(CP_ACP, MB_ERR_INVALID_CHARS, directory, -1, wideDir, _countof(wideDir)))
+                error = GetLastError();
+            else
+            {
+                STARTUPINFOW si = {};
+                si.cb = sizeof(si);
+                if (variant.originalStartup)
+                {
+                    si.dwFlags = original.dwFlags;
+                    si.dwX = original.dwX;
+                    si.dwY = original.dwY;
+                    si.dwXSize = original.dwXSize;
+                    si.dwYSize = original.dwYSize;
+                    si.wShowWindow = original.wShowWindow;
+                }
+                LPWCH environment = variant.explicitEnvironment ? GetEnvironmentStringsW() : NULL;
+                if (variant.explicitEnvironment && environment == NULL)
+                    error = GetLastError();
+                else
+                {
+                    ok = ::CreateProcessW(variant.explicitApplication ? wideCommand : NULL, wideLine,
+                                          NULL, NULL, FALSE, variant.flags, environment, wideDir, &si, &pi);
+                    error = ok ? ERROR_SUCCESS : GetLastError();
+                }
+                if (environment != NULL)
+                    FreeEnvironmentStringsW(environment);
+            }
+        }
+        else
+        {
+            STARTUPINFOA si = original;
+            ok = ::CreateProcessA(variant.explicitApplication ? command : NULL, line,
+                                  NULL, NULL, FALSE, variant.flags, NULL, directory, &si, &pi);
+            error = ok ? ERROR_SUCCESS : GetLastError();
+        }
+        DWORD wait = WAIT_FAILED, exitCode = 0;
+        if (ok)
+        {
+            wait = WaitForSingleObject(pi.hProcess, 2000);
+            if (wait == WAIT_TIMEOUT)
+            {
+                // This is our own disposable exit-7 probe only.
+                ::TerminateProcess(pi.hProcess, 1);
+                WaitForSingleObject(pi.hProcess, 1000);
+            }
+            GetExitCodeProcess(pi.hProcess, &exitCode);
+            ::CloseHandle(pi.hThread);
+            ::CloseHandle(pi.hProcess);
+        }
+        used = strlen(record);
+        _snprintf_s(record + used, capacity - used, _TRUNCATE,
+                    "probe %s: started=%d error=%lu wait=%lu exit=%lu\r\n",
+                    variant.label, ok, error, wait, exitCode);
+        if (wait == WAIT_TIMEOUT)
+            break; // No further probes after a hung child.
+    }
+}
+
 // Test-only capture before the Debug handle monitor can display a modal.
 // The GUI test creates the GUID-scoped shared memory and enables this explicitly.
 static void RecordIsolatedEditorLaunch(const char* command, const char* arguments,
@@ -76,7 +189,10 @@ static void RecordIsolatedEditorLaunch(const char* command, const char* argument
     void* view = ::MapViewOfFile(mapping, FILE_MAP_WRITE, 0, 0, sizeof(record));
     if (view != NULL)
     {
+        // Publish baseline before probing so it survives a modal or timeout.
         memcpy(view, record, static_cast<size_t>(size) + 1);
+        ProbeIsolatedEditorProcess(record, sizeof(record), command, directory, startup);
+        memcpy(view, record, strlen(record) + 1);
         ::UnmapViewOfFile(view);
     }
     ::CloseHandle(mapping);
