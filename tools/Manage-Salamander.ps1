@@ -237,6 +237,13 @@ function Run-Tests {
         Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $testCollector)
     }
 
+    # Keep the versioned requirements and cross-session handoff discoverable.
+    # This is a structural documentation regression, not proof of a green release.
+    $continuityContract = Join-Path $repository 'tools\release\tests\Test-DevelopmentContinuity.ps1'
+    Invoke-TestCase -Name 'Test-DevelopmentContinuity.ps1' -Action {
+        Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $continuityContract)
+    }
+
     # This process runs the rest of the suite via nested pwsh.exe. Verify
     # that child stdout/stderr reach the transcript and failures are fatal.
     $nativeOutputContract = Join-Path $repository 'tools\release\tests\Test-Manage-Native-Output.ps1'
