@@ -76,7 +76,7 @@ if (-not $dispatch.Contains('Salamander::GetExplicitEditorApplicationName(expCom
 # HANDLES(Salamander::Helper(...)) expands to a nonexistent
 # C__Handles::Salamander member. Retain C__Handles::CreateProcess tracking
 # and pass only the already-validated executable as its first argument.
-if ($dispatch -notmatch '(?s)HANDLES\(CreateProcess\(Salamander::GetExplicitEditorApplicationName\(expCommand\),\s*cmdLine' -or
+if ($dispatch -notmatch '(?s)HANDLES\(CreateProcess\(\s*Salamander::GetExplicitEditorApplicationName\(expCommand\),\s*cmdLine' -or
     $dispatch -match 'HANDLES\(Salamander::' -or
     $dispatch -notmatch '#include "common/win32_editor_process_launch.h"') {
     throw 'External editor must use HANDLES(CreateProcess(...)), not HANDLES(namespaced helper).'
