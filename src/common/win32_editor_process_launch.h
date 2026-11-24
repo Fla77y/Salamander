@@ -11,7 +11,7 @@ namespace Salamander
 // Preserve the executable identity for a configured, existing absolute EXE.
 // In particular, packaged WindowsApps tools need not be located by parsing
 // a compound command line. Relative commands and other executable types must
-// keep the legacy CreateProcess(NULL, ...) search/association behavior.
+// keep the legacy HANDLE-tracked CreateProcess(NULL, ...) search behavior.
 inline const char* GetExplicitEditorApplicationName(const char* command)
 {
     if (command == nullptr || command[0] == '\0')
@@ -37,17 +37,6 @@ inline const char* GetExplicitEditorApplicationName(const char* command)
         return nullptr;
 
     return command;
-}
-
-inline BOOL CreateConfiguredEditorProcessA(
-    const char* command, char* commandLine, const char* workingDirectory,
-    DWORD creationFlags, STARTUPINFOA* startupInfo,
-    PROCESS_INFORMATION* processInfo)
-{
-    return CreateProcessA(GetExplicitEditorApplicationName(command),
-                          commandLine, nullptr, nullptr, FALSE,
-                          creationFlags, nullptr, workingDirectory,
-                          startupInfo, processInfo);
 }
 
 } // namespace Salamander
