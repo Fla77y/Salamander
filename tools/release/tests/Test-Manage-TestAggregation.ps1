@@ -41,6 +41,18 @@ try {
         throw 'Aggregated counts, identities or diagnostics are incorrect.'
     }
 
+    Initialize-TestRun -CollectFailures
+    $cancellationPropagated = $false
+    try {
+        Invoke-TestCase -Name 'cancellation' -Action {
+            throw [OperationCanceledException]::new('intentional cancellation')
+        }
+    }
+    catch [OperationCanceledException] { $cancellationPropagated = $true }
+    if (-not $cancellationPropagated -or $script:TestOutcomes.Count -ne 0) {
+        throw 'Cancellation must never be swallowed or counted as an ordinary test failure.'
+    }
+
     Initialize-TestRun
     $caught = $false
     try { Invoke-TestCase -Name 'fail-fast' -Action { throw 'expected fail-fast' } }
