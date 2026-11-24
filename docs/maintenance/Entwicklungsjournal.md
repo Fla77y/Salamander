@@ -619,6 +619,12 @@ niemals stillschweigend umschreiben; Korrekturen als neue datierte Zeile.
 - **Befund / Entscheidung:** Quellprüfung `src/fileswn9.cpp::ClipboardPaste`: `OleGetClipboard`-Fehler kann ohne Dialog FALSE zurückgeben; natives CF_HDROP-Fallback greift bisher nur nach ERROR_BAD_FORMAT. Das ist eine mögliche, nicht belegte Ursache; keine Produkt- oder Teständerung auf Verdacht. Erhaltene GUID-Fixture und Screenshot des Release-Fehlers auswerten: Quell-/Ziel-Existenz und SHA-256 beider Dateien, sichtbarer Panelzustand; dann `manage.cmd --test-gui-long-clipboard --release` isoliert wiederholen, bei geklärter Ursache Produktfix und beide Varianten, danach `--build-delta --test` und `--test-all`. Keine Timeout-/Assertion-Abschwächung.
 - **Änderungen:** ausschließlich Nachführung der drei Wartungsdokumente; keine Produkt-/Teständerung, keine lokale Windows-Ausführung durch den Agenten.
 
+### J-20261124-35 — Release-Clipboard isoliert PASS, sporadischer Fehler nicht geklärt
+
+- **Auftrag / Gap-IDs:** Auswertung der erhaltenen Fixture und des isolierten Gegenlaufs, UP-06/MGMT-03/QA-03.
+- **24.11.2026, 19:34:08–19:34:12 CET, Windows NT 10.0.26300 / PowerShell 7.7.0, sauberer HEAD `007f2109f5d6859c363971dd8f9c5930415c90bf`:** isoliertes `manage.cmd --test-gui-long-clipboard --release` PASS (Build, 411er Navigation, Multi-Move, rekursive Kopie, Long-to-short, Clipboard-Restore und STA-Shutdown). Log `manage-20261124-193408-961-808074.log`. In der erhaltenen Fehlfixture vom 19:18 waren beide `cut-*.txt` noch im Quellverzeichnis, je 29.696 Bytes und übereinstimmender sichtbarer SHA-256-Präfix; keine entsprechenden Ziele in der gelieferten Dateiliste. Vollständige Hashes und Screenshot nicht vorgelegt. Zwischen den Läufen nur Dokumentation geändert: Fehler nicht reproduziert, nicht behoben; unterschiedliche Testreihenfolge (kombiniert vs. isoliert) und sporadischer Clipboard-/GUI-Zustand bleiben mögliche Einflussfaktoren. Kein bestätigter Fehlermechanismus. Keine Produkt-/Teständerung, keine Timeouterhöhung. Nächster Schritt: fünf unabhängige Wiederholungen des ursprünglichen kombinierten Release-Aufrufs (Unicode-Eltern-Copy, History, Clipboard), bei erstem FAIL anhalten und neue Fixture/Screenshot/Log sichern; bei PASS `manage.cmd --build-delta --test`, danach `manage.cmd --test-all`. UP-06, QA-03 und MGMT-03 bleiben offen/teilbelegt, Release NO-GO.
+- **Änderungen:** ausschließlich drei Wartungsdokumente; keine neuen lokalen Windows-Tests durch den Agenten.
+
 ## Vorlage für zukünftige Einträge
 
 ```markdown
