@@ -1844,8 +1844,16 @@ BOOL CFilesWindow::ChangeUnicodePathToDisk(HWND parent, const std::wstring& dire
     std::string legacyPath;
     if (!Salamander::TryMakeExactAnsiPanelPath(directory, legacyPath))
     {
-        MessageBoxW(parent, L"This directory cannot yet be opened by all parts of the file panel "
-                    L"because its name is outside the active Windows code page.",
+        // Keep the W directory authoritative. A real, verified DOS short
+        // path can serve legacy code without guessing Unicode/ACP aliases.
+        // Volumes with 8.3 names disabled still fail closed.
+        if (Salamander::TryGetVerifiedAnsiShortDirectoryPath(directory, legacyPath))
+            return ChangeLongPathToDisk(parent, legacyPath.c_str(), suggestedTopIndex,
+                                        suggestedFocusName, nullptr, TRUE, FALSE, FALSE,
+                                        nullptr, FSTRYCLOSE_CHANGEPATH, &directory);
+        MessageBoxW(parent, L"This directory has no verified ANSI-compatible "
+                    L"short path. The legacy panel cannot safely open it. "
+                    L"No directory or file was changed.",
                     L"Change Directory", MB_OK | MB_ICONWARNING);
         return FALSE;
     }
