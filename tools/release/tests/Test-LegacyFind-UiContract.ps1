@@ -188,7 +188,7 @@ foreach ($required in @('GetClipboardSequenceNumber()', "GetData([Windows.Forms.
     }
 }
 foreach ($required in @('Test editor state=$state', 'Get-ProcessWindowSummary',
-    'GetProcessWindows([uint32]$process.Id)', 'DescribeWindow($_.Handle)',
+    'GetProcessWindows([uint32]$process.Id)', 'DescribeOwnedEditorErrorDialog(',
     "Title -eq 'Open Salamander'", 'Owned-error-dialog=', 'ReadAllText($neighbor)',
     'Wait-Until')) {
     if (-not $editorCase.Contains($required)) {
@@ -196,6 +196,23 @@ foreach ($required in @('Test editor state=$state', 'Get-ProcessWindowSummary',
     }
 }
 Write-Host 'PASS: failed shell clipboard and external editor commands retain strict checks and scoped diagnostics.'
+# The modal belongs to the isolated Salamander PID. A top-level caption
+# alone cannot show the CreateProcess failure reason: Win32 GetWindowTextW
+# cannot reliably read child controls in another process. Require a bounded
+# owner-checked WM_GETTEXT path for only the verified error dialog.
+$readModalInterop = [regex]::Match($driverText,
+    '(?s)public static string DescribeOwnedEditorErrorDialog\(.*?\r?\n    \}').Value
+foreach ($required in @('GetProcessWindows(pid)', 'top.Title == "Open Salamander"',
+    'ClassName(window) != "#32770"', 'GetWindowThreadProcessId(child, out childPid)',
+    'childPid != pid', 'ClassName(child) != "Static"',
+    'SendMessageTimeoutReadText(child, 0x000D', '750, out messageResult)')) {
+    if (-not $readModalInterop.Contains($required)) {
+        throw "Editor modal must be read only through verified, bounded WM_GETTEXT: $required"
+    }
+}
+Write-Host 'PASS: external-editor failure reads only verified test-owned modal labels with a timeout.'
+
+
 
 
 
