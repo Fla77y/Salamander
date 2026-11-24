@@ -166,6 +166,24 @@ static bool ReadUnicodeClipboardFiles(IDataObject* data,
         payload.bytes, GlobalSize(payload.value.hGlobal), files, error);
 }
 
+// Clipboard readers may contend with another process. Retry acquisition only;
+// callers must not replay a navigation or a filesystem operation.
+static bool OpenClipboardForRead(HWND owner, DWORD& error)
+{
+    for (int attempt = 0; ; ++attempt)
+    {
+        if (OpenClipboard(owner))
+        {
+            error = ERROR_SUCCESS;
+            return true;
+        }
+        error = GetLastError();
+        if (error != ERROR_ACCESS_DENIED || attempt == 3)
+            return false;
+        Sleep(10);
+    }
+}
+
 static bool ReadNativeUnicodeClipboardFiles(HWND owner, DWORD sequence,
                                             std::vector<Salamander::Utf16DiskPath>& files,
                                             DWORD& transferEffect, DWORD& error,
@@ -173,14 +191,8 @@ static bool ReadNativeUnicodeClipboardFiles(HWND owner, DWORD sequence,
 {
     if (plainFileDrop)
         *plainFileDrop = false;
-    // Retry only a busy read lock, never a paste or a filesystem operation.
-    for (int attempt = 0; !OpenClipboard(owner); ++attempt)
-    {
-        error = GetLastError();
-        if (error != ERROR_ACCESS_DENIED || attempt == 3)
-            return false;
-        Sleep(10);
-    }
+    if (!OpenClipboardForRead(owner, error))
+        return false;
     struct ClipboardGuard { ~ClipboardGuard() { CloseClipboard(); } } clipboard;
     if (!sequence || GetClipboardSequenceNumber() != sequence)
     {
@@ -917,7 +929,8 @@ void CFilesWindow::ClipboardPastePath()
     BOOL unicodeTextPresent = FALSE;
     const SIZE_T maxAnsiBytes = 4 * 32768; // bounded input, including DBCS
 
-    if (OpenClipboard(HWindow))
+    DWORD clipboardError = ERROR_SUCCESS;
+    if (OpenClipboardForRead(HWindow, clipboardError))
     {
         HANDLE handle = GetClipboardData(CF_UNICODETEXT);
         unicodeTextPresent = handle != NULL;
@@ -969,7 +982,7 @@ void CFilesWindow::ClipboardPastePath()
         CloseClipboard();
     }
     else
-        TRACE_E("OpenClipboard() has failed!");
+        TRACE_E("OpenClipboard() has failed! Win32 error: " << clipboardError);
 
     if (!unicodePath.empty())
         Salamander::TryMakeExactAnsiPanelPath(unicodePath, clipboardPath);
