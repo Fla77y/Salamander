@@ -7,6 +7,8 @@
 #include <cwchar>
 #include <string>
 
+#include "win32_long_path.h"
+
 namespace Salamander
 {
 // The last-write time belongs to the executable produced by the linker.
@@ -32,8 +34,21 @@ inline bool TryReadExecutableBuildTime(SYSTEMTIME& localTime)
         capacity = capacity > 16384 ? 32768 : capacity * 2;
     }
 
+    // An executable may itself be launched from a >MAX_PATH directory.
+    // Query its timestamp through the same normalized W path support as
+    // the rest of the long-path migration.
+    std::wstring extendedPath;
+    if (executable.compare(0, 4, L"\\\\?\\") == 0)
+        extendedPath = executable;
+    else
+    {
+        DWORD pathError = ERROR_SUCCESS;
+        if (!TryMakeExtendedLengthPath(executable.c_str(), extendedPath, pathError))
+            return false;
+    }
+
     WIN32_FILE_ATTRIBUTE_DATA attributes{};
-    if (!GetFileAttributesExW(executable.c_str(), GetFileExInfoStandard, &attributes) ||
+    if (!GetFileAttributesExW(extendedPath.c_str(), GetFileExInfoStandard, &attributes) ||
         (attributes.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0)
         return false;
 
