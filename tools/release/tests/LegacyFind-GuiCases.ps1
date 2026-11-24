@@ -910,10 +910,11 @@ function Assert-LegacyViewerContents {
             $viewerStillMatches = 'lookup-failed'
         }
         $clipboardChanged = $observed.Sequence -ne $sequence
+        $foreground = Get-ForegroundWindowSummary
         $diagnostic = [string]::Format(
-            'Viewer Copy timed out: ClipboardSequenceChanged={0}; ClipboardTextKind={1}; ObservedUtf16Length={2}; ExpectedUtf16Length={3}; ViewerStillMatches={4}.',
+            'Viewer Copy timed out: ClipboardSequenceChanged={0}; ClipboardTextKind={1}; ObservedUtf16Length={2}; ExpectedUtf16Length={3}; ViewerStillMatches={4}; Foreground={5}.',
             $clipboardChanged, $observed.Kind, $observed.Utf16Length,
-            $Expected.Length, $viewerStillMatches)
+            $Expected.Length, $viewerStillMatches, $foreground)
         throw $diagnostic
     }
     Write-Host 'PASS: Viewer copied the exact bytes from the named result'
