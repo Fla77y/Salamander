@@ -10,11 +10,11 @@ New-Item -ItemType Directory -Path $temporary -Force | Out-Null
 try {
     Initialize-TestRun -CollectFailures
     $script:continued = $false
-    Invoke-TestCase -Name 'synthetic fail' -Action { throw 'expected synthetic failure' } -BlocksGui
+    Invoke-TestCase -Name 'synthetic fail' -Action { throw 'expected synthetic failure' } -BlocksGui 6>$null
     Invoke-TestCase -Name 'synthetic pass' -Action { $script:continued = $true }
     Invoke-TestCase -Name 'synthetic gated GUI' -Action {
         throw 'GUI action should never run'
-    } -RequiresGuiSafety
+    } -RequiresGuiSafety 3>$null 6>$null
 
     if (-not $script:continued -or $script:TestOutcomes.Count -ne 3 -or
         $script:TestOutcomes[0].Status -ne 'FAIL' -or
@@ -25,7 +25,7 @@ try {
 
     $log = Join-Path $temporary 'aggregate.log'
     $caught = $false
-    try { Complete-TestRun -LogPath $log }
+    try { Complete-TestRun -LogPath $log 6>$null }
     catch {
         if ($_.Exception.Message -notmatch '1 Fehler, 1 übersprungen') { throw }
         $caught = $true
@@ -54,7 +54,7 @@ try {
 
     Initialize-TestRun -CollectFailures
     Invoke-TestCase -Name 'clean' -Action { }
-    Complete-TestRun -LogPath (Join-Path $temporary 'clean.log')
+    Complete-TestRun -LogPath (Join-Path $temporary 'clean.log') 6>$null
     $clean = Get-Content -LiteralPath (Join-Path $temporary 'clean.results.json') -Raw |
         ConvertFrom-Json
     if ($clean.Failed -ne 0 -or $clean.Skipped -ne 0 -or $clean.Passed -ne 1) {
