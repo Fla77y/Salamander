@@ -766,6 +766,73 @@ public static class SalamanderGuiNative
         PostOwnedCopyDialogButton(dialog, processId, 1); // IDOK of verified dialog
     }
 
+    // The expected product modal may lose desktop foreground before the
+    // test can acknowledge it. Never redirect keyboard input in that case.
+    // Match the full message (including exact paths), not a truncated caption.
+    public static IntPtr FindVerifiedRegressionPrompt(
+        IntPtr mainWindow, uint processId, string title, string expectedText)
+    {
+        uint mainPid;
+        if (mainWindow == IntPtr.Zero || processId == 0 ||
+            String.IsNullOrEmpty(title) || String.IsNullOrEmpty(expectedText) ||
+            expectedText.Length >= 4096 - 16 ||
+            GetWindowThreadProcessId(mainWindow, out mainPid) == 0 ||
+            mainPid != processId ||
+            ClassName(mainWindow) != "SalamanderMainWindowVer25")
+            throw new InvalidOperationException("Unverified regression prompt identity");
+
+        IntPtr found = IntPtr.Zero;
+        foreach (TopLevelWindow window in GetProcessWindows(processId))
+        {
+            if (!window.Visible || !IsWindowEnabled(window.Handle) ||
+                ClassName(window.Handle) != "#32770" || window.Title != title ||
+                !IsOwnedLargeCopyDialog(window.Handle, mainWindow))
+                continue;
+
+            bool matched = false;
+            WindowCallback callback = (child, ignored) =>
+            {
+                uint childPid;
+                if (ClassName(child) != "Static" ||
+                    GetWindowThreadProcessId(child, out childPid) == 0 ||
+                    childPid != processId)
+                    return true;
+                StringBuilder text = new StringBuilder(4096);
+                IntPtr result;
+                if (SendMessageTimeoutReadText(child, 0x000D, new UIntPtr(4096),
+                        text, 0x0002, 1000, out result) != IntPtr.Zero &&
+                    text.ToString().Replace("\r\n", "\n") ==
+                        expectedText.Replace("\r\n", "\n"))
+                    matched = true;
+                return true;
+            };
+            if (!EnumChildWindows(window.Handle, callback, IntPtr.Zero))
+                throw new InvalidOperationException("Cannot enumerate regression prompt controls");
+            if (!matched)
+                continue;
+
+            IntPtr ok = GetDlgItem(window.Handle, 1); // IDOK
+            uint buttonPid;
+            if (ok == IntPtr.Zero || ClassName(ok) != "Button" ||
+                GetWindowThreadProcessId(ok, out buttonPid) == 0 ||
+                buttonPid != processId || !IsWindowVisible(ok) || !IsWindowEnabled(ok))
+                throw new InvalidOperationException("Verified regression prompt has no usable OK button");
+            if (found != IntPtr.Zero)
+                throw new InvalidOperationException("Multiple matching owned regression prompts");
+            found = window.Handle;
+        }
+        return found;
+    }
+
+    public static void ConfirmVerifiedRegressionPrompt(
+        IntPtr mainWindow, uint processId, IntPtr dialog, string title, string expectedText)
+    {
+        if (dialog == IntPtr.Zero ||
+            FindVerifiedRegressionPrompt(mainWindow, processId, title, expectedText) != dialog)
+            throw new InvalidOperationException("Regression prompt changed before acknowledgement");
+        PostOwnedCopyDialogButton(dialog, processId, 1);
+    }
+
     public static bool MatchesRequestedCopyDialogText(string actual, string requested)
     {
         return string.IsNullOrEmpty(requested) || actual == requested;
@@ -5244,14 +5311,21 @@ try {
                 ($focusedName -ceq $utfCollisionName)) "Disposable Unicode row verified before $($operation.Name)"
 
             Send-Keys $operation.Key
-            $blocked = @{ Dialog = '<none>' }
+            $refusalText = 'This disk filename cannot be represented safely by the legacy ANSI file-operation engine. No files were changed.'
+            $blocked = @{ Window = [IntPtr]::Zero }
             Wait-Until {
-                $blocked.Dialog = Get-TestDialog
-                return $blocked.Dialog -match 'legacy ANSI file-operation engine'
+                $blocked.Window = [SalamanderGuiNative]::FindVerifiedRegressionPrompt(
+                    $mainWindowHandle, [uint32]$process.Id, 'Error', $refusalText)
+                return $blocked.Window -ne [IntPtr]::Zero
             } "safe refusal dialog for $($operation.Name)"
             Write-Host "PASS: $($operation.Name) refused unsafe Unicode identity"
-            Send-Keys '{ESC}'
-            Wait-Until { -not (Get-TestDialog) } "dismissal of $($operation.Name) refusal dialog"
+            # The product uses MB_OK: acknowledge its exact verified dialog,
+            # even if the desktop foreground changed after the shortcut.
+            [SalamanderGuiNative]::ConfirmVerifiedRegressionPrompt(
+                $mainWindowHandle, [uint32]$process.Id, $blocked.Window, 'Error', $refusalText)
+            Wait-Until { -not [SalamanderGuiNative]::IsWindow($blocked.Window) -and
+                         [SalamanderGuiNative]::IsWindowEnabled($mainWindowHandle) -and
+                         -not (Get-TestDialog) } "dismissal of $($operation.Name) refusal dialog"
             # The shell may hand foreground focus back to PowerShell after a
             # modal dialog. Restore only the PID/HWND verified at startup.
             # Send-Keys must continue to refuse unowned foreground windows.
@@ -5563,8 +5637,15 @@ try {
     Send-Keys '{END}'
     Assert-True ((Read-FocusedFilename) -ceq $shortSourceName) 'Short source file selected for long target'
     Send-Keys '{F5}'
-    Start-Sleep -Milliseconds 400
-    Send-Keys '{ENTER}'
+    $copyPrompt = "Copy the Unicode file to the other panel?`n`n$shortSourceName`n`nDestination: $deep`n`nExisting files will not be overwritten."
+    $copyConfirmation = @{ Window = [IntPtr]::Zero }
+    Wait-Until {
+        $copyConfirmation.Window = [SalamanderGuiNative]::FindVerifiedRegressionPrompt(
+            $mainWindowHandle, [uint32]$process.Id, 'Unicode copy', $copyPrompt)
+        return $copyConfirmation.Window -ne [IntPtr]::Zero
+    } 'exact short-to-long F5 confirmation'
+    [SalamanderGuiNative]::ConfirmVerifiedRegressionPrompt(
+        $mainWindowHandle, [uint32]$process.Id, $copyConfirmation.Window, 'Unicode copy', $copyPrompt)
     $longTargetFile = Join-Path $deep $shortSourceName
     Wait-Until { Test-Content $longTargetFile } 'F5 short source into long target'
     Assert-True ((Test-Content $longTargetFile) -and (Test-Content $shortSourceFile)) 'F5 short-to-long bytes intact at both paths'
