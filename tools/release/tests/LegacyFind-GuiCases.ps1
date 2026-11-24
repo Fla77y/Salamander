@@ -1271,7 +1271,8 @@ function Test-LegacyFindExternalEditor {
             @([SalamanderGuiNative]::GetProcessWindows([uint32]$process.Id) |
                 Where-Object { $_.Visible -and $_.Title -eq 'Open Salamander' } |
                 ForEach-Object {
-                    [SalamanderGuiNative]::DescribeWindow($_.Handle)
+                    [SalamanderGuiNative]::DescribeOwnedEditorErrorDialog(
+                        $_.Handle, [uint32]$process.Id)
                 }) -join ' || '
         } catch { '<test dialog text unavailable>' }
         # Reading only the test-owned window's actual child labels provides
