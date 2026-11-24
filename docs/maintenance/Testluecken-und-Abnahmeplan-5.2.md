@@ -6,6 +6,7 @@
 > Arbeitskatalogs vom 23.11.). Ursprüngliche grüne Referenz
 > `a7ab5b40d859509ffe5fead2d8f00739399a5067`; zuletzt
 > unter Windows ausgewerteter **GUI-Quellstand** `aae7e76c2a5b73b2ff2fff4e65570a2a660be92e` (24.11.2026 21:23–21:39 CET: `--test-all` 109 PASS / 0 FAIL / 32 geplante SKIP / 0 erforderliche SKIP; Laufzeit 00:15:51.958).
+> Letzter Clean-Build-/Paketlauf `28c18a48d1615ce68e38277047cf24d52ac93374` (24.11.2026 21:54–22:00 CET): `--build-clean --test --setup` PASS, Laufzeit 00:05:18.722; tatsächliche Installation und VM-Abnahme offen.
 > Die Dokumentationscommits danach sind **keine** neue grüne Testbaseline.
 > **Keine vollständige Anforderungsabdeckung und keine Release-Freigabe behauptet.**
 >
@@ -542,6 +543,8 @@ Nächste Prüfung: PowerShell-AST-Parser, dann isolierter
 
 ### [ ] UP-01 – Vollständiges Produktions-/Plugin-Inventar (**P0**, TEILBELEGT)
 
+**24.11.2026, `28c18a48`, `--build-clean --test --setup` PASS, Log `manage-20261124-215448-380-d3341c.log`:** 35/35 gebaute und gestagte SPLs je x64-Variante SHA-256-MATCH, 40 Sidecars je Variante; 36 Module/432 Slots, WinSCP NOT_SHIPPED, Funktionsprüfung NOT_ASSESSED.
+
 **24.11.2026, `aae7e76c`, `--test-all` 109/0/32, Log `manage-20261124-212327-502-ccc951.log`:** 35 Plugin-Binär-ABI-Prüfungen je x64-Variante PASS; Inventar allein kein Funktionsnachweis.
 - **Lücke:** Keine lückenlose Prüfung jedes tatsächlich ausgelieferten
   Plugins und jedes UTF-16-/ANSI-Übergangs.
@@ -949,6 +952,8 @@ UP-07 bleibt TEILBELEGT.
 
 ### [ ] BUILD-01 – Komplette Vierfach-Buildmatrix (**P0**, TEILBELEGT)
 
+**24.11.2026, `28c18a48`, `--build-clean --test --setup` PASS, Log `manage-20261124-215448-380-d3341c.log`:** Realer Clean-Solution-Build Debug/Release x64, MSBuild 18.12.3, 34 HTML-Help-Projekte PASS. Win32-Solution-Matrix weiterhin offen (WER-Core-Builds separat).
+
 **24.11.2026, `aae7e76c`, `--test-all` 109/0/32, Log `manage-20261124-212327-502-ccc951.log`:** Isolierte WER-Core-Vierfachmatrix PASS; keine vollständige Vierfach-Solution-/Clean-/Setup-Matrix.
 
 **24.11.2026, `bb4443e6`:** Delta-Build Debug/Release x64 und HTML-Hilfe sowie `--test` PASS. Log `manage-20261124-210014-312-253ed1.log`. Keine neue vollständige Vierfach-/Clean-/Setup-Matrix.
@@ -976,6 +981,8 @@ UP-07 bleibt TEILBELEGT.
 
 ### [ ] MGMT-01 – Gesamter Update-/Build-/Test-/Setup-Ablauf (**P1**, OFFEN)
 
+**24.11.2026, `28c18a48`, `--build-clean --test --setup` PASS, Log `manage-20261124-215448-380-d3341c.log`:** Kombinierter Clean-Build/Test/Setup real PASS, vier lokale Pakete, 00:05:18.722. Autorisierter kombinierter Update-Ablauf offen.
+
 **24.11.2026, `aae7e76c`, `--test-all` 109/0/32, Log `manage-20261124-212327-502-ccc951.log`:** Laufzeitausgabe im erfolgreichen Volltest nachgewiesen; Clean-Build/Setup und kombinierter Update-Ablauf offen.
 
 **24.11.2026, Nutzerauftrag (A4 / MGMT-01, MGMT-02):** Gesamtlaufzeit eines `manage.cmd`-Aufrufs am Ende ausgeben. In `tools/Manage-Salamander.ps1` startet eine monotone `System.Diagnostics.Stopwatch` am Skripteinstieg; der bestehende `finally`-Block gibt vor `Stop-Transcript` die Laufzeit als `Gesamtlaufzeit: HH:mm:ss.fff` (Gesamtstunden auch über 24 h) aus, auch bei regulär abgefangenen Fehlern und Hilfe. Die Zeit umfasst alle angeforderten Schritte einschließlich Wartezeiten, nicht den nachgelagerten Transcript-Abschluss/Clipboard-Export oder den Prozessstart des CMD-Wrappers. Exitcodes, bestehende Protokollierung und Clipboard-Verhalten unverändert. Keine Testdateien geändert (A8), kein neuer Windows-Lauf belegt. Nächster Schritt: `manage.cmd --help` (Exit 0), `manage.cmd --invalid-option` (Exit 1), jeweils Laufzeit im Terminal/Log prüfen; anschließend der noch ausstehende `manage.cmd --test-all`. Release NO-GO unverändert.
@@ -989,6 +996,8 @@ UP-07 bleibt TEILBELEGT.
   `--update` nur nach ausdrücklicher Zustimmung.
 
 ### [ ] MGMT-02 – Fehler- und Isolationsverhalten (**P1**, TEILBELEGT)
+
+**24.11.2026, `28c18a48`, `--build-clean --test --setup` PASS, Log `manage-20261124-215448-380-d3341c.log`:** Laufzeitausgabe erneut bei Erfolg belegt. Fehler-/Help-Gegenlauf weiterhin offen.
 
 **24.11.2026, `aae7e76c`, `--test-all` 109/0/32, Log `manage-20261124-212327-502-ccc951.log`:** Aggregations-, Exitcode-, GUI-Warte- und Isolationsverträge PASS; neue Laufzeitausgabe bei Erfolg bestätigt, Fehler-/Help-Gegenlauf offen.
 
@@ -1049,6 +1058,8 @@ UP-07 bleibt TEILBELEGT.
 
 ### [ ] PKG-01 – Vollständiges und byteidentisches Plugin-Paket (**P0**, VORBEREITET)
 
+**24.11.2026, `28c18a48`, `--build-clean --test --setup` PASS, Log `manage-20261124-215448-380-d3341c.log`:** Reale Staging-SHA-256-Prüfung 35/35 SPLs und 40/40 Runtime-Sidecars je Variante, fünf Pflichtmodule, keine nicht deklarierten SPLs PASS. Beide 7z-Integritätstests und Inno-Kompilierungen PASS. Unabhängiger finaler Archiv-/Installer-Inhaltsabgleich noch offen.
+
 **24.11.2026, `aae7e76c`, `--test-all` 109/0/32, Log `manage-20261124-212327-502-ccc951.log`:** Synthetische Staging-/SHA256-Verträge und ABI PASS; reale Pakete noch zu erzeugen und prüfen.
 - **Lücke:** Pflichtdateien werden geprüft, aber noch nicht alle gebauten
   `.spl` auf exakten Inhalt und vollständige Stagingliste im grünen Stand.
@@ -1063,6 +1074,8 @@ UP-07 bleibt TEILBELEGT.
 
 ### [ ] PKG-02 – Allowlist, Abhängigkeiten, Lizenzdateien (**P0**, TEILBELEGT)
 
+**24.11.2026, `28c18a48`, `--build-clean --test --setup` PASS, Log `manage-20261124-215448-380-d3341c.log`:** Reale Paketvalidierung 52 PE/286 Release-Dateien (287 einschließlich Manifest), 63 PE/422 Debug-Dateien (423 einschließlich Manifest). Keine verbotene Build-Endung/erkennbare Debug-CRT in protokollierter Release-Inno-Dateiliste. Finales Release-Hashmanifest und extrahiertes Archiv separat prüfen; unabhängiges GitHub-Artefakt und VM offen.
+
 **24.11.2026, `aae7e76c`, `--test-all` 109/0/32, Log `manage-20261124-212327-502-ccc951.log`:** Synthetische Paket-/Payload-/Manifest-Verträge PASS; reale Paketprüfung offen.
 - **Fälle:** Release-only-Manifest; verbotene `.pdb/.lib/.exp/.obj/.pch/
   .idb/.ilk/.tlog/.lastbuildstate`, Debug CRT, private Logs/Secrets;
@@ -1075,6 +1088,8 @@ UP-07 bleibt TEILBELEGT.
   `tools/release/tests/Test-ReleasePublicArtifact.ps1`.
 
 ### [ ] PKG-03 – Saubere Windows-11-VM: portable Variante (**P0**, OFFEN)
+
+**24.11.2026, `28c18a48`, `--build-clean --test --setup` PASS, Log `manage-20261124-215448-380-d3341c.log`:** Lokales Release-7z erzeugt und Integrität PASS; noch nicht auf sauberer VM gestartet. Exakte Hashes und PortableManifest-Prüfung vor VM-Smoke erforderlich.
 - **Fälle:** Frischer Snapshot ohne VS, Windows SDK oder separat
   installiertes VC++-Redist; heruntergeladenes finales 7z prüfen,
   entpacken/starten, F1-Hilfe, Plugins, F3 für BMP/PNG/JPEG/TIFF,
@@ -1083,6 +1098,8 @@ UP-07 bleibt TEILBELEGT.
   Artefakthashes**. Eine CI-Runner-VM mit Entwicklerwerkzeugen zählt nicht.
 
 ### [ ] PKG-04 – Saubere VM: Installer, Deinstallation, Upgrade (**P0**, OFFEN)
+
+**24.11.2026, `28c18a48`, `--build-clean --test --setup` PASS, Log `manage-20261124-215448-380-d3341c.log`:** Release-Setup erfolgreich kompiliert, 7.342.543 Bytes; weder Installation noch Deinstallation/Upgrade in diesem Lauf ausgeführt.
 - **Fälle:** Separater frischer Snapshot; interaktive Installation,
   Verknüpfungen, Start/F1/F3/Plugins, vollständige Deinstallation;
   separater 5.0→5.2-Upgrade-/Rollback-Snapshot.
@@ -1091,6 +1108,8 @@ UP-07 bleibt TEILBELEGT.
   Protokoll, Screenshots, OS-Build, Datum, SHA, Hashes.
 
 ### [ ] PKG-05 – Authenticode, rechtliche Freigabe, Public Artifact (**P0**, BLOCKIERT)
+
+**24.11.2026, `28c18a48`, `--build-clean --test --setup` PASS, Log `manage-20261124-215448-380-d3341c.log`:** Inno Setup 6.7.4 meldet Non-commercial use only; keine Lizenz-/Signatur-/Redistributionsfreigabe abgeleitet, keine Veröffentlichung.
 - **Fälle:** Signatur der finalen EXE/DLL/SPL/Setup **oder** ausdrücklich
   akzeptierte Veröffentlichung ohne Signatur; Lizenz- und Herkunftsprüfung;
   öffentliches ZIP enthält ausschließlich Release-7z, Release-Setup
