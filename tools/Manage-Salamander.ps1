@@ -234,6 +234,45 @@ function Get-VariantDirectory {
     Join-Path $buildRoot ('salamander\' + $Mode + '_x64')
 }
 
+# A successful host build is not evidence that the optional PictView SDK
+# entry point exists in the linked SPL. Inspect the actual output without
+# loading it or executing any plug-in code.
+function Assert-PictViewUnicodeExport {
+    param([Parameter(Mandatory)][string]$VisualStudioRoot,
+          [Parameter(Mandatory)][string]$VariantDirectory)
+    . (Join-Path $repository 'tools\release\Plugin-Export-Parser.ps1')
+    $toolchainRoot = Join-Path $VisualStudioRoot 'VC\Tools\MSVC'
+    $dumpbin = Get-ChildItem -LiteralPath $toolchainRoot -Directory |
+        Sort-Object { [version]$_.Name } -Descending |
+        ForEach-Object { Join-Path $_.FullName 'bin\Hostx64\x64\dumpbin.exe' } |
+        Where-Object { Test-Path -LiteralPath $_ -PathType Leaf } |
+        Select-Object -First 1
+    if ([string]::IsNullOrWhiteSpace($dumpbin)) {
+        throw "dumpbin.exe not found beneath $toolchainRoot"
+    }
+    $binary = Join-Path $VariantDirectory 'plugins\pictview\pictview.spl'
+    $item = Get-Item -LiteralPath $binary -ErrorAction Stop
+    if ($item.PSIsContainer) { throw "Expected PictView binary, found directory: $binary" }
+    $hash = (Get-FileHash -LiteralPath $binary -Algorithm SHA256).Hash
+    Write-Host "PictView binary: $binary; UTC write time: $($item.LastWriteTimeUtc.ToString('o')); SHA256: $hash"
+    $dump = @(& $dumpbin /nologo /headers /exports $binary 2>&1)
+    $exitCode = $LASTEXITCODE
+    if ($exitCode -ne 0) { throw "dumpbin failed for $binary (exit $exitCode): $($dump -join ' ')" }
+    $report = $dump -join [Environment]::NewLine
+    if ($report -notmatch '(?im)^\s*8664\s+machine\b') {
+        throw "PictView output is not an x64 PE image: $binary"
+    }
+    foreach ($symbol in @('SalamanderPluginEntry', 'SalamanderPluginGetReqVer',
+                          'SalamanderPluginQueryUnicodeViewer')) {
+        if (-not (Test-PeNamedExport -Report $report -Name $symbol)) {
+            $rows = @($dump | Where-Object { $_ -match '(?i)ordinal\s+hint\s+RVA|SalamanderPlugin' })
+            throw ("Missing exact PictView PE export '$symbol' in $binary. " +
+                   "Export rows: $($rows -join ' | ')")
+        }
+        Write-Host "PASS: PictView PE export $symbol"
+    }
+}
+
 function Build-Variants {
     param([ValidateSet('Delta', 'Rebuild', 'Clean')][string]$Mode = 'Rebuild')
     $vs = Get-VisualStudio2026
@@ -252,6 +291,7 @@ function Build-Variants {
         $productVersionTest = Join-Path $repository 'tools\release\tests\Test-ProductVersion.ps1'
         Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $productVersionTest,
                                   '-BinaryPath', $binary)
+        Assert-PictViewUnicodeExport -VisualStudioRoot $vs -VariantDirectory (Get-VariantDirectory $variant)
     }
     $pf86 = [Environment]::GetFolderPath('ProgramFilesX86')
     $hhc = Find-Executable 'hhc.exe' @((Join-Path $pf86 'HTML Help Workshop\hhc.exe'))
