@@ -5,7 +5,7 @@
 > Stand: **24. November 2026** (Fortschreibung des historischen
 > Arbeitskatalogs vom 23.11.). Ursprüngliche grüne Referenz
 > `a7ab5b40d859509ffe5fead2d8f00739399a5067`; zuletzt
-> unter Windows ausgewerteter Quellstand `a928794c7e4072777246d959ee9dd77c129e2d89` (`--test` PASS am 24.11.2026, 14:02–14:03 CET).
+> unter Windows ausgewerteter Quellstand `9f524264af766cfc417b5b2b9870008e88b6e093` (`--build-delta --test` PASS am 24.11.2026, 14:32–14:34 CET; drei GUI-Läufe anschließend durch vorhandene Salamander-Instanz blockiert).
 > Die Dokumentationscommits danach sind **keine** neue grüne Testbaseline.
 > **Keine vollständige Anforderungsabdeckung und keine Release-Freigabe behauptet.**
 >
@@ -95,12 +95,12 @@ eine kürzere Fixture erfüllt den Grenzfall **nicht**.
 
 ## Arbeitsfortschritt M1 – nachgeführter Windows-Stand (24. November 2026)
 
-**Neue Implementierungen nach dem letzten Windows-`--test`-PASS auf `a928794c`:** verifizierter 8.3-Zugang für nicht-ACP-fähige kurze Elternverzeichnisse, neuer nativer Alias-Test und absoluter PowerShell-Editor-Fixture-Scriptpfad. **Status: ausschließlich statisch geprüft, keine neue Windows-/GUI-Ausführung.** Nicht-8.3-Volumes und Debug-/Release-Elternnavigation bleiben offen. Nicht als vollständig behoben oder als neue grüne Baseline werten.
+**Windows-Nachweis 24.11.2026, 14:32–14:34 auf `9f524264`:** Debug/Release-x64-Delta-Build und `--test` **PASS**. Neuer nativer 8.3-Verzeichnisalias-Test **positiv PASS**; 22 registrierte native C++-Regressionen, 66 PS-Skripte. **GUI nicht ausgeführt:** Unicode-Elternverzeichnis Release/Debug und Legacy-Find Debug um 14:34 jeweils durch eine bereits laufende Salamander-Instanz **vor dem eigentlichen Produkttest blockiert** (kein neuer Produkt-PASS/-FAIL). Nicht-8.3-Volumes, echte Debug-/Release-GUI-Verzeichnisnavigation und externer Editor weiterhin offen. Vor erneuter GUI-Prüfung alle regulären Salamander-Instanzen geordnet schließen; niemals automatisch fremde Prozesse beenden.
 
 **Beleg- und Umfangsgrenze:** User-Transkripte, nicht in Git gespeicherte
 Logdateien. Der letzte **tatsächlich** geprüfte aktuelle Code-Stand ist
-`bugfix/v5.2` bei `a928794c7e4072777246d959ee9dd77c129e2d89`
-(`manage.cmd --test` **PASS**, 24.11.2026, 14:02–14:03 CET).
+`bugfix/v5.2` bei `9f524264af766cfc417b5b2b9870008e88b6e093`
+(`manage.cmd --build-delta --test` **PASS**, 24.11.2026, 14:32–14:34 CET).
 Ein darauf folgender **Dokumentationscommit** gilt nicht als neu getesteter
 Produktcode. Detailgeschichte und Folgeaufträge:
 [Entwicklungsjournal](Entwicklungsjournal.md), aktueller
@@ -733,7 +733,7 @@ kompiliert und ausgeführt werden.
 und das echte zweite Volume sind noch ausstehend.**
 
 ### [ ] UP-04 – Kopieren/Bewegen über Volume- und Worker-Grenzen (**P0**, TEILBELEGT)
-- **24.11.2026, neuer Stand ungetestet:** Der Unicode-Verzeichniszugang über verifizierten 8.3-Alias führt weiterhin `GetDiskPathW` als Originalidentität. Native Alias-Testfixture neu in `--test`; alle F5/F6- und Cross-Volume-/Worker-Nachweise müssen für den neuen Quellstand erneut erfolgen, kein Closure.
+- **24.11.2026, SHA `9f524264`, 14:32–14:34:** `--build-delta --test` unter Windows PASS; nativer UTF-16-/8.3-Alias-Positivtest PASS und Worker-/Transfer-Isolationstests PASS. Die GUI-Elternverzeichnisprüfungen konnten wegen laufender Salamander-Instanz nicht beginnen. Echte F5/F6-GUI- und Cross-Volume-/Worker-End-to-End-Abnahme bleiben offen, kein Closure.
 - **24.11.2026:** Release-Multiselect-GUI mit 17-MiB-Dateien und F5/F6 PASS; native F6-Identitäts-/Byteprüfungen PASS. Echte Cross-Volume-Migration in `long_path_io.cpp` mangels konfiguriertem Testvolume SKIP; kein Abschluss.
 
 - **Lücke:** F5/F6 mit 263 UTF-16-Einheiten und >17 MiB Same-Volume-Move
@@ -792,7 +792,7 @@ externen Editierens, Kopieren als UNC, Drag/Drop und
 der Shell-Properties steht noch aus.
 
 ### [ ] UP-06 – Shell, Zwischenablage, externe Programme, Dateiattribute (**P1**, OFFEN)
-- **24.11.2026, neuer Quellstand noch nicht auf Windows geprüft:** Bedingte Unicode-Elternverzeichnis-Navigation: echter, exakt konvertierbarer 8.3-Pfad, Volume-/File-ID-Verifikation gegen ursprünglichen W-Pfad; `GetDiskPathW` autoritativ. Auf Volumes ohne 8.3-Alias bleibt **FAIL-CLOSED**; P0-W-Panelmigration und tatsächliche Debug-/Release-GUI-Abnahme bleiben offen. Nicht als geschlossene Unicode-Anforderung zählen.
+- **24.11.2026, SHA `9f524264`, Windows-nativer Test PASS:** Die bedingte Unicode-Elternverzeichnis-Navigation über echten, exakt konvertierbaren 8.3-Pfad mit Volume-/File-ID-Identität und autoritativem `GetDiskPathW` wurde nativ positiv geprüft. **Debug-/Release-GUI-Test am 14:34 durch fremde/laufende Salamander-Instanz vor Produktausführung BLOCKIERT**. Auf Volumes ohne 8.3-Alias bleibt **FAIL-CLOSED**; vollständige W-Panelmigration und GUI-Abnahme offen. Nicht als geschlossene Unicode-Anforderung zählen.
 - **24.11.2026:** Kurzer, nicht-ACP-fähiger Unicode-Elternpfad wird in beiden x64-Varianten von `ChangeUnicodePathToDisk` abgewiesen; unverändert offener Produktfehler. Externer PowerShell-Editor FAIL, nativer Vergleichseditor PASS.
 
 - **Fälle:** Datei-Eigenschaften, Öffnen, Drag/Drop, Viewer/Editor,
@@ -998,7 +998,7 @@ UP-07 bleibt TEILBELEGT.
   Plugin-Fähigkeiten je Modul vorher spezifizieren; **UP-01/UP-02**.
 
 ### [ ] FIND-04 – Erweiterte Funktionen und Ergebnisaktionen (**P1**, TEILBELEGT)
-- **24.11.2026, noch nicht Windows-verifiziert:** Der PowerShell-Editor erhält einen absoluten, korrekt zitierten `-File`-Pfad; vor dem eigentlichen GUI-Edit-Befehl wird der konkrete `pwsh.exe`-Host mit einem test-eigenen File unabhängig geprüft und die Fixture nachweisbar zurückgesetzt. So unterscheiden wir Host-/Policy-Fehler von Produkt-CreateProcess-Fehlern. Die Vertragsprüfung erzwingt Vorlauf und Zurücksetzen des Statusmarkers (`be853b54`). Beide Editorvarianten bleiben erhalten; Ausführungsrichtlinie bleibt unverändert. `ExternalEditorNative` und strenge Original-/Nachbar-/Argumentprüfungen bleiben bestehen. Vorhandenes Debug-FAIL `NOT_STARTED` nicht als behoben markieren, bis erneuter realer Lauf bestanden ist.
+- **24.11.2026, SHA `9f524264`:** Die PowerShell-Editor-Kontraktprüfungen im echten Windows-`--test` sind PASS, aber der GUI-Editorlauf wurde wegen vorhandener Salamander-Instanz **vor Produktausführung blockiert**; die eigentliche Änderung ist nicht GUI-verifiziert. Der PowerShell-Editor erhält einen absoluten, korrekt zitierten `-File`-Pfad; vor dem eigentlichen GUI-Edit-Befehl wird der konkrete `pwsh.exe`-Host mit einem test-eigenen File unabhängig geprüft und die Fixture nachweisbar zurückgesetzt. So unterscheiden wir Host-/Policy-Fehler von Produkt-CreateProcess-Fehlern. Die Vertragsprüfung erzwingt Vorlauf und Zurücksetzen des Statusmarkers (`be853b54`). Beide Editorvarianten bleiben erhalten; Ausführungsrichtlinie bleibt unverändert. `ExternalEditorNative` und strenge Original-/Nachbar-/Argumentprüfungen bleiben bestehen. Vorhandenes Debug-FAIL `NOT_STARTED` nicht als behoben markieren, bis erneuter realer Lauf bestanden ist.
 - **24.11.2026:** Debug-Legacy-Find 36 PASS, 1 FAIL; originaler PowerShell-`ExternalEditor` meldet `NOT_STARTED`, Native-Vergleich PASS. Beide Szenarien bleiben erhalten, Verhalten und Root Cause offen.
 
 - **Lücke:** 72 GUI-Szenarien bestanden, aber nicht alle Kombinationen
@@ -1109,6 +1109,7 @@ UP-07 bleibt TEILBELEGT.
   Ausschlüsse (WinAPI-/GUI-Boundaries).
 
 ### [ ] QA-03 – Wiederholbarkeit, GUI-Flakiness und Ressourcen (**P1**, TEILBELEGT)
+- **24.11.2026, 14:34, SHA `9f524264`:** Drei isolierte GUI-Aufrufe (Unicode-Elternverzeichnis Release/Debug, Legacy-Find Debug) scheiterten am **Preflight bereits laufender Salamander-Instanzen** und führten keine Produktschritte aus. Sicherheitsentscheidung korrekt: keine Benutzerinstanz abschießen, nicht als neue GUI-Produktregression verbuchen. Vor Wiederholung eigene Salamander-Fenster regulär schließen.
 - **24.11.2026:** Hypothese zum `ExternalEditor`-Fehler (relativer Scriptpfad des MSIX-Childs) mit absolutem test-eigenen Scriptpfad und unabhängiger, zurückgesetzter PowerShell-Host-Preflight-Fixture abgesichert. Kein Root-Cause-/Laufzeitnachweis bisher; nachfolgende GUI-Wiederholungen und echte Prozessstartdiagnose erforderlich.
 - **24.11.2026, 13:56:** Testinfrastruktur verursachte einen deterministischen Parserabbruch auf `8a5cb99d`; kein sporadischer Produktfehler. Regressionsfix vorhanden, auf Windows nach Fix nicht geprüft.
 - **24.11.2026:** GUI-Viewer/Unicode-Fälle beim Einzel-Legacy-Debug-Lauf PASS; ursprüngliche PowerShell-Editor-Regression FAIL. Einzelner erfolgreicher Viewer-Lauf ist kein Wiederholbarkeitsnachweis.

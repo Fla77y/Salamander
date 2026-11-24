@@ -447,6 +447,16 @@ niemals stillschweigend umschreiben; Korrekturen als neue datierte Zeile.
 - **Commit:** `be853b5426ffdc5ee2c14106849769e3f1092033` plus diese Dokumentationsfortschreibung.
 - **Verifikation:** Statischer Quelltextabgleich; kein neuer PowerShell-/MSVC-/GUI-Lauf. Letzter tatsächlich erfolgreicher `--test`-SHA bleibt `a928794c`. Die Unicode-Navigation ohne echten 8.3-Kurznamen und der Editorfehler bleiben offen bis zum echten Windows-Nachweis.
 
+### J-20261124-10 — Delta-Build und native Tests grün, GUI-Läufe durch laufende Instanz blockiert
+
+- **Benutzerbefund / IDs:** PowerShell-Ausgabe vom 24.11.2026 auf sauberem `bugfix/v5.2`-Checkout `9f524264af766cfc417b5b2b9870008e88b6e093`. Relevante Teilnachweise **BUILD-01, UP-04, UP-06, FIND-04, QA-03**.
+- **Echter Windows-Nachweis:** `manage.cmd --build-delta --test` startete **14:32:47 CET**, endete erfolgreich vor 14:34:41. **MSBuild Debug x64 (Delta) PASS, Release x64 (Delta) PASS**; beide gebauten EXEs bestehen VERSIONINFO 5.2. HTML-Hilfe-Verarbeitung abgeschlossen. `--test` vollständig **PASS** einschließlich AST-Parser über 66 PowerShell-Skripte, 22 registrierter nativer C++-Regressionen und unverändertem Legacy-Find-Editor-Vertrag. Neuer `unicode_directory_panel_alias.cpp` **PASS** mit real vorhandenem, verifiziertem Windows-8.3-Alias.
+- **Einschränkungen:** `long_path_io.cpp` markierte den optionalen echten **Cross-Volume-Move SKIP** (`OPENSAL_CROSS_VOLUME_TEST_DIR` fehlt). Normale `--test`-PASS-Verträge sind keine GUI-, Plugin-, Clean-/Vierfach- oder VM-Abnahme.
+- **Drei nachfolgende Tests:** `--test-gui-unicode-parent --release` (14:34:41), `--debug` (14:34:43) und `--test-gui-legacy-find --debug` (14:34:45) beendeten sich mit Exit 1 **vor den eigentlichen GUI-Schritten**, weil bereits mindestens eine `salamand.exe`-Instanz lief. Die Preflight-Sperre ist absichtlicher Nutzerdatenschutz, **kein Produkt-PASS/FAIL**. Daher fehlen weiterhin GUI-Befunde zu Unicode-Elternnavigation und PowerShell-Editor.
+- **Protokollbelege:** `manage-20261124-143247-926-e31128.log` (Build/Test PASS), `manage-20261124-143441-351-f441ec.log`, `manage-20261124-143443-659-54878a.log`, `manage-20261124-143445-886-a11170.log` (GUI BLOCKED), lokal in `.Build/logs`, nicht in Git. Benutzer-Paste ausgewertet, keine Logdatei mit persönlichen Pfaden eingecheckt.
+- **Entscheidung / nächster Schritt:** Keine Produkt- oder Testvertragskorrektur aus einem reinen GUI-Umgebungsblocker ableiten. GUI-Sicherheitsprüfung **nicht** abschwächen, keine fremden laufenden Salamander-Prozesse automatisch beenden. Benutzer schließt reguläre Instanzen selbst, überprüft ausschließlich lesend `Get-Process salamand -ErrorAction SilentlyContinue` und führt die drei isolierten GUI-Befehle anschließend einzeln erneut aus. Danach tatsächliche Bugs auf dem neuen SHA bewerten; vollständige Unicode-W-Panelnavigation ohne 8.3 bleibt unabhängig davon offen.
+- **Git-Änderung:** Ausschließlich nachweisgetriebene Aktualisierung von `Arbeitsstand-und-Uebergabe.md`, `Testluecken-und-Abnahmeplan-5.2.md` und diesem Journal. **Kein produktiver Code geändert.** Ein nachfolgender Dokumentationscommit hat selbst keinen zusätzlichen Windows-Testnachweis.
+
 ## Vorlage für zukünftige Einträge
 
 ```markdown
