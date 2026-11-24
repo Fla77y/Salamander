@@ -1,8 +1,8 @@
 # Salamander 5.2 – aktueller Entwicklungsstand und Übergabe
 
 > **Startpunkt für jede neue ChatGPT-, Codex- oder Entwickler-Sitzung.**
-> Letzte fachliche Auswertung: **24.11.2026, 13:56 CET**.
-> Branch zum zuletzt protokollierten Windows-Lauf: `bugfix/v5.2`, SHA `8a5cb99da350a494f94fdb57087c7b7f8221c336` (**`--test` FAIL**). Letzter erfolgreich protokollierter `--test`-Lauf: `02acf27c87ddbe509d7044e3a416c5ebf265224d`.
+> Letzte fachliche Auswertung: **24.11.2026, 14:03 CET**.
+> Branch zum zuletzt protokollierten Windows-Lauf: `bugfix/v5.2`, SHA `a928794c7e4072777246d959ee9dd77c129e2d89` (**`--test` PASS**, 24.11.2026, 14:02–14:03 CET). Dokumentationscommits danach sind nicht automatisch neu verifiziert.
 > **Dieses Datum und diese SHA sind ein Snapshot, kein automatisch aktueller Git-HEAD.**
 > Die Dokumentationscommits danach benötigen eigene, angemessene Prüfungen.
 > **Release 5.2: NO-GO.** Keine vollständige A0–A7-, Plugin- oder VM-Abnahme.
@@ -40,13 +40,14 @@
 | 24.11.2026 / `dbcf0d13...` | `--test-gui-unicode-parent` **FAIL in Release und Debug**: modaler Dialog lehnt nicht-ACP-Unicode-Verzeichnis ab | offener **Produktfehler** |
 | 24.11.2026 / `02acf27c...` | `manage.cmd --test` PASS; alle registrierten nativen C++-Regressionen einschließlich `about_build_info.cpp`, Unicode-Dateiidentität, Worker-I/O | historisch erfolgreich; gilt nicht automatisch auf späteren SHAs |
 | 24.11.2026 13:56 / `8a5cb99d...` | `manage.cmd --test` **FAIL vor den übrigen Tests**: ParserError in neuem `Test-DevelopmentContinuity.ps1:37`, interpoliertes `$id:`; Aggregationstest davor PASS | **Testinfrastrukturfehler**, keine Aussage zu Produktregressionen; Korrektur `${id}:` und neue AST-Parser-Vorprüfung eingecheckt, Windows-Run nach Fix ausstehend |
+| 24.11.2026 14:02–14:03 / `a928794c...` | `manage.cmd --test` **PASS** unter PowerShell 7.7.0, Windows NT 10.0.26300, sauberer Checkout: AST-Parser **66 PS-Skripte**, Kontinuitäts-/Aggregationstest und **21 native C++-Regressionen PASS** | Tatsächlich ausgeführter Test; physischer Cross-Volume-Fall mangels `OPENSAL_CROSS_VOLUME_TEST_DIR` **SKIP**; kein Nachweis aller GUI-, Plugin- oder VM-Szenarien |
 | 24.11.2026 / `02acf27c...` | `manage.cmd --test-gui-legacy-find --debug`: **36 PASS, 1 FAIL, 0 SKIP**. Native External-Editor-Variante PASS, PowerShell-Variante FAIL (`NOT_STARTED`); ursprüngliche Viewer-/Find-/Unicode-Tests dabei PASS | Gesamtkommando Exitcode 1, keine Freigabe |
 
-Die beiden letzten Benutzerprotokolle stammen aus `manage-20261124-125928-575-54f5eb.log` und `manage-20261124-130047-583-958536.log`. Diese Logs befinden sich **nur lokal** unter `.Build/logs/`, nicht im Git. Testresultate nicht ohne eindeutige SHA/Variante/Datum in einen späteren Commit übertragen. Im nativen `long_path_io.cpp`-Test wurde der optionale echte Cross-Volume-Fall mangels `OPENSAL_CROSS_VOLUME_TEST_DIR` **SKIP** gemeldet; das ist kein PASS.
+Die früheren Benutzerprotokolle `manage-20261124-125928-575-54f5eb.log` und `manage-20261124-130047-583-958536.log` sowie der erfolgreiche aktuelle Testlauf `manage-20261124-140223-783-8d6f75.log` befinden sich **nur lokal** unter `.Build/logs/`, nicht im Git. Testresultate nicht ohne eindeutige SHA/Variante/Datum in einen späteren Commit übertragen. Im nativen `long_path_io.cpp`-Test wurde der optionale echte Cross-Volume-Fall mangels `OPENSAL_CROSS_VOLUME_TEST_DIR` **SKIP** gemeldet; das ist kein PASS.
 
 ## 4. Aktive Fehler und nächste konkrete Arbeit
 
-0. **P1 – Testinfrastruktur / MGMT-02, MGMT-03:** Windows-`--test` vom 24.11. 13:56 auf `8a5cb99d` brach in `Test-DevelopmentContinuity.ps1:37` durch den PowerShell-Parserfehler `$id:` ab. Der neue Syntaxfix `${id}:` ist eingecheckt; `Test-PowerShellSyntax.ps1` nutzt PowerShells echten AST-Parser für die Repository-Skripte und prüft den Original-Fehler als Negativfixture. Ausführung **noch nicht belegt**. **Als Erstes** gezielt Parser-Vorprüfung und Kontinuitätstest, dann `manage.cmd --test` ausführen. Kein Produkt-PASS aus dem abgebrochenen Lauf ableiten.
+**Testinfrastrukturfehler vom 13:56-Lauf inzwischen verifiziert behoben (MGMT-02/MGMT-03):** Der ParserError aus `Test-DevelopmentContinuity.ps1` wurde mit `${id}:` korrigiert. Auf `a928794c` lief `manage.cmd --test` am 24.11. von 14:02 bis 14:03 erfolgreich; die Parser-Vorprüfung prüfte 66 Skripte und erkannte den negativen Syntaxfall. Die weitergehenden MGMT-02-/MGMT-03-Abnahmekriterien sind dennoch offen.
 
 1. **P0 – Unicode-Elternverzeichnis, A1/A2, UP-06 und UP-04:** `src/fileswn2.cpp::ChangeUnicodePathToDisk` verweigert absichtlich Pfade ohne exakte ANSI-Projektion. Debug und Release scheitern deshalb bei `--test-gui-unicode-parent` mit Modal-Dialog und `WM_COMMAND 775`-Timeout. Den Schutz **nicht entfernen oder durch verlustbehaftete Zeichen ersetzen**. Aufrufkette `src/fileswn3.cpp::ChangeDir` → `ChangeUnicodePathToDisk` → `ChangeLongPathToDisk`/Panel-Liste, Pfadhistorie, Plugin- und Shell-Grenzen prüfen; kompatiblen vollständigen W-Pfadpfad entwerfen, mit echten positiven/negativen GUI-Regressionen absichern. Solange die Panel-Invarianten unklar sind, bleibt das ein bewusst blockierter Übergang.
 2. **P1 – Legacy Find ExternalEditor / FIND-04, QA-03:** `src/finddlg1.cpp::OnEditFile` → `src/fileswnb.cpp::WM_USER_EDITFILE` → `src/fileswn5.cpp::EditFile`. Der Debug-Originaltest mit WindowsApps/MSIX-`pwsh.exe` erreicht den Probe-Status nicht; `ExternalEditorNative` mit `cmd.exe` funktioniert. Untersuchen: registrierte Argumente, reales CreateProcess-Ergebnis, Initialverzeichnis, Sicherheitsrichtlinien, Quoting, Startbedingungen. Beide Tests **beibehalten**; keine stumme Umleitung des Anwender-Editors.
@@ -63,8 +64,9 @@ git branch --show-current
 git rev-parse HEAD
 # Nur nach ausdrücklicher Zustimmung aktualisieren:
 # git pull --ff-only origin bugfix/v5.2
-pwsh -NoProfile -File .\tools\release\tests\Test-PowerShellSyntax.ps1
-pwsh -NoProfile -File .\tools\release\tests\Test-DevelopmentContinuity.ps1
+# Optional für gezielte Diagnose; bereits innerhalb --test auf a928794c bestanden:
+# pwsh -NoProfile -File .\tools\release\tests\Test-PowerShellSyntax.ps1
+# pwsh -NoProfile -File .\tools\release\tests\Test-DevelopmentContinuity.ps1
 .\manage.cmd --build-delta
 .\manage.cmd --test
 .\manage.cmd --test-gui-unicode-parent --release
