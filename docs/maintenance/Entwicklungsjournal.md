@@ -422,6 +422,16 @@ niemals stillschweigend umschreiben; Korrekturen als neue datierte Zeile.
   offenen GUI-/Release-Gates. Die MGMT-02/MGMT-03-Gaps bleiben
   bis zum vollständigen Kriteriennachweis **TEILBELEGT/OFFEN**.
 
+### J-20261124-07 — Teilmigration Unicode-Elternverzeichnis und ExternalEditor-Fixture
+
+- **Auftrag / IDs:** Offene Produktfehler beheben: Unicode-Elternverzeichnis in Debug/Release (A1/A2, UP-04/06) sowie Legacy-Find-ExternalEditor (FIND-04, QA-03).
+- **Analyse:** Die bisherige Navigation sperrt kurze, nicht-ACP-fähige W-Verzeichnisse bei `ChangeUnicodePathToDisk`. Das Panel führt zugleich einen alten ANSI-`Path` und einen autoritativen `GetDiskPathW()`; normale ANSI-Diskoperationen ohne exakte Zuordnung wären datenintegritätsgefährdend. Für den Editor war bisher nur `ExternalEditor` (`pwsh.exe`, `NOT_STARTED`) fehlgeschlagen, während derselbe Produktbefehl mit `ExternalEditorNative` (`cmd.exe`) funktionierte. Damit war eine allgemeine Produktursache noch nicht nachgewiesen.
+- **Implementierung:** Neuer `TryGetVerifiedAnsiShortDirectoryPath` in `src/common/win32_unicode_panel_name.h`: `GetShortPathNameW`, strikter ACP-Roundtrip, `CreateFileW`/Dateisystemidentität (Volumen + File-ID), Reparse-Point-Ablehnung. `src/fileswn2.cpp` verwendet diese Brücke ausschließlich bei fehlender exakter ANSI-Darstellung und ruft `ChangeLongPathToDisk` mit dem **originalen W-Pfad** auf. Fehlt ein echter 8.3-Alias, bleibt die vorherige Sperre erhalten. Neues `tools/tests/unicode_directory_panel_alias.cpp` und Registrierung in `tools/Manage-Salamander.ps1`.
+- **Editor-Fixture:** `tools/release/tests/LegacyFind-GuiCases.ps1` verwendet jetzt bei originalem `pwsh.exe` den absoluten Scriptpfad in `-File` und keine Lockerung der PowerShell-Ausführungsrichtlinie. Der native Editorvergleich bleibt erhalten. `Test-LegacyFind-UiContract.ps1` schützt diese Voraussetzung. Keine Änderungen an der realen `EditFile`-Implementierung ohne nachgewiesene Ursache.
+- **Commits:** `0f0f583c`, `1b4df0a2`, `cdafab9f`, `c6806765`, `89481d18`, `0efd0c43`, `15a99375`, `828114a7` auf `bugfix/v5.2`; anschließend diese gemeinsame Dokumentationsfortschreibung.
+- **Verifikation:** GitHub-Dateien zurückgelesen und statisch auf W-Identität, ID-Vergleich, fail-closed, Testregistrierung, unveränderte Exec-Policy und erhaltene zwei Editorvarianten geprüft. **Keine neue MSVC-, PowerShell- oder GUI-Ausführung** dieser Änderungen. Der letzte tatsächlich grüne `--test`-SHA bleibt `a928794c`.
+- **Restarbeit / Abnahmestatus:** Allgemeine native W-Panelnavigation **ohne vorhandene 8.3-Aliase** ist nicht umgesetzt. Historie/Anzeige und weitere Legacy-Grenzen beachten. Debug/Release `--test-gui-unicode-parent` sowie `--test-gui-legacy-find --debug/--release` ausführen; bei Editor-FAIL echte CreateProcess-/MSIX-Prozessstartdiagnose statt Testabschaltung. **Keine Gap-ID geschlossen, A0–A7 Release NO-GO.**
+
 ## Vorlage für zukünftige Einträge
 
 ```markdown

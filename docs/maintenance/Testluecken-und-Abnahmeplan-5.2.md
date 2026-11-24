@@ -95,6 +95,8 @@ eine kürzere Fixture erfüllt den Grenzfall **nicht**.
 
 ## Arbeitsfortschritt M1 – nachgeführter Windows-Stand (24. November 2026)
 
+**Neue Implementierungen nach dem letzten Windows-`--test`-PASS auf `a928794c`:** verifizierter 8.3-Zugang für nicht-ACP-fähige kurze Elternverzeichnisse, neuer nativer Alias-Test und absoluter PowerShell-Editor-Fixture-Scriptpfad. **Status: ausschließlich statisch geprüft, keine neue Windows-/GUI-Ausführung.** Nicht-8.3-Volumes und Debug-/Release-Elternnavigation bleiben offen. Nicht als vollständig behoben oder als neue grüne Baseline werten.
+
 **Beleg- und Umfangsgrenze:** User-Transkripte, nicht in Git gespeicherte
 Logdateien. Der letzte **tatsächlich** geprüfte aktuelle Code-Stand ist
 `bugfix/v5.2` bei `a928794c7e4072777246d959ee9dd77c129e2d89`
@@ -731,6 +733,7 @@ kompiliert und ausgeführt werden.
 und das echte zweite Volume sind noch ausstehend.**
 
 ### [ ] UP-04 – Kopieren/Bewegen über Volume- und Worker-Grenzen (**P0**, TEILBELEGT)
+- **24.11.2026, neuer Stand ungetestet:** Der Unicode-Verzeichniszugang über verifizierten 8.3-Alias führt weiterhin `GetDiskPathW` als Originalidentität. Native Alias-Testfixture neu in `--test`; alle F5/F6- und Cross-Volume-/Worker-Nachweise müssen für den neuen Quellstand erneut erfolgen, kein Closure.
 - **24.11.2026:** Release-Multiselect-GUI mit 17-MiB-Dateien und F5/F6 PASS; native F6-Identitäts-/Byteprüfungen PASS. Echte Cross-Volume-Migration in `long_path_io.cpp` mangels konfiguriertem Testvolume SKIP; kein Abschluss.
 
 - **Lücke:** F5/F6 mit 263 UTF-16-Einheiten und >17 MiB Same-Volume-Move
@@ -789,6 +792,7 @@ externen Editierens, Kopieren als UNC, Drag/Drop und
 der Shell-Properties steht noch aus.
 
 ### [ ] UP-06 – Shell, Zwischenablage, externe Programme, Dateiattribute (**P1**, OFFEN)
+- **24.11.2026, neuer Quellstand noch nicht auf Windows geprüft:** Bedingte Unicode-Elternverzeichnis-Navigation: echter, exakt konvertierbarer 8.3-Pfad, Volume-/File-ID-Verifikation gegen ursprünglichen W-Pfad; `GetDiskPathW` autoritativ. Auf Volumes ohne 8.3-Alias bleibt **FAIL-CLOSED**; P0-W-Panelmigration und tatsächliche Debug-/Release-GUI-Abnahme bleiben offen. Nicht als geschlossene Unicode-Anforderung zählen.
 - **24.11.2026:** Kurzer, nicht-ACP-fähiger Unicode-Elternpfad wird in beiden x64-Varianten von `ChangeUnicodePathToDisk` abgewiesen; unverändert offener Produktfehler. Externer PowerShell-Editor FAIL, nativer Vergleichseditor PASS.
 
 - **Fälle:** Datei-Eigenschaften, Öffnen, Drag/Drop, Viewer/Editor,
@@ -994,6 +998,7 @@ UP-07 bleibt TEILBELEGT.
   Plugin-Fähigkeiten je Modul vorher spezifizieren; **UP-01/UP-02**.
 
 ### [ ] FIND-04 – Erweiterte Funktionen und Ergebnisaktionen (**P1**, TEILBELEGT)
+- **24.11.2026, noch nicht Windows-verifiziert:** Die ursprüngliche PowerShell-`ExternalEditor`-Fixture verwendet nun einen absoluten, korrekt in Anführungszeichen gesetzten `-File`-Pfad; Ausführungsrichtlinie bleibt unverändert. `ExternalEditorNative` und strenge Original-/Nachbar-/Argumentprüfungen bleiben bestehen. Vorhandenes Debug-FAIL `NOT_STARTED` nicht als behoben markieren, bis erneuter realer Lauf bestanden ist.
 - **24.11.2026:** Debug-Legacy-Find 36 PASS, 1 FAIL; originaler PowerShell-`ExternalEditor` meldet `NOT_STARTED`, Native-Vergleich PASS. Beide Szenarien bleiben erhalten, Verhalten und Root Cause offen.
 
 - **Lücke:** 72 GUI-Szenarien bestanden, aber nicht alle Kombinationen
@@ -1104,6 +1109,7 @@ UP-07 bleibt TEILBELEGT.
   Ausschlüsse (WinAPI-/GUI-Boundaries).
 
 ### [ ] QA-03 – Wiederholbarkeit, GUI-Flakiness und Ressourcen (**P1**, TEILBELEGT)
+- **24.11.2026:** Hypothese zum `ExternalEditor`-Fehler (relativer Scriptpfad des MSIX-Childs) mit absolutem test-eigenen Scriptpfad abgesichert. Kein Root-Cause-/Laufzeitnachweis bisher; nachfolgende GUI-Wiederholungen und echte Prozessstartdiagnose erforderlich.
 - **24.11.2026, 13:56:** Testinfrastruktur verursachte einen deterministischen Parserabbruch auf `8a5cb99d`; kein sporadischer Produktfehler. Regressionsfix vorhanden, auf Windows nach Fix nicht geprüft.
 - **24.11.2026:** GUI-Viewer/Unicode-Fälle beim Einzel-Legacy-Debug-Lauf PASS; ursprüngliche PowerShell-Editor-Regression FAIL. Einzelner erfolgreicher Viewer-Lauf ist kein Wiederholbarkeitsnachweis.
 
