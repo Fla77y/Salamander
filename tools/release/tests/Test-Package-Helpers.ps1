@@ -996,18 +996,24 @@ if ($multiTransfer -notmatch 'UnicodePanelNameCache' -or
     throw 'F7: Unicode batch transfers must resolve alias uniqueness from bounded phase snapshots.'
 }
 # Regression: a 109-byte parent and 153-byte CP1252 name exceed
-# MAX_PATH together although neither component does. The GUI F5/F6
-# fallback must select the original row, not the lossy-only alias cache.
+# MAX_PATH together although neither component does. Both source and target
+# paths matter for F5/F6; preserve the original row rather than inferring a
+# filename from a lossy ACP alias. Large same-volume F6 is a metadata rename;
+# only a cross-volume large move needs the existing background worker.
 $singleTransfer = [regex]::Match(
     $panelTransfers,
     '(?s)BOOL CFilesWindow::TryUnicodeSingleFileTransfer\(.*?BOOL CFilesWindow::TryUnicodeSingleDirectoryDelete\(').Value
 if ([string]::IsNullOrEmpty($singleTransfer) -or
-    $singleTransfer -notmatch 'ExceedsLegacyDiskPathLimit\(\s*strlen\(GetPath\(\)\),\s*entry\.NameLen,\s*MAX_PATH\)' -or
+    $singleTransfer -notmatch 'ExceedsLegacyTransferPathLimit\(\s*strlen\(GetPath\(\)\),\s*strlen\(target->GetPath\(\)\),\s*entry\.NameLen,\s*MAX_PATH\)' -or
     $singleTransfer -notmatch 'if\s*\(!UnicodeDiskNames\.TryGetRow\(entry\.Name,\s*originalName\)\)' -or
     $singleTransfer -notmatch 'else if\s*\(!UnicodeDiskNames\.TryGetLossy' -or
     $singleTransfer -notmatch 'const bool useWorker = type == atCopy && fileSize > MaxSynchronousTransferBytes' -or
     $singleTransfer -match 'if\s*\(fileSize > MaxSynchronousTransferBytes && !useWorker\)' -or
-    $singleTransfer -notmatch '\(type == atCopy && !useWorker') {
+    $singleTransfer -notmatch '\(type == atCopy && !useWorker' -or
+    $singleTransfer -notmatch 'TryMoveUnicodeFileNoOverwrite\(' -or
+    $singleTransfer -notmatch 'error == ERROR_NOT_SAME_DEVICE' -or
+    $singleTransfer -notmatch 'if\s*\(currentBytes > MaxSynchronousTransferBytes\)\s*\{\s*crossVolumeRequiresWorker = true;' -or
+    $singleTransfer -notmatch 'if\s*\(crossVolumeRequiresWorker\)\s*return startWideWorker\(\)') {
     throw 'F5/F6: lossless ANSI file names over MAX_PATH and large same-volume moves must use W operations.'
 }
 Write-Host 'PASS: F5/F6 long lossless-name identity and large same-volume move route.'
