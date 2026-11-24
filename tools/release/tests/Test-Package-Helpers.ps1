@@ -359,7 +359,8 @@ $unsafeOperationBlock = [regex]::Match(
     '(?s)if \(\$ShortUnicodeUnsafeOperationsOnly\) \{\s*# Destructive shortcuts(.*?)\n    if \(\$ShortUnicodeCollisionOnly\) \{'
 ).Groups[1].Value
 if ([string]::IsNullOrEmpty($unsafeOperationBlock) -or
-    $unsafeOperationBlock -notmatch "(?s)Send-Keys '\{ESC\}'\s*Wait-Until \{ -not \(Get-TestDialog\) \}[^\r\n]*\r?\n(?:\s*#[^\r\n]*\r?\n)*\s*Focus-TestProcess" -or
+    $unsafeOperationBlock -notmatch 'FindVerifiedRegressionPrompt\(\s*\$mainWindowHandle,\s*\[uint32\]\$process\.Id,\s*''Error'',\s*\$refusalText\)' -or
+    $unsafeOperationBlock -notmatch 'ConfirmVerifiedRegressionPrompt\(\s*\$mainWindowHandle,\s*\[uint32\]\$process\.Id,\s*\$blocked\.Window,\s*''Error'',\s*\$refusalText\)\s*Wait-Until\s*\{\s*-not\s+\[SalamanderGuiNative\]::IsWindow\(\$blocked\.Window\)\s+-and\s+\[SalamanderGuiNative\]::IsWindowEnabled\(\$mainWindowHandle\)\s+-and\s+-not\s+\(Get-TestDialog\)\s*\}[^\r\n]*\r?\n(?:\s*#[^\r\n]*\r?\n)*\s*Focus-TestProcess' -or
     $unsafeOperationBlock -notmatch 'Assert-True \(\(Read-PanelPath\) -ceq \$source\)' -or
     $guiDriver -notmatch 'Refusing to send input to a window owned by another process') {
     throw 'Unicode unsafe-operation GUI test must restore verified app focus after modal refusal and validate source panel.'
