@@ -1151,6 +1151,55 @@ if errorlevel 1 (
     finally { $editorKey.Dispose() }
 }
 
+function Assert-TestPowerShellEditorHost {
+    param([Parameter(Mandatory)][string]$Target,
+          [Parameter(Mandatory)][string]$StatusFile)
+
+    # Independent control: can this specific packaged PowerShell executable
+    # run the test-owned script at all? Without it, a NOT_STARTED status does
+    # not establish a Salamander CreateProcess error.
+    $psi = [Diagnostics.ProcessStartInfo]::new()
+    $psi.FileName = Join-Path $PSHOME 'pwsh.exe'
+    $psi.WorkingDirectory = $root
+    $psi.UseShellExecute = $false
+    $psi.RedirectStandardError = $true
+    foreach ($argument in @('-NoProfile', '-NonInteractive', '-File',
+                            (Join-Path $root 'editor-probe.ps1'), $Target)) {
+        [void]$psi.ArgumentList.Add($argument)
+    }
+
+    $child = [Diagnostics.Process]::Start($psi)
+    if ($null -eq $child) {
+        throw 'Standalone packaged PowerShell editor could not be launched.'
+    }
+    try {
+        if (-not $child.WaitForExit(15000)) {
+            $child.Kill($true) # Only this test-owned child, never a user process.
+            throw 'Standalone packaged PowerShell editor did not exit in 15 s.'
+        }
+        $stderr = $child.StandardError.ReadToEnd()
+        $state = if ([IO.File]::Exists($StatusFile)) {
+            [IO.File]::ReadAllText($StatusFile).Trim()
+        } else { 'NOT_STARTED' }
+        if ($child.ExitCode -ne 0 -or $state -cne 'SAVED' -or
+            [IO.File]::ReadAllText($Target) -cne 'saved by the external editor') {
+            throw ("Independent PowerShell host preflight failed: ExitCode=$($child.ExitCode); " +
+                   "Status=$state; Stderr=$stderr")
+        }
+    }
+    finally { $child.Dispose() }
+
+    # The preflight must never count as the GUI result. Restore exact initial
+    # bytes and remove the marker before sending the actual Find Edit command.
+    [IO.File]::WriteAllText($Target, 'original text')
+    Remove-Item -LiteralPath $StatusFile -Force
+    if ([IO.File]::ReadAllText($Target) -cne 'original text' -or
+        [IO.File]::Exists($StatusFile)) {
+        throw 'PowerShell editor preflight did not restore the owned fixture.'
+    }
+    Write-Host 'PASS: configured PowerShell editor runs independently; GUI launch is tested separately.'
+}
+
 function Test-LegacyFindExternalEditor {
     param([string]$Fixture, [switch]$Native)
 
@@ -1162,6 +1211,9 @@ function Test-LegacyFindExternalEditor {
     $statusFile = Join-Path $root $stateName
     [IO.File]::WriteAllText($target, 'original text')
     [IO.File]::WriteAllText($neighbor, 'keep this')
+    if (-not $Native) {
+        Assert-TestPowerShellEditorHost -Target $target -StatusFile $statusFile
+    }
     Set-LegacyFindQuery -SearchRoot $Fixture -Mask '*.salfindtest'
     Invoke-LegacyFindQuery -Expected 1 -Description 'External editor fixture'
     Assert-True ((Read-LegacyFindResult -Index 0) -ceq $target) (
