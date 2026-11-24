@@ -231,6 +231,13 @@ function Build-Variants {
 function Run-Tests {
     Write-Host '=== TESTS ==='
 
+    # Detect every PowerShell parse error before executing an otherwise
+    # healthy first test. This also guards files not yet reached by the suite.
+    $syntaxPreflight = Join-Path $repository 'tools\release\tests\Test-PowerShellSyntax.ps1'
+    Invoke-TestCase -Name 'Test-PowerShellSyntax.ps1' -Action {
+        Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $syntaxPreflight)
+    }
+
     # The collector itself is regression-tested before any other test step.
     $testCollector = Join-Path $repository 'tools\release\tests\Test-Manage-TestAggregation.ps1'
     Invoke-TestCase -Name 'Test-Manage-TestAggregation.ps1' -Action {
