@@ -74,7 +74,7 @@ foreach ($required in @(
 Write-Host "PASS: VS 2026 solution metadata and $($matches.Count) active C++ projects use supported MSVC toolsets."
 
 
-# BUILD-01 / UP-01: source-level guard for all 35 plug-in Build.0 mappings.
+# BUILD-01 / UP-01: source-level guard for all 33 plug-in Build.0 mappings.
 # These declarations are prerequisites, NOT proof of successful compilation.
 $pluginBaseline = Get-Content -LiteralPath (
     Join-Path $repository 'tools\release\plugin-source-inventory-baseline.json') -Raw |
@@ -124,7 +124,7 @@ function Assert-PluginBuildMatrix {
 
 # Arrange: source baseline and actual Visual Studio 2026 solution.
 $required = [string[]]@($pluginBaseline.solutionPluginProjects)
-if ($required.Count -ne 35) {
+if ($required.Count -ne 33) {
     throw "Unexpected plug-in source baseline size: $($required.Count)"
 }
 # Act/Assert: all four genuine Build.0 mappings must exist for each project.

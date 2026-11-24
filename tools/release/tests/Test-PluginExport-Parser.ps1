@@ -115,7 +115,7 @@ $baseline = Get-Content -LiteralPath (
     Join-Path $repository 'tools\release\plugin-source-inventory-baseline.json') -Raw |
     ConvertFrom-Json
 $names = [string[]]@($baseline.solutionPluginProjects)
-if ($names.Count -ne 35) {
+if ($names.Count -ne 33) {
     throw 'Unexpected source plug-in export inventory size.'
 }
 foreach ($plugin in $names) {
