@@ -1606,13 +1606,27 @@ int main()
         GetFileAttributesW(staleSourcePath.c_str()) == INVALID_FILE_ATTRIBUTES ||
         GetFileAttributesW(staleTargetPath.c_str()) != INVALID_FILE_ATTRIBUTES)
         return Fail("same-volume Unicode F6 must reject post-dialog file replacement");
+    // The earlier clipboard paste-target fixture was intentionally removed
+    // after its own tests. Give this independent identity regression a live,
+    // empty destination; otherwise it fails on a missing directory before
+    // checking the stale source ID.
+    const std::wstring staleDirectoryName = current + L"\\stale-move-destination";
+    std::wstring staleDirectoryExtended;
+    Salamander::Utf16DiskPath staleDirectory;
+    if (!OwnPath(staleDirectoryName, staleDirectory) ||
+        !Convert(staleDirectoryName, staleDirectoryExtended) ||
+        !CreateDirectoryW(staleDirectoryExtended.c_str(), nullptr))
+        return Fail("create independent stale-identity transfer destination");
     std::size_t staleCompleted = 0;
     const std::vector<BY_HANDLE_FILE_INFORMATION> expectedStale{expectedBeforeDialog};
     if (Salamander::TryTransferUnicodeClipboardFiles(
-            {staleSource}, pasteTarget, DROPEFFECT_MOVE,
+            {staleSource}, staleDirectory, DROPEFFECT_MOVE,
             staleCompleted, operationError, &expectedStale) ||
-        staleCompleted != 0 || operationError != ERROR_FILE_INVALID)
+        staleCompleted != 0 || operationError != ERROR_FILE_INVALID ||
+        GetFileAttributesW(staleSourcePath.c_str()) == INVALID_FILE_ATTRIBUTES)
         return Fail("synchronous Unicode cross-volume/same-volume move must reject stale selection");
+    if (!RemoveDirectoryW(staleDirectoryExtended.c_str()))
+        return Fail("cleanup independent stale-identity destination");
     if (!DeleteFileW(staleSourcePath.c_str()) ||
         !MoveFileExW(staleOriginalPath.c_str(), staleSourcePath.c_str(), 0))
         return Fail("restore exactly the originally selected source identity");
