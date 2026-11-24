@@ -545,7 +545,7 @@ unsigned RunNativeViewer(const char* path, HINSTANCE instance,
                          void (*onOpen)(HWND), void (*onClose)(HWND)) noexcept
 {
     return RunNativeViewerImpl(path, nullptr, instance, left, top, width, height,
-                               showCmd, alwaysOnTop, returnLock, lock, lockOwner,
+                               showCommand, alwaysOnTop, returnLock, lock, lockOwner,
                                ready, created, onOpen, onClose);
 }
 
@@ -557,7 +557,7 @@ unsigned RunNativeViewerW(const wchar_t* path, HINSTANCE instance,
                           void (*onOpen)(HWND), void (*onClose)(HWND)) noexcept
 {
     return RunNativeViewerImpl(nullptr, path, instance, left, top, width, height,
-                               showCmd, alwaysOnTop, returnLock, lock, lockOwner,
+                               showCommand, alwaysOnTop, returnLock, lock, lockOwner,
                                ready, created, onOpen, onClose);
 }
 
