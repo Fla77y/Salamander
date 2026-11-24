@@ -50,12 +50,10 @@ function Wait-ForSalamanderGuiAvailability {
             return
         }
         if (-not $announced) {
-            Write-Warning (
-                'Salamander läuft noch (PID: {0}). Bitte alle Salamander-Fenster ' +
-                'regulär schließen. Das Skript wartet und setzt die GUI-Tests ' +
-                'anschließend automatisch fort; mit Strg+C abbrechen.' -f
-                ($runningIds -join ', ')
-            )
+            $message = ('Salamander läuft noch (PID: {0}). Bitte alle Salamander-Fenster ' +
+                        'regulär schließen. Das Skript wartet und setzt die GUI-Tests ' +
+                        'anschließend automatisch fort; mit Strg+C abbrechen.')
+            Write-Warning ($message -f ($runningIds -join ', '))
             $announced = $true
         }
         # This remains interruptible through Ctrl+C or a propagated cancellation.
