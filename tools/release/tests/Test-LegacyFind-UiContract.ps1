@@ -99,14 +99,36 @@ $driverCases = ($driver.Parameters['LegacyFindScenario'].Attributes |
 $runner = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'Invoke-IsolatedLegacyFind.ps1') -Raw
 if (!$runner.Contains("Parameters['LegacyFindScenario'].Attributes") -or
     !$runner.Contains('-IsolatedConfiguration -LegacyFindScenario $case') -or
-    !$runner.Contains('if ($LASTEXITCODE -ne 0)')) {
-    throw 'The Legacy Find runner must discover driver scenarios, isolate config and propagate failures.'
+    !$runner.Contains('if ($LASTEXITCODE -ne 0)') -or
+    !$runner.Contains('Invoke-TestCase -Name $caseName -Action') -or
+    !$runner.Contains('Skip-TestCase -Name $caseName') -or
+    !$runner.Contains('Complete-TestRun -LogPath')) {
+    throw 'The Legacy Find runner must discover isolated scenarios, collect failures, gate unsafe GUI continuation and fail the suite.'
 }
 foreach ($case in 'Baseline','UnicodeMasks','UnicodeRootIgnore','FocusLong','ViewMixed','ViewStale') {
     if ($case -notin $driverCases -or $runner -match ("'{0}'" -f $case)) {
         throw "Expected '$case' in the automatically discovered Legacy Find suite."
     }
 }
+# Keep the existing PowerShell external-editor regression and add a distinct
+# Win32 comparison case. Replacing the former with the latter would mask a
+# valid user-visible editor-launch regression on packaged PowerShell installs.
+foreach ($scenario in @('ExternalEditor','ExternalEditorNative')) {
+    if ($scenario -notin $driverCases) {
+        throw "Missing independent external-editor scenario: $scenario"
+    }
+}
+if ($legacyGuiCases -notmatch 'function Initialize-LegacyFindExternalEditor\s*\{' -or
+    $legacyGuiCases -notmatch 'Join-Path \$PSHOME ''pwsh\.exe''' -or
+    $legacyGuiCases -notmatch 'function Initialize-LegacyFindExternalEditorNative\s*\{' -or
+    $legacyGuiCases -notmatch 'System32\\cmd\.exe' -or
+    $legacyGuiCases -notmatch 'ReadAllText\(\$neighbor\)' -or
+    $legacyGuiCases -notmatch 'WRONG_ARGUMENT' -or
+    $legacyGuiCases -notmatch 'ORIGINAL_CONTENT_CHANGED') {
+    throw 'Both external-editor launch paths must verify exact file identity and keep the original PowerShell coverage.'
+}
+Write-Host 'PASS: independent PowerShell and Win32 editor tests retain full original Find Edit coverage.'
+
 # A timeout in the viewer Copy check must distinguish a command that did
 # not change the clipboard from a changed but byte-incorrect selection.
 # The diagnostic must not retry input, emit clipboard contents or mark a
