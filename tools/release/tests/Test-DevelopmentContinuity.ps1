@@ -47,7 +47,7 @@ foreach ($requiredLink in @('Anforderungen.md',
         }
     }
 }
-foreach ($entry in @{
+$requiredHeadings = @{
     Handoff = @('## 1. Unverzichtbare Lesereihenfolge',
                 '## 3. Zuletzt tatsächlich belegte Ergebnisse',
                 '## 4. Aktive Fehler und nächste konkrete Arbeit',
@@ -56,7 +56,8 @@ foreach ($entry in @{
                 '2026-11-24', 'Chat 01', 'Chat 12')
     Backlog = @('## 11. Arbeitsreihenfolge und Meilensteine',
                 'MGMT-02', 'UP-04', 'QA-03')
-}.GetEnumerator()) {
+}
+foreach ($entry in $requiredHeadings.GetEnumerator()) {
     foreach ($needle in $entry.Value) {
         if (-not $source[$entry.Key].Contains($needle)) {
             throw "$($entry.Key) lost required development context: $needle"
