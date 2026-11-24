@@ -2,8 +2,11 @@
 
 > **Verbindlicher Arbeitskatalog für offene Qualitäts- und Release-Nachweise**
 >
-> Stand: **23. November 2026**. Grundlage: `bugfix/v5.2` bei
-> `a7ab5b40d859509ffe5fead2d8f00739399a5067`.
+> Stand: **24. November 2026** (Fortschreibung des historischen
+> Arbeitskatalogs vom 23.11.). Ursprüngliche grüne Referenz
+> `a7ab5b40d859509ffe5fead2d8f00739399a5067`; zuletzt
+> unter Windows ausgewerteter Quellstand `02acf27c87ddbe509d7044e3a416c5ebf265224d`.
+> Die Dokumentationscommits danach sind **keine** neue grüne Testbaseline.
 > **Keine vollständige Anforderungsabdeckung und keine Release-Freigabe behauptet.**
 >
 > **Arbeitsregel:** Vor jeder anforderungsrelevanten Änderung diesen Katalog,
@@ -17,7 +20,10 @@ Dieses Dokument ist die **fortlaufend zu pflegende, zentrale Arbeitsliste**
 für die Anforderungen **A0–A7** aus `Anforderungen.md`. Es ergänzt, ersetzt
 aber nicht die verbindlichen Produktanforderungen oder die Release-Gates.
 
-**Quellen im Repository:** `AGENTS.md`;
+**Quellen im Repository:** [verbindliche Originalanforderungen](../../Anforderungen.md),
+[aktueller Übergabestand](Arbeitsstand-und-Uebergabe.md),
+[append-only Entwicklungsjournal](Entwicklungsjournal.md),
+`AGENTS.md`;
 `docs/maintenance/test-coverage-audit-2026-11-23.md` (historischer Audit);
 `docs/maintenance/Legacy-Find-UTF16-Migration.md`;
 `docs/pictview-wic-migration.md`;
@@ -86,6 +92,44 @@ EFS, Papierkorb-Wiederherstellung, Netzlaufwerke, Plugin-Load, Installer und
 VM-Snapshots bleiben ausdrücklich kontrollierte **Opt-in**-Prüfungen.
 Bei nicht erstellbarer 32.700er-Fixture den Win32-Fehler protokollieren;
 eine kürzere Fixture erfüllt den Grenzfall **nicht**.
+
+## Arbeitsfortschritt M1 – nachgeführter Windows-Stand (24. November 2026)
+
+**Beleg- und Umfangsgrenze:** User-Transkripte, nicht in Git gespeicherte
+Logdateien. Der letzte **tatsächlich** geprüfte aktuelle Code-Stand ist
+`bugfix/v5.2` bei `02acf27c87ddbe509d7044e3a416c5ebf265224d`.
+Ein darauf folgender **Dokumentationscommit** gilt nicht als neu getesteter
+Produktcode. Detailgeschichte und Folgeaufträge:
+[Entwicklungsjournal](Entwicklungsjournal.md), aktueller
+[Übergabestand](Arbeitsstand-und-Uebergabe.md).
+
+| Gap-IDs / Thema | Tatsächlich umgesetzt bzw. bestätigt | Noch ausstehend / Status |
+| --- | --- | --- |
+| **A0-01 / About** | Zusatzzeile für EXE-Zeitstempel, Debug/Release, x86/x64; `about_build_info.cpp` im am 24.11. 12:59 gelaufenen `--test` PASS | Echter About-GUI-/Layout-/Lokalisierungstest; **TEILBELEGT**, keine 5.0-A/B-Vollparität |
+| **UP-04 / F5/F6** | `--test-gui-unicode-multiselect --release` am 24.11. 02:54 PASS, einschließlich synchroner und 17-MiB-Worker-Fälle; native Worker-/Identitätsprüfungen im 12:59-`--test` PASS | Cross-Volume-Nativtest mangels `OPENSAL_CROSS_VOLUME_TEST_DIR` **SKIP**; gemischte Ordner-/Dateibatches, alle Volumes/ADS offen; **TEILBELEGT** |
+| **UP-06 / Unicode-Elternverzeichnis** | Identischer, reproduzierbarer Fehler in Release/Debug am 24.11. 03:00/03:01: `ChangeUnicodePathToDisk` verweigert nicht-ACP-Pfade mit Modal-Dialog, `WM_COMMAND 775` timeout | **OFFENER PRODUKTFEHLER**; keine unsichere ANSI-Umgehung; vollständige W-Panelnavigation fehlt |
+| **FIND-04 / QA-03** | 24.11. 13:00: isolierter Debug-Legacy-Find-Test **36 PASS, 1 FAIL, 0 SKIP**; `ExternalEditorNative` PASS; Unicode-Viewer-Tests PASS | Original-`ExternalEditor` mit WindowsApps-/MSIX-`pwsh.exe`: `NOT_STARTED`, FAIL; Aufrufdiagnose und Release-Variante offen |
+| **BUILD-01 / A3** | Debug/Release-x64-Delta-Build nach Umzug unter `.Build/` PASS, zunächst ca. 122 s, danach ca. 8 s | Komplette Vierfachmatrix und neuer Clean-/Setup-Lauf auf HEAD offen |
+| **MGMT-01/02/03** | `.Build/` gitignoriert und als Buildroot; `--test-all` sammelt unabhängige Testfehler in JSON und liefert insgesamt nonzero; eigenständiger Sammlertest am 24.11. 12:59 PASS | Vollständige Update-/Build-/Test-/Setup-Matrix, defekte Voraussetzungen/Unterbrechung und automatisierte Lückenregistrierung weiter **TEILBELEGT/OFFEN** |
+| **QA-01 / A0-02** | Native F6-Dateiidentitäts-, Binär- und Registry-Canary-Verträge im `--test` PASS | Echte Benutzer-5.0-Upgrade-/Rollback-VM und alle Fehler-/Nebenläufigkeitsfälle offen |
+| **UP-03 / A1–A2** | Kein neuer positiver Beleg für sämtliche Plugins/Archive | **UnRAR-Ersatz aus Chat 09 bleibt ausdrücklich offen**; Archiv-/Plugin-ABI/Unicode/Longpath-Matrix fehlt |
+| **A5 / A7** | Bestehende WIC-/Release-Vertragstests in `--test` PASS | Realer WIC-Host/Codec-Parität, Installer, saubere VM und Public-Gates nicht erledigt; **NO-GO** |
+
+**Verifikation am 24.11., 12:59–13:00 CET:**
+`manage-20261124-125928-575-54f5eb.log` (`--test`, PASS);
+`manage-20261124-130047-583-958536.log`
+(`--test-gui-legacy-find --debug`, EXIT 1, 36/1/0).
+Die Logs liegen ausschließlich im lokalen `.Build/logs/`.
+Der vorhandene historische Gesamtgrünstand vom 23.11. wird dadurch
+**nicht** für den aktuellen Branch fortgeschrieben.
+
+**Neues Sitzungs-/Agent-Übergabeprotokoll:** Das Repository enthält nun
+`Anforderungen.md`, `Entwicklungsjournal.md`,
+`Arbeitsstand-und-Uebergabe.md` und eine Bootstrap-Pflicht in `AGENTS.md`.
+`Test-DevelopmentContinuity.ps1` schützt strukturelle Verlinkung;
+das ersetzt **nicht** die fachliche Prüfung, ob der Text noch aktuell ist.
+Bei jedem künftigen autorisierten Code-Commit die betroffenen Gap-Sektionen
+und Journal/Handoff nachziehen (A4 / MGMT-03).
 
 ## Arbeitsfortschritt M0 – erste Teilaufgaben (23. November 2026)
 
@@ -364,6 +408,8 @@ und Unicode-/Langpfad-Grenzen klassifizieren.
 ## 3. A0 – Unveränderte Originalfunktionen und Benutzeroberfläche
 
 ### [ ] A0-01 – Vollständiger Legacy-Verhaltenskatalog (**P0**, TEILBELEGT)
+- **24.11.2026:** About-Buildinformation in `src/logo.cpp` ergänzt, ursprüngliche Dialog-Ressource unverändert. Native Formatprüfung am 24.11. 12:59 PASS; echte GUI-/Original-UI-Parität weiter offen.
+
 - **Lücke:** Bisherige GUI-Szenarien beweisen nicht die Funktionsparität aller
   Menüs, Kommandos, Einstellungen, Tastenkombinationen und Plugins.
 - **Arbeit:** Version 5.0/Altverhalten gegen 5.2 inventarisieren;
@@ -476,6 +522,8 @@ Nächste Prüfung: PowerShell-AST-Parser, dann isolierter
 - **Quellen:** `src/plugins/shared/`, `docs/pictview-wic-migration.md`.
 
 ### [ ] UP-03 – Archive und externe/virtuelle Dateisysteme (**P0**, OFFEN)
+- **24.11.2026:** Benutzerauftrag aus Chat 09 zu einem funktionierenden **UnRAR-Ersatz** bleibt bestehen und ist durch die bisherigen WIC-/Viewer-Fixes weder ersetzt noch als erfüllt belegt.
+
 - **Fälle:** Für jedes betroffene Archiv-/VFS-Plugin Dateien mit Unicode/
   langen Pfaden auflisten, öffnen, packen, entpacken, umbenennen und löschen;
   verschachtelte Archivpfade, Kollisionen, beschädigte Archive, Dateirechte,
@@ -649,6 +697,8 @@ kompiliert und ausgeführt werden.
 und das echte zweite Volume sind noch ausstehend.**
 
 ### [ ] UP-04 – Kopieren/Bewegen über Volume- und Worker-Grenzen (**P0**, TEILBELEGT)
+- **24.11.2026:** Release-Multiselect-GUI mit 17-MiB-Dateien und F5/F6 PASS; native F6-Identitäts-/Byteprüfungen PASS. Echte Cross-Volume-Migration in `long_path_io.cpp` mangels konfiguriertem Testvolume SKIP; kein Abschluss.
+
 - **Lücke:** F5/F6 mit 263 UTF-16-Einheiten und >17 MiB Same-Volume-Move
   bestanden; das beweist **keinen** Cross-Volume-Move großer Dateien.
 - **Fälle:** F5/F6 0/1/16/17/32/33 MiB, gleiches/anderes Volume,
@@ -705,6 +755,8 @@ externen Editierens, Kopieren als UNC, Drag/Drop und
 der Shell-Properties steht noch aus.
 
 ### [ ] UP-06 – Shell, Zwischenablage, externe Programme, Dateiattribute (**P1**, OFFEN)
+- **24.11.2026:** Kurzer, nicht-ACP-fähiger Unicode-Elternpfad wird in beiden x64-Varianten von `ChangeUnicodePathToDisk` abgewiesen; unverändert offener Produktfehler. Externer PowerShell-Editor FAIL, nativer Vergleichseditor PASS.
+
 - **Fälle:** Datei-Eigenschaften, Öffnen, Drag/Drop, Viewer/Editor,
   Copy Full Name/Path, Papierkorb, ADS, EFS, ACLs, alternierende
   Unicode-/ANSI-Codepages bei langen Resultaten.
@@ -793,6 +845,8 @@ UP-07 bleibt TEILBELEGT.
 ## 6. A4 – manage.cmd und Teststeuerung
 
 ### [ ] MGMT-01 – Gesamter Update-/Build-/Test-/Setup-Ablauf (**P1**, OFFEN)
+- **24.11.2026:** Zwei x64-Delta-Builds nach Wechsel zu `.Build/` PASS (ca. 122 s / 8 s). Vollständiger autorisierter `--update --build --test-all --setup`-Lauf fehlt weiter.
+
 - **Fälle:** Autorisiert auf sauberem Test-Checkout
   `manage.cmd --update --build --test-all --setup`; zusätzlich
   `--build-clean`, Delta/Normal-Build und deren wiederholte Aufrufe.
@@ -801,6 +855,8 @@ UP-07 bleibt TEILBELEGT.
   `--update` nur nach ausdrücklicher Zustimmung.
 
 ### [ ] MGMT-02 – Fehler- und Isolationsverhalten (**P1**, TEILBELEGT)
+- **24.11.2026:** Sammeltest-Infrastruktur mit PASS/FAIL/SKIP-JSON und nonzero-Gesamtergebnis implementiert; Windows-Sammlertest im `--test` PASS; isolierte Legacy-Find-Szenarien laufen nach FAIL weiter (36 PASS/1 FAIL). Cancellation/GUI-Sicherheitsmatrix nicht vollständig bewiesen.
+
 - **Fälle:** Vorhandene Salamander-Instanz, gesperrter Desktop, fehlendes
   MSVC/SDK, ungültige Parameter, fehlgeschlagener Worker, Unterbrechung,
   abweichender SHA, verlorenes Plugin; Clipboard/Temp/Registry-Snapshot.
@@ -809,6 +865,8 @@ UP-07 bleibt TEILBELEGT.
   keine gefälschten PASS-Meldungen.
 
 ### [ ] MGMT-03 – Test-Registry gegen unbemerkte Auslassungen (**P2**, OFFEN)
+- **24.11.2026:** Eigenständiger `Test-DevelopmentContinuity.ps1` strukturell eingebunden; ein dokumentierter neuer Test ist keine automatisch vollständige Coverage-/Registry-Garantie. Gap-/Agent-Übergabe bleibt laufende Wartungspflicht.
+
 - **Fälle:** Neu registrierte automatische GUI-Szenarien werden durch
   `--test-all` erfasst; Opt-ins bleiben separat; fehlende Testskripte,
   unbekannte Parameter, doppelte Testregistrierung.
@@ -898,6 +956,8 @@ UP-07 bleibt TEILBELEGT.
   Plugin-Fähigkeiten je Modul vorher spezifizieren; **UP-01/UP-02**.
 
 ### [ ] FIND-04 – Erweiterte Funktionen und Ergebnisaktionen (**P1**, TEILBELEGT)
+- **24.11.2026:** Debug-Legacy-Find 36 PASS, 1 FAIL; originaler PowerShell-`ExternalEditor` meldet `NOT_STARTED`, Native-Vergleich PASS. Beide Szenarien bleiben erhalten, Verhalten und Root Cause offen.
+
 - **Lücke:** 72 GUI-Szenarien bestanden, aber nicht alle Kombinationen
   von Advanced, Regex, Ignore, zeitlichen Attributen, Mehrfachauswahl,
   Viewer, Editor, Shell, Clipboard und langen Treffern.
@@ -1006,6 +1066,8 @@ UP-07 bleibt TEILBELEGT.
   Ausschlüsse (WinAPI-/GUI-Boundaries).
 
 ### [ ] QA-03 – Wiederholbarkeit, GUI-Flakiness und Ressourcen (**P1**, TEILBELEGT)
+- **24.11.2026:** GUI-Viewer/Unicode-Fälle beim Einzel-Legacy-Debug-Lauf PASS; ursprüngliche PowerShell-Editor-Regression FAIL. Einzelner erfolgreicher Viewer-Lauf ist kein Wiederholbarkeitsnachweis.
+
 - **Fälle:** Wiederholte paarweise `--diagnose-gui`- und
   `--test-all`-Läufe, Cold/Warm-Start, Fokus, Clipboard,
   Hintergrundthreads/Plugin-Load, Handles/COM/Memory.
