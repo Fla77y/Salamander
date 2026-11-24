@@ -18,6 +18,7 @@
 #include "svg.h"
 
 #include "versinfo.rh2"
+#include "common/about_build_info.h"
 
 void GetDlgItemRectAndDestroy(HWND hWindow, int resID, RECT* r)
 {
@@ -414,6 +415,27 @@ CAboutDialog::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
         SetDlgItemText(HWindow, IDS_ABOUT_SALAMANDER, SALAMANDER_TEXT_VERSION);
         new CStaticText(HWindow, IDS_ABOUT_SALAMANDER, STF_BOLD);
         //      new CStaticText(HWindow, IDS_ABOUT_FIRM, STF_BOLD);
+
+        // Use the unused row below the license text. Keep the original 5.0
+        // dialog resource and existing controls untouched for UI compatibility.
+        RECT buildInfoRect = {10, 141, 286, 151};
+        if (MapDialogRect(HWindow, &buildInfoRect))
+        {
+            const std::wstring buildInfo = Salamander::GetAboutBuildInfo();
+            HWND buildInfoText = CreateWindowExW(
+                0, L"STATIC", buildInfo.c_str(),
+                WS_CHILD | WS_VISIBLE | SS_LEFT | SS_NOPREFIX,
+                buildInfoRect.left, buildInfoRect.top,
+                buildInfoRect.right - buildInfoRect.left,
+                buildInfoRect.bottom - buildInfoRect.top,
+                HWindow, NULL, HInstance, NULL);
+            if (buildInfoText != NULL)
+            {
+                const HFONT font = (HFONT)SendMessage(
+                    GetDlgItem(HWindow, IDC_STATIC_5), WM_GETFONT, 0, 0);
+                SendMessage(buildInfoText, WM_SETFONT, (WPARAM)font, TRUE);
+            }
+        }
 
         // if the environment is in Czech or in Slovak, show the Czech website automatically
         BOOL english = LanguageID != 0x405 /* Czech */ && LanguageID != 0x41B /* Slovak */;
