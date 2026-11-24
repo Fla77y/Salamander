@@ -368,6 +368,7 @@ function Run-Tests {
     # Added by the long-path migration branches. Do not report full support
     # when the tests (or the production code using them) are absent.
     $cppTests = @(
+        'tools\tests\about_build_info.cpp',
         'tools\tests\quicksearch_bounds.cpp',
         'tools\tests\utf16_disk_path.cpp',
         'tools\tests\legacy_disk_name_safety.cpp',
