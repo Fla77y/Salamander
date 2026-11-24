@@ -590,6 +590,15 @@ if ($focusedReadSource -notmatch '\$maxAttempts\s*=\s*2' -or
     $focusedFull -notmatch 'Read-FocusedClipboardValue -CommandId 709') {
     throw 'Focused-name clipboard reads must retry bounded, read-only requests and report the panel state on failure.'
 }
+# A foreign foreground window may interrupt between an already dispatched
+# selection key and a subsequent clipboard observation. Recover only the
+# verified Salamander process and confirm that its file list still has focus.
+# Never repeat a keyboard command to make the test pass.
+if ($focusedReadSource -notmatch 'Focus-TestProcess' -or
+    $focusedReadSource -notmatch 'IsFileListFocused' -or
+    $focusedReadSource -notmatch 'Get-ForegroundWindowSummary') {
+    throw 'Focused clipboard reads must verify a single safe foreground recovery after external focus loss.'
+}
 Write-Host 'PASS: focused clipboard reads are bounded, non-destructive, and diagnostic.'
 
 # A focused filename read is not proof that SendKeys reached the file-list
