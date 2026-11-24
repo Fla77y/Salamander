@@ -110,20 +110,26 @@ if ([string]::IsNullOrEmpty($duplicateCase) -or $barrierAt -lt 0 -or
     throw 'Legacy Find duplicate GUI test must synchronize modal owner dispatch before reading results.'
 }
 
-# A failed row-selection preflight must identify whether the row vanished or
-# the keyboard modifier guard prevented injecting navigation keys. Do not
-# weaken that guard merely to make flaky integration tests pass.
+# A failed row-selection preflight must distinguish an invalid index
+# or a physically held modifier from stale queued keyboard state on the test
+# STA. Bound the wait, never synthesize key-up, and keep the guard for real
+# Shift/Ctrl/Alt presses.
 $driverText = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'Test-SalamanderGui-LongPaths.ps1') -Raw
 $selectInterop = [regex]::Match($driverText,
     '(?s)public static void SelectLegacyFindRow\(.*?\r?\n    \}').Value
-foreach ($required in @('LegacyFindResultCount(window, pid)', 'shiftState',
-    'controlState', 'altState', '0x8000', 'resultCount=', 'shift=0x',
-    'control=0x', 'alt=0x')) {
+foreach ($required in @('LegacyFindResultCount(window, pid)',
+    'GetAsyncKeyState(0x10)', 'GetAsyncKeyState(0x11)',
+    'GetAsyncKeyState(0x12)', 'GetKeyState(0x10)',
+    'System.Threading.Thread.Sleep(25)', 'attempt < 80',
+    'physicalShift', 'physicalControl', 'physicalAlt',
+    '0x8000', 'resultCount=', 'physicalShift=0x',
+    'physicalControl=0x', 'physicalAlt=0x',
+    'queuedShift=0x', 'queuedControl=0x', 'queuedAlt=0x')) {
     if (-not $selectInterop.Contains($required)) {
         throw "Legacy Find selection preflight lacks diagnostic contract: $required"
     }
 }
-Write-Host 'PASS: Legacy Find result selection preserves its modifier guard and diagnoses rejected indexes.'
+Write-Host 'PASS: Legacy Find row selection bounds real modifier waiting and diagnoses stale queued keys.'
 
 $driver = Get-Command -Name (Join-Path $PSScriptRoot 'Test-SalamanderGui-LongPaths.ps1')
 $driverCases = ($driver.Parameters['LegacyFindScenario'].Attributes |
@@ -165,6 +171,33 @@ if ($legacyGuiCases -notmatch 'function Initialize-LegacyFindExternalEditor\s*\{
     throw 'Both external-editor launch paths must verify exact file identity and keep the original PowerShell coverage.'
 }
 Write-Host 'PASS: independent PowerShell and Win32 editor tests retain full original Find Edit coverage.'
+# Preserve strict GUI Copy/Cut and editor assertions while recording enough
+# information to distinguish a changed clipboard from missing formats or an
+# owned error dialog. No content, unrelated windows or user clipboard bytes
+# are emitted, and no failed command is replayed.
+$clipboardCase = [regex]::Match($legacyGuiCases,
+    '(?s)function Test-LegacyFindShellClipboard\s*\{(.*?)\r?\n\}\s*\r?\nfunction Test-LegacyFindFocus').Groups[1].Value
+$editorCase = [regex]::Match($legacyGuiCases,
+    '(?s)function Test-LegacyFindExternalEditor\s*\{(.*?)\r?\n\}\s*\r?\nfunction Test-LegacyFindRecycleRestore').Groups[1].Value
+foreach ($required in @('GetClipboardSequenceNumber()', "GetData([Windows.Forms.DataFormats]::FileDrop",
+    "GetData('Preferred DropEffect'", 'sequenceBefore=', 'sequenceAfter=',
+    'pathCount=', 'formats=', 'readErrors=', 'testWindows=',
+    'ReadAllText($first)', 'ReadAllText($second)')) {
+    if (-not $clipboardCase.Contains($required)) {
+        throw "Legacy Find clipboard diagnosis must retain exact formats and source bytes: $required"
+    }
+}
+foreach ($required in @('Test editor state=$state', 'Get-ProcessWindowSummary',
+    'GetProcessWindows([uint32]$process.Id)', 'DescribeWindow($_.Handle)',
+    "Title -eq 'Open Salamander'", 'Owned-error-dialog=', 'ReadAllText($neighbor)',
+    'Wait-Until')) {
+    if (-not $editorCase.Contains($required)) {
+        throw "Legacy Find editor diagnostics must inspect only owned error dialogs: $required"
+    }
+}
+Write-Host 'PASS: failed shell clipboard and external editor commands retain strict checks and scoped diagnostics.'
+
+
 
 # A timeout in the viewer Copy check must distinguish a command that did
 # not change the clipboard from a changed but byte-incorrect selection.
