@@ -193,7 +193,9 @@ LRESULT CALLBACK ViewerProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lPara
         const auto* create = reinterpret_cast<const CREATESTRUCTW*>(lParam);
         SetWindowLongPtrW(hwnd, GWLP_USERDATA,
                           reinterpret_cast<LONG_PTR>(create->lpCreateParams));
-        return TRUE;
+        // Let USER32 initialize the native caption from CREATESTRUCTW.
+        // Returning TRUE directly skips the default WM_NCCREATE handling.
+        return DefWindowProcW(hwnd, message, wParam, lParam);
     }
 
     switch (message)
