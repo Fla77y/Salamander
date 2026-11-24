@@ -3085,7 +3085,18 @@ function Read-FocusedClipboardValue {
         }
         if (-not $AllowVerifiedBackground -and
             (Get-ActiveProcessId) -ne [uint32]$process.Id) {
-            throw "Cannot read focused clipboard value while Salamander is not foreground: $(Get-ForegroundWindowSummary)"
+            # The previous selection input was already sent; never replay it.
+            # A foreign foreground window can be recovered once before this
+            # read-only command, but only for the verified test process.
+            $previousForeground = Get-ForegroundWindowSummary
+            Focus-TestProcess
+            if ((Get-ActiveProcessId) -ne [uint32]$process.Id -or
+                -not [SalamanderGuiNative]::IsFileListFocused(
+                    $mainWindowHandle, [uint32]$process.Id)) {
+                throw ("Focused clipboard observation cannot safely resume after external focus loss. " +
+                       "Previous foreground: $previousForeground; current: $(Get-ForegroundWindowSummary)")
+            }
+            Write-Host "GUI focused read recovered verified process; previous foreground: $previousForeground"
         }
         if ($AllowVerifiedBackground -and
             -not [SalamanderGuiNative]::IsWindowEnabled($mainWindowHandle)) {
