@@ -495,6 +495,12 @@ niemals stillschweigend umschreiben; Korrekturen als neue datierte Zeile.
 - **Verifikation:** Alle neuen Dateien aus GitHub gegengelesen und die neuen Vertragsanforderungen auf realen Quelltext geprüft; **keine Windows-/PowerShell-/GUI-Ausführung auf dem neuen Commit**. Kein Produktcode aufgrund unbewiesener Hypothesen verändert.
 - **Nächste Schritte:** `manage.cmd --test` (Parser/Verträge), danach isoliertes `manage.cmd --test-gui-legacy-find --debug` in möglichst ungestörtem Desktop. Bei Fehlern die neue `Owned-error-dialog`-Fehlermeldung und die Clipboard-Metadaten auswerten; erst dann konkrete Produktursache korrigieren. Parallel `--test-gui-unicode-parent --debug/--release` unverändert offen; Release weiterhin NO-GO.
 
+### J-20261124-15 — Verifizierte, begrenzte Kindtextdiagnose des Editor-Fehlerdialogs
+
+- **Anlass / FIND-04, QA-03:** Im GUI-Lauf `8a6de88` war der Test-eigene Dialog mit dem Titel `Open Salamander` sichtbar, aber der tatsächliche Fehlermeldungstext fehlte. Fremdprozessuales `GetWindowTextW` gibt Texte von Child-Controls nicht zuverlässig zurück; daher wäre die bloße Wiederverwendung von `DescribeWindow` nicht aussagekräftig.
+- **Änderung:** `tools/release/tests/Test-SalamanderGui-LongPaths.ps1` erhält `DescribeOwnedEditorErrorDialog`: es akzeptiert ausschließlich ein sichtbares Top-Level-`#32770` des isolierten Salamander-Test-PID mit Titel `Open Salamander` und liest maximal 11 zugehörige `Static`-Beschriftungen per `SendMessageTimeoutReadText(WM_GETTEXT, 750 ms)` aus. `LegacyFind-GuiCases.ps1` verwendet diese reine Leseoperation nur im bisherigen Fehlerbericht. `Test-LegacyFind-UiContract.ps1` prüft HWND-/PID-Eigentum, Klassen, Zeitbegrenzung und Integration statisch. Keine automatischen Dialogaktionen, kein Prozessstart-Retry, keine Abschwächung von `ExternalEditor`.
+- **Verifikation:** Code aus GitHub gegengeprüft; **weder neue PowerShell-Vertragsprüfung noch GUI-Lauf auf diesen Commits ausgeführt**. Durch die zusätzliche Diagnose wird der vorherige Editor-Fail nicht als behoben ausgewiesen. Erst die tatsächliche Fehlermeldung kann eine kausal belegte Produktkorrektur begründen.
+
 ## Vorlage für zukünftige Einträge
 
 ```markdown
