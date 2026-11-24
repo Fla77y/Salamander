@@ -6,6 +6,61 @@
 > den `Master-Prompt-C++.md` und sämtliche Anforderungen 0–7 aus `Anforderungen.md`.
 > Sie ersetzt nicht die Pflicht, den aktuellen Repository-Inhalt zu prüfen.
 
+## 0. Sitzungsstart und verlustfreie Übergabe (ChatGPT ↔ Codex ↔ Entwickler)
+
+**Unbedingt vor jedem neuen Salamander-Auftrag und insbesondere nach einem
+Chat-/Agent-Wechsel:** Lies in dieser Reihenfolge die **aktuellen** Repository-
+Dateien: [`Anforderungen.md`](Anforderungen.md) (unveränderte Nutzervorgaben
+A0–A7), diese `AGENTS.md`,
+[`Arbeitsstand-und-Uebergabe.md`](docs/maintenance/Arbeitsstand-und-Uebergabe.md)
+(aktuelle Fehler, Testbelege, nächster Schritt),
+[`Testluecken-und-Abnahmeplan-5.2.md`](docs/maintenance/Testluecken-und-Abnahmeplan-5.2.md)
+(stabile, zentrale Aufgabenliste) sowie
+[`Entwicklungsjournal.md`](docs/maintenance/Entwicklungsjournal.md)
+(chronologische Aufträge, Entscheidungen und Nachweise).
+Danach die betroffenen Implementierungen, Aufrufstellen, Tests und weiteren
+Fachdokumente öffnen. **Nicht bloß den früheren Chat oder diese Zusammenfassung
+als aktuelle Quellenlage behandeln.**
+
+- Zuerst Remote-/Checkout-Verfügbarkeit, Branch, HEAD, Arbeitsbaumstatus,
+  relevanten offenen Punkt, letzte belegte Test-SHA und bereits laufende
+  Arbeit feststellen. Weicht der aktuelle Code vom Übergabestand ab, **den
+  tatsächlichen Git-Stand untersuchen** und Widersprüche dokumentieren.
+- **Nach jedem autorisierten Auftrag** Dokumentation zusammen mit zugehörigen
+  Änderungen pflegen: im append-only **Entwicklungsjournal** den Benutzerauftrag,
+  Befund/Ursache, wesentliche Entscheidung, betroffene Dateien/Commits, reale
+  Tests (PASS/FAIL/SKIP, Betriebssystem/Variante) und Restrisiken erfassen;
+  im **Abnahmeplan** nur die passenden bestehenden IDs aktualisieren oder
+  neue ID begründet hinzufügen; in **Arbeitsstand-und-Uebergabe** die aktuell
+  belegten Ergebnisse und nächsten Arbeitsschritte ersetzen. Alles möglichst
+  im selben autorisierten PR/Commit. Nie nachträglich fiktive Testnachweise
+  oder erfundene Commits eintragen.
+- **Tests sind Spezifikation:** keine bestehenden Tests abschwächen, löschen
+  oder auf PASS trimmen. Bei nachweisbar veraltetem Testvertrag den alten und
+  neuen Vertrag mit Quelle und Test-/Produktbegründung dokumentieren.
+  Fehler aus mehreren unabhängigen Tests sammeln; abhängige/unsichere GUI-Fälle
+  kontrolliert SKIP, nicht PASS. `manage.cmd` und die entsprechende
+  Testregistrierung bei jeder relevanten Änderung selbstständig mitpflegen.
+- Architektur-, Datenintegritäts-, Sicherheit-, Unicode-, Langpfad-, Plugin-
+  ABI- und Original-UI-Vorgaben aus A0–A7 bleiben höher priorisiert als eine
+  schnelle grüne Testausgabe. `Master-Prompt.odt` aus historischen ChatGPT-
+  Projektquellen fordert zusätzlich TDD, Clean Code, AAA, kritisches Review,
+  vollständige Verifikation und ehrliche Begrenzungsangaben; der für das native
+  C++/Win32-Projekt maßgebliche Teil ist in dieser Datei festgeschrieben.
+- Keine personalisierten Pfade, Benutzernamen, Zugangsdaten, privaten
+  Clipboard-Inhalte oder Dumps im Journal speichern. Dateinamen von
+  Testprotokollen und Commits dürfen als technische Belege stehen.
+- Dokumentationspflege ist **kein** Freibrief für unautorisierten Git-Push,
+  `--update`, Setup, Löschung oder sonstige Systemeingriffe (siehe Abschnitt 4).
+
+**Automatik-Grenze:** Repository-`AGENTS.md` unterstützt Codex-/Agent-Tools,
+aber ChatGPT kann in einem neuen Chat **nicht garantiert ohne Repository-
+Verbindung/GitHub-Zugriff** diese Dateien laden. Im ChatGPT-Projekt deshalb
+eine feste Startanweisung verwenden: „Öffne zuerst die fünf obigen Dateien
+im Branch/HEAD und arbeite nach dem aktuellen Übergabestand weiter.“
+Die Dateien sind die portable fachliche Wahrheit, keine behauptete
+plattformübergreifende automatische Speicherfunktion.
+
 ## Projektweite Testlücken und Arbeitsfortschritt
 
 **Pflichtlektüre bei Test-, Bugfix-, Unicode-/Langpfad-, Plugin-, WIC- und
