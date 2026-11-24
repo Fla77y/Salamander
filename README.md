@@ -12,6 +12,20 @@ Please bear with us as Salamander was our first major project where we learned t
 
 We would like to thank [Fine company](https://www.finesoftware.eu/) for making the open sourced Salamander release possible.
 
+## Development continuity across sessions and agents
+
+Before continuing work in ChatGPT, Codex or a local checkout, read the
+[agent instructions](AGENTS.md), the [original requirements A0–A7](Anforderungen.md),
+the [current development handoff](docs/maintenance/Arbeitsstand-und-Uebergabe.md),
+the [central test-gap/acceptance backlog](docs/maintenance/Testluecken-und-Abnahmeplan-5.2.md)
+and the [chronological development journal](docs/maintenance/Entwicklungsjournal.md).
+These Markdown files are versioned **with the code** and maintained for each
+authorized change; they replace reliance on bulky archived chat PDFs as the
+primary current handoff. Compare their dated results with the actual Git HEAD
+before proceeding. New ChatGPT conversations still require GitHub/project
+access and a prompt or project instruction to open these sources; linking
+documents alone does not automatically load them.
+
 ## Test coverage and release readiness
 
 The current, actionable [Salamander 5.2 test-gap and acceptance plan](docs/maintenance/Testluecken-und-Abnahmeplan-5.2.md)
@@ -36,7 +50,7 @@ remain mandatory.
 - [Git](https://git-scm.com/downloads)
 - [PowerShell 7.4](https://learn.microsoft.com/en-us/powershell/scripting/install/installing-powershell-on-windows) or newer
 - [HTMLHelp Workshop 1.3](https://learn.microsoft.com/en-us/answers/questions/265752/htmlhelp-workshop-download-for-chm-compiler-instal)
-- Set the ```OPENSAL_BUILD_DIR``` environment variable to specify the build directory. Make sure the path has a trailing backslah, e.q. ```D:\Build\OpenSal\```
+- By default, the management entry point uses the ignored repository-local ```\.Build\``` directory. Set ```OPENSAL_BUILD_DIR``` only when invoking lower-level Visual Studio/build scripts that require an explicit alternate root; retain the script's required trailing backslash, and keep build outputs outside tracked source paths.
 
 ### Building
 
@@ -127,7 +141,7 @@ This explicit diagnostic runs the **same one** F8 GUI case both in isolation
 and after `--test --test-plugin-exports --test-pictview
 --test-pictview-window`, keeping the x64 configuration fixed. It alternates
 the order of these scenarios, streams the complete test-prelude output live
-while writing individual management logs and a `Summary.csv` under `D:\Build\OpenSal\logs\gui-reliability`, and reports
+while writing individual management logs and a `Summary.csv` under `.Build\logs\gui-reliability` (relative to the repository root), and reports
 nonzero exit codes as failures. It refuses to continue if another Salamander
 process remains, without killing unknown processes. The diagnostic manager
 runs do not copy their nested transcripts to the global clipboard. The GUI
