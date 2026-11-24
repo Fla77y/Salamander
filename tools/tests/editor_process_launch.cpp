@@ -43,9 +43,14 @@ int main()
     STARTUPINFOA startup{};
     startup.cb = sizeof(startup);
     PROCESS_INFORMATION process{};
-    if (!Salamander::CreateConfiguredEditorProcessA(
-            command.c_str(), mutableCommandLine.data(), systemDirectory,
-            NORMAL_PRIORITY_CLASS, &startup, &process))
+    // Same exact executable identity passed to the tracked CreateProcess
+    // call in CFilesWindow::EditFile; this standalone test has no handles
+    // monitor and invokes the Win32 API directly.
+    if (!CreateProcessA(
+            Salamander::GetExplicitEditorApplicationName(command.c_str()),
+            mutableCommandLine.data(), nullptr, nullptr, FALSE,
+            NORMAL_PRIORITY_CLASS, nullptr, systemDirectory,
+            &startup, &process))
         return Fail("explicit executable failed to launch using editor path");
     const DWORD result = WaitForSingleObject(process.hProcess, 15000);
     DWORD exitCode = 0;
