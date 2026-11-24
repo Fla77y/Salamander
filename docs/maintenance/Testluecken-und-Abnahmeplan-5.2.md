@@ -131,6 +131,20 @@ das ersetzt **nicht** die fachliche Prüfung, ob der Text noch aktuell ist.
 Bei jedem künftigen autorisierten Code-Commit die betroffenen Gap-Sektionen
 und Journal/Handoff nachziehen (A4 / MGMT-03).
 
+**24.11.2026, 13:56 CET – Regression im neu integrierten Kontinuitätstest:**
+`manage.cmd --test` auf `8a5cb99da350a494f94fdb57087c7b7f8221c336`
+**FAIL** nach bestandenem Sammlertest:
+`Test-DevelopmentContinuity.ps1:37` hatte den PowerShell-Parserfehler
+`$id:` in einer String-Interpolation. Kein Produktfehler, die
+übrigen Skript-/C++-Tests liefen in diesem Durchlauf **nicht**.
+Die Korrektur `${id}:` sowie eine echte AST-Parser-Vorprüfung
+aller Repository-`.ps1`-Skripte sind im Branch implementiert.
+Die Vorprüfung läuft als erster `--test`-/`--test-all`-Schritt,
+um weitere syntaktische Defekte übergreifend vor dem Teststart zu
+finden. **Neuer Windows-Lauf auf dem Korrektur-Commit steht aus.**
+Beleg: Nutzerprotokoll `manage-20261124-135629-299-b89d1f.log`.
+Das ist **kein** neuer grüner Baseline-SHA.
+
 ## Arbeitsfortschritt M0 – erste Teilaufgaben (23. November 2026)
 
 **Arbeitsbranch:** work/test-gap-m0-a0-up01 (auf bugfix/v5.2).
@@ -855,6 +869,7 @@ UP-07 bleibt TEILBELEGT.
   `--update` nur nach ausdrücklicher Zustimmung.
 
 ### [ ] MGMT-02 – Fehler- und Isolationsverhalten (**P1**, TEILBELEGT)
+- **24.11.2026, 13:56:** `--test` auf `8a5cb99d` **FAIL** wegen ungültiger `$id:`-Interpolation im neuen Kontinuitätstest. `${id}:` korrigiert. Neue PowerShell-AST-Parser-Vorprüfung sammelt Syntaxfehler vor dem Restlauf; auf Windows nach Fix noch nicht ausgeführt. Status bleibt TEILBELEGT.
 - **24.11.2026:** Sammeltest-Infrastruktur mit PASS/FAIL/SKIP-JSON und nonzero-Gesamtergebnis implementiert; Windows-Sammlertest im `--test` PASS; isolierte Legacy-Find-Szenarien laufen nach FAIL weiter (36 PASS/1 FAIL). Cancellation/GUI-Sicherheitsmatrix nicht vollständig bewiesen.
 
 - **Fälle:** Vorhandene Salamander-Instanz, gesperrter Desktop, fehlendes
@@ -865,6 +880,7 @@ UP-07 bleibt TEILBELEGT.
   keine gefälschten PASS-Meldungen.
 
 ### [ ] MGMT-03 – Test-Registry gegen unbemerkte Auslassungen (**P2**, OFFEN)
+- **24.11.2026, 13:56:** `Test-PowerShellSyntax.ps1` vor allen übrigen Vertragstests registriert, prüft `.ps1`-Dateien und enthält eine absichtlich fehlerhafte `$id:`-Negativfixture. Erst tatsächlicher Parser- und vollständiger `--test`-Lauf kann den Syntaxgate als bestanden belegen; MGMT-03 bleibt offen.
 - **24.11.2026:** Eigenständiger `Test-DevelopmentContinuity.ps1` strukturell eingebunden; ein dokumentierter neuer Test ist keine automatisch vollständige Coverage-/Registry-Garantie. Gap-/Agent-Übergabe bleibt laufende Wartungspflicht.
 
 - **Fälle:** Neu registrierte automatische GUI-Szenarien werden durch
@@ -1066,6 +1082,7 @@ UP-07 bleibt TEILBELEGT.
   Ausschlüsse (WinAPI-/GUI-Boundaries).
 
 ### [ ] QA-03 – Wiederholbarkeit, GUI-Flakiness und Ressourcen (**P1**, TEILBELEGT)
+- **24.11.2026, 13:56:** Testinfrastruktur verursachte einen deterministischen Parserabbruch auf `8a5cb99d`; kein sporadischer Produktfehler. Regressionsfix vorhanden, auf Windows nach Fix nicht geprüft.
 - **24.11.2026:** GUI-Viewer/Unicode-Fälle beim Einzel-Legacy-Debug-Lauf PASS; ursprüngliche PowerShell-Editor-Regression FAIL. Einzelner erfolgreicher Viewer-Lauf ist kein Wiederholbarkeitsnachweis.
 
 - **Fälle:** Wiederholte paarweise `--diagnose-gui`- und
