@@ -539,6 +539,12 @@ niemals stillschweigend umschreiben; Korrekturen als neue datierte Zeile.
 - **Änderungen:** `src/fileswn2.cpp`, `src/fileswn5.cpp` sowie drei Wartungsdokumente. Keine Testassertionen oder Testtreiber verändert.
 - **Nächste Aktion:** `git pull --ff-only origin bugfix/v5.2`, `manage.cmd --build-delta --debug --test`, `manage.cmd --test-gui-unicode-parent --debug`; bei Erfolg Release-Build/Gegenlauf. ViewUnicode-Release nicht als behoben einstufen.
 
+### J-20261124-22 — Unicode-Parent-F2/F5/F6 Debug und Delta-Build PASS
+
+- **Auftrag / IDs:** A1/A2/A8, UP-04, UP-06, QA-03; Auswertung des Nutzerlogs.
+- **24.11.2026, `5ca5bb322af1aaa09cff194fac6cc0e18b913087`, sauberer Checkout:** `manage.cmd --build-delta --debug --test` ab 17:38:16 erfolgreich (tatsächlich beide x64-Varianten Debug und Release gebaut, HTML-Hilfe, Parser-/Vertragsprüfungen, 23 native C++-Regressionsaufrufe und 18 Windows/.NET-Dateisystemassertions PASS; optionaler Cross-Volume-Unterfall SKIP). Log `manage-20261124-173816-147-6b14d3.log`. `manage.cmd --test-gui-unicode-parent --debug` ab 17:40:00 vollständig PASS: Original-Unicode-Elternpfad bei Navigation und Vollnamenskopie erhalten, F2 aktualisiert Vollname ohne ACP-Verlust, F5/F6 in beide getestete Richtungen mit exakter UTF-16-Identität und unveränderten Dateibytes erfolgreich. Log `manage-20261124-174000-534-09503a.log`. Der konkrete F2-Refresh-Fehler auf `9c43bec9` ist im unveränderten Debug-GUI-Test behoben; Release-Gegenlauf noch ausstehend. Keine Aussage zu Volumes ohne 8.3-Alias, vollständiger W-Panelmigration oder allen UP-04/UP-06-Fällen. Nächster Schritt `manage.cmd --test-gui-unicode-parent --release`, anschließend gezielte Untersuchung des Release-ViewUnicode-Clipboardfehlers. MSIX-Editorfehler und weitere Abnahme offen; keine Release-Freigabe.
+- **Änderung:** ausschließlich diese drei Wartungsdokumente; Produktcode und Tests unverändert.
+
 ## Vorlage für zukünftige Einträge
 
 ```markdown
