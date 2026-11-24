@@ -2798,7 +2798,33 @@ void CFilesWindow::RenameFile(int specialIndex)
             EndSuspendMode();
 
             if (renamed)
+            {
+                // Publish the new wide row before returning to the panel.
+                // A queued change notification alone leaves a window in
+                // which the old row names a file that has already moved.
+                // RefreshDirectory retains the original W parent even
+                // when its legacy access path is a short DOS alias.
+                RefreshDirectory();
+                if (Is(ptDisk) && GetDiskPathW() == directory)
+                {
+                    // Focus by the refreshed per-row W identity, not by a
+                    // possibly colliding or lossy ANSI display name.
+                    const int begin = isDir ? 0 : Dirs->Count;
+                    const int end = isDir ? Dirs->Count : Dirs->Count + Files->Count;
+                    for (int row = begin; row < end; ++row)
+                    {
+                        const CFileData& item = isDir ? Dirs->At(row) : Files->At(row - Dirs->Count);
+                        std::wstring wideName;
+                        if (UnicodeDiskNames.TryGetRow(item.Name, wideName) &&
+                            wideName == inputName)
+                        {
+                            SetCaretIndex(row, TRUE);
+                            break;
+                        }
+                    }
+                }
                 return;
+            }
 
             SalMessageBox(HWindow, GetErrorText(error),
                           LoadStr(IDS_ERRORRENAMINGFILE), MB_OK | MB_ICONEXCLAMATION);

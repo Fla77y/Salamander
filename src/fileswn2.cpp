@@ -1874,7 +1874,13 @@ BOOL CFilesWindow::ChangePathToDisk(HWND parent, const char* path, int suggested
 
     //TRACE_I("change-to-disk: begin");
 
-    if (strlen(path) >= MAX_PATH - 2 || HasLongDiskPath())
+    // A short verified DOS access path is not the panel's Unicode identity.
+    // RefreshDirectory passes GetPath() here; sending that alias through
+    // the ANSI branch calls SetPath(changedPath) without the original W path.
+    const bool refreshUnicodeIdentity =
+        isRefresh && Is(ptDisk) && path == GetPath() &&
+        !Salamander::IsExactAnsiName(path, GetDiskPathW().c_str());
+    if (strlen(path) >= MAX_PATH - 2 || HasLongDiskPath() || refreshUnicodeIdentity)
         return ChangeLongPathToDisk(parent, path, suggestedTopIndex,
                                    suggestedFocusName, noChange, refreshListBox,
                                    canForce, isRefresh, failReason, tryCloseReason);
