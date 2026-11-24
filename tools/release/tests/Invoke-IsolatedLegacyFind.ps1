@@ -20,9 +20,34 @@ $scenarioAttribute = (Get-Command -Name $driver).Parameters['LegacyFindScenario'
 $scenarios = @($scenarioAttribute.ValidValues | Where-Object { $_ -notin $optIn })
 
 $binary = & (Join-Path $PSScriptRoot 'Build-IsolatedGuiTest.ps1') -Configuration $Configuration -OutputName 'isolated-legacy-find'
+
+# A failed scenario must not hide failures in later, independent GUI cases.
+# Every case launches its own disposable process/configuration. Never start
+# another case if a previous one left Salamander running.
+. (Join-Path $PSScriptRoot '..\Test-RunCollection.ps1')
+Initialize-TestRun -CollectFailures
+$unsafeToContinue = $false
 foreach ($case in $scenarios) {
+    $caseName = "Legacy Find $Configuration x64 $case"
+    if (-not $unsafeToContinue -and
+        @(Get-Process salamand -ErrorAction SilentlyContinue).Count -ne 0) {
+        $unsafeToContinue = $true
+    }
+    if ($unsafeToContinue) {
+        Skip-TestCase -Name $caseName -Reason 'Salamander process still running; further GUI tests are unsafe.'
+        continue
+    }
     Write-Host "=== LEGACY FIND GUI: $Configuration x64 $case ==="
-    & pwsh -Sta -NoProfile -File $driver -SalamanderExe $binary -IsolatedConfiguration -LegacyFindScenario $case
-    if ($LASTEXITCODE -ne 0) { throw "Legacy Find GUI case failed: $Configuration x64 $case" }
+    Invoke-TestCase -Name $caseName -Action {
+        & pwsh -Sta -NoProfile -File $driver -SalamanderExe $binary -IsolatedConfiguration -LegacyFindScenario $case
+        if ($LASTEXITCODE -ne 0) {
+            throw "Legacy Find GUI case failed: $Configuration x64 $case (exit code $LASTEXITCODE)."
+        }
+    }
 }
+$repository = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\..\..'))
+$logs = Join-Path $repository '.Build\logs'
+[void][IO.Directory]::CreateDirectory($logs)
+$runId = [guid]::NewGuid().ToString('N')
+Complete-TestRun -LogPath (Join-Path $logs "legacy-find-$Configuration-$runId.log")
 Write-Host "PASS: $($scenarios.Count) isolated Legacy Find GUI scenarios on $Configuration x64."
