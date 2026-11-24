@@ -95,6 +95,13 @@ eine kürzere Fixture erfüllt den Grenzfall **nicht**.
 
 ## Arbeitsfortschritt M1 – nachgeführter Windows-Stand (24. November 2026)
 
+**Neuer Debug-Legacy-Find-Nachweis am 24.11.2026, 14:59–15:02 (Quell-SHA `3119af034cf5eb6d1a65b27880d891baa5258ca9`):** 36 PASS, 1 FAIL, 0 SKIP.
+`ExternalEditorNative` und PowerShell-Host-Preflight beide **PASS**; ausschließlich tatsächliches Legacy-Find-`ExternalEditor` bleibt `NOT_STARTED` / FAIL. Dagegen sind die 36 anderen Szenarien erfolgreich.
+**Nachfolgende ungetestete Produktkorrektur:** Für vorhandene absolute `.exe`-Editoren wird dem Win32-`CreateProcessA` der Anwendungsname explizit übergeben, für andere Editorbefehle bleibt Legacy-Verhalten erhalten. Neuer nativer Editor-Prozessstarttest und statische Vertragsprüfung hinzugefügt.
+**Kein neuer `--test`-/GUI-PASS** auf den neueren Quell-SHAs; FIND-04/QA-03 ausdrücklich weiter offen.
+Beleg des realen Fehlers: lokales `manage-20261124-145926-376-de4931.log`, im Git nicht abgelegt.
+
+
 **Windows-Nachweis 24.11.2026, 14:32–14:34 auf `9f524264`:** Debug/Release-x64-Delta-Build und `--test` **PASS**. Neuer nativer 8.3-Verzeichnisalias-Test **positiv PASS**; 22 registrierte native C++-Regressionen, 66 PS-Skripte. **GUI nicht ausgeführt:** Unicode-Elternverzeichnis Release/Debug und Legacy-Find Debug um 14:34 jeweils durch eine bereits laufende Salamander-Instanz **vor dem eigentlichen Produkttest blockiert** (kein neuer Produkt-PASS/-FAIL). Nicht-8.3-Volumes, echte Debug-/Release-GUI-Verzeichnisnavigation und externer Editor weiterhin offen. Vor erneuter GUI-Prüfung alle regulären Salamander-Instanzen geordnet schließen; niemals automatisch fremde Prozesse beenden.
 
 **Beleg- und Umfangsgrenze:** User-Transkripte, nicht in Git gespeicherte
@@ -111,7 +118,7 @@ Produktcode. Detailgeschichte und Folgeaufträge:
 | **A0-01 / About** | Zusatzzeile für EXE-Zeitstempel, Debug/Release, x86/x64; `about_build_info.cpp` im am 24.11. 12:59 gelaufenen `--test` PASS | Echter About-GUI-/Layout-/Lokalisierungstest; **TEILBELEGT**, keine 5.0-A/B-Vollparität |
 | **UP-04 / F5/F6** | `--test-gui-unicode-multiselect --release` am 24.11. 02:54 PASS, einschließlich synchroner und 17-MiB-Worker-Fälle; native Worker-/Identitätsprüfungen im 12:59-`--test` PASS | Cross-Volume-Nativtest mangels `OPENSAL_CROSS_VOLUME_TEST_DIR` **SKIP**; gemischte Ordner-/Dateibatches, alle Volumes/ADS offen; **TEILBELEGT** |
 | **UP-06 / Unicode-Elternverzeichnis** | Identischer, reproduzierbarer Fehler in Release/Debug am 24.11. 03:00/03:01: `ChangeUnicodePathToDisk` verweigert nicht-ACP-Pfade mit Modal-Dialog, `WM_COMMAND 775` timeout | **OFFENER PRODUKTFEHLER**; keine unsichere ANSI-Umgehung; vollständige W-Panelnavigation fehlt |
-| **FIND-04 / QA-03** | 24.11. 13:00: isolierter Debug-Legacy-Find-Test **36 PASS, 1 FAIL, 0 SKIP**; `ExternalEditorNative` PASS; Unicode-Viewer-Tests PASS | Original-`ExternalEditor` mit WindowsApps-/MSIX-`pwsh.exe`: `NOT_STARTED`, FAIL; Aufrufdiagnose und Release-Variante offen |
+| **FIND-04 / QA-03** | **24.11. 15:02, `3119af03`: 36 PASS, 1 FAIL, 0 SKIP**; unabhängig gestartetes PowerShell erfolgreich, nativer cmd-Editor PASS, Unicode-/Find-Ergebnisaktionen PASS | Original-`ExternalEditor` über Salamander: weiterhin `NOT_STARTED` / FAIL. Nachfolgende explizite `CreateProcessA`-EXE-Identität und nativer Test **noch nicht unter Windows verifiziert**; Release-Variante offen. |
 | **BUILD-01 / A3** | Debug/Release-x64-Delta-Build nach Umzug unter `.Build/` PASS, zunächst ca. 122 s, danach ca. 8 s | Komplette Vierfachmatrix und neuer Clean-/Setup-Lauf auf HEAD offen |
 | **MGMT-01/02/03** | `.Build/` gitignoriert und als Buildroot; `--test-all` sammelt unabhängige Testfehler in JSON und liefert insgesamt nonzero; eigenständiger Sammlertest am 24.11. 12:59 PASS | Vollständige Update-/Build-/Test-/Setup-Matrix, defekte Voraussetzungen/Unterbrechung und automatisierte Lückenregistrierung weiter **TEILBELEGT/OFFEN** |
 | **QA-01 / A0-02** | Native F6-Dateiidentitäts-, Binär- und Registry-Canary-Verträge im `--test` PASS | Echte Benutzer-5.0-Upgrade-/Rollback-VM und alle Fehler-/Nebenläufigkeitsfälle offen |
@@ -1000,6 +1007,7 @@ UP-07 bleibt TEILBELEGT.
   Plugin-Fähigkeiten je Modul vorher spezifizieren; **UP-01/UP-02**.
 
 ### [ ] FIND-04 – Erweiterte Funktionen und Ergebnisaktionen (**P1**, TEILBELEGT)
+- **24.11.2026, 15:02; SHA `3119af03`, realer Debug-GUI-Lauf:** 36 PASS/1 FAIL/0 SKIP; PowerShell-Host-Preflight erfolgreich, `ExternalEditorNative` erfolgreich, *nur* tatsächlicher `ExternalEditor` FAIL mit `NOT_STARTED`. Neuer enger Produkt-Fix (absolute existierende `.exe` als explizites `lpApplicationName` in `CreateProcessA`; sonst Legacy-Fallback), nativer Test `editor_process_launch.cpp`, statischer Vertrag und Eigentümer-Fensterdiagnose eingecheckt, **MSVC-/GUI-GREEN auf neuem HEAD ausstehend**. Nicht als geschlossen markieren.
 - **24.11.2026, SHA `9f524264`:** Die PowerShell-Editor-Kontraktprüfungen im echten Windows-`--test` sind PASS, aber der GUI-Editorlauf wurde wegen vorhandener Salamander-Instanz **vor Produktausführung blockiert**; die eigentliche Änderung ist nicht GUI-verifiziert. Der PowerShell-Editor erhält einen absoluten, korrekt zitierten `-File`-Pfad; vor dem eigentlichen GUI-Edit-Befehl wird der konkrete `pwsh.exe`-Host mit einem test-eigenen File unabhängig geprüft und die Fixture nachweisbar zurückgesetzt. So unterscheiden wir Host-/Policy-Fehler von Produkt-CreateProcess-Fehlern. Die Vertragsprüfung erzwingt Vorlauf und Zurücksetzen des Statusmarkers (`be853b54`). Beide Editorvarianten bleiben erhalten; Ausführungsrichtlinie bleibt unverändert. `ExternalEditorNative` und strenge Original-/Nachbar-/Argumentprüfungen bleiben bestehen. Vorhandenes Debug-FAIL `NOT_STARTED` nicht als behoben markieren, bis erneuter realer Lauf bestanden ist.
 - **24.11.2026:** Debug-Legacy-Find 36 PASS, 1 FAIL; originaler PowerShell-`ExternalEditor` meldet `NOT_STARTED`, Native-Vergleich PASS. Beide Szenarien bleiben erhalten, Verhalten und Root Cause offen.
 
@@ -1111,6 +1119,7 @@ UP-07 bleibt TEILBELEGT.
   Ausschlüsse (WinAPI-/GUI-Boundaries).
 
 ### [ ] QA-03 – Wiederholbarkeit, GUI-Flakiness und Ressourcen (**P1**, TEILBELEGT)
+- **24.11.2026, 14:59–15:02:** Trotz isoliertem GUI-Runner und erfolgreichem unabhängigen PowerShell-Start reproduzierbarer `ExternalEditor`-FAIL `NOT_STARTED` (36/1/0). Produktlaunch-Hypothese durch separate ausführbare Modulidentität und neue native Regression abgesichert, aber noch nicht live verifiziert. Test-Runner meldet bei erneuter Timeout-Ausnahme zusätzlich Fenster des test-eigenen Salamander-Prozesses, ohne fremde Fenster zu manipulieren.
 - **24.11.2026:** Fehlgeschlagene GUI-Preflights bei bereits laufenden Salamander-Instanzen sollen künftig kontrolliert warten statt sofort mit Exit 1 enden. Die Unterläufe behalten ihre strikten Sicherheitschecks; eine wiederholte echte GUI-Testserie nach der Änderung fehlt weiterhin.
 - **24.11.2026, 14:34, SHA `9f524264`:** Drei isolierte GUI-Aufrufe (Unicode-Elternverzeichnis Release/Debug, Legacy-Find Debug) scheiterten am **Preflight bereits laufender Salamander-Instanzen** und führten keine Produktschritte aus. Sicherheitsentscheidung korrekt: keine Benutzerinstanz abschießen, nicht als neue GUI-Produktregression verbuchen. Vor Wiederholung eigene Salamander-Fenster regulär schließen.
 - **24.11.2026:** Hypothese zum `ExternalEditor`-Fehler (relativer Scriptpfad des MSIX-Childs) mit absolutem test-eigenen Scriptpfad und unabhängiger, zurückgesetzter PowerShell-Host-Preflight-Fixture abgesichert. Kein Root-Cause-/Laufzeitnachweis bisher; nachfolgende GUI-Wiederholungen und echte Prozessstartdiagnose erforderlich.
