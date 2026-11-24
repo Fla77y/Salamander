@@ -998,7 +998,7 @@ UP-07 bleibt TEILBELEGT.
   Plugin-Fähigkeiten je Modul vorher spezifizieren; **UP-01/UP-02**.
 
 ### [ ] FIND-04 – Erweiterte Funktionen und Ergebnisaktionen (**P1**, TEILBELEGT)
-- **24.11.2026, noch nicht Windows-verifiziert:** Die ursprüngliche PowerShell-`ExternalEditor`-Fixture verwendet nun einen absoluten, korrekt in Anführungszeichen gesetzten `-File`-Pfad; Ausführungsrichtlinie bleibt unverändert. `ExternalEditorNative` und strenge Original-/Nachbar-/Argumentprüfungen bleiben bestehen. Vorhandenes Debug-FAIL `NOT_STARTED` nicht als behoben markieren, bis erneuter realer Lauf bestanden ist.
+- **24.11.2026, noch nicht Windows-verifiziert:** Der PowerShell-Editor erhält einen absoluten, korrekt zitierten `-File`-Pfad; vor dem eigentlichen GUI-Edit-Befehl wird der konkrete `pwsh.exe`-Host mit einem test-eigenen File unabhängig geprüft und die Fixture nachweisbar zurückgesetzt. So unterscheiden wir Host-/Policy-Fehler von Produkt-CreateProcess-Fehlern. Beide Editorvarianten bleiben erhalten; Ausführungsrichtlinie bleibt unverändert. `ExternalEditorNative` und strenge Original-/Nachbar-/Argumentprüfungen bleiben bestehen. Vorhandenes Debug-FAIL `NOT_STARTED` nicht als behoben markieren, bis erneuter realer Lauf bestanden ist.
 - **24.11.2026:** Debug-Legacy-Find 36 PASS, 1 FAIL; originaler PowerShell-`ExternalEditor` meldet `NOT_STARTED`, Native-Vergleich PASS. Beide Szenarien bleiben erhalten, Verhalten und Root Cause offen.
 
 - **Lücke:** 72 GUI-Szenarien bestanden, aber nicht alle Kombinationen
@@ -1109,7 +1109,7 @@ UP-07 bleibt TEILBELEGT.
   Ausschlüsse (WinAPI-/GUI-Boundaries).
 
 ### [ ] QA-03 – Wiederholbarkeit, GUI-Flakiness und Ressourcen (**P1**, TEILBELEGT)
-- **24.11.2026:** Hypothese zum `ExternalEditor`-Fehler (relativer Scriptpfad des MSIX-Childs) mit absolutem test-eigenen Scriptpfad abgesichert. Kein Root-Cause-/Laufzeitnachweis bisher; nachfolgende GUI-Wiederholungen und echte Prozessstartdiagnose erforderlich.
+- **24.11.2026:** Hypothese zum `ExternalEditor`-Fehler (relativer Scriptpfad des MSIX-Childs) mit absolutem test-eigenen Scriptpfad und unabhängiger, zurückgesetzter PowerShell-Host-Preflight-Fixture abgesichert. Kein Root-Cause-/Laufzeitnachweis bisher; nachfolgende GUI-Wiederholungen und echte Prozessstartdiagnose erforderlich.
 - **24.11.2026, 13:56:** Testinfrastruktur verursachte einen deterministischen Parserabbruch auf `8a5cb99d`; kein sporadischer Produktfehler. Regressionsfix vorhanden, auf Windows nach Fix nicht geprüft.
 - **24.11.2026:** GUI-Viewer/Unicode-Fälle beim Einzel-Legacy-Debug-Lauf PASS; ursprüngliche PowerShell-Editor-Regression FAIL. Einzelner erfolgreicher Viewer-Lauf ist kein Wiederholbarkeitsnachweis.
 

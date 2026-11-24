@@ -432,6 +432,14 @@ niemals stillschweigend umschreiben; Korrekturen als neue datierte Zeile.
 - **Verifikation:** GitHub-Dateien zurückgelesen und statisch auf W-Identität, ID-Vergleich, fail-closed, Testregistrierung, unveränderte Exec-Policy und erhaltene zwei Editorvarianten geprüft. **Keine neue MSVC-, PowerShell- oder GUI-Ausführung** dieser Änderungen. Der letzte tatsächlich grüne `--test`-SHA bleibt `a928794c`.
 - **Restarbeit / Abnahmestatus:** Allgemeine native W-Panelnavigation **ohne vorhandene 8.3-Aliase** ist nicht umgesetzt. Historie/Anzeige und weitere Legacy-Grenzen beachten. Debug/Release `--test-gui-unicode-parent` sowie `--test-gui-legacy-find --debug/--release` ausführen; bei Editor-FAIL echte CreateProcess-/MSIX-Prozessstartdiagnose statt Testabschaltung. **Keine Gap-ID geschlossen, A0–A7 Release NO-GO.**
 
+### J-20261124-08 — Separate PowerShell-Host-Preflight für Legacy Find
+
+- **Befund / FIND-04, QA-03:** Der ursprüngliche `ExternalEditor`-GUI-Test hatte `NOT_STARTED` gemeldet; der native Vergleich funktionierte. Absolute Scriptpfadangabe allein beweist noch nicht, dass der konkrete MSIX-PowerShell-Host im aktuellen Benutzerkontext überhaupt starten darf.
+- **Änderung:** `tools/release/tests/LegacyFind-GuiCases.ps1` enthält nun `Assert-TestPowerShellEditorHost`. Dieser startet ausschließlich den konfigurierten PowerShell-Host mit `ProcessStartInfo.ArgumentList`, dem absoluten GUID-eigenen Probe-Script und dem temporären Ziel; prüft Exitcode, Status `SAVED`, Original-/Ausgabebytes und erfasst stderr. Vor dem GUI-Befehl wird die Datei exakt zurückgesetzt und der Status entfernt. Der eigentliche Test folgt unverändert und darf den Preflight-Erfolg nicht als GUI-Erfolg werten.
+- **Sicherheit:** Kein `ExecutionPolicy Bypass`; kein fremder Prozess wird beendet. Nur ein ausdrücklich gestarteter, dem Test gehörender Childprozess darf bei eigenem Timeout beendet werden. Keine Änderung des produktiven Editorstarts und keine Abschwächung der Dateiidentitäts-/Nachbarprüfungen.
+- **Commit:** `95b5c5ed239f88de451040e7d42006e7d33694ac`; anschließend Aktualisierung von Tracker, Journal und Übergabestand.
+- **Verifikation:** Quellcode und Registrierungsvertrag statisch geprüft; **Windows- und GUI-Ausführung ausstehend**. Der Preflight kann einen Umgebungs-/MSIX-/Policy-Fehler künftig vor der eigentlichen Produktuntersuchung eingrenzen; kein nachgewiesener Produktfix.
+
 ## Vorlage für zukünftige Einträge
 
 ```markdown
