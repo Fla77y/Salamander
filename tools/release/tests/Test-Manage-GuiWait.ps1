@@ -33,26 +33,28 @@ foreach ($option in @('--build-delta','--test','--setup','--run','--test-pictvie
 $script:lookups = 0
 $script:waits = 0
 $probe = {
-    $script:lookups++
-    if ($script:lookups -le 2) { 3123 }
+    [void]($script:lookups++)
+    if ($script:lookups -eq 1) { 3123; 4124 }
+    elseif ($script:lookups -eq 2) { 3123 }
 }
 $pause = {
     param([int]$Milliseconds)
     if ($Milliseconds -ne 1000) { throw 'Unexpected polling interval.' }
-    $script:waits++
+    [void]($script:waits++)
 }
 # Closing the last instance must automatically resume, without a keypress.
 $warnings = @()
 Wait-ForSalamanderGuiAvailability -GetRunningProcessIds $probe -Pause $pause -WarningVariable warnings
 if ($script:lookups -ne 3 -or $script:waits -ne 2 -or $warnings.Count -ne 1 -or
     $warnings[0].Message -notmatch '3123' -or
+    $warnings[0].Message -notmatch '4124' -or
     $warnings[0].Message -notmatch 'automatisch') {
     throw 'GUI wait did not warn once and continue after the last process exited.'
 }
 
 $script:lookups = 0
 $script:waits = 0
-Wait-ForSalamanderGuiAvailability -GetRunningProcessIds { $script:lookups++ } -Pause { $script:waits++ }
+Wait-ForSalamanderGuiAvailability -GetRunningProcessIds { [void]($script:lookups++) } -Pause { [void]($script:waits++) }
 if ($script:lookups -ne 1 -or $script:waits -ne 0) {
     throw 'Idle GUI preflight must never pause.'
 }
@@ -61,8 +63,8 @@ $script:lookups = 0
 $script:waits = 0
 $cancelled = $false
 try {
-    Wait-ForSalamanderGuiAvailability -GetRunningProcessIds { $script:lookups++; 4124 } -Pause {
-        $script:waits++
+    Wait-ForSalamanderGuiAvailability -GetRunningProcessIds { [void]($script:lookups++); 4124 } -Pause {
+        [void]($script:waits++)
         throw [OperationCanceledException]::new('intentional cancel')
     } 3>$null
 }
