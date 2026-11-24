@@ -18,3 +18,5 @@ den Anforderungen nicht mehr entsprechen.
 ### Anforderung 6: Der Suchdialog soll nicht selbstständig durch eine eigene Entwicklung ersetzt werden. Der Suchdialog (Strg-F). Der Suchdialog soll auf dem ursprünglichen (Legacy) Dialog aufbauen. Aber in diesem Suchdialog sollen die Unicode und Langpfad Unterstützung implementiert werden. Sämtliche Funktionalitäten, wie z.B. die 'Advanced...' Suchfunktionen/Filter müssen erhalten bleiben. Auch Reguläre Ausdrücke etc. Die Mächtigkeit des Suchdialogs und das Aussehen darf nicht eingeschränkt oder verändert werden!
 
 ### Anforderung 7: Das PictView-Plugin verwendet nun die Anbindung an das WIC. Alle gängigen Dateiformate (z.B. die auch in der Salamander Konfiguration zu finden für die Viewer zu finden sind), werden unterstützt.
+
+### Anforderung 8: Wenn in einem Test ein Fehler aufgetreter ist, fixe den Fehler dann für diesen Test asschließlich im Produktcode! Das heisst insbesondere, ändere keine Tests so, dass sie grün werden obwohl sich dadurch das getestete Verhalten im Produktivcode ändert. Passe Tests nur dann an, wenn sie Nachweisslich einen Fehler enthalten und somit nicht das gewünschte Verhalten testen!
