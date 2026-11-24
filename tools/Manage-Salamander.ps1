@@ -183,6 +183,7 @@ function Update-Branch {
 
     if ($before -ne $after) {
         $managedFiles = @('manage.cmd', 'tools/Manage-Salamander.ps1',
+                          'tools/release/Test-RunCollection.ps1',
                           'tools/release/Package-Helpers.ps1',
                           'tools/release/Build-Helpers.ps1',
                           'tools/release/Update-Build-Test-Package.ps1')
@@ -530,8 +531,10 @@ try {
         }
 
         Expand-AutomatedTestActions -RequestedSet $requestedSet -AvailableOptions $validOptions
-        . (Join-Path $repository 'tools\release\Test-RunCollection.ps1')
-        Initialize-TestRun -CollectFailures:($requestedSet.Contains('--test-all'))
+        if (@($requestedSet | Where-Object { $_ -like '--test*' }).Count -gt 0) {
+            . (Join-Path $repository 'tools\release\Test-RunCollection.ps1')
+            Initialize-TestRun -CollectFailures:($requestedSet.Contains('--test-all'))
+        }
 
         if ($requestedSet.Contains('--diagnose-gui')) {
             $allowedDiagnosticOptions = @('--diagnose-gui', '--release', '--debug')
