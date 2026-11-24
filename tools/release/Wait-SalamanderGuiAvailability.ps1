@@ -14,7 +14,7 @@ function Test-RequiresGuiIdleGate {
         if ($option.StartsWith('--test-gui', [StringComparison]::OrdinalIgnoreCase) -or
             $option -in @('--test-all', '--test-pictview-window',
                           '--test-pictview-host', '--test-plugin-load',
-                          '--test-recycle-restore', '--diagnose-gui')) {
+                          '--test-recycle-restore', '--test-legacy-find-efs', '--test-legacy-find-near-limit', '--diagnose-gui')) {
             return $true
         }
     }

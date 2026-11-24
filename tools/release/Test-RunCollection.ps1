@@ -7,6 +7,7 @@ function Initialize-TestRun {
     $script:CollectTestFailures = [bool]$CollectFailures
     $script:TestOutcomes = [System.Collections.Generic.List[object]]::new()
     $script:GuiTestsBlocked = $false
+    $script:CurrentTestSkipReason = $null
 }
 
 function Add-TestOutcome {
@@ -14,23 +15,26 @@ function Add-TestOutcome {
         [Parameter(Mandatory)][string]$Name,
         [Parameter(Mandatory)][ValidateSet('PASS', 'FAIL', 'SKIP')][string]$Status,
         [string]$Detail = '',
-        [long]$DurationMs = 0
+        [long]$DurationMs = 0,
+        [switch]$Planned
     )
     [void]$script:TestOutcomes.Add([pscustomobject]@{
         Name = $Name
         Status = $Status
         Detail = $Detail
         DurationMs = $DurationMs
+        PlannedExclusion = [bool]$Planned
     })
 }
 
 function Skip-TestCase {
     param([Parameter(Mandatory)][string]$Name,
-          [Parameter(Mandatory)][string]$Reason)
+          [Parameter(Mandatory)][string]$Reason,
+          [switch]$Planned)
     if (-not $script:CollectTestFailures) {
         throw "Test '$Name' cannot run: $Reason"
     }
-    Add-TestOutcome -Name $Name -Status SKIP -Detail $Reason
+    Add-TestOutcome -Name $Name -Status SKIP -Detail $Reason -Planned:$Planned
     Write-Warning "SKIP: $Name – $Reason"
 }
 
@@ -49,10 +53,16 @@ function Invoke-TestCase {
     }
 
     $watch = [Diagnostics.Stopwatch]::StartNew()
+    $script:CurrentTestSkipReason = $null
     try {
         & $Action
         if ($script:CollectTestFailures) {
-            Add-TestOutcome -Name $Name -Status PASS -DurationMs $watch.ElapsedMilliseconds
+            if ($script:CurrentTestSkipReason) {
+                Skip-TestCase -Name $Name -Reason $script:CurrentTestSkipReason
+            }
+            else {
+                Add-TestOutcome -Name $Name -Status PASS -DurationMs $watch.ElapsedMilliseconds
+            }
         }
     }
     catch {
@@ -68,6 +78,7 @@ function Invoke-TestCase {
     }
     finally {
         $watch.Stop()
+        $script:CurrentTestSkipReason = $null
     }
 }
 
@@ -79,12 +90,16 @@ function Complete-TestRun {
     $passed = @($results | Where-Object Status -eq PASS).Count
     $failed = @($results | Where-Object Status -eq FAIL).Count
     $skipped = @($results | Where-Object Status -eq SKIP).Count
+    $planned = @($results | Where-Object { $_.Status -eq 'SKIP' -and $_.PlannedExclusion }).Count
+    $requiredSkipped = $skipped - $planned
     $summaryPath = [IO.Path]::ChangeExtension($LogPath, '.results.json')
     $summary = [pscustomobject]@{
         LogPath = $LogPath
         Passed = $passed
         Failed = $failed
         Skipped = $skipped
+        PlannedExclusions = $planned
+        RequiredSkipped = $requiredSkipped
         Results = $results
     }
     $summary | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $summaryPath -Encoding utf8
@@ -99,7 +114,10 @@ function Complete-TestRun {
     Write-Host "PASS: $passed | FAIL: $failed | SKIP: $skipped"
     Write-Host "Maschinenlesbarer Bericht: $summaryPath"
 
-    if ($failed -gt 0 -or $skipped -gt 0) {
-        throw "Testabnahme fehlgeschlagen: $failed Fehler, $skipped übersprungen. Siehe $summaryPath"
+    if ($planned -gt 0) {
+        Write-Warning "$planned geplante Scope-Ausschlüsse; keine vollständige Release-Abnahme."
+    }
+    if ($failed -gt 0 -or $requiredSkipped -gt 0) {
+        throw "Testabnahme fehlgeschlagen: $failed Fehler, $requiredSkipped übersprungen. Siehe $summaryPath"
     }
 }

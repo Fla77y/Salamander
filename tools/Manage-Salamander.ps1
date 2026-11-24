@@ -13,7 +13,8 @@ $repository = (Resolve-Path -LiteralPath (Join-Path $PSScriptRoot '..')).Provide
 $buildRoot = Join-Path $repository '.Build'
 $configuration = 'Release'
 $validOptions = @('--update', '--build', '--test', '--setup', '--run',
-                  '--test-gui-large-unicode-copy', '--test-gui-legacy-find', '--test-clipboard-snapshot',
+                  '--test-gui-large-unicode-copy', '--test-gui-large-unicode-parent-copy', '--test-gui-long-history', '--test-gui-long-clipboard', '--test-gui-viewer-reliability', '--test-gui-legacy-find', '--test-clipboard-snapshot',
+                  '--test-legacy-find-efs', '--test-legacy-find-near-limit', '--test-wer-build',
                   '--debug', '--release', '--all', '--build-delta', '--build-clean', '--test-all', '--test-gui', '--test-gui-max-path', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-gui-unicode-permanent-delete', '--test-gui-unicode-parent', '--test-recycle-restore', '--test-plugin-exports', '--test-plugin-load', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-unicode-find', '--test-gui-manual', '--test-gui-temp-delete', '--test-pictview', '--test-pictview-window', '--test-pictview-host', '--diagnose-gui', '--help', '-h', '/?')
 $requestedSet = [System.Collections.Generic.HashSet[string]]::new(
     [StringComparer]::OrdinalIgnoreCase)
@@ -36,13 +37,21 @@ Open Salamander – Verwaltung für Visual Studio 2026
   manage.cmd --build-delta  Schneller inkrementeller Build (MSBuild Build)
   manage.cmd --build-clean  Output-Ordner loeschen und vollstaendig neu bauen
   manage.cmd --test         Windows-Dateisystem-/Namens-Tests und Projekt-Regressionstests
-  manage.cmd --test-all     Alle automatisierten Tests: --test und sämtliche GUI-Modi
-                            Unabhängige Fehler sammeln, JSON-Bericht schreiben; Exitcode 1 bei Fehler/SKIP
+  manage.cmd --test-all     Alle registrierten automatischen Standardtests; Opt-ins als begründete SKIPs
+                            JSON-Bericht; Exitcode 1 bei FAIL oder erforderlichem SKIP
+                            Geplante Scope-Ausschlüsse sind kein PASS und keine Release-Abnahme.
                             (Release und Debug x64; --release/--debug begrenzt die GUI-Modi)
                             Legacy-Suche und große Unicode-Kopien: isolierte Testbuilds im Worktree
                             GUI-Tests warten vor dem Start auf das reguläre Schließen vorhandener
                             Salamander-Instanzen und setzen danach automatisch fort (Strg+C bricht ab).
   manage.cmd --test-gui-large-unicode-copy  32-MiB-Kopie, Pause/Abbruch, Zielkollision und gesperrte Quelle
+  manage.cmd --test-gui-large-unicode-parent-copy  Vier 32-MiB-Fälle mit Unicode-Eltern
+  manage.cmd --test-gui-long-history  Langpfad-Navigation und Historie
+  manage.cmd --test-gui-long-clipboard  Unicode CF_HDROP Copy/Move über Langpfade
+  manage.cmd --test-gui-viewer-reliability  Fünf unabhängige ViewUnicode-Läufe je Variante
+  manage.cmd --test-wer-build  Vier isolierte WER-Core-Buildvarianten
+  manage.cmd --test-legacy-find-efs  Opt-in: OPENSAL_EFS_TEST_FILE muss eigene EFS-Fixture sein
+  manage.cmd --test-legacy-find-near-limit  Opt-in: echte 32700-UTF-16-Suche
   manage.cmd --test-gui-legacy-find  Legacy-Suche (Strg+F), Filter, Unicode, Focus File und Viewer
   manage.cmd --test-clipboard-snapshot  Native Zwischenablage-Sicherung/-Wiederherstellung prüfen
   manage.cmd --setup        Debug- und Release-7z plus Inno-Setup-Pakete erzeugen
@@ -119,6 +128,7 @@ function Expand-AutomatedTestActions {
     [void]$RequestedSet.Add('--test-pictview-window')
     [void]$RequestedSet.Add('--test-plugin-exports')
     [void]$RequestedSet.Add('--test-clipboard-snapshot')
+    [void]$RequestedSet.Add('--test-wer-build')
     foreach ($option in $AvailableOptions) {
         if ($option.StartsWith('--test-gui', [StringComparison]::OrdinalIgnoreCase) -and
             $option -ne '--test-gui-manual') {
@@ -145,14 +155,32 @@ function Get-AutomatedGuiModes {
 function Invoke-Native {
     param(
         [Parameter(Mandatory)][string]$Command,
-        [string[]]$Arguments = @()
+        [string[]]$Arguments = @(),
+        [string]$NativeTestName
     )
     # Native child processes (especially nested pwsh.exe) can write directly
     # to the host without their output being captured by Start-Transcript.
     # Route both stdout and stderr back through this PowerShell host, keeping
     # each line visible live AND in the management log. Do not mask exit codes.
     & $Command @Arguments 2>&1 | ForEach-Object {
-        Write-Host ([string]$_)
+        $line = [string]$_
+        Write-Host $line
+        if ($line -match '^SKIP:\s*(?<reason>.+)$') {
+            $reason = $Matches.reason
+            if ($NativeTestName -and $script:CollectTestFailures) {
+                $planned = $NativeTestName -eq 'long_path_io' -and
+                    $reason -in @('cross-volume UTF-16 move requires OPENSAL_CROSS_VOLUME_TEST_DIR',
+                                   'ACP has no candidate non-question-mark best-fit mapping')
+                Skip-TestCase -Name "Native C++ subcase: $NativeTestName - $reason" -Reason $reason -Planned:$planned
+            }
+            elseif (@($Arguments | Where-Object {
+                [IO.Path]::GetFileName($_) -eq 'Test-SalamanderGui-LongPaths.ps1'
+            }).Count -gt 0 -and $script:CollectTestFailures) {
+                # A direct GUI test can return success after an environment
+                # refusal. Do not turn its explicit SKIP into a PASS.
+                $script:CurrentTestSkipReason = $reason
+            }
+        }
     }
     $status = $LASTEXITCODE
     if ($status -ne 0) {
@@ -241,6 +269,11 @@ function Run-Tests {
     }
 
     # The collector itself is regression-tested before any other test step.
+    $registryTest = Join-Path $repository 'tools\release\tests\Test-TestRegistry.ps1'
+    Invoke-TestCase -Name 'Test-TestRegistry.ps1' -BlocksGui -Action {
+        Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $registryTest)
+    }
+
     $testCollector = Join-Path $repository 'tools\release\tests\Test-Manage-TestAggregation.ps1'
     Invoke-TestCase -Name 'Test-Manage-TestAggregation.ps1' -Action {
         Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $testCollector)
@@ -386,6 +419,15 @@ function Run-Tests {
         Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $filesystem)
     }
 
+    $longPathTest = Join-Path $repository 'tools\tests\Test-LongPaths.ps1'
+    Invoke-TestCase -Name 'Test-LongPaths.ps1' -Action {
+        Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $longPathTest)
+    }
+    $resolverTest = Join-Path $repository 'src\vcxproj\tests\test-find-vs2026.cmd'
+    Invoke-TestCase -Name 'test-find-vs2026.cmd' -Action {
+        Invoke-Native 'cmd.exe' @('/d', '/c', $resolverTest)
+    }
+
     # Added by the long-path migration branches. Do not report full support
     # when the tests (or the production code using them) are absent.
     $cppTests = @(
@@ -414,7 +456,14 @@ function Run-Tests {
         'tools\tests\bug_report_path.cpp'
     )
     $available = @($cppTests | Where-Object {
-        Test-Path -LiteralPath (Join-Path $repository $_) -PathType Leaf
+        $exists = Test-Path -LiteralPath (Join-Path $repository $_) -PathType Leaf
+        if (-not $exists) {
+            $missingSource = $_
+            Invoke-TestCase -Name "Native C++: $missingSource" -BlocksGui -Action {
+                throw "Registered native test source missing: $missingSource"
+            }
+        }
+        $exists
     })
     if ($available.Count -gt 0) {
         $nativePrerequisites = @{ Vcvars = $null }
@@ -459,7 +508,7 @@ function Run-Tests {
                     'exit /b %errorlevel%'
                 ) | Set-Content -LiteralPath $cmdPath -Encoding Ascii
                 Write-Host "C++-Regression: $relative"
-                Invoke-Native 'cmd.exe' @('/d', '/c', $cmdPath)
+                Invoke-Native 'cmd.exe' @('/d', '/c', $cmdPath) -NativeTestName $testName
                 }
             }
         }
@@ -560,6 +609,9 @@ try {
             Initialize-TestRun -CollectFailures:($requestedSet.Contains('--test-all'))
         }
 
+        if ($requestedSet.Contains('--test-all') -and $requestedSet.Contains('--test-gui-manual')) {
+            throw '--test-gui-manual is a separate manual action; do not combine with --test-all.'
+        }
         if ($requestedSet.Contains('--diagnose-gui')) {
             $allowedDiagnosticOptions = @('--diagnose-gui', '--release', '--debug')
             foreach ($action in $requestedSet) {
@@ -580,6 +632,12 @@ try {
         $buildMode = Get-BuildMode -RequestedSet $requestedSet
         if ($buildMode -ne 'None') { Build-Variants -Mode $buildMode }
         if ($requestedSet.Contains('--test')) { Run-Tests }
+        if ($requestedSet.Contains('--test-wer-build')) {
+            $werBuild = Join-Path $repository 'tools\release\tests\Invoke-WerBuildVerification.ps1'
+            Invoke-TestCase -Name 'WER isolated core build matrix' -Action {
+                Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $werBuild, '-AllConfigurations')
+            }
+        }
 
         # Only GUI-sensitive test actions need an idle Salamander desktop.
         # Wait ONCE before any GUI child starts; the existing per-case checks
@@ -618,44 +676,64 @@ try {
         if ($requestedSet.Contains('--test-recycle-restore')) {
             Write-Host '=== OPT-IN: UNICODE F8 PAPIERKORB-WIEDERHERSTELLUNG ==='
             $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
-            $testedExe = Join-Path (Get-VariantDirectory $configuration) 'salamand.exe'
-            Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
-                                      '-SalamanderExe', $testedExe,
-                                      '-ShortUnicodeRecycleOnly', '-VerifyRecycleRestore')
+            foreach ($optMode in @(Get-AutomatedGuiModes -RequestedSet $requestedSet)) {
+                $testedExe = Join-Path (Get-VariantDirectory $optMode) 'salamand.exe'
+                Invoke-TestCase -Name "Recycle restore $optMode short file" -RequiresGuiSafety -Action {
+                    Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $guiTest,
+                                              '-SalamanderExe', $testedExe,
+                                              '-ShortUnicodeRecycleOnly', '-VerifyRecycleRestore')
+                }
+                $longPathRunner = Join-Path $repository 'tools\release\tests\Invoke-IsolatedLongPaths.ps1'
+                foreach ($recycleCase in @('RecycleFile','RecycleDirectory')) {
+                    Invoke-TestCase -Name "Recycle restore $optMode $recycleCase" -RequiresGuiSafety -Action {
+                        Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $longPathRunner,
+                            '-Configuration', $optMode, '-Scenario', $recycleCase)
+                    }
+                }
+                $legacySpecial = Join-Path $repository 'tools\release\tests\Invoke-IsolatedLegacyFind.ps1'
+                Invoke-TestCase -Name "Legacy Find $optMode RecycleRestore" -RequiresGuiSafety -Action {
+                    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $legacySpecial,
+                        '-Configuration', $optMode, '-SpecialScenario', 'RecycleRestore')
+                }
+            }
         }
         # Explicit opt-in: the Salamander plug-in manager's Test All action
         # initializes every installed plug-in, including third-party modules.
         # This must never run implicitly as part of --test-all.
         if ($requestedSet.Contains('--test-plugin-load')) {
             Write-Host '=== OPT-IN: ECHTE PLUGIN-MANAGER-INITIALISIERUNG ==='
-            . (Join-Path $repository 'tools\release\Plugin-Runtime-Prerequisites.ps1')
-            $pluginBuild = Get-VariantDirectory $configuration
-            $testedExe = Join-Path $pluginBuild 'salamand.exe'
-            $pictviewFile = Join-Path $pluginBuild 'plugins\pictview\pictview.spl'
-            $verifiedWic = $false
-            if (Test-Path -LiteralPath $pictviewFile -PathType Leaf) {
-                # PR #8 previously refused global Test All because the old
-                # PVW32 converter sidecars were absent. The new WIC viewer
-                # needs neither file, but only a *successful real-host smoke*
-                # permits bypassing that conservative legacy prerequisite.
-                $hostGui = Join-Path $repository 'tools\release\tests\Test-PictView-Host.ps1'
-                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $hostGui,
-                                           '-SalamanderExe', $testedExe)
-                $verifiedWic = $true
+            foreach ($optMode in @(Get-AutomatedGuiModes -RequestedSet $requestedSet)) {
+                Invoke-TestCase -Name "Plugin initialization $optMode" -RequiresGuiSafety -Action {
+                    . (Join-Path $repository 'tools\release\Plugin-Runtime-Prerequisites.ps1')
+                    $pluginBuild = Get-VariantDirectory $optMode
+                    $testedExe = Join-Path $pluginBuild 'salamand.exe'
+                    $pictviewFile = Join-Path $pluginBuild 'plugins\pictview\pictview.spl'
+                    $verifiedWic = $false
+                    if (Test-Path -LiteralPath $pictviewFile -PathType Leaf) {
+                        # PR #8 previously refused global Test All because the old
+                        # PVW32 converter sidecars were absent. The new WIC viewer
+                        # needs neither file, but only a *successful real-host smoke*
+                        # permits bypassing that conservative legacy prerequisite.
+                        $hostGui = Join-Path $repository 'tools\release\tests\Test-PictView-Host.ps1'
+                        Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $hostGui,
+                                                   '-SalamanderExe', $testedExe)
+                        $verifiedWic = $true
+                    }
+                    $missingPictView = @(
+                        Get-MissingPictViewRuntimeFiles -BuildDirectory $pluginBuild -WicViewerVerified:$verifiedWic
+                    )
+                    if ($missingPictView.Count -gt 0) {
+                        throw ("The optional PictView runtime is incomplete: " +
+                               ($missingPictView -join '; ') +
+                               ". Do not load unknown converter binaries. Test target plugins individually.")
+                    }
+                    $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                    $pluginLoadArgs = @('-Sta', '-NoProfile', '-File', $guiTest,
+                                        '-SalamanderExe', $testedExe, '-PluginLoadSmokeOnly')
+                    if ($verifiedWic) { $pluginLoadArgs += '-WicViewerVerified' }
+                    Invoke-Native 'pwsh.exe' $pluginLoadArgs
+                }
             }
-            $missingPictView = @(
-                Get-MissingPictViewRuntimeFiles -BuildDirectory $pluginBuild -WicViewerVerified:$verifiedWic
-            )
-            if ($missingPictView.Count -gt 0) {
-                throw ("The optional PictView runtime is incomplete: " +
-                       ($missingPictView -join '; ') +
-                       ". Do not load unknown converter binaries. Test target plugins individually.")
-            }
-            $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
-            $pluginLoadArgs = @('-Sta', '-NoProfile', '-File', $guiTest,
-                                '-SalamanderExe', $testedExe, '-PluginLoadSmokeOnly')
-            if ($verifiedWic) { $pluginLoadArgs += '-WicViewerVerified' }
-            Invoke-Native 'pwsh.exe' $pluginLoadArgs
         }
         if ($requestedSet.Contains('--test-pictview') -or
             $requestedSet.Contains('--test-pictview-window')) {
@@ -684,16 +762,68 @@ try {
             # Explicit interactive opt-in, never part of --test-all.
             # Each supported format gets a fresh verified child process.
             $hostGui = Join-Path $repository 'tools\release\tests\Test-PictView-Host.ps1'
-            $targetExe = Join-Path (Get-VariantDirectory $configuration) 'salamand.exe'
-            foreach ($imageFormat in @('Bmp','Png','Jpeg','Gif','Tiff','Ico')) {
-                Write-Host "=== PICTVIEW HOST F3: $imageFormat ==="
-                Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $hostGui,
-                                           '-SalamanderExe', $targetExe,
-                                           '-ImageFormat', $imageFormat)
+            foreach ($optMode in @(Get-AutomatedGuiModes -RequestedSet $requestedSet)) {
+                $targetExe = Join-Path (Get-VariantDirectory $optMode) 'salamand.exe'
+                foreach ($imageFormat in @('Bmp','Png','Jpeg','Gif','Tiff','Ico')) {
+                    Invoke-TestCase -Name "PictView F3 $optMode $imageFormat" -RequiresGuiSafety -Action {
+                        Write-Host "=== PICTVIEW HOST F3: $imageFormat ==="
+                        Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $hostGui,
+                                                   '-SalamanderExe', $targetExe,
+                                                   '-ImageFormat', $imageFormat)
+                    }
+                }
             }
         }
         $automatedGuiModes = @(Get-AutomatedGuiModes -RequestedSet $requestedSet)
         foreach ($guiMode in $automatedGuiModes) {
+            if ($requestedSet.Contains('--test-gui-large-unicode-parent-copy')) {
+                $largeCopyTest = Join-Path $repository 'tools\release\tests\Invoke-IsolatedUnicodeCopy.ps1'
+                Invoke-TestCase -Name "GUI $guiMode --test-gui-large-unicode-parent-copy" -RequiresGuiSafety -Action {
+                    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $largeCopyTest,
+                                              '-Configuration', $guiMode, '-UnicodeParentDirectories')
+                }
+            }
+            if ($requestedSet.Contains('--test-gui-long-history')) {
+                $longPathRunner = Join-Path $repository 'tools\release\tests\Invoke-IsolatedLongPaths.ps1'
+                Invoke-TestCase -Name "GUI $guiMode --test-gui-long-history" -RequiresGuiSafety -Action {
+                    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $longPathRunner,
+                                              '-Configuration', $guiMode, '-Scenario', 'History')
+                }
+            }
+            if ($requestedSet.Contains('--test-gui-long-clipboard')) {
+                $longPathRunner = Join-Path $repository 'tools\release\tests\Invoke-IsolatedLongPaths.ps1'
+                Invoke-TestCase -Name "GUI $guiMode --test-gui-long-clipboard" -RequiresGuiSafety -Action {
+                    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $longPathRunner,
+                                              '-Configuration', $guiMode, '-Scenario', 'Clipboard')
+                }
+            }
+            if ($requestedSet.Contains('--test-gui-viewer-reliability')) {
+                $viewerReliability = Join-Path $repository 'tools\release\tests\Invoke-LegacyViewerReliability.ps1'
+                Invoke-TestCase -Name "GUI $guiMode --test-gui-viewer-reliability (5 iterations)" -RequiresGuiSafety -Action {
+                    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $viewerReliability,
+                                              '-Configuration', $guiMode, '-Iterations', '5',
+                                              '-OutputDirectory', (Join-Path $logDirectory 'legacy-viewer-reliability'))
+                }
+            }
+            if ($requestedSet.Contains('--test-legacy-find-efs')) {
+                $legacySpecial = Join-Path $repository 'tools\release\tests\Invoke-IsolatedLegacyFind.ps1'
+                Invoke-TestCase -Name "Legacy Find $guiMode EncryptedFixture" -RequiresGuiSafety -Action {
+                    if ([string]::IsNullOrWhiteSpace($env:OPENSAL_EFS_TEST_FILE)) {
+                        throw 'Explicit EFS test requires OPENSAL_EFS_TEST_FILE pointing to a disposable encrypted file.'
+                    }
+                    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $legacySpecial,
+                        '-Configuration', $guiMode, '-SpecialScenario', 'EncryptedFixture',
+                        '-EncryptedFixture', $env:OPENSAL_EFS_TEST_FILE)
+                }
+            }
+            if ($requestedSet.Contains('--test-legacy-find-near-limit')) {
+                $legacySpecial = Join-Path $repository 'tools\release\tests\Invoke-IsolatedLegacyFind.ps1'
+                Invoke-TestCase -Name "Legacy Find $guiMode NearLimit" -RequiresGuiSafety -Action {
+                    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $legacySpecial,
+                        '-Configuration', $guiMode, '-SpecialScenario', 'NearLimit')
+                }
+            }
+
             if ($requestedSet.Contains('--test-gui-legacy-find')) {
                 $legacyFindTest = Join-Path $repository 'tools\release\tests\Invoke-IsolatedLegacyFind.ps1'
                 Invoke-TestCase -Name "GUI $guiMode --test-gui-legacy-find" -RequiresGuiSafety -Action {
@@ -902,7 +1032,29 @@ try {
         }
         # Always publish every independent outcome before packaging or starting the app.
         # A failed/blocked --test-all must never permit later release actions.
-        if ($requestedSet.Contains('--test-all')) { Complete-TestRun -LogPath $logPath }
+        if ($requestedSet.Contains('--test-all')) {
+            try {
+                $registry = Get-Content -LiteralPath (Join-Path $repository 'tools\release\Test-Registry.json') -Raw | ConvertFrom-Json
+                foreach ($excluded in $registry.ScopeExclusions) {
+                    if (-not $excluded.Option -or -not $requestedSet.Contains([string]$excluded.Option)) {
+                        if ($excluded.PerVariant) {
+                            foreach ($excludedMode in @(Get-AutomatedGuiModes -RequestedSet $requestedSet)) {
+                                Skip-TestCase -Name "$($excluded.Name) $excludedMode x64" -Reason $excluded.Reason -Planned
+                            }
+                        }
+                        else {
+                            Skip-TestCase -Name $excluded.Name -Reason $excluded.Reason -Planned
+                        }
+                    }
+                }
+            }
+            catch {
+                if ($_.Exception -is [System.Management.Automation.PipelineStoppedException] -or
+                    $_.Exception -is [OperationCanceledException]) { throw }
+                Add-TestOutcome -Name 'Test registry scope reporting' -Status FAIL -Detail $_.Exception.Message
+            }
+            Complete-TestRun -LogPath $logPath
+        }
         if ($requestedSet.Contains('--setup')) {
             Build-Setups -AlreadyBuilt:($buildMode -ne 'None')
         }

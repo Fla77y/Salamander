@@ -1,0 +1,682 @@
+{
+  "SchemaVersion": 1,
+  "Entries": [
+    {
+      "Path": "src/vcxproj/tests/test-find-vs2026.cmd",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Build-IsolatedGuiTest.ps1",
+      "Kind": "Helper",
+      "Owner": "tools/release/tests/Invoke-IsolatedLegacyFind.ps1",
+      "Reason": "Library/fixture builder, not a standalone test."
+    },
+    {
+      "Path": "tools/release/tests/Clipboard-Snapshot.cs",
+      "Kind": "Helper",
+      "Owner": "tools/release/tests/Test-SalamanderGui-LongPaths.ps1",
+      "Reason": "Library/fixture builder, not a standalone test."
+    },
+    {
+      "Path": "tools/release/tests/Invoke-GuiReliability.ps1",
+      "Kind": "OptIn",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": "Explicit recursive A/B diagnostics, may capture hang dumps."
+    },
+    {
+      "Path": "tools/release/tests/Invoke-IsolatedLegacyFind.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Invoke-IsolatedLongPaths.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Invoke-IsolatedUnicodeCopy.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Invoke-LegacyViewerReliability.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Invoke-PictViewTests.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Invoke-WerBuildVerification.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Invoke-WerGuiFollowUp.ps1",
+      "Kind": "OptIn",
+      "Owner": "",
+      "Reason": "Requires explicitly selected private WER build and authorized desktop."
+    },
+    {
+      "Path": "tools/release/tests/LegacyConfig-Canary.ps1",
+      "Kind": "Helper",
+      "Owner": "tools/release/tests/Test-SalamanderGui-LongPaths.ps1",
+      "Reason": "Library/fixture builder, not a standalone test."
+    },
+    {
+      "Path": "tools/release/tests/LegacyFind-GuiCases.ps1",
+      "Kind": "Helper",
+      "Owner": "tools/release/tests/Test-SalamanderGui-LongPaths.ps1",
+      "Reason": "Library/fixture builder, not a standalone test."
+    },
+    {
+      "Path": "tools/release/tests/PictView-HostDiagnostics.ps1",
+      "Kind": "Helper",
+      "Owner": "tools/release/tests/Test-PictView-Host.ps1",
+      "Reason": "Library/fixture builder, not a standalone test."
+    },
+    {
+      "Path": "tools/release/tests/Test-BuildModes.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-ClipboardSnapshot.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-DevelopmentContinuity.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-FilenamesAndPaths.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-GuiClipboard-Isolation.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/release/tests/Test-Package-Helpers.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-GuiConfig-Isolation.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-GuiDriver-Contract.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-GuiProcessTemp-Isolation.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/release/tests/Test-Package-Helpers.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-GuiReliability-Contract.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-HandlesLoaderLock-Contract.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-InstalledPayload-Regression.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/release/tests/Test-Package-Helpers.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-InstalledPayload.ps1",
+      "Kind": "ArtifactValidator",
+      "Owner": "tools/release/tests/Test-InstalledPayload-Regression.ps1",
+      "Reason": "Synthetic regression automatic; real artifact validation is release-specific."
+    },
+    {
+      "Path": "tools/release/tests/Test-LegacyConfig-Canary.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-LegacyFind-UiContract.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-LegacyUiSurfaceInventory.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-Manage-GuiWait.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-Manage-Native-Output.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-Manage-TestAggregation.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-Manage-UnicodeCopy.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-Package-Helpers.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-PictView-Host.ps1",
+      "Kind": "OptIn",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": "Explicit host opt-in; real installed plugin and desktop."
+    },
+    {
+      "Path": "tools/release/tests/Test-PictView-Management.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-PictViewRuntime-Prerequisites.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/release/tests/Test-Package-Helpers.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-PluginBinary-Contract.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-PluginBinary-Inventory.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-PluginCoverageInventory.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-PluginExport-Parser.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/release/tests/Test-Package-Helpers.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-PluginModulePaths-Contract.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-PortableManifest-Regression.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/release/tests/Test-Package-Helpers.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-PortableManifest.ps1",
+      "Kind": "ArtifactValidator",
+      "Owner": "tools/release/tests/Test-PortableManifest-Regression.ps1",
+      "Reason": "Synthetic regression automatic; real artifact validation is release-specific."
+    },
+    {
+      "Path": "tools/release/tests/Test-PowerShellSyntax.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-ProductVersion.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-ProductionBinary-Contract.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-ReleaseChecksumManifest.ps1",
+      "Kind": "ArtifactValidator",
+      "Owner": "tools/release/tests/Test-ReleasePublicArtifact.ps1",
+      "Reason": "Synthetic regression automatic; real artifact validation is release-specific."
+    },
+    {
+      "Path": "tools/release/tests/Test-ReleaseInstaller.ps1",
+      "Kind": "ArtifactValidator",
+      "Owner": "tools/release/tests/Test-Package-Helpers.ps1",
+      "Reason": "Synthetic regression automatic; real artifact validation is release-specific."
+    },
+    {
+      "Path": "tools/release/tests/Test-ReleasePublicArtifact.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/release/tests/Test-Package-Helpers.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-ReleaseWorkflow-Order.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/release/tests/Test-Package-Helpers.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-SalamanderGui-LongPaths.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-TestGapTracker.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-TestRegistry.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-VS2026-ProjectMetadata.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-VS2026Discovery.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/release/tests/Test-WerCrashReporting-Contract.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/Test-LongPaths.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/about_build_info.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/bug_report_path.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/editor_process_launch.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/isolated_test_configuration.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/legacy_default_directory_registry.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/legacy_disk_name_safety.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/legacy_find_utf16_identity.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/long_path_io.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/pictview_wic_clipboard.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/release/tests/Invoke-PictViewTests.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/pictview_wic_decode.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/release/tests/Invoke-PictViewTests.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/pictview_wic_formats.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/release/tests/Invoke-PictViewTests.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/pictview_wic_presenter.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/release/tests/Invoke-PictViewTests.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/pictview_wic_transforms.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/release/tests/Invoke-PictViewTests.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/pictview_wic_viewer_path.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/release/tests/Invoke-PictViewTests.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/pictview_wic_window.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/release/tests/Invoke-PictViewTests.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/pictview_wic_writer.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/release/tests/Invoke-PictViewTests.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/plugin_module_path.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/quicksearch_bounds.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/saved_panel_path_registry.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/shell_file_operation_name_list.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/unicode_directory_delete.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/unicode_directory_panel_alias.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/unicode_find.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/utf16_disk_path.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/win32_max_path.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/win32_unicode_primary_panel.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/win32_unicode_recycle.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/win32_unicode_rename_dialog.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/win32_utf16_static_text.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/worker_copy_io.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/worker_copy_paths.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    }
+  ],
+  "AutomaticOptions": [
+    "--test",
+    "--test-gui-large-unicode-copy",
+    "--test-gui-large-unicode-parent-copy",
+    "--test-gui-long-history",
+    "--test-gui-long-clipboard",
+    "--test-gui-viewer-reliability",
+    "--test-gui-legacy-find",
+    "--test-clipboard-snapshot",
+    "--test-wer-build",
+    "--test-gui",
+    "--test-gui-max-path",
+    "--test-gui-baseline",
+    "--test-gui-operations-baseline",
+    "--test-gui-names",
+    "--test-gui-unicode-rename",
+    "--test-gui-unicode-recycle",
+    "--test-gui-unicode-permanent-delete",
+    "--test-gui-unicode-parent",
+    "--test-plugin-exports",
+    "--test-gui-row-identities",
+    "--test-gui-unicode-multiselect",
+    "--test-gui-unicode-directory-rename",
+    "--test-gui-unicode-transfer",
+    "--test-gui-unicode-transfer-collision",
+    "--test-gui-bestfit",
+    "--test-gui-name-collisions",
+    "--test-gui-unsafe-unicode-operations",
+    "--test-gui-unicode-find",
+    "--test-gui-temp-delete",
+    "--test-pictview",
+    "--test-pictview-window"
+  ],
+  "ScopeExclusions": [
+    {
+      "Name": "Recycle restore: short file",
+      "Option": "--test-recycle-restore",
+      "Reason": "Explicit authorization required for real Recycle Bin restore.",
+      "PerVariant": true
+    },
+    {
+      "Name": "Recycle restore: long file",
+      "Option": "--test-recycle-restore",
+      "Reason": "Explicit authorization required for real Recycle Bin restore.",
+      "PerVariant": true
+    },
+    {
+      "Name": "Recycle restore: long directory",
+      "Option": "--test-recycle-restore",
+      "Reason": "Explicit authorization required for real Recycle Bin restore.",
+      "PerVariant": true
+    },
+    {
+      "Name": "Recycle restore: Legacy Find RecycleRestore",
+      "Option": "--test-recycle-restore",
+      "Reason": "Explicit authorization required for real Recycle Bin restore.",
+      "PerVariant": true
+    },
+    {
+      "Name": "Plugin Manager initialization",
+      "Option": "--test-plugin-load",
+      "Reason": "May initialize all installed plugins, including third-party modules; explicit trust required.",
+      "PerVariant": true
+    },
+    {
+      "Name": "PictView F3 Bmp",
+      "Option": "--test-pictview-host",
+      "Reason": "Explicit interactive host acceptance per AGENTS.md.",
+      "PerVariant": true
+    },
+    {
+      "Name": "PictView F3 Png",
+      "Option": "--test-pictview-host",
+      "Reason": "Explicit interactive host acceptance per AGENTS.md.",
+      "PerVariant": true
+    },
+    {
+      "Name": "PictView F3 Jpeg",
+      "Option": "--test-pictview-host",
+      "Reason": "Explicit interactive host acceptance per AGENTS.md.",
+      "PerVariant": true
+    },
+    {
+      "Name": "PictView F3 Gif",
+      "Option": "--test-pictview-host",
+      "Reason": "Explicit interactive host acceptance per AGENTS.md.",
+      "PerVariant": true
+    },
+    {
+      "Name": "PictView F3 Tiff",
+      "Option": "--test-pictview-host",
+      "Reason": "Explicit interactive host acceptance per AGENTS.md.",
+      "PerVariant": true
+    },
+    {
+      "Name": "PictView F3 Ico",
+      "Option": "--test-pictview-host",
+      "Reason": "Explicit interactive host acceptance per AGENTS.md.",
+      "PerVariant": true
+    },
+    {
+      "Name": "Legacy Find EncryptedFixture",
+      "Option": "--test-legacy-find-efs",
+      "Reason": "Requires explicitly supplied disposable EFS file (OPENSAL_EFS_TEST_FILE).",
+      "PerVariant": true
+    },
+    {
+      "Name": "Legacy Find NearLimit",
+      "Option": "--test-legacy-find-near-limit",
+      "Reason": "Explicit near-limit fixture test; previously blocked by Windows error 998.",
+      "PerVariant": true
+    },
+    {
+      "Name": "Manual GUI acceptance",
+      "Option": "--test-gui-manual",
+      "Reason": "Requires human interaction; --test-gui-manual is not an automated assertion.",
+      "PerVariant": false
+    },
+    {
+      "Name": "GUI A/B diagnostic",
+      "Option": "",
+      "Reason": "Recursive diagnostic run; --diagnose-gui is separate and may capture dumps.",
+      "PerVariant": false
+    },
+    {
+      "Name": "WER GUI follow-up",
+      "Option": "",
+      "Reason": "Requires private WER build path, explicit desktop authorization and selected scenario.",
+      "PerVariant": false
+    },
+    {
+      "Name": "Release artifact and installer acceptance",
+      "Option": "",
+      "Reason": "Requires generated release artifacts and disposable CI/VM; synthetic validators run in --test.",
+      "PerVariant": false
+    },
+    {
+      "Name": "Clean VM and full plugin functionality acceptance",
+      "Option": "",
+      "Reason": "Requires separate controlled environment and additional functional coverage.",
+      "PerVariant": false
+    }
+  ]
+}

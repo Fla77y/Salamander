@@ -464,6 +464,11 @@ widersprechen. Die einfachste korrekt funktionierende Lösung ist vorzuziehen.
 - GUI-Tests benötigen gegebenenfalls interaktiven, entsperrten Windows-Desktop.
   Recycle-Restore, Plugin-Load und PictView-Host sind nach bisherigem Stand
   zusätzliche Opt-in-Prüfungen und **nicht automatisch in `--test-all` enthalten**.
+  `tools/release/Test-Registry.json` klassifiziert die projektinternen Testquellen;
+  `Test-TestRegistry.ps1` muss neue/fehlende/doppelte Einträge erkennen. Neue Tests
+  im passenden Runner und in der Registry eintragen. `--test-all` meldet geplante
+  Scope-Ausschlüsse ausdrücklich als SKIP (nicht PASS); erforderliche SKIPs und FAIL
+  blockieren weiterhin den Lauf. Opt-ins können ausdrücklich kombiniert werden.
 - Für C++-/Projektänderungen betroffene Debug/Release- und x86/x64-Konfigurationen
   prüfen. Nach bisheriger CI: Debug Win32/x64 mit Warnungen als Fehler;
   WIC x86/x64; Verwaltungsbuilds Debug/Release x64. Ein x64-Erfolg ersetzt
