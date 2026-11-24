@@ -1,5 +1,13 @@
 # Entwicklungsübergabe – 18.11.2026
 
+> **Historischer Snapshot. Nicht als aktuellen Arbeitsstand verwenden.**
+> Die laufend gepflegte, agentenübergreifende Übergabe liegt unter
+> [Arbeitsstand-und-Uebergabe.md](Arbeitsstand-und-Uebergabe.md);
+> die Chronologie unter [Entwicklungsjournal.md](Entwicklungsjournal.md);
+> offene Aufgaben unter [Testluecken-und-Abnahmeplan-5.2.md](Testluecken-und-Abnahmeplan-5.2.md).
+> Vor Änderungen den heutigen Git-HEAD und die aktuellen Tests verifizieren.
+
+
 ## Arbeitsstand
 
 Worktree: `C:\Users\mk\.codex\worktrees\0e93\Salamander`.
