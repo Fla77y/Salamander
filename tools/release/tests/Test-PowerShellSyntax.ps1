@@ -18,7 +18,7 @@ $fixtureTokens = $null
 $fixtureErrors = $null
 $null = [System.Management.Automation.Language.Parser]::ParseInput(
     $invalidScript, [ref]$fixtureTokens, [ref]$fixtureErrors)
-if (@($fixtureErrors).Count -eq 0) {
+if ($null -eq $fixtureErrors -or $fixtureErrors.Count -eq 0) {
     throw 'The syntax preflight did not detect the original interpolated-colon defect.'
 }
 
@@ -33,11 +33,13 @@ foreach ($file in $files) {
     $parseErrors = $null
     $null = [System.Management.Automation.Language.Parser]::ParseFile(
         $file.FullName, [ref]$tokens, [ref]$parseErrors)
-    foreach ($parseError in @($parseErrors)) {
-        $relativePath = [IO.Path]::GetRelativePath($repository, $file.FullName)
-        [void]$problems.Add(('{0}:{1}:{2}: {3}' -f
-            $relativePath, $parseError.Extent.StartLineNumber,
-            $parseError.Extent.StartColumnNumber, $parseError.Message))
+    if ($null -ne $parseErrors) {
+        foreach ($parseError in $parseErrors) {
+            $relativePath = [IO.Path]::GetRelativePath($repository, $file.FullName)
+            [void]$problems.Add(('{0}:{1}:{2}: {3}' -f
+                $relativePath, $parseError.Extent.StartLineNumber,
+                $parseError.Extent.StartColumnNumber, $parseError.Message))
+        }
     }
 }
 
