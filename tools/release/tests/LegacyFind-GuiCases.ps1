@@ -1070,21 +1070,44 @@ function Test-LegacyFindShellOpen {
 }
 
 function Initialize-LegacyFindExternalEditor {
-    $probe = Join-Path $root 'editor-probe.ps1'
+    # Use the built-in Windows command processor rather than the host PowerShell
+    # executable. A Store/MSIX pwsh.exe can have different child-process
+    # activation semantics, which are unrelated to Salamander's editor contract.
+    $probe = Join-Path $root 'editor-probe.cmd'
+    $before = Join-Path $root 'editor-before.bin'
+    $after = Join-Path $root 'editor-after.bin'
+    [IO.File]::WriteAllText($before, 'original text')
+    [IO.File]::WriteAllText($after, 'saved by the external editor')
     @'
-param([string]$Target)
-$expected = Join-Path $PSScriptRoot 'find\editor fixture.salfindtest'
-if ($Target -cne $expected -or [IO.File]::ReadAllText($expected) -cne 'original text') { exit 1 }
-[IO.File]::WriteAllText($expected, 'saved by the external editor')
-'@ | Set-Content -LiteralPath $probe -Encoding utf8
+@echo off
+setlocal DisableDelayedExpansion
+>"%~dp0editor-probe.status" echo STARTED
+if not "%~1"=="%~dp0find\editor fixture.salfindtest" (
+    >"%~dp0editor-probe.status" echo WRONG_ARGUMENT
+    exit /b 2
+)
+fc /b "%~1" "%~dp0editor-before.bin" >nul
+if errorlevel 1 (
+    >"%~dp0editor-probe.status" echo ORIGINAL_CONTENT_CHANGED
+    exit /b 3
+)
+copy /y /b "%~dp0editor-after.bin" "%~1" >nul
+if errorlevel 1 (
+    >"%~dp0editor-probe.status" echo COPY_FAILED
+    exit /b 4
+)
+>"%~dp0editor-probe.status" echo SAVED
+'@ | Set-Content -LiteralPath $probe -Encoding ascii
 
+    $editorExecutable = Join-Path $env:SystemRoot 'System32\cmd.exe'
+    if (-not [IO.File]::Exists($editorExecutable)) {
+        throw 'The built-in Windows command processor is unavailable for the editor test.'
+    }
     $editorKey = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($testConfigurationKey + '\Config0\Editors\1')
     try {
         $editorKey.SetValue('Masks', '*.salfindtest')
-        $editorKey.SetValue('Command', (Join-Path $PSHOME 'pwsh.exe'))
-        # The configured working directory already contains the script. Keep
-        # the full editor argument budget for the actual result under test.
-        $editorKey.SetValue('Arguments', '-NoProfile -NonInteractive -File editor-probe.ps1 "$(FullName)"')
+        $editorKey.SetValue('Command', $editorExecutable)
+        $editorKey.SetValue('Arguments', '/D /C call editor-probe.cmd "$(FullName)"')
         $editorKey.SetValue('Initial Directory', $root)
     }
     finally { $editorKey.Dispose() }
@@ -1093,23 +1116,41 @@ if ($Target -cne $expected -or [IO.File]::ReadAllText($expected) -cne 'original 
 function Test-LegacyFindExternalEditor {
     param([string]$Fixture)
 
+    # Arrange: only the intended result may be changed by the external editor.
     $target = Join-Path $Fixture 'editor fixture.salfindtest'
     $neighbor = Join-Path $Fixture 'neighbor.txt'
+    $statusFile = Join-Path $root 'editor-probe.status'
     [IO.File]::WriteAllText($target, 'original text')
     [IO.File]::WriteAllText($neighbor, 'keep this')
     Set-LegacyFindQuery -SearchRoot $Fixture -Mask '*.salfindtest'
     Invoke-LegacyFindQuery -Expected 1 -Description 'External editor fixture'
+    Assert-True ((Read-LegacyFindResult -Index 0) -ceq $target) (
+        'External editor targets the exact verified Find result')
 
+    # Act: exercise the unchanged legacy Find Edit command and real CreateProcess.
     $ownerPid = [uint32]$process.Id
     [SalamanderGuiNative]::SelectLegacyFindRow($legacyWindow, $ownerPid, 0)
     [SalamanderGuiNative]::LegacyFindCommand($legacyWindow, $ownerPid, 2223, $true)
 
-    Wait-Until {
-        try { return [IO.File]::ReadAllText($target) -ceq 'saved by the external editor' }
-        catch [IO.IOException] { return $false }
-    } (
-        'The configured external editor received and saved the exact fixture with spaces')
+    # Assert: verify bytes, not merely that an editor child was launched.
+    try {
+        Wait-Until {
+            try { return [IO.File]::ReadAllText($target) -ceq 'saved by the external editor' }
+            catch [IO.IOException] { return $false }
+        } 'The configured external editor received and saved the exact fixture with spaces'
+    }
+    catch {
+        $state = if ([IO.File]::Exists($statusFile)) {
+            [IO.File]::ReadAllText($statusFile).Trim()
+        } else {
+            'NOT_STARTED'
+        }
+        throw ("Legacy Find external editor did not modify the selected fixture. " +
+               "Test editor state=$state; $($_.Exception.Message)")
+    }
     Assert-True ([IO.File]::ReadAllText($neighbor) -ceq 'keep this') 'External editor preserves the unselected file'
+    Assert-True (([IO.File]::ReadAllText($statusFile).Trim()) -ceq 'SAVED') (
+        'External editor confirms the exact command argument and original bytes')
 }
 
 function Test-LegacyFindRecycleRestore {
