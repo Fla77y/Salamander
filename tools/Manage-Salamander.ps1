@@ -397,6 +397,7 @@ function Run-Tests {
         'tools\tests\saved_panel_path_registry.cpp',
         'tools\tests\win32_unicode_primary_panel.cpp',
         'tools\tests\unicode_directory_panel_alias.cpp',
+        'tools\tests\editor_process_launch.cpp',
         'tools\tests\win32_unicode_rename_dialog.cpp',
         'tools\tests\win32_unicode_recycle.cpp',
         'tools\tests\shell_file_operation_name_list.cpp',
