@@ -37,6 +37,7 @@ Open Salamander – Verwaltung für Visual Studio 2026
   manage.cmd --build-clean  Output-Ordner loeschen und vollstaendig neu bauen
   manage.cmd --test         Windows-Dateisystem-/Namens-Tests und Projekt-Regressionstests
   manage.cmd --test-all     Alle automatisierten Tests: --test und sämtliche GUI-Modi
+                            Unabhängige Fehler sammeln, JSON-Bericht schreiben; Exitcode 1 bei Fehler/SKIP
                             (Release und Debug x64; --release/--debug begrenzt die GUI-Modi)
                             Legacy-Suche und große Unicode-Kopien: isolierte Testbuilds im Worktree
   manage.cmd --test-gui-large-unicode-copy  32-MiB-Kopie, Pause/Abbruch, Zielkollision und gesperrte Quelle
@@ -229,89 +230,141 @@ function Build-Variants {
 function Run-Tests {
     Write-Host '=== TESTS ==='
 
+    # The collector itself is regression-tested before any other test step.
+    $testCollector = Join-Path $repository 'tools\release\tests\Test-Manage-TestAggregation.ps1'
+    Invoke-TestCase -Name 'Test-Manage-TestAggregation.ps1' -Action {
+        Invoke-TestCase -Name 'testCollector' -Action {
+            Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $testCollector)
+        }
+    }
+
     # This process runs the rest of the suite via nested pwsh.exe. Verify
     # that child stdout/stderr reach the transcript and failures are fatal.
     $nativeOutputContract = Join-Path $repository 'tools\release\tests\Test-Manage-Native-Output.ps1'
-    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $nativeOutputContract)
+    Invoke-TestCase -Name 'nativeOutputContract' -Action {
+        Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $nativeOutputContract)
+    }
 
     $productVersionTest = Join-Path $repository 'tools\release\tests\Test-ProductVersion.ps1'
-    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $productVersionTest)
+    Invoke-TestCase -Name 'productVersionTest' -Action {
+        Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $productVersionTest)
+    }
 
     $productionBinaryContract = Join-Path $repository 'tools\release\tests\Test-ProductionBinary-Contract.ps1'
-    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $productionBinaryContract)
+    Invoke-TestCase -Name 'productionBinaryContract' -BlocksGui -Action {
+        Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $productionBinaryContract)
+    }
 
     $buildModesTest = Join-Path $repository 'tools\release\tests\Test-BuildModes.ps1'
-    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $buildModesTest)
+    Invoke-TestCase -Name 'buildModesTest' -Action {
+        Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $buildModesTest)
+    }
 
     $vsDiscoveryTest = Join-Path $repository 'tools\release\tests\Test-VS2026Discovery.ps1'
-    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $vsDiscoveryTest)
+    Invoke-TestCase -Name 'vsDiscoveryTest' -Action {
+        Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $vsDiscoveryTest)
+    }
 
     $pictviewContract = Join-Path $repository 'tools\release\tests\Test-PictView-Management.ps1'
-    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $pictviewContract)
+    Invoke-TestCase -Name 'pictviewContract' -Action {
+        Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $pictviewContract)
+    }
 
     # Guard the active VS 2026 solution metadata and every referenced C++
     # project against accidental reintroduction of unsupported old toolsets.
     $vs2026Contract = Join-Path $repository 'tools\release\tests\Test-VS2026-ProjectMetadata.ps1'
-    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $vs2026Contract)
+    Invoke-TestCase -Name 'vs2026Contract' -Action {
+        Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $vs2026Contract)
+    }
 
     # Guard the original, fully featured Ctrl+F dialog while its worker and
     # result identities are migrated away from ANSI/MAX_PATH.
     # A0-01: protect current Win32 dialog and keyboard resource IDs
     # against silent removal. This is not a 5.0 visual parity test.
     $legacyUiInventoryTest = Join-Path $repository 'tools\release\tests\Test-LegacyUiSurfaceInventory.ps1'
-    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $legacyUiInventoryTest)
+    Invoke-TestCase -Name 'legacyUiInventoryTest' -Action {
+        Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $legacyUiInventoryTest)
+    }
 
     $legacyFindContract = Join-Path $repository 'tools\release\tests\Test-LegacyFind-UiContract.ps1'
-    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $legacyFindContract)
+    Invoke-TestCase -Name 'legacyFindContract' -Action {
+        Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $legacyFindContract)
+    }
 
     # A0/UP-01: fail when a plug-in source/project silently disappears and
     # exercise the read-only inventory's missing/rogue-module cases.
     # MGMT-03: do not silently remove an A0-A7 test gap or mark it passed
     # without a specific tested commit and execution log.
     $gapTrackerContract = Join-Path $repository 'tools\release\tests\Test-TestGapTracker.ps1'
-    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $gapTrackerContract)
+    Invoke-TestCase -Name 'gapTrackerContract' -Action {
+        Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $gapTrackerContract)
+    }
 
     $pluginCoverageInventory = Join-Path $repository 'tools\release\tests\Test-PluginCoverageInventory.ps1'
-    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $pluginCoverageInventory)
+    Invoke-TestCase -Name 'pluginCoverageInventory' -Action {
+        Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $pluginCoverageInventory)
+    }
 
     # PR14: verify standalone discovery of all built SPL module identities.
     $pluginInventoryTest = Join-Path $repository 'tools\release\tests\Test-PluginBinary-Inventory.ps1'
-    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $pluginInventoryTest)
+    Invoke-TestCase -Name 'pluginInventoryTest' -Action {
+        Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $pluginInventoryTest)
+    }
 
     $pluginModuleContract = Join-Path $repository 'tools\release\tests\Test-PluginModulePaths-Contract.ps1'
-    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $pluginModuleContract)
+    Invoke-TestCase -Name 'pluginModuleContract' -Action {
+        Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $pluginModuleContract)
+    }
 
     # A0-02: test real HKCU semantics only in a freshly owned GUID
     # namespace. Live 5.0 and 5.2 registry roots are never accessed.
     $legacyConfigCanary = Join-Path $repository 'tools\release\tests\Test-LegacyConfig-Canary.ps1'
-    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $legacyConfigCanary)
+    Invoke-TestCase -Name 'legacyConfigCanary' -BlocksGui -Action {
+        Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $legacyConfigCanary)
+    }
 
     $guiConfigContract = Join-Path $repository 'tools\release\tests\Test-GuiConfig-Isolation.ps1'
-    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $guiConfigContract)
+    Invoke-TestCase -Name 'guiConfigContract' -BlocksGui -Action {
+        Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $guiConfigContract)
+    }
 
     $handlesLoaderLockContract = Join-Path $repository 'tools\release\tests\Test-HandlesLoaderLock-Contract.ps1'
-    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $handlesLoaderLockContract)
+    Invoke-TestCase -Name 'handlesLoaderLockContract' -Action {
+        Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $handlesLoaderLockContract)
+    }
 
     $guiDriverContract = Join-Path $repository 'tools\release\tests\Test-GuiDriver-Contract.ps1'
-    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $guiDriverContract)
+    Invoke-TestCase -Name 'guiDriverContract' -BlocksGui -Action {
+        Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $guiDriverContract)
+    }
 
     $werContract = Join-Path $repository 'tools\release\tests\Test-WerCrashReporting-Contract.ps1'
-    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $werContract)
+    Invoke-TestCase -Name 'werContract' -Action {
+        Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $werContract)
+    }
 
     $unicodeCopyContract = Join-Path $repository 'tools\release\tests\Test-Manage-UnicodeCopy.ps1'
-    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $unicodeCopyContract)
+    Invoke-TestCase -Name 'unicodeCopyContract' -BlocksGui -Action {
+        Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $unicodeCopyContract)
+    }
 
     $guiReliabilityContract = Join-Path $repository 'tools\release\tests\Test-GuiReliability-Contract.ps1'
-    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $guiReliabilityContract)
+    Invoke-TestCase -Name 'guiReliabilityContract' -BlocksGui -Action {
+        Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $guiReliabilityContract)
+    }
 
     # Test-Package-Helpers.ps1 invokes the independent release/GUI contract
     # regressions, including the cross-process clipboard test in STA.
     # Running them separately here duplicates work and test side effects.
     $regression = Join-Path $repository 'tools\release\tests\Test-Package-Helpers.ps1'
-    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $regression)
+    Invoke-TestCase -Name 'regression' -BlocksGui -Action {
+        Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $regression)
+    }
 
     $filesystem = Join-Path $repository 'tools\release\tests\Test-FilenamesAndPaths.ps1'
-    Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $filesystem)
+    Invoke-TestCase -Name 'filesystem' -Action {
+        Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $filesystem)
+    }
 
     # Added by the long-path migration branches. Do not report full support
     # when the tests (or the production code using them) are absent.
@@ -341,14 +394,21 @@ function Run-Tests {
         Test-Path -LiteralPath (Join-Path $repository $_) -PathType Leaf
     })
     if ($available.Count -gt 0) {
-        $vs = Get-VisualStudio2026
-        $vcvars = Join-Path $vs 'VC\Auxiliary\Build\vcvars64.bat'
-        if (-not (Test-Path -LiteralPath $vcvars -PathType Leaf)) {
-            throw "MSVC x64-Umgebung nicht gefunden: $vcvars"
+        $nativePrerequisites = @{ Vcvars = $null }
+        Invoke-TestCase -Name 'Native C++ prerequisites' -Action {
+            $vs = Get-VisualStudio2026
+            $candidate = Join-Path $vs 'VC\Auxiliary\Build\vcvars64.bat'
+            if (-not (Test-Path -LiteralPath $candidate -PathType Leaf)) {
+                throw "MSVC x64-Umgebung nicht gefunden: $candidate"
+            }
+            New-Item -ItemType Directory -Path (Join-Path $buildRoot 'tests') -Force | Out-Null
+            $nativePrerequisites.Vcvars = $candidate
         }
+        $vcvars = $nativePrerequisites.Vcvars
         $testDir = Join-Path $buildRoot 'tests'
-        New-Item -ItemType Directory -Path $testDir -Force | Out-Null
-        foreach ($relative in $available) {
+        if ($null -ne $vcvars) {
+            foreach ($relative in $available) {
+                Invoke-TestCase -Name "Native C++: $relative" -Action {
             $source = Join-Path $repository $relative
             $testName = [IO.Path]::GetFileNameWithoutExtension($relative)
             $exe = Join-Path $testDir ($testName + '.exe')
@@ -377,12 +437,26 @@ function Run-Tests {
             ) | Set-Content -LiteralPath $cmdPath -Encoding Ascii
             Write-Host "C++-Regression: $relative"
             Invoke-Native 'cmd.exe' @('/d', '/c', $cmdPath)
+                }
+            }
+        }
+        else {
+            foreach ($relative in $available) {
+                Skip-TestCase -Name "Native C++: $relative" -Reason 'MSVC prerequisites unavailable'
+            }
         }
     }
     else {
-        Write-Warning ('Die Langpfad-C++-Tests befinden sich noch in einem ' +
-                       'separaten Entwicklungsbranch. KEIN vollständiger ' +
-                       'Salamander-Langpfadtest bestätigt.')
+        if ($script:CollectTestFailures) {
+            Invoke-TestCase -Name 'Native C++ source inventory' -Action {
+                throw 'No native C++ regressions found; required suite cannot be certified.'
+            }
+        }
+        else {
+            Write-Warning ('Die Langpfad-C++-Tests befinden sich noch in einem ' +
+                           'separaten Entwicklungsbranch. KEIN vollständiger ' +
+                           'Salamander-Langpfadtest bestätigt.')
+        }
     }
 
     Write-Warning ('Die Dateisystemtests prüfen Windows/.NET und isolierte ' +
@@ -458,6 +532,8 @@ try {
         }
 
         Expand-AutomatedTestActions -RequestedSet $requestedSet -AvailableOptions $validOptions
+        . (Join-Path $repository 'tools\release\Test-RunCollection.ps1')
+        Initialize-TestRun -CollectFailures:($requestedSet.Contains('--test-all'))
 
         if ($requestedSet.Contains('--diagnose-gui')) {
             $allowedDiagnosticOptions = @('--diagnose-gui', '--release', '--debug')
