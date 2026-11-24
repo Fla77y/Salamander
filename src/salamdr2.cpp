@@ -1906,7 +1906,7 @@ void MinimizeApp(HWND mainWnd)
 }
 
 // ****************************************************************************
-BOOL CheckOnlyOneInstance(const CCommandLineParams* cmdLineParams)
+BOOL CheckOnlyOneInstance(const CCommandLineParams* cmdLineParams, BOOL refusePathForwarding)
 {
     // Compatibility for the transition to the text config:
     // load the setting even if ForceOnlyOneInstance == TRUE
@@ -1928,7 +1928,7 @@ BOOL CheckOnlyOneInstance(const CCommandLineParams* cmdLineParams)
 
     if (Configuration.ForceOnlyOneInstance || Configuration.OnlyOneInstance)
     {
-        return TaskList.ActivateRunningInstance(cmdLineParams);
+        return TaskList.ActivateRunningInstance(cmdLineParams, nullptr, refusePathForwarding);
     }
     return FALSE;
 }

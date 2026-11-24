@@ -4,7 +4,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory)][ValidateSet('Release','Debug')][string]$Configuration,
-    [Parameter(Mandatory)][ValidateSet('isolated-unicode-copy','isolated-legacy-find')][string]$OutputName
+    [Parameter(Mandatory)][ValidateSet('isolated-unicode-copy','isolated-legacy-find','isolated-long-paths')][string]$OutputName
 )
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'

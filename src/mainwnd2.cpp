@@ -2558,7 +2558,8 @@ static BOOL RestoreSavedPanelPath(CFilesWindow* panel, const std::wstring& saved
     return TRUE;
 }
 
-BOOL CMainWindow::LoadConfig(BOOL importingOldConfig, const CCommandLineParams* cmdLineParams)
+BOOL CMainWindow::LoadConfig(BOOL importingOldConfig, const CCommandLineParams* cmdLineParams,
+                             const CStartupPanelPaths* startupPaths)
 {
     CALL_STACK_MESSAGE2("CMainWindow::LoadConfig(%d)", importingOldConfig);
     if (SALAMANDER_ROOT_REG == NULL)
@@ -3987,9 +3988,20 @@ BOOL CMainWindow::LoadConfig(BOOL importingOldConfig, const CCommandLineParams* 
         BOOL rightPanelPathSet = FALSE;
         if (ret && cmdLineParams != NULL)
         {
-            if (cmdLineParams->LeftPath[0] == 0 && cmdLineParams->RightPath[0] == 0 && cmdLineParams->ActivePath[0] != 0)
+            const std::wstring empty;
+            const std::wstring& left = startupPaths ? startupPaths->Left : empty;
+            const std::wstring& right = startupPaths ? startupPaths->Right : empty;
+            const std::wstring& active = startupPaths ? startupPaths->Active : empty;
+            const bool hasLeft = cmdLineParams->LeftPath[0] != 0 || !left.empty();
+            const bool hasRight = cmdLineParams->RightPath[0] != 0 || !right.empty();
+            const bool hasActive = cmdLineParams->ActivePath[0] != 0 || !active.empty();
+            const auto change = [](CFilesWindow* panel, const char* legacy, const std::wstring& native) {
+                return native.empty() ? panel->ChangeDirLite(legacy)
+                                      : panel->ChangeUnicodePathToDisk(panel->HWindow, native);
+            };
+            if (!hasLeft && !hasRight && hasActive)
             {
-                if (GetActivePanel()->ChangeDirLite(cmdLineParams->ActivePath)) // no point in combining this with the left/right panel paths
+                if (change(GetActivePanel(), cmdLineParams->ActivePath, active)) // no point in combining this with the left/right panel paths
                 {
                     if (rightPanelFocused)
                         rightPanelPathSet = TRUE;
@@ -4002,17 +4014,17 @@ BOOL CMainWindow::LoadConfig(BOOL importingOldConfig, const CCommandLineParams* 
             }
             else
             {
-                if (cmdLineParams->LeftPath[0] != 0)
+                if (hasLeft)
                 {
-                    if (LeftPanel->ChangeDirLite(cmdLineParams->LeftPath))
+                    if (change(LeftPanel, cmdLineParams->LeftPath, left))
                     {
                         leftPanelPathSet = TRUE;
                         LeftPanel->RefreshVisibleItemsArray(); // see "RefreshVisibleItemsArray" comment below
                     }
                 }
-                if (cmdLineParams->RightPath[0] != 0)
+                if (hasRight)
                 {
-                    if (RightPanel->ChangeDirLite(cmdLineParams->RightPath))
+                    if (change(RightPanel, cmdLineParams->RightPath, right))
                         rightPanelPathSet = TRUE;
                 }
             }

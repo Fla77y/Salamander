@@ -26,6 +26,7 @@
 #include "dialogs.h"
 #include "gui.h"
 #include "tasklist.h"
+#include "common/win32_unicode_panel_name.h"
 #include <uxtheme.h>
 #include "olespy.h"
 #include "geticon.h"
@@ -2819,15 +2820,16 @@ BOOL PointToLocalDecimalSeparator(char* buffer, int bufferSize)
 // argCount - on input, the number of elements in argv; on output, contains the number of arguments
 // cmdLine - command-line arguments (without the .exe file name - from WinMain)
 
-BOOL GetCmdLine(char* buf, int size, char* argv[], int& argCount, char* cmdLine)
+template <class Char>
+static BOOL GetCmdLineImpl(Char* buf, int size, Char* argv[], int& argCount, const Char* cmdLine)
 {
     int space = argCount;
     argCount = 0;
-    char* c = buf;
-    char* end = buf + size;
+    Char* c = buf;
+    Char* end = buf + size;
 
-    char* s = cmdLine;
-    char term;
+    const Char* s = cmdLine;
+    Char term;
     while (*s != 0)
     {
         if (*s == '"') // leading '"'
@@ -2870,6 +2872,11 @@ BOOL GetCmdLine(char* buf, int size, char* argv[], int& argCount, char* cmdLine)
         }
     }
     return TRUE;
+}
+
+BOOL GetCmdLine(char* buf, int size, char* argv[], int& argCount, char* cmdLine)
+{
+    return GetCmdLineImpl(buf, size, argv, argCount, cmdLine);
 }
 
 // ****************************************************************************
@@ -3361,8 +3368,49 @@ void GetCommandLineParamExpandEnvVars(const char* argv, char* target, DWORD targ
     }
 }
 
+// Only the startup disk-path arguments use the original UTF-16 command line.
+// The fixed-size task-list protocol and other legacy options remain unchanged.
+// Do not send a best-fit or truncated path through the old ANSI route.
+static bool CaptureStartupPanelPath(const char* legacyArg, const wchar_t* originalArg,
+                                    std::wstring& widePath)
+{
+    widePath.clear();
+    if (*originalArg == 0)
+        return *legacyArg == 0;
+
+    std::wstring expanded(originalArg);
+    const DWORD required = ExpandEnvironmentStringsW(originalArg, nullptr, 0);
+    if (required > 0 && required <= 32767)
+    {
+        std::wstring buffer(required, L'\0');
+        const DWORD written = ExpandEnvironmentStringsW(originalArg, buffer.data(), required);
+        if (written > 0 && written <= required)
+        {
+            buffer.resize(written - 1);
+            expanded.swap(buffer);
+        }
+    }
+
+    std::string ansi;
+    if (Salamander::IsExactAnsiName(legacyArg, originalArg) &&
+        Salamander::TryMakeExactAnsiPanelPath(expanded, ansi) &&
+        ansi.size() < 2 * MAX_PATH)
+        return true; // preserve the established ANSI/plugin/archive path semantics
+
+    // The Unicode disk route accepts absolute normalized drive/UNC paths.
+    // Refuse ambiguous Unicode relative/plugin/archive syntax rather than
+    // silently passing its damaged ACP spelling to a different destination.
+    std::wstring extended;
+    DWORD error;
+    if (!Salamander::TryMakeExtendedLengthPath(expanded.c_str(), extended, error))
+        return false;
+    widePath.swap(expanded);
+    return true;
+}
+
 // Returns TRUE if the parameters are valid; otherwise returns FALSE
-BOOL ParseCommandLineParameters(LPSTR cmdLine, CCommandLineParams* cmdLineParams)
+BOOL ParseCommandLineParameters(LPSTR cmdLine, CCommandLineParams* cmdLineParams,
+                                CStartupPanelPaths& startupPaths)
 {
     // We do not want to change the paths, icon, or prefix, so everything has to be zeroed out.
     ZeroMemory(cmdLineParams, sizeof(CCommandLineParams));
@@ -3370,6 +3418,16 @@ BOOL ParseCommandLineParameters(LPSTR cmdLine, CCommandLineParams* cmdLineParams
     char buf[4096];
     char* argv[20];
     int p = 20; // number of elements in the argv array
+
+    // Use the same legacy quoting grammar on the original W command line.
+    // The full command line includes the executable as its first token.
+    const wchar_t* wideCommandLine = GetCommandLineW();
+    std::wstring wideBuffer(wcslen(wideCommandLine) + 1, L'\0');
+    wchar_t* wideArgv[21];
+    int wideCount = _countof(wideArgv);
+    if (!GetCmdLineImpl(wideBuffer.data(), static_cast<int>(wideBuffer.size()),
+                        wideArgv, wideCount, wideCommandLine))
+        return FALSE;
 
     char curDir[MAX_PATH];
     GetModuleFileName(HInstance, ConfigurationName, MAX_PATH);
@@ -3383,16 +3441,23 @@ BOOL ParseCommandLineParameters(LPSTR cmdLine, CCommandLineParams* cmdLineParams
         ConfigurationNameIgnoreIfNotExists = FALSE;
     }
     OpenReadmeInNotepad[0] = 0;
-    if (GetCmdLine(buf, _countof(buf), argv, p, cmdLine))
+    if (!GetCmdLine(buf, _countof(buf), argv, p, cmdLine) || wideCount != p + 1)
+        return FALSE;
     {
         int i;
         for (i = 0; i < p; i++)
         {
+            if (!Salamander::IsExactAnsiName(argv[i], wideArgv[i + 1]))
+                return FALSE; // never interpret a best-fit spelling as an option
             if (StrICmp(argv[i], "-l") == 0) // left panel path
             {
                 if (i + 1 < p)
                 {
-                    GetCommandLineParamExpandEnvVars(argv[i + 1], cmdLineParams->LeftPath, 2 * MAX_PATH, FALSE);
+                    if (!CaptureStartupPanelPath(argv[i + 1], wideArgv[i + 2], startupPaths.Left))
+                        return FALSE;
+                    cmdLineParams->LeftPath[0] = 0;
+                    if (startupPaths.Left.empty())
+                        GetCommandLineParamExpandEnvVars(argv[i + 1], cmdLineParams->LeftPath, 2 * MAX_PATH, FALSE);
                     i++;
                     continue;
                 }
@@ -3402,7 +3467,11 @@ BOOL ParseCommandLineParameters(LPSTR cmdLine, CCommandLineParams* cmdLineParams
             {
                 if (i + 1 < p)
                 {
-                    GetCommandLineParamExpandEnvVars(argv[i + 1], cmdLineParams->RightPath, 2 * MAX_PATH, FALSE);
+                    if (!CaptureStartupPanelPath(argv[i + 1], wideArgv[i + 2], startupPaths.Right))
+                        return FALSE;
+                    cmdLineParams->RightPath[0] = 0;
+                    if (startupPaths.Right.empty())
+                        GetCommandLineParamExpandEnvVars(argv[i + 1], cmdLineParams->RightPath, 2 * MAX_PATH, FALSE);
                     i++;
                     continue;
                 }
@@ -3412,7 +3481,11 @@ BOOL ParseCommandLineParameters(LPSTR cmdLine, CCommandLineParams* cmdLineParams
             {
                 if (i + 1 < p)
                 {
-                    GetCommandLineParamExpandEnvVars(argv[i + 1], cmdLineParams->ActivePath, 2 * MAX_PATH, FALSE);
+                    if (!CaptureStartupPanelPath(argv[i + 1], wideArgv[i + 2], startupPaths.Active))
+                        return FALSE;
+                    cmdLineParams->ActivePath[0] = 0;
+                    if (startupPaths.Active.empty())
+                        GetCommandLineParamExpandEnvVars(argv[i + 1], cmdLineParams->ActivePath, 2 * MAX_PATH, FALSE);
                     i++;
                     continue;
                 }
@@ -3422,6 +3495,7 @@ BOOL ParseCommandLineParameters(LPSTR cmdLine, CCommandLineParams* cmdLineParams
             {
                 if (i + 1 < p)
                 {
+                    startupPaths.Active.clear();
                     GetCommandLineParamExpandEnvVars(argv[i + 1], cmdLineParams->ActivePath, 2 * MAX_PATH, TRUE);
                     i++;
                     continue;
@@ -3531,6 +3605,7 @@ int WinMainBody(HINSTANCE hInstance, HINSTANCE /*hPrevInstance*/, LPSTR cmdLine,
         return 1;
 #endif // OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
     int myExitCode = 1;
+    CStartupPanelPaths startupPaths; // process-local; never copied to shared memory
 
     //--- I do not want any critical errors such as "no disk in drive A:"
     SetErrorMode(SetErrorMode(0) | SEM_FAILCRITICALERRORS);
@@ -3863,7 +3938,7 @@ FIND_NEW_SLG_FILE:
                            LoadStr(IDS_ALLOCHANDLER_WRNIGNORE), LoadStr(IDS_ALLOCHANDLER_WRNABORT));
 
     CCommandLineParams cmdLineParams;
-    if (!ParseCommandLineParameters(cmdLine, &cmdLineParams))
+    if (!ParseCommandLineParameters(cmdLine, &cmdLineParams, startupPaths))
     {
         SalMessageBox(NULL, LoadStr(IDS_INVALIDCMDLINE), SALAMANDER_TEXT_VERSION, MB_OK | MB_ICONERROR);
 
@@ -3986,10 +4061,21 @@ FIND_NEW_SLG_FILE:
 
     // If the user does not want multiple instances, only activate the previous one.
     if (!currentCfgDoesNotExist &&
-        CheckOnlyOneInstance(&cmdLineParams))
+        CheckOnlyOneInstance(&cmdLineParams, startupPaths.Any()))
     {
         SplashScreenCloseIfExist();
-        myExitCode = 0;
+        if (startupPaths.Any())
+        {
+            // An old instance cannot receive W paths in the existing task-list
+            // protocol. Respect single-instance mode without changing its ABI
+            // or sending the other panel a partial/misleading activation.
+            MessageBoxW(nullptr, L"The running instance cannot receive these Unicode or long command-line paths safely. "
+                        L"Close it or allow a new instance and try again.",
+                        L"Open Salamander", MB_OK | MB_ICONWARNING);
+            myExitCode = 1;
+        }
+        else
+            myExitCode = 0;
     EXIT_3:
         ReleaseShellib();
         goto EXIT_2;
@@ -4190,7 +4276,8 @@ FIND_NEW_SLG_FILE:
 
                 CALL_STACK_MESSAGE1("WinMainBody::load_config");
                 BOOL setActivePanelAndPanelPaths = FALSE; // The active panel and the panel paths are set in MainWindow->LoadConfig().
-                if (!MainWindow->LoadConfig(currentCfgDoesNotExist, !importCfgFromFileWasSkipped ? &cmdLineParams : NULL))
+                if (!MainWindow->LoadConfig(currentCfgDoesNotExist, !importCfgFromFileWasSkipped ? &cmdLineParams : NULL,
+                                            &startupPaths))
                 {
                     setActivePanelAndPanelPaths = TRUE;
                     UpdateDefaultColors(CurrentColors, MainWindow->HighlightMasks, FALSE, TRUE);
@@ -4242,7 +4329,7 @@ FIND_NEW_SLG_FILE:
                 else
                 {
                     if (!importCfgFromFileWasSkipped) // Only if the application does not exit immediately; otherwise this is pointless.
-                        MainWindow->ApplyCommandLineParams(&cmdLineParams, setActivePanelAndPanelPaths);
+                        MainWindow->ApplyCommandLineParams(&cmdLineParams, setActivePanelAndPanelPaths, &startupPaths);
 
                     if (Windows7AndLater)
                         CreateJumpList();

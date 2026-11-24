@@ -139,7 +139,8 @@ public:
     BOOL FireEvent(DWORD todo, DWORD pid, BOOL* timeouted = NULL);
 
     // If 'timeouted' is not NULL, it is set to indicate whether the failure was caused by a timeout while waiting for shared memory
-    BOOL ActivateRunningInstance(const CCommandLineParams* cmdLineParams, BOOL* timeouted = NULL);
+    BOOL ActivateRunningInstance(const CCommandLineParams* cmdLineParams, BOOL* timeouted = NULL,
+                                 BOOL refusePathForwarding = FALSE);
 
     // Searches the process list for our entry and sets 'ProcessState' and 'HMainWindow'; returns TRUE on success, otherwise FALSE
     // if 'timeouted' is not NULL, it sets whether the failure was caused by a timeout when waiting for shared memory

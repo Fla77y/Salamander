@@ -772,7 +772,8 @@ void CMainWindow::SafeHandleMenuChngDrvMsg2(UINT uMsg, WPARAM wParam, LPARAM lPa
     }
 }
 
-void CMainWindow::ApplyCommandLineParams(const CCommandLineParams* cmdLineParams, BOOL setActivePanelAndPanelPaths)
+void CMainWindow::ApplyCommandLineParams(const CCommandLineParams* cmdLineParams, BOOL setActivePanelAndPanelPaths,
+                                         const CStartupPanelPaths* startupPaths)
 {
     if (setActivePanelAndPanelPaths)
     {
@@ -783,14 +784,27 @@ void CMainWindow::ApplyCommandLineParams(const CCommandLineParams* cmdLineParams
             ChangePanel(FALSE);
         }
         // then we can set the path in the active panel
-        if (cmdLineParams->LeftPath[0] == 0 && cmdLineParams->RightPath[0] == 0 && cmdLineParams->ActivePath[0] != 0)
-            GetActivePanel()->ChangeDir(cmdLineParams->ActivePath); // makes no sense to combine with setting the left/right panel
+        const std::wstring empty;
+        const std::wstring& left = startupPaths ? startupPaths->Left : empty;
+        const std::wstring& right = startupPaths ? startupPaths->Right : empty;
+        const std::wstring& active = startupPaths ? startupPaths->Active : empty;
+        const bool hasLeft = cmdLineParams->LeftPath[0] != 0 || !left.empty();
+        const bool hasRight = cmdLineParams->RightPath[0] != 0 || !right.empty();
+        const bool hasActive = cmdLineParams->ActivePath[0] != 0 || !active.empty();
+        const auto change = [](CFilesWindow* panel, const char* legacy, const std::wstring& native) {
+            if (native.empty())
+                panel->ChangeDir(legacy);
+            else
+                panel->ChangeUnicodePathToDisk(panel->HWindow, native);
+        };
+        if (!hasLeft && !hasRight && hasActive)
+            change(GetActivePanel(), cmdLineParams->ActivePath, active);
         else
         {
-            if (cmdLineParams->LeftPath[0] != 0)
-                LeftPanel->ChangeDir(cmdLineParams->LeftPath);
-            if (cmdLineParams->RightPath[0] != 0)
-                RightPanel->ChangeDir(cmdLineParams->RightPath);
+            if (hasLeft)
+                change(LeftPanel, cmdLineParams->LeftPath, left);
+            if (hasRight)
+                change(RightPanel, cmdLineParams->RightPath, right);
         }
     }
 

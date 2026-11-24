@@ -606,7 +606,8 @@ BOOL CTaskList::FireEvent(DWORD todo, DWORD pid, BOOL* timeouted)
     return FALSE;
 }
 
-BOOL CTaskList::ActivateRunningInstance(const CCommandLineParams* cmdLineParams, BOOL* timeouted)
+BOOL CTaskList::ActivateRunningInstance(const CCommandLineParams* cmdLineParams, BOOL* timeouted,
+                                        BOOL refusePathForwarding)
 {
     if (timeouted != NULL)
         *timeouted = FALSE;
@@ -662,6 +663,14 @@ BOOL CTaskList::ActivateRunningInstance(const CCommandLineParams* cmdLineParams,
     // if we did not find any instance of our class with a main window, or if waiting took 5 s, stop waiting
     if (firstRunnig == -1)
         return FALSE;
+
+    // A native W path has no lossless representation in the shared legacy
+    // structure. Report that an instance exists without sending any request.
+    if (refusePathForwarding)
+    {
+        ReleaseMutex(FMOMutex);
+        return TRUE;
+    }
 
     CProcessListItem* item = &ProcessList->Items[firstRunnig];
 

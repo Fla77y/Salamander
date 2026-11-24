@@ -16,8 +16,16 @@ extern const int MIN_WIN_WIDTH;
 
 struct CCommandLineParams;
 
+// Process-local native disk paths; the old cross-process task-list structure
+// is intentionally not extended with STL objects or wider path buffers.
+struct CStartupPanelPaths
+{
+    std::wstring Left, Right, Active;
+    bool Any() const { return !Left.empty() || !Right.empty() || !Active.empty(); }
+};
+
 // if the user disallows multiple instances, just activate the previous one
-BOOL CheckOnlyOneInstance(const CCommandLineParams* cmdLineParams);
+BOOL CheckOnlyOneInstance(const CCommandLineParams* cmdLineParams, BOOL refusePathForwarding = FALSE);
 
 // sends the WM_USER_CFGCHANGED message to open internal viewer and find windows
 void BroadcastConfigChanged();
@@ -531,7 +539,8 @@ public:
     void ClearPluginFSFromHistory(CPluginFSInterfaceAbstract* fs);
 
     void SaveConfig(HWND parent = NULL); // parent: NULL = MainWindow->HWindow
-    BOOL LoadConfig(BOOL importingOldConfig, const CCommandLineParams* cmdLineParams);
+    BOOL LoadConfig(BOOL importingOldConfig, const CCommandLineParams* cmdLineParams,
+                    const CStartupPanelPaths* startupPaths = nullptr);
     void SavePanelConfig(CFilesWindow* panel, HKEY hSalamander, const char* reg);
     void LoadPanelConfig(std::wstring& panelPath, CFilesWindow* panel, HKEY hSalamander, const char* reg);
     void DeleteOldConfigurations(BOOL* deleteConfigurations, BOOL autoImportConfig,
@@ -726,7 +735,8 @@ public:
 
     void SafeHandleMenuChngDrvMsg2(UINT uMsg, WPARAM wParam, LPARAM lParam, LRESULT* plResult);
 
-    void ApplyCommandLineParams(const CCommandLineParams* params, BOOL setActivePanelAndPanelPaths = TRUE);
+    void ApplyCommandLineParams(const CCommandLineParams* params, BOOL setActivePanelAndPanelPaths = TRUE,
+                                const CStartupPanelPaths* startupPaths = nullptr);
 
     void LockUI(BOOL lock, HWND hToolWnd, const char* lockReason);
     BOOL HasLockedUI() { return LockedUI; }

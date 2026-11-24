@@ -279,7 +279,7 @@ inline bool TryMakeExactAnsiPanelPath(const std::wstring& path, std::string& ans
     return true;
 }
 
-// Bridge a short non-ACP disk directory to the existing ANSI panel stack
+// Bridge a non-ACP disk directory to the existing ANSI panel stack
 // only when Windows supplies a real, exactly representable DOS short path.
 // The displayed/written filesystem identity remains the caller's original W
 // path. Do not create aliases, junctions or substitute best-fit characters.
@@ -288,18 +288,40 @@ inline bool TryGetVerifiedAnsiShortDirectoryPath(
     const std::wstring& directory, std::string& ansiPath)
 {
     ansiPath.clear();
-    if (directory.empty() || directory.size() >= MAX_PATH - 2)
+    if (directory.empty())
         return false;
 
-    const DWORD required = GetShortPathNameW(directory.c_str(), nullptr, 0);
-    if (required < 2 || required >= MAX_PATH - 2)
+    // The original name can exceed MAX_PATH even if its DOS alias does not.
+    // Query and verify the original through the extended Win32 namespace.
+    std::wstring originalPath = directory;
+    if (directory.size() >= MAX_PATH - 2)
+    {
+        DWORD error;
+        if (!TryMakeExtendedLengthPath(directory.c_str(), originalPath, error))
+            return false;
+    }
+    const DWORD required = GetShortPathNameW(originalPath.c_str(), nullptr, 0);
+    if (required < 2 || required > MAX_PATH + 8)
         return false;
     std::wstring shortPath(required, L'\0');
     const DWORD written = GetShortPathNameW(
-        directory.c_str(), shortPath.data(), required);
+        originalPath.c_str(), shortPath.data(), required);
     if (written == 0 || written >= required)
         return false;
     shortPath.resize(written);
+
+    // Windows may retain the extended prefix on the returned short name.
+    // Legacy callers require an ordinary drive or UNC path, not a device path.
+    if (shortPath.compare(0, 8, L"\\\\?\\UNC\\") == 0)
+        shortPath.replace(0, 8, L"\\\\");
+    else if (shortPath.compare(0, 4, L"\\\\?\\") == 0)
+        shortPath.erase(0, 4);
+    if (shortPath.size() >= MAX_PATH - 2)
+        return false;
+    std::wstring validated;
+    DWORD error;
+    if (!TryMakeExtendedLengthPath(shortPath.c_str(), validated, error))
+        return false;
 
     std::string candidate;
     if (!TryMakeExactAnsiPanelPath(shortPath, candidate) ||
@@ -324,7 +346,7 @@ inline bool TryGetVerifiedAnsiShortDirectoryPath(
                     (info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) == 0;
     };
     BY_HANDLE_FILE_INFORMATION original{}, abbreviated{};
-    if (!readDirectoryIdentity(directory.c_str(), original) ||
+    if (!readDirectoryIdentity(originalPath.c_str(), original) ||
         !readDirectoryIdentity(shortPath.c_str(), abbreviated) ||
         original.dwVolumeSerialNumber != abbreviated.dwVolumeSerialNumber ||
         original.nFileIndexHigh != abbreviated.nFileIndexHigh ||
