@@ -440,6 +440,13 @@ niemals stillschweigend umschreiben; Korrekturen als neue datierte Zeile.
 - **Commit:** `95b5c5ed239f88de451040e7d42006e7d33694ac`; anschließend Aktualisierung von Tracker, Journal und Übergabestand.
 - **Verifikation:** Quellcode und Registrierungsvertrag statisch geprüft; **Windows- und GUI-Ausführung ausstehend**. Der Preflight kann einen Umgebungs-/MSIX-/Policy-Fehler künftig vor der eigentlichen Produktuntersuchung eingrenzen; kein nachgewiesener Produktfix.
 
+### J-20261124-09 — Statischer Vertrag für Editor-Preflight-Reset
+
+- **Auftrag / IDs:** FIND-04, QA-03 – der unabhängige PowerShell-Testvorlauf darf das spätere GUI-Ergebnis nicht durch einen verbleibenden Erfolgsmarker verfälschen.
+- **Änderung:** `tools/release/tests/Test-LegacyFind-UiContract.ps1` erzwingt nun sowohl den Aufruf von `Assert-TestPowerShellEditorHost` als auch das Löschen des Vorlauf-Statusmarkers vor dem tatsächlichen Legacy-Find-Edit-Befehl.
+- **Commit:** `be853b5426ffdc5ee2c14106849769e3f1092033` plus diese Dokumentationsfortschreibung.
+- **Verifikation:** Statischer Quelltextabgleich; kein neuer PowerShell-/MSVC-/GUI-Lauf. Letzter tatsächlich erfolgreicher `--test`-SHA bleibt `a928794c`. Die Unicode-Navigation ohne echten 8.3-Kurznamen und der Editorfehler bleiben offen bis zum echten Windows-Nachweis.
+
 ## Vorlage für zukünftige Einträge
 
 ```markdown
