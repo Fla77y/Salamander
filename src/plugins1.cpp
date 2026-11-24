@@ -3754,11 +3754,13 @@ BOOL CPluginData::ViewFile(const char* name, int left, int top, int width, int h
 }
 
 // The new W entry points are deliberately separate from the SDK-103
-// dispatch. ERROR_NOT_SUPPORTED means no negotiated extension, not a
-// negative CanViewFileW result. Do not retry a failed W operation via ANSI.
-DWORD CPluginData::TryCanViewFileW(const WCHAR* name, BOOL& canView)
+// dispatch. A nonzero status describes dispatch/negotiation failure, not
+// a negative CanViewFileW result. Do not retry a failed W operation via ANSI.
+DWORD CPluginData::TryCanViewFileW(const WCHAR* name, BOOL& canView, DWORD* callbackDiagnostic)
 {
     canView = FALSE;
+    if (callbackDiagnostic)
+        *callbackDiagnostic = ERROR_SUCCESS;
     if (!name || !*name)
         return ERROR_INVALID_PARAMETER;
     if (!InitDLL(MainWindow->HWindow))
@@ -3767,13 +3769,21 @@ DWORD CPluginData::TryCanViewFileW(const WCHAR* name, BOOL& canView)
         return ERROR_NOT_SUPPORTED;
     const auto query = reinterpret_cast<SalamanderSdk::QueryUnicodeViewer>(
         GetProcAddress(DLL, SalamanderSdk::UnicodeViewerExportName));
+    if (!query)
+        return ERROR_PROC_NOT_FOUND;
     SalamanderSdk::UnicodeViewerV1 extension{};
     EnterPlugin();
     const bool supported = SalamanderSdk::NegotiateUnicodeViewerV1(query, extension);
     if (supported)
+    {
+        SetLastError(ERROR_SUCCESS);
         canView = extension.CanViewFileW(name);
+        const DWORD diagnostic = GetLastError(); // before LeavePlugin can change it
+        if (!canView && callbackDiagnostic)
+            *callbackDiagnostic = diagnostic;
+    }
     LeavePlugin();
-    return supported ? ERROR_SUCCESS : ERROR_NOT_SUPPORTED;
+    return supported ? ERROR_SUCCESS : ERROR_REVISION_MISMATCH;
 }
 
 DWORD CPluginData::TryViewFileW(const WCHAR* name, int left, int top, int width, int height,
@@ -3790,6 +3800,8 @@ DWORD CPluginData::TryViewFileW(const WCHAR* name, int left, int top, int width,
         return ERROR_NOT_SUPPORTED;
     const auto query = reinterpret_cast<SalamanderSdk::QueryUnicodeViewer>(
         GetProcAddress(DLL, SalamanderSdk::UnicodeViewerExportName));
+    if (!query)
+        return ERROR_PROC_NOT_FOUND;
     SalamanderSdk::UnicodeViewerV1 extension{};
     EnterPlugin();
     const bool supported = SalamanderSdk::NegotiateUnicodeViewerV1(query, extension);
@@ -3800,7 +3812,7 @@ DWORD CPluginData::TryViewFileW(const WCHAR* name, int left, int top, int width,
     LeavePlugin();
     if (viewed && returnLock && *lock != NULL && *lockOwner)
         HANDLES_ADD(__htEvent, __hoCreateEvent, *lock);
-    return supported ? ERROR_SUCCESS : ERROR_NOT_SUPPORTED;
+    return supported ? ERROR_SUCCESS : ERROR_REVISION_MISMATCH;
 }
 
 CPluginFSInterfaceAbstract*

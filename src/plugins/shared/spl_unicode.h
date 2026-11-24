@@ -24,6 +24,9 @@ struct UnicodeViewerV1
     // No ACP conversion or MAX_PATH truncation is permitted. The callee must
     // copy the name if it outlives the call. Window, lock and enumeration
     // semantics are those of spl_view.h; caller owns the table storage.
+    // Optional diagnostic on FALSE: SetLastError may carry a raw Win32
+    // error or HRESULT. It is advisory only; zero or an absent diagnostic
+    // must not change viewer selection or the meaning of the BOOL result.
     BOOL (WINAPI* CanViewFileW)(const WCHAR* name);
     BOOL (WINAPI* ViewFileW)(const WCHAR* name, int left, int top,
                              int width, int height, UINT showCmd,

@@ -1258,6 +1258,7 @@ static void ViewWideDiskFile(HWND parent, const std::wstring& name,
                              const std::wstring& fullPath, const std::wstring& extendedPath,
                              BOOL alternate, DWORD handlerID, int sourceUID, int index)
 {
+    char diagnostic[MAX_PATH + 256] = {};
     CViewerMasksItem* selected = NULL;
     if (handlerID != 0xFFFFFFFF)
     {
@@ -1297,19 +1298,43 @@ static void ViewWideDiskFile(HWND parent, const std::wstring& name,
             return;
         }
         if (viewer->ViewerType == VIEWER_EXTERNAL)
+        {
+            if (!diagnostic[0])
+                strcpy_s(diagnostic, "The configured external viewer does not support this native path.");
             break; // external ANSI command expansion cannot preserve this identity
+        }
 
         CPluginData* plugin = Plugins.Get(-viewer->ViewerType - 1);
         if (!plugin || !plugin->SupportViewer)
+        {
+            strcpy_s(diagnostic, "The configured plug-in viewer is unavailable.");
             break;
+        }
+        // Copy before InitDLL: plugin initialization may update its metadata.
+        char pluginName[MAX_PATH];
+        lstrcpyn(pluginName, plugin->DLLName ? plugin->DLLName : "(unknown)", MAX_PATH);
         if (!selected)
         {
             BOOL canView = FALSE;
-            const DWORD status = plugin->TryCanViewFileW(extendedPath.c_str(), canView);
+            DWORD callbackDiagnostic = ERROR_SUCCESS;
+            const DWORD status = plugin->TryCanViewFileW(extendedPath.c_str(), canView,
+                                                         &callbackDiagnostic);
             if (status != ERROR_SUCCESS)
+            {
+                _snprintf_s(diagnostic, _TRUNCATE,
+                            "Unicode viewer SDK: %s; plug-in: %s; status: %lu (0x%08lX).",
+                            status == ERROR_PROC_NOT_FOUND ? "export missing" :
+                            status == ERROR_REVISION_MISMATCH ? "version/table rejected" :
+                            "dispatch unavailable", pluginName, status, status);
                 break; // no safe ANSI retry for this path
+            }
             if (!canView)
-                continue;
+            {
+                _snprintf_s(diagnostic, _TRUNCATE,
+                            "CanViewFileW declined the file; plug-in: %s; callback diagnostic: 0x%08lX.",
+                            pluginName, callbackDiagnostic);
+                continue; // retain configured viewer order
+            }
         }
 
         HANDLE lock = NULL;
@@ -1321,12 +1346,16 @@ static void ViewWideDiskFile(HWND parent, const std::wstring& name,
             place.rcNormalPosition.bottom - place.rcNormalPosition.top,
             place.showCmd, Configuration.AlwaysOnTop, FALSE, &lock, &lockOwner,
             sourceUID, index, viewed);
-        if (status == ERROR_SUCCESS)
-            return; // as in legacy dispatch, the viewer owns its failure handling
+        if (status == ERROR_SUCCESS && viewed)
+            return;
+        _snprintf_s(diagnostic, _TRUNCATE,
+                    "ViewFileW %s; plug-in: %s; status: %lu (0x%08lX).",
+                    status == ERROR_SUCCESS ? "failed to open the viewer" : "dispatch failed",
+                    pluginName, status, status);
         break;
     }
-    SalMessageBox(parent, LoadStr(IDS_SRCPATHUNICODEONLY), LoadStr(IDS_ERRORTITLE),
-                  MB_OK | MB_ICONWARNING);
+    SalMessageBox(parent, diagnostic[0] ? diagnostic : LoadStr(IDS_SRCPATHUNICODEONLY),
+                  LoadStr(IDS_ERRORTITLE), MB_OK | MB_ICONWARNING);
 }
 
 void CFilesWindow::ViewWideFindResult(const COpenWideFindViewerData& result, BOOL alternate)

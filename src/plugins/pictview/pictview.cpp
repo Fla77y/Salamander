@@ -1693,15 +1693,23 @@ BOOL CPluginInterfaceForViewer::ViewFile(LPCTSTR name, int left, int top, int wi
 static BOOL WINAPI CanViewPictViewFileW(const WCHAR* path)
 {
     if (!path || !*path)
+    {
+        SetLastError(ERROR_INVALID_PARAMETER);
         return FALSE;
+    }
     const HRESULT init = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
     if (FAILED(init) && init != RPC_E_CHANGED_MODE)
+    {
+        SetLastError(static_cast<DWORD>(init));
         return FALSE;
+    }
 
     pictview::wic::DecodedImage image;
     const HRESULT decoded = pictview::wic::DecodeFirstFrame(path, image);
     if (SUCCEEDED(init))
         CoUninitialize();
+    if (FAILED(decoded))
+        SetLastError(static_cast<DWORD>(decoded));
     return SUCCEEDED(decoded) ? TRUE : FALSE;
 }
 
