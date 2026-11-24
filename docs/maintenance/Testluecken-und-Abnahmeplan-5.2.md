@@ -5,7 +5,7 @@
 > Stand: **24. November 2026** (Fortschreibung des historischen
 > Arbeitskatalogs vom 23.11.). Ursprüngliche grüne Referenz
 > `a7ab5b40d859509ffe5fead2d8f00739399a5067`; zuletzt
-> unter Windows ausgewerteter **GUI-Quellstand** `bb4443e645d74f5837d2b5cd8715f99ab617bb4a` (24.11.2026 ab 21:00 CET: Delta-Build/`--test` PASS, Debug-GUI 5/5 und Release-GUI 4/4 PASS; mit `0ec07a95` insgesamt 60/60 Szenarien auf identischem Produktstand). Letzter Volltest `0f9d1632`: 103 PASS / 6 FAIL / 32 geplante SKIP / 0 erforderliche SKIP.
+> unter Windows ausgewerteter **GUI-Quellstand** `aae7e76c2a5b73b2ff2fff4e65570a2a660be92e` (24.11.2026 21:23–21:39 CET: `--test-all` 109 PASS / 0 FAIL / 32 geplante SKIP / 0 erforderliche SKIP; Laufzeit 00:15:51.958).
 > Die Dokumentationscommits danach sind **keine** neue grüne Testbaseline.
 > **Keine vollständige Anforderungsabdeckung und keine Release-Freigabe behauptet.**
 >
@@ -541,6 +541,8 @@ Nächste Prüfung: PowerShell-AST-Parser, dann isolierter
 ## 4. A1/A2 – Unicode und lange Pfade im gesamten Produkt
 
 ### [ ] UP-01 – Vollständiges Produktions-/Plugin-Inventar (**P0**, TEILBELEGT)
+
+**24.11.2026, `aae7e76c`, `--test-all` 109/0/32, Log `manage-20261124-212327-502-ccc951.log`:** 35 Plugin-Binär-ABI-Prüfungen je x64-Variante PASS; Inventar allein kein Funktionsnachweis.
 - **Lücke:** Keine lückenlose Prüfung jedes tatsächlich ausgelieferten
   Plugins und jedes UTF-16-/ANSI-Übergangs.
 - **Arbeit:** Aus Solution/Projektdateien, gebauter `.spl`-Liste und
@@ -750,6 +752,8 @@ und das echte zweite Volume sind noch ausstehend.**
 
 ### [ ] UP-04 – Kopieren/Bewegen über Volume- und Worker-Grenzen (**P0**, TEILBELEGT)
 
+**24.11.2026, `aae7e76c`, `--test-all` 109/0/32, Log `manage-20261124-212327-502-ccc951.log`:** Je vier ASCII-/Unicode-Eltern-32-MiB-Fälle pro Variante sowie F5/F6-Multiselect PASS; physischer Cross-Volume-SKIP.
+
 **24.11.2026, `bb4443e6`:** Copy/Cancel/Collision/LockedSource und 411er History in 5 Debug- und 4 Release-Läufen PASS; mit vorherigem Release auf `0ec07a95` je 5/5 pro Variante. Cross-Volume SKIP und übrige Matrix offen.
 
 **24.11.2026, `6839ef3e`, 20:10–20:29 CET:** kombinierte Unicode-Eltern-Copy/Cancel/Collision/LockedSource und 411er History je 5/5 Release x64 PASS; Debug-Gegenlauf und übrige Matrix offen. Cross-Volume-Test SKIP.
@@ -777,6 +781,8 @@ und das echte zweite Volume sind noch ausstehend.**
   `tools/release/tests/Test-SalamanderGui-LongPaths.ps1`.
 
 ### [ ] UP-05 – UNC/SMB, Reparse Points und Pfadnormalisierung (**P1**, TEILBELEGT)
+
+**24.11.2026, `aae7e76c`, `--test-all` 109/0/32, Log `manage-20261124-212327-502-ccc951.log`:** 411er History, Junction-Zyklus in Find und Standard-Langpfad-GUI PASS; UNC/SMB/8.3-Matrix offen.
 
 **24.11.2026, `bb4443e6`:** Copy/Cancel/Collision/LockedSource und 411er History in 5 Debug- und 4 Release-Läufen PASS; mit vorherigem Release auf `0ec07a95` je 5/5 pro Variante. Cross-Volume SKIP und übrige Matrix offen.
 
@@ -833,6 +839,8 @@ externen Editierens, Kopieren als UNC, Drag/Drop und
 der Shell-Properties steht noch aus.
 
 ### [ ] UP-06 – Shell, Zwischenablage, externe Programme, Dateiattribute (**P1**, OFFEN)
+
+**24.11.2026, `aae7e76c`, `--test-all` 109/0/32, Log `manage-20261124-212327-502-ccc951.log`:** CF_HDROP-Transfers je Variante, externe Editor-/Shell-Clipboard-Fälle und ADS/Attribute PASS; übrige Shell-/Plugin-Grenzen offen.
 
 **24.11.2026, ab 21:00:14 CET, letzter Lauf ab 21:05:00 CET, sauberer Windows-HEAD `bb4443e645d74f5837d2b5cd8715f99ab617bb4a`:** `manage.cmd --build-delta --test` PASS (Debug/Release x64, HTML-Hilfe, 70 PS-Skripte, 89 klassifizierte Testquellen, 23 native C++-Regressionen, 18 + 9 Dateisystemassertions; physischer Cross-Volume-Move SKIP mangels `OPENSAL_CROSS_VOLUME_TEST_DIR`). Fünf kombinierte Debug- und vier kombinierte Release-Läufe (`--test-gui-large-unicode-parent-copy --test-gui-long-history --test-gui-long-clipboard`) vollständig PASS: 54/54 isolierte Szenarien und Snapshot-Restore/STA-Shutdown 54/54. Zusammen mit dem Release-PASS auf `0ec07a95` (nur Dokumentation dazwischen) 60/60 Szenarien, je 5/5 Debug und Release für Copy/Cancel/Collision/LockedSource/History/Clipboard. 32-MiB-Kopie inklusive Bytes, Zeit, Read-only, ADS und Pause/Resume; 411er History und alle drei Clipboard-Transfers erfolgreich. Kein erneuter Transfer- oder Navigationstimeout. QA-03: zweimal read-only Retry 710 (Debug 2, Release 1), einmal Clipboard-Verifikation vor Navigation (Release 2: zunächst 0 statt 411 UTF-16-Einheiten, nur Clipboard-Schreibwiederholung), jeweils PASS; früherer Retry 709 auf `0ec07a95` bleibt dokumentiert. Konkreter ursprünglicher Fehlermechanismus und Nutzung der korrigierten Zweige nicht separat instrumentiert; begrenzte Gegenläufe sind kein Beweis vollständiger Fehlerfreiheit. Logs `manage-20261124-210014-312-253ed1.log`, `manage-20261124-210149-223-2e0294.log`, `manage-20261124-210214-046-8db747.log`, `manage-20261124-210240-042-ad1ecd.log`, `manage-20261124-210303-741-e9145b.log`, `manage-20261124-210327-667-c62fcb.log`, `manage-20261124-210351-717-8626a2.log`, `manage-20261124-210415-150-842145.log`, `manage-20261124-210437-880-2875bf.log`, `manage-20261124-210500-219-dba175.log`. Nächster Schritt: `manage.cmd --test-all` (vollständiger neuer Lauf ausstehend). UP-04/05/06, QA-03, MGMT-03, BUILD-01 weiterhin offen bzw. teilbelegt; Release NO-GO. Keine Produkt-/Teständerung.
 
@@ -927,6 +935,8 @@ Windows-Ausführung liegt für diese Commits vor.**
 UP-07 bleibt TEILBELEGT.
 
 ### [ ] UP-07 – Pfadgrenzwerte und Dateisystembedingungen (**P1**, TEILBELEGT)
+
+**24.11.2026, `aae7e76c`, `--test-all` 109/0/32, Log `manage-20261124-212327-502-ccc951.log`:** Native und GUI-32700er-Grenzfälle PASS; NearLimit Legacy Find separat SKIP.
 - **24.11.2026, `ae0a043a`, `--test-all` 97/0/0 auf Sammlungsebene:** 32700er-GUI-Pfad lesend PASS, FIND-01 offen. Log `manage-20261124-175557-853-fded7d.log`.
 - **Fälle:** 259/260/263, 255-Komponentenlimit, echte 32.700er-Pfade,
   Varianten mit und ohne LongPathsEnabled; NTFS/ReFS/SMB nur soweit
@@ -938,6 +948,8 @@ UP-07 bleibt TEILBELEGT.
 ## 5. A3 – Vollständiger Visual-Studio-2026-Build
 
 ### [ ] BUILD-01 – Komplette Vierfach-Buildmatrix (**P0**, TEILBELEGT)
+
+**24.11.2026, `aae7e76c`, `--test-all` 109/0/32, Log `manage-20261124-212327-502-ccc951.log`:** Isolierte WER-Core-Vierfachmatrix PASS; keine vollständige Vierfach-Solution-/Clean-/Setup-Matrix.
 
 **24.11.2026, `bb4443e6`:** Delta-Build Debug/Release x64 und HTML-Hilfe sowie `--test` PASS. Log `manage-20261124-210014-312-253ed1.log`. Keine neue vollständige Vierfach-/Clean-/Setup-Matrix.
 
@@ -964,6 +976,8 @@ UP-07 bleibt TEILBELEGT.
 
 ### [ ] MGMT-01 – Gesamter Update-/Build-/Test-/Setup-Ablauf (**P1**, OFFEN)
 
+**24.11.2026, `aae7e76c`, `--test-all` 109/0/32, Log `manage-20261124-212327-502-ccc951.log`:** Laufzeitausgabe im erfolgreichen Volltest nachgewiesen; Clean-Build/Setup und kombinierter Update-Ablauf offen.
+
 **24.11.2026, Nutzerauftrag (A4 / MGMT-01, MGMT-02):** Gesamtlaufzeit eines `manage.cmd`-Aufrufs am Ende ausgeben. In `tools/Manage-Salamander.ps1` startet eine monotone `System.Diagnostics.Stopwatch` am Skripteinstieg; der bestehende `finally`-Block gibt vor `Stop-Transcript` die Laufzeit als `Gesamtlaufzeit: HH:mm:ss.fff` (Gesamtstunden auch über 24 h) aus, auch bei regulär abgefangenen Fehlern und Hilfe. Die Zeit umfasst alle angeforderten Schritte einschließlich Wartezeiten, nicht den nachgelagerten Transcript-Abschluss/Clipboard-Export oder den Prozessstart des CMD-Wrappers. Exitcodes, bestehende Protokollierung und Clipboard-Verhalten unverändert. Keine Testdateien geändert (A8), kein neuer Windows-Lauf belegt. Nächster Schritt: `manage.cmd --help` (Exit 0), `manage.cmd --invalid-option` (Exit 1), jeweils Laufzeit im Terminal/Log prüfen; anschließend der noch ausstehende `manage.cmd --test-all`. Release NO-GO unverändert.
 - **24.11.2026:** Zwei x64-Delta-Builds nach Wechsel zu `.Build/` PASS (ca. 122 s / 8 s). Vollständiger autorisierter `--update --build --test-all --setup`-Lauf fehlt weiter.
 
@@ -975,6 +989,8 @@ UP-07 bleibt TEILBELEGT.
   `--update` nur nach ausdrücklicher Zustimmung.
 
 ### [ ] MGMT-02 – Fehler- und Isolationsverhalten (**P1**, TEILBELEGT)
+
+**24.11.2026, `aae7e76c`, `--test-all` 109/0/32, Log `manage-20261124-212327-502-ccc951.log`:** Aggregations-, Exitcode-, GUI-Warte- und Isolationsverträge PASS; neue Laufzeitausgabe bei Erfolg bestätigt, Fehler-/Help-Gegenlauf offen.
 
 **24.11.2026, Nutzerauftrag (A4 / MGMT-01, MGMT-02):** Gesamtlaufzeit eines `manage.cmd`-Aufrufs am Ende ausgeben. In `tools/Manage-Salamander.ps1` startet eine monotone `System.Diagnostics.Stopwatch` am Skripteinstieg; der bestehende `finally`-Block gibt vor `Stop-Transcript` die Laufzeit als `Gesamtlaufzeit: HH:mm:ss.fff` (Gesamtstunden auch über 24 h) aus, auch bei regulär abgefangenen Fehlern und Hilfe. Die Zeit umfasst alle angeforderten Schritte einschließlich Wartezeiten, nicht den nachgelagerten Transcript-Abschluss/Clipboard-Export oder den Prozessstart des CMD-Wrappers. Exitcodes, bestehende Protokollierung und Clipboard-Verhalten unverändert. Keine Testdateien geändert (A8), kein neuer Windows-Lauf belegt. Nächster Schritt: `manage.cmd --help` (Exit 0), `manage.cmd --invalid-option` (Exit 1), jeweils Laufzeit im Terminal/Log prüfen; anschließend der noch ausstehende `manage.cmd --test-all`. Release NO-GO unverändert.
 - **24.11.2026, neu implementiert, Windows-GREEN ausstehend:** `manage.cmd` wartet vor GUI-sensitiven Testaktionen bei bereits laufenden `salamand.exe`-Prozessen mit einmaliger PID-Meldung und 1-s-Polling auf deren reguläres Schließen; setzt anschließend ohne Rückfrage fort. Keine Prozesse werden beendet, Ctrl+C bleibt wirksam. Nach einem GUI-Fall verbleibende Prozesse werden weiterhin als Sicherheitsfehler behandelt, nicht als normales Warten kaschiert. Neuer simulierter Regressionstest `Test-Manage-GuiWait.ps1` in `--test` registriert, statisch geprüft.
@@ -990,6 +1006,8 @@ UP-07 bleibt TEILBELEGT.
   keine gefälschten PASS-Meldungen.
 
 ### [ ] MGMT-03 – Test-Registry gegen unbemerkte Auslassungen (**P2**, TEILBELEGT)
+
+**24.11.2026, `aae7e76c`, `--test-all` 109/0/32, Log `manage-20261124-212327-502-ccc951.log`:** Registry-/Drift- und Aggregationsverträge PASS; sämtliche registrierten Standardtests ausgeführt, sechs frühere FAILs jetzt PASS, 32 geplante SKIPs sichtbar; keine vollständige Funktionsabdeckung behauptet.
 
 **24.11.2026, `bb4443e6`:** 70 PS-Skripte, 89 klassifizierte Testquellen, Registry-/Aggregationsverträge und neun kombinierte GUI-Dispatches PASS; vollständiger `--test-all` ausstehend.
 
@@ -1030,6 +1048,8 @@ UP-07 bleibt TEILBELEGT.
 ## 7. A5 – Release-7z/Setup/saubere VM
 
 ### [ ] PKG-01 – Vollständiges und byteidentisches Plugin-Paket (**P0**, VORBEREITET)
+
+**24.11.2026, `aae7e76c`, `--test-all` 109/0/32, Log `manage-20261124-212327-502-ccc951.log`:** Synthetische Staging-/SHA256-Verträge und ABI PASS; reale Pakete noch zu erzeugen und prüfen.
 - **Lücke:** Pflichtdateien werden geprüft, aber noch nicht alle gebauten
   `.spl` auf exakten Inhalt und vollständige Stagingliste im grünen Stand.
 - **Fälle:** Geändertes, fehlendes, zusätzliches oder an falscher Stelle
@@ -1042,6 +1062,8 @@ UP-07 bleibt TEILBELEGT.
   Verzeichnis-Fixture; echte Paketabnahme steht aus.
 
 ### [ ] PKG-02 – Allowlist, Abhängigkeiten, Lizenzdateien (**P0**, TEILBELEGT)
+
+**24.11.2026, `aae7e76c`, `--test-all` 109/0/32, Log `manage-20261124-212327-502-ccc951.log`:** Synthetische Paket-/Payload-/Manifest-Verträge PASS; reale Paketprüfung offen.
 - **Fälle:** Release-only-Manifest; verbotene `.pdb/.lib/.exp/.obj/.pch/
   .idb/.ilk/.tlog/.lastbuildstate`, Debug CRT, private Logs/Secrets;
   Vollständigkeit von EXE/DLL/SPL/Sprachen/Help/EXIF/THIRD_PARTY;
@@ -1109,6 +1131,8 @@ UP-07 bleibt TEILBELEGT.
   Plugin-Fähigkeiten je Modul vorher spezifizieren; **UP-01/UP-02**.
 
 ### [ ] FIND-04 – Erweiterte Funktionen und Ergebnisaktionen (**P1**, TEILBELEGT)
+
+**24.11.2026, `aae7e76c`, `--test-all` 109/0/32, Log `manage-20261124-212327-502-ccc951.log`:** Legacy Find 37/37 je Variante und ViewUnicode 5/5 je Variante PASS; Opt-ins und verbleibende Funktionen offen.
 - **24.11.2026, `ae0a043a`, `--test-all` 97/0/0 auf Sammlungsebene:** 74/0/0, beide Editorfälle mit nicht-MSIX-Host PASS. Log `manage-20261124-175557-853-fded7d.log`.
 - **24.11.2026, `2c689ca4a5248530febc0a7f65d7e32ab1f0b7b2`, sauberer Checkout:** vollständige isolierte Legacy-Find-GUI-Suite Debug x64 ab 17:49:27 und Release x64 ab 17:51:57, beide Builds PASS, jeweils **37 PASS / 0 FAIL / 0 SKIP**, zusammen 74/0/0. Logs `manage-20261124-174927-466-1d4c2a.log` und `manage-20261124-175157-778-3a392e.log`; Berichte `legacy-find-Debug-5a2dc9221bc34746a750dff62e794afd.results.json` und `legacy-find-Release-61a04c45d76f43c49d6e3876dbc59133.results.json`. ViewUnicode, ViewLong, ViewMixed, AdvancedInputs, ShellClipboard, ExternalEditor/ExternalEditorNative PASS in beiden Varianten; alle acht Editor-Startprobes mit nicht-MSIX-PowerShell PASS. Drei externe Fokusunterbrechungen in Release wurden durch die vorhandene sichere Fokuswiederherstellung abgefangen. Zusammen mit 10/10 isolierten Release-ViewUnicode-Läufen auf produktgleichem `86fcf2b5` und Unicode-Parent-Debug/Release PASS liegt eine neue grüne Teilbaseline vor. Der frühere MSIX-Editorfehler bleibt offen; kein Nachweis allgemeiner Flakiness-Freiheit, gezielt erzwungener Clipboard-Sperren oder vollständiger Shell-Unterstützung langer Pfade. LongResult PASS bedeutet sichere Ablehnung, nicht vollständige A1/A2-Unterstützung. FIND-04/QA-03 bleiben TEILBELEGT; übrige 35-Gap-Matrix, Plugin-/VM-Abnahme und Release-Freigabe offen. **Unmittelbar nächster Schritt:** `manage.cmd --test-all` ohne Modusfilter (beide x64-Varianten; bestehende Produktbuilds `86fcf2b5` sind produktgleich), maschinenlesbaren Bericht und etwaige FAIL/SKIP auswerten. Keine Produkt-/Teständerungen in diesem Nachweiscommit.
 - **24.11.2026, `86fcf2b58c7c4badb42d3d3bd69a77648eb2e0a0`, sauberer Checkout:** `manage.cmd --build-delta --test` ab 17:45:04 PASS, Debug/Release x64, HTML-Hilfe, 68 PowerShell-Parserprüfungen, Vertragsprüfungen, 23 native C++-Regressionsaufrufe und 18 Windows/.NET-Dateisystemassertions erfolgreich; optionaler Cross-Volume-Unterfall SKIP. Log `manage-20261124-174504-566-5fa2e6.log`. Danach `Invoke-LegacyViewerReliability.ps1 -Configuration Release -Iterations 10 -OutputDirectory .Build/logs/legacy-viewer-reliability`: isolierter Release-x64-Build PASS, Binär-SHA256 `8F5F6DD07EA630C96A89957F736462B2F8EE48574F393B16260D75F675BB6D56`, **10/10 PASS**, 20 exakte Inhaltsvergleiche, Next/Previous und Clipboard-Restore jeweils PASS, 0 verbliebene Prozesse je Lauf, Dauer 2,98–3,31 s. Evidenz `viewunicode-20261124-174702-140a00c1/Summary.csv` und Einzellogs laut Nutzerkonsole. Der frühere Release-Timeout trat nach der Produktkorrektur in dieser Serie nicht mehr auf; die tatsächliche ursprüngliche Ursache und Verhalten unter gezielt erzwungener Clipboard-Sperre sind damit nicht abschließend nachgewiesen. Nächster Schritt vollständige Legacy-Find-Suiten Debug und Release auf produktgleichem Stand. FIND-04/QA-03 bleiben TEILBELEGT; MSIX-Editor, übrige Abnahme und Release-Freigabe offen. Keine Produkt-/Teständerung in diesem Nachweiscommit.
@@ -1142,6 +1166,8 @@ UP-07 bleibt TEILBELEGT.
 ## 9. A7 – WIC-PictView-Plugin
 
 ### [ ] WIC-01 – Native Codec-/Negativmatrix (**P1**, VORBEREITET)
+
+**24.11.2026, `aae7e76c`, `--test-all` 109/0/32, Log `manage-20261124-212327-502-ccc951.log`:** Native WIC-Codec-Matrix 13 Endungen x86/x64 PASS; historische Parität nicht nachgewiesen.
 - **24.11.2026, `ae0a043a`, `--test-all` 97/0/0 auf Sammlungsebene:** 13 registrierte Endungen und native WIC-Tests x86/x64 PASS. Log `manage-20261124-175557-853-fded7d.log`.
 - **Fälle:** Alle **13 derzeit registrierten Endungen**
   `bmp,dib,png,jpg,jpeg,jpe,gif,tif,tiff,ico,jxr,wdp,hdp`
@@ -1157,6 +1183,8 @@ UP-07 bleibt TEILBELEGT.
   dessen Ausführung auf Merge-SHA offen.
 
 ### [ ] WIC-02 – Echter F3-Host über mehrere Bildformate (**P0**, TEILBELEGT)
+
+**24.11.2026, `aae7e76c`, `--test-all` 109/0/32, Log `manage-20261124-212327-502-ccc951.log`:** Native HWND-Tests x86/x64 PASS, F3-Host-Opt-ins zwölf SKIPs im aktuellen Lauf.
 - **24.11.2026, `ed878eb8`:** BMP-F3-Vorprüfung vor Plugin-Load erneut PASS; weitergehende Abnahme offen.
 - **24.11.2026, `94f736b1981063bbc2dcca0328332efff38536fe`, sauberer Checkout:** `manage.cmd --test-pictview-host --release`, 18:15:40–18:15:50 CET, **6/6 PASS** (BMP, PNG, JPEG, GIF, TIFF, ICO), Windows 10.0.26300, PowerShell 7.7.0 außerhalb WindowsApps. Log `manage-20261124-181540-077-37d194.log`. Produktgleicher Release-x64-Build von `86fcf2b5`. Je Format eigener Salamander-Prozess, exakter geladener PictView-SPL-Pfad, echtes F3 und WIC-HWND statt internem Viewer, unveränderte SHA-256-Quelldatei vor dem Schließen, bestätigtes HWND-Schließen. WIC-02: vorgesehener F3-Smoke vollständig PASS; **TEILBELEGT** für weitergehende Abnahmekriterien, denn der Hosttreiber misst weder Bildabmessungen/Pixelanzeige noch Lock-Freigabe im realen Host explizit; native WIC-Fenster-/Pixeltests sind separate Nachweise. Keine Aussage über historische Codec-/Funktionsparität (WIC-06) oder vollständige A7-Erfüllung. **Nächster Schritt:** expliziter Opt-in `manage.cmd --test-plugin-load --release` ausschließlich mit vertrauenswürdigen installierten Plugins und geschlossenen übrigen Salamander-Instanzen; der Plugin-Manager initialisiert alle installierten Module, auch Drittanbieter, der Smoke prüft vier Zielplugins. Kein vollständiger Funktionsnachweis. Produkt und Tests unverändert; Release NO-GO.
 - **24.11.2026, `ae0a043a`, `--test-all` 97/0/0 auf Sammlungsebene:** Native Fensterregressionen PASS, echter F3-Host separat: `manage.cmd --test-pictview-host --release`. Log `manage-20261124-175557-853-fded7d.log`.
@@ -1190,6 +1218,8 @@ UP-07 bleibt TEILBELEGT.
   Timing/Abbruch/Close testen. A0/A7-Konflikt nicht stillschweigend ausklammern.
 
 ### [ ] WIC-05 – Bildbearbeitung, Export, Zwischenablage (**P1**, TEILBELEGT)
+
+**24.11.2026, `aae7e76c`, `--test-all` 109/0/32, Log `manage-20261124-212327-502-ccc951.log`:** Native Transform-, Writer- und Clipboard-Regressionen x86/x64 PASS, reale Host-Funktionsmatrix offen.
 - **Fälle:** Rotate/Mirror/Zoom/Fit, Save Copy PNG/BMP/JPEG/TIFF,
   Ziel bereits vorhanden, Alpha, EXIF-Fälle, Clipboard
   Copy/Paste, ungültige DIBs, wiederholter Export.
@@ -1239,6 +1269,8 @@ UP-07 bleibt TEILBELEGT.
   Ausschlüsse (WinAPI-/GUI-Boundaries).
 
 ### [ ] QA-03 – Wiederholbarkeit, GUI-Flakiness und Ressourcen (**P1**, TEILBELEGT)
+
+**24.11.2026, `aae7e76c`, `--test-all` 109/0/32, Log `manage-20261124-212327-502-ccc951.log`:** Sieben erfolgreiche read-only Clipboard-Retries (709 vier, 710 drei; drei Sentinel-Fehler vor Kommandoversand), kein neuer Transfer-/Navigationstimeout. Wiederholbarkeit weiter teilbelegt.
 
 **24.11.2026, ab 21:00:14 CET, letzter Lauf ab 21:05:00 CET, sauberer Windows-HEAD `bb4443e645d74f5837d2b5cd8715f99ab617bb4a`:** `manage.cmd --build-delta --test` PASS (Debug/Release x64, HTML-Hilfe, 70 PS-Skripte, 89 klassifizierte Testquellen, 23 native C++-Regressionen, 18 + 9 Dateisystemassertions; physischer Cross-Volume-Move SKIP mangels `OPENSAL_CROSS_VOLUME_TEST_DIR`). Fünf kombinierte Debug- und vier kombinierte Release-Läufe (`--test-gui-large-unicode-parent-copy --test-gui-long-history --test-gui-long-clipboard`) vollständig PASS: 54/54 isolierte Szenarien und Snapshot-Restore/STA-Shutdown 54/54. Zusammen mit dem Release-PASS auf `0ec07a95` (nur Dokumentation dazwischen) 60/60 Szenarien, je 5/5 Debug und Release für Copy/Cancel/Collision/LockedSource/History/Clipboard. 32-MiB-Kopie inklusive Bytes, Zeit, Read-only, ADS und Pause/Resume; 411er History und alle drei Clipboard-Transfers erfolgreich. Kein erneuter Transfer- oder Navigationstimeout. QA-03: zweimal read-only Retry 710 (Debug 2, Release 1), einmal Clipboard-Verifikation vor Navigation (Release 2: zunächst 0 statt 411 UTF-16-Einheiten, nur Clipboard-Schreibwiederholung), jeweils PASS; früherer Retry 709 auf `0ec07a95` bleibt dokumentiert. Konkreter ursprünglicher Fehlermechanismus und Nutzung der korrigierten Zweige nicht separat instrumentiert; begrenzte Gegenläufe sind kein Beweis vollständiger Fehlerfreiheit. Logs `manage-20261124-210014-312-253ed1.log`, `manage-20261124-210149-223-2e0294.log`, `manage-20261124-210214-046-8db747.log`, `manage-20261124-210240-042-ad1ecd.log`, `manage-20261124-210303-741-e9145b.log`, `manage-20261124-210327-667-c62fcb.log`, `manage-20261124-210351-717-8626a2.log`, `manage-20261124-210415-150-842145.log`, `manage-20261124-210437-880-2875bf.log`, `manage-20261124-210500-219-dba175.log`. Nächster Schritt: `manage.cmd --test-all` (vollständiger neuer Lauf ausstehend). UP-04/05/06, QA-03, MGMT-03, BUILD-01 weiterhin offen bzw. teilbelegt; Release NO-GO. Keine Produkt-/Teständerung.
 
