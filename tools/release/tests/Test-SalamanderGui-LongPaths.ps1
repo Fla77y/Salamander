@@ -2035,9 +2035,18 @@ public sealed class SalamanderGuiClipboardOwner : IDisposable
                 throw new InvalidOperationException(
                     "Could not stop clipboard owner STA: " +
                     Marshal.GetLastWin32Error());
-            if (!thread.Join(5000))
-                throw new TimeoutException(
-                    "Clipboard owner STA did not stop within five seconds.");
+            // Window destruction and STA shutdown may require callbacks on
+            // the calling STA, just like clipboard publication. Keep that
+            // message queue pumping while waiting, without extending the
+            // existing five-second shutdown deadline.
+            var shutdown = System.Diagnostics.Stopwatch.StartNew();
+            while (!thread.Join(25))
+            {
+                PumpCallerMessages();
+                if (shutdown.ElapsedMilliseconds >= 5000 && thread.IsAlive)
+                    throw new TimeoutException(
+                        "Clipboard owner STA did not stop within five seconds.");
+            }
             ready.Dispose();
             completed.Dispose();
         }
@@ -2080,6 +2089,7 @@ $deep = $source
 $process = $null
 $testConfigurationCleanupAllowed = $true
 $clipboardRestorationFailed = $false
+$clipboardOwnerShutdownFailed = $false
 $primaryGuiFailure = $null
 $copyTestReached = $null
 $copyTestContinue = $null
@@ -5756,8 +5766,14 @@ finally {
         }
     }
     if ($null -ne $script:clipboardOwner) {
-        try { $script:clipboardOwner.Dispose() }
-        catch { Write-Warning "Clipboard owner shutdown failed: $($_.Exception.Message)" }
+        try {
+            $script:clipboardOwner.Dispose()
+            Write-Host 'PASS: Clipboard owner STA stopped'
+        }
+        catch {
+            $clipboardOwnerShutdownFailed = $true
+            Write-Warning "Clipboard owner shutdown failed: $($_.Exception.Message)"
+        }
     }
     if ($null -ne $nativeClipboardSnapshot) { $nativeClipboardSnapshot.Dispose() }
     if ($IsolatedConfiguration -and $testConfigurationCleanupAllowed -and
@@ -5789,5 +5805,8 @@ finally {
     }
     if ($IsolatedConfiguration -and ($clipboardRestorationFailed -or -not $testConfigurationCleanupAllowed)) {
         throw ('Isolated GUI cleanup failed; acceptance cannot be reported as passed. Primary GUI failure: ' + $primaryGuiFailure)
+    }
+    if ($clipboardOwnerShutdownFailed -and [string]::IsNullOrEmpty($primaryGuiFailure)) {
+        throw 'GUI test cleanup failed: clipboard owner STA did not shut down successfully.'
     }
 }
