@@ -499,6 +499,7 @@ public static class SalamanderGuiNative
     private static extern bool AttachThreadInput(uint threadId, uint attachToId, bool attach);
     [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
     [DllImport("user32.dll")] private static extern short GetKeyState(int virtualKey);
+    [DllImport("user32.dll")] private static extern short GetAsyncKeyState(int virtualKey);
 
     // Only a live, visible HWND belonging to the freshly launched test PID
     // may be activated. The final fallback briefly shares the input queue
@@ -1442,18 +1443,35 @@ public static class SalamanderGuiNative
     {
         IntPtr list = VerifiedChild(window, pid, 2510);
         int count = LegacyFindResultCount(window, pid);
-        short shiftState = GetKeyState(0x10);
-        short controlState = GetKeyState(0x11);
-        short altState = GetKeyState(0x12);
+        // GetKeyState reports this non-pumping test STA's *queued* keyboard
+        // state, which can remain stale after focus moves to another app.
+        // GetAsyncKeyState reports whether a modifier is physically held
+        // NOW. Never inject key-up input or ignore an actually held modifier.
+        // Bounded waiting avoids sporadic failures when the user releases Shift.
+        short physicalShift = GetAsyncKeyState(0x10);
+        short physicalControl = GetAsyncKeyState(0x11);
+        short physicalAlt = GetAsyncKeyState(0x12);
+        for (int attempt = 0; attempt < 80 &&
+             ((physicalShift & 0x8000) != 0 || (physicalControl & 0x8000) != 0 ||
+              (physicalAlt & 0x8000) != 0); ++attempt)
+        {
+            System.Threading.Thread.Sleep(25);
+            physicalShift = GetAsyncKeyState(0x10);
+            physicalControl = GetAsyncKeyState(0x11);
+            physicalAlt = GetAsyncKeyState(0x12);
+        }
         if (index < 0 || index >= count ||
-            (shiftState & 0x8000) != 0 || (controlState & 0x8000) != 0 ||
-            (altState & 0x8000) != 0)
+            (physicalShift & 0x8000) != 0 || (physicalControl & 0x8000) != 0 ||
+            (physicalAlt & 0x8000) != 0)
             throw new InvalidOperationException(
                 "Cannot safely select the original Find result (index=" + index +
                 ", resultCount=" + count +
-                ", shift=0x" + ((ushort)shiftState).ToString("X4") +
-                ", control=0x" + ((ushort)controlState).ToString("X4") +
-                ", alt=0x" + ((ushort)altState).ToString("X4") + ")");
+                ", physicalShift=0x" + ((ushort)physicalShift).ToString("X4") +
+                ", physicalControl=0x" + ((ushort)physicalControl).ToString("X4") +
+                ", physicalAlt=0x" + ((ushort)physicalAlt).ToString("X4") +
+                ", queuedShift=0x" + ((ushort)GetKeyState(0x10)).ToString("X4") +
+                ", queuedControl=0x" + ((ushort)GetKeyState(0x11)).ToString("X4") +
+                ", queuedAlt=0x" + ((ushort)GetKeyState(0x12)).ToString("X4") + ")");
         SendChecked(window, 0x0028, new UIntPtr((ulong)list.ToInt64()), new IntPtr(1)); // WM_NEXTDLGCTL
         SendChecked(list, 0x0100, new UIntPtr(0x24), new IntPtr(1)); // VK_HOME
         for (int row = 0; row < index; ++row)
