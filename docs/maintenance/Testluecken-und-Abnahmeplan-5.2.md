@@ -805,6 +805,8 @@ und das echte zweite Volume sind noch ausstehend.**
 
 ### [ ] UP-04 – Kopieren/Bewegen über Volume- und Worker-Grenzen (**P0**, TEILBELEGT)
 
+**25.11.2026, `48db923`:** ASCII-Operationsbaseline, Unicode-Transfer, Unicode-Rename und Unicode-Multiselect Release PASS, einschließlich 263er Pfad, 17-MiB+-Same-Volume-Move und 17-MiB-Hintergrundtransfers. Keine Produkt-/Teständerung, keine pauschale Schließung; physischer Cross-Volume-Unterfall weiterhin offen. Siehe QA-03/J-20261125-05.
+
 **25.11.2026, `2ecd472`:** beide vorherigen Release-GUI-Fehler und beide Debug-Gegenläufe GREEN; neue Fokus-/Modalabbrüche in Release-Transfer-/Rename-/Multiselect-/ASCII-Baseline-Suiten. Gesamttest 105/5/35; keine neue Produktänderung oder pauschale Schließung, Gegenlauf auf exklusivem Desktop siehe QA-03/J-20261125-04.
 
 **25.11.2026, `e7712c9`:** beide Release-GUI-Gegenläufe PASS einschließlich F2/F5/F6/F8-Refusals, No-write-Assertions, Short-to-long und Target-leaf-Overflow F5/F6, SMB-UNC und 255er Namen. Standardtest am veralteten statischen ESC-Vertrag RED; Metatestfix und Volltest siehe QA-03/J-20261125-03. Kein neuer Produktcode und keine pauschale Schließung.
@@ -900,6 +902,8 @@ externen Editierens, Kopieren als UNC, Drag/Drop und
 der Shell-Properties steht noch aus.
 
 ### [ ] UP-06 – Shell, Zwischenablage, externe Programme, Dateiattribute (**P1**, OFFEN)
+
+**25.11.2026, `48db923`:** ASCII-Operationsbaseline, Unicode-Transfer, Unicode-Rename und Unicode-Multiselect Release PASS, einschließlich 263er Pfad, 17-MiB+-Same-Volume-Move und 17-MiB-Hintergrundtransfers. Keine Produkt-/Teständerung, keine pauschale Schließung; physischer Cross-Volume-Unterfall weiterhin offen. Siehe QA-03/J-20261125-05.
 
 **25.11.2026, `2ecd472`:** beide vorherigen Release-GUI-Fehler und beide Debug-Gegenläufe GREEN; neue Fokus-/Modalabbrüche in Release-Transfer-/Rename-/Multiselect-/ASCII-Baseline-Suiten. Gesamttest 105/5/35; keine neue Produktänderung oder pauschale Schließung, Gegenlauf auf exklusivem Desktop siehe QA-03/J-20261125-04.
 
@@ -1011,6 +1015,8 @@ UP-07 bleibt TEILBELEGT.
 
 ### [ ] UP-07 – Pfadgrenzwerte und Dateisystembedingungen (**P1**, TEILBELEGT)
 
+**25.11.2026, `48db923`:** ASCII-Operationsbaseline, Unicode-Transfer, Unicode-Rename und Unicode-Multiselect Release PASS, einschließlich 263er Pfad, 17-MiB+-Same-Volume-Move und 17-MiB-Hintergrundtransfers. Keine Produkt-/Teständerung, keine pauschale Schließung; physischer Cross-Volume-Unterfall weiterhin offen. Siehe QA-03/J-20261125-05.
+
 **25.11.2026, `2ecd472`:** beide vorherigen Release-GUI-Fehler und beide Debug-Gegenläufe GREEN; neue Fokus-/Modalabbrüche in Release-Transfer-/Rename-/Multiselect-/ASCII-Baseline-Suiten. Gesamttest 105/5/35; keine neue Produktänderung oder pauschale Schließung, Gegenlauf auf exklusivem Desktop siehe QA-03/J-20261125-04.
 
 **25.11.2026, `e7712c9`:** beide Release-GUI-Gegenläufe PASS einschließlich F2/F5/F6/F8-Refusals, No-write-Assertions, Short-to-long und Target-leaf-Overflow F5/F6, SMB-UNC und 255er Namen. Standardtest am veralteten statischen ESC-Vertrag RED; Metatestfix und Volltest siehe QA-03/J-20261125-03. Kein neuer Produktcode und keine pauschale Schließung.
@@ -1101,6 +1107,8 @@ UP-07 bleibt TEILBELEGT.
   keine gefälschten PASS-Meldungen.
 
 ### [ ] MGMT-03 – Test-Registry gegen unbemerkte Auslassungen (**P2**, TEILBELEGT)
+
+**25.11.2026, 00:47–00:50 CET, sauberer Windows-HEAD `48db9235350048bca5b590fc0c84294a2d4ba3f2`:** alle fünf zuvor auf `2ecd472` fehlgeschlagenen Release-GUI-Gegenläufe ohne Produkt- oder Teständerung PASS: `--test-gui-legacy-find --release` 37 PASS/0 FAIL/0 SKIP, 00:02:22.081, Log `manage-20261125-004718-558-d5d788.log`, JSON `legacy-find-Release-255c47efd7f34066aab8057f8907bdcb.results.json`, einschließlich UnicodeFindShortcut; `--test-gui-operations-baseline --release` PASS 00:00:08.289, Log `manage-20261125-004941-084-fc122d.log`; `--test-gui-unicode-transfer --release` PASS 00:00:08.736, Log `manage-20261125-004949-813-7542f7.log`, inklusive 263er Pfad und 17-MiB+-Same-Volume-Move mit SHA-256; `--test-gui-unicode-rename --release` PASS 00:00:04.150, Log `manage-20261125-004958-989-10811a.log`; `--test-gui-unicode-multiselect --release` PASS 00:00:10.745, Log `manage-20261125-005003-584-8641be.log`, inklusive synchroner und 17-MiB-Hintergrundtransfers. Alle fünf Kommandos erfolgreich abgeschlossen, keine Fokus-/Modalabbrüche im vorgelegten Protokoll. Damit sind die fünf konkreten Fehlschläge nicht reproduziert; die Diagnose von Desktop-Interferenz wird gestützt, aber die alleinige Kausalität von PrimeVideo und die tatsächliche Exklusivität des Desktops sind nicht separat nachgewiesen. Kein neuer Produktfehler, keine Teständerung, keine pauschale Schließung von Gaps. Letzter Volltest bleibt 105 PASS/5 FAIL/35 SKIP auf `2ecd472`; die gezielten Gegenläufe dürfen nicht nachträglich als vollständiger GREEN-Lauf verrechnet werden. Nächster Schritt `manage.cmd --test-all` bei entsperrtem Desktop ohne konkurrierende Anwendungen oder Benutzereingaben; kein erneuter Produktbuild erforderlich. Release NO-GO bis zur weiteren Abnahme.
 
 **25.11.2026, 00:26–00:43 CET, sauberer Windows-HEAD `2ecd4729cd16a86b56de5b9da71f9e7c6684d99f`:** `--test` PASS 00:01:30.979, Log `manage-20261125-002622-956-ec0965.log` (70 PS-Parserprüfungen, 90 Registry-Testquellen, 24 native C++-Regressionen, 18 Dateisystemassertions; physischer Cross-Volume-Unterfall SKIP). Statischer ESC-Metatest aus J-20261125-03 damit GREEN. `--test-gui-unsafe-unicode-operations --debug` PASS 00:00:05.620, Log `manage-20261125-002805-607-8ae26e.log`; `--test-gui --debug` PASS 00:00:22.995, Log `manage-20261125-002811-676-fee240.log`. Vorige Release-GREEN-Nachweise auf `e7712c9` bestätigt durch beide entsprechenden Release-Suiten im neuen Volltest; keine Produktcodeänderung seit `cc0b8ab`. `--test-all` FAIL nach 00:15:01.897, 105 PASS / 5 FAIL / 35 SKIP (Sammlungsebene), Log `manage-20261125-002835-133-ea9994.log`, JSON `manage-20261125-002835-133-ea9994.results.json`. WER-Core-Buildmatrix 4/4, 66/66 x64-Plugin-PE-Exporttabellen, native PictView x86/x64 inkl. HWND-/Lock-Test, beide ViewUnicode-Wiederholungsserien je 5/5, alle Debug-GUI-Suiten PASS. Legacy Find Release 36/37, Debug 37/37. PictView-F3-Opt-ins, Cross-Volume, EFS/NearLimit und andere 35 Scope-Ausschlüsse nicht als PASS werten. Kein neuer vollständiger Solution-Build in diesem Lauf; vorheriger x64-Build-/Exportnachweis auf produktgleichem `8b9a31b` bleibt Referenz.
 
@@ -1270,6 +1278,8 @@ UP-07 bleibt TEILBELEGT.
   Plugin-Fähigkeiten je Modul vorher spezifizieren; **UP-01/UP-02**.
 
 ### [ ] FIND-04 – Erweiterte Funktionen und Ergebnisaktionen (**P1**, TEILBELEGT)
+
+**25.11.2026, `48db923`:** Release-Gegenlauf 37/37 PASS ohne Produkt-/Teständerung, einschließlich zuvor am Fokusguard abgebrochenem UnicodeFindShortcut. Debug 37/37 auf `2ecd472`; Volltest und übrige Abnahme offen. Siehe QA-03/J-20261125-05.
 
 **25.11.2026, `2ecd472`:** Legacy Find Release 36/37 (UnicodeFindShortcut vor Shortcut am Fokusguard abgebrochen), Debug 37/37, ViewUnicode je 5/5. Externe Desktop-Interferenz im selben Volltest belegt; isolierter Release-Gegenlauf offen. Siehe QA-03/J-20261125-04.
 
@@ -1456,6 +1466,8 @@ UP-07 bleibt TEILBELEGT.
   Ausschlüsse (WinAPI-/GUI-Boundaries).
 
 ### [ ] QA-03 – Wiederholbarkeit, GUI-Flakiness und Ressourcen (**P1**, TEILBELEGT)
+
+**25.11.2026, 00:47–00:50 CET, sauberer Windows-HEAD `48db9235350048bca5b590fc0c84294a2d4ba3f2`:** alle fünf zuvor auf `2ecd472` fehlgeschlagenen Release-GUI-Gegenläufe ohne Produkt- oder Teständerung PASS: `--test-gui-legacy-find --release` 37 PASS/0 FAIL/0 SKIP, 00:02:22.081, Log `manage-20261125-004718-558-d5d788.log`, JSON `legacy-find-Release-255c47efd7f34066aab8057f8907bdcb.results.json`, einschließlich UnicodeFindShortcut; `--test-gui-operations-baseline --release` PASS 00:00:08.289, Log `manage-20261125-004941-084-fc122d.log`; `--test-gui-unicode-transfer --release` PASS 00:00:08.736, Log `manage-20261125-004949-813-7542f7.log`, inklusive 263er Pfad und 17-MiB+-Same-Volume-Move mit SHA-256; `--test-gui-unicode-rename --release` PASS 00:00:04.150, Log `manage-20261125-004958-989-10811a.log`; `--test-gui-unicode-multiselect --release` PASS 00:00:10.745, Log `manage-20261125-005003-584-8641be.log`, inklusive synchroner und 17-MiB-Hintergrundtransfers. Alle fünf Kommandos erfolgreich abgeschlossen, keine Fokus-/Modalabbrüche im vorgelegten Protokoll. Damit sind die fünf konkreten Fehlschläge nicht reproduziert; die Diagnose von Desktop-Interferenz wird gestützt, aber die alleinige Kausalität von PrimeVideo und die tatsächliche Exklusivität des Desktops sind nicht separat nachgewiesen. Kein neuer Produktfehler, keine Teständerung, keine pauschale Schließung von Gaps. Letzter Volltest bleibt 105 PASS/5 FAIL/35 SKIP auf `2ecd472`; die gezielten Gegenläufe dürfen nicht nachträglich als vollständiger GREEN-Lauf verrechnet werden. Nächster Schritt `manage.cmd --test-all` bei entsperrtem Desktop ohne konkurrierende Anwendungen oder Benutzereingaben; kein erneuter Produktbuild erforderlich. Release NO-GO bis zur weiteren Abnahme.
 
 **25.11.2026, 00:26–00:43 CET, sauberer Windows-HEAD `2ecd4729cd16a86b56de5b9da71f9e7c6684d99f`:** `--test` PASS 00:01:30.979, Log `manage-20261125-002622-956-ec0965.log` (70 PS-Parserprüfungen, 90 Registry-Testquellen, 24 native C++-Regressionen, 18 Dateisystemassertions; physischer Cross-Volume-Unterfall SKIP). Statischer ESC-Metatest aus J-20261125-03 damit GREEN. `--test-gui-unsafe-unicode-operations --debug` PASS 00:00:05.620, Log `manage-20261125-002805-607-8ae26e.log`; `--test-gui --debug` PASS 00:00:22.995, Log `manage-20261125-002811-676-fee240.log`. Vorige Release-GREEN-Nachweise auf `e7712c9` bestätigt durch beide entsprechenden Release-Suiten im neuen Volltest; keine Produktcodeänderung seit `cc0b8ab`. `--test-all` FAIL nach 00:15:01.897, 105 PASS / 5 FAIL / 35 SKIP (Sammlungsebene), Log `manage-20261125-002835-133-ea9994.log`, JSON `manage-20261125-002835-133-ea9994.results.json`. WER-Core-Buildmatrix 4/4, 66/66 x64-Plugin-PE-Exporttabellen, native PictView x86/x64 inkl. HWND-/Lock-Test, beide ViewUnicode-Wiederholungsserien je 5/5, alle Debug-GUI-Suiten PASS. Legacy Find Release 36/37, Debug 37/37. PictView-F3-Opt-ins, Cross-Volume, EFS/NearLimit und andere 35 Scope-Ausschlüsse nicht als PASS werten. Kein neuer vollständiger Solution-Build in diesem Lauf; vorheriger x64-Build-/Exportnachweis auf produktgleichem `8b9a31b` bleibt Referenz.
 
