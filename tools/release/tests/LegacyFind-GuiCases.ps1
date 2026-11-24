@@ -801,21 +801,40 @@ function Test-LegacyFindShellClipboard {
         Set-ClipboardText 'No Find file-drop selection yet'
         $sequence = [SalamanderGuiNative]::GetClipboardSequenceNumber()
         [SalamanderGuiNative]::LegacyFindCommand($legacyWindow, $ownerPid, $case.Command, $false)
-        $published = @{ Paths = @(); Effect = -1 }
-        Wait-Until {
-            if ([SalamanderGuiNative]::GetClipboardSequenceNumber() -eq $sequence) { return $false }
-            try {
-                $data = [Windows.Forms.Clipboard]::GetDataObject()
-                if ($null -eq $data) { return $false }
-                $published.Paths = @($data.GetData([Windows.Forms.DataFormats]::FileDrop, $false))
-                $effectData = $data.GetData('Preferred DropEffect', $false)
-                if ($effectData -is [IO.MemoryStream] -and $effectData.Length -ge 4) {
-                    $published.Effect = [BitConverter]::ToInt32($effectData.ToArray(), 0)
+        $published = @{ Paths = @(); Effect = -1; Formats = @(); ClipboardErrors = @() }
+        try {
+            Wait-Until {
+                if ([SalamanderGuiNative]::GetClipboardSequenceNumber() -eq $sequence) { return $false }
+                try {
+                    $data = [Windows.Forms.Clipboard]::GetDataObject()
+                    if ($null -eq $data) { return $false }
+                    # Capture format names on failure without guessing at
+                    # clipboard ownership or replacing the original content check.
+                    $published.Formats = @($data.GetFormats())
+                    $published.Paths = @($data.GetData([Windows.Forms.DataFormats]::FileDrop, $false))
+                    $effectData = $data.GetData('Preferred DropEffect', $false)
+                    if ($effectData -is [IO.MemoryStream] -and $effectData.Length -ge 4) {
+                        $published.Effect = [BitConverter]::ToInt32($effectData.ToArray(), 0)
+                    }
+                    return $published.Paths.Count -eq 2 -and $published.Effect -ge 0
                 }
-                return $published.Paths.Count -eq 2 -and $published.Effect -ge 0
-            }
-            catch [Runtime.InteropServices.ExternalException] { return $false }
-        } "$($case.Label) publishes a file-drop list and preferred drop effect"
+                catch [Runtime.InteropServices.ExternalException] {
+                    $published.ClipboardErrors = @($_.Exception.GetType().Name, $_.Exception.HResult)
+                    return $false
+                }
+            } "$($case.Label) publishes a file-drop list and preferred drop effect"
+        }
+        catch {
+            $currentSequence = [SalamanderGuiNative]::GetClipboardSequenceNumber()
+            $foreground = Get-ForegroundWindowSummary
+            $windows = Get-ProcessWindowSummary -OwnerProcessId $ownerPid
+            throw ("$($case.Label) clipboard assertion failed: sequenceBefore=$sequence, " +
+                   "sequenceAfter=$currentSequence, pathCount=$($published.Paths.Count), " +
+                   "effect=$($published.Effect), formats=[$($published.Formats -join ',')], " +
+                   "readErrors=[$($published.ClipboardErrors -join ',')], " +
+                   "foreground=[$foreground], testWindows=[$windows]; " +
+                   "$($_.Exception.Message)")
+        }
         Assert-True ($published.Paths -ccontains $first -and $published.Paths -ccontains $second) (
             "$($case.Label) publishes both exact selected paths")
         Assert-True ($published.Effect -eq $case.Effect) (
@@ -1248,9 +1267,18 @@ function Test-LegacyFindExternalEditor {
         $ownedWindows = try {
             Get-ProcessWindowSummary -OwnerProcessId ([uint32]$process.Id)
         } catch { '<test window inventory unavailable>' }
+        $ownedDialogs = try {
+            @([SalamanderGuiNative]::GetProcessWindows([uint32]$process.Id) |
+                Where-Object { $_.Visible -and $_.Title -eq 'Open Salamander' } |
+                ForEach-Object {
+                    [SalamanderGuiNative]::DescribeWindow($_.Handle)
+                }) -join ' || '
+        } catch { '<test dialog text unavailable>' }
+        # Reading only the test-owned window's actual child labels provides
+        # the CreateProcess/argument failure reason. Never auto-close a modal.
         throw ("Legacy Find external editor did not modify the selected fixture. " +
                "Test editor state=$state; Test-process windows=$ownedWindows; " +
-               "$($_.Exception.Message)")
+               "Owned-error-dialog=[$ownedDialogs]; $($_.Exception.Message)")
     }
     Assert-True ([IO.File]::ReadAllText($neighbor) -ceq 'keep this') 'External editor preserves the unselected file'
 }
