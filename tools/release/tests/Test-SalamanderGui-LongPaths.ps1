@@ -418,6 +418,46 @@ public static class SalamanderGuiNative
         EnumChildWindows(window, callback, IntPtr.Zero);
         return string.Join(" | ", messages);
     }
+    // GetWindowTextW cannot reliably read child-control labels belonging to
+    // another process. Inspect only the exact visible error dialog of the
+    // launched test PID, using bounded WM_GETTEXT for each owned Static label.
+    // Read-only: no modal dismissal, keyboard input, or foreign HWND access.
+    public static string DescribeOwnedEditorErrorDialog(IntPtr window, uint pid)
+    {
+        bool verified = false;
+        foreach (TopLevelWindow top in GetProcessWindows(pid))
+        {
+            if (top.Handle == window && top.Visible &&
+                top.Title == "Open Salamander")
+            {
+                verified = true;
+                break;
+            }
+        }
+        if (!verified || ClassName(window) != "#32770")
+            throw new InvalidOperationException("Refusing to inspect an unverified editor error dialog");
+
+        List<string> labels = new List<string>();
+        labels.Add(GetWindowCaption(window));
+        WindowCallback callback = (child, parameter) => {
+            uint childPid;
+            if (labels.Count >= 12 ||
+                GetWindowThreadProcessId(child, out childPid) == 0 ||
+                childPid != pid || ClassName(child) != "Static")
+                return true;
+            StringBuilder text = new StringBuilder(1024);
+            IntPtr messageResult;
+            if (SendMessageTimeoutReadText(child, 0x000D, new UIntPtr(1024),
+                    text, 0x0002, 750, out messageResult) != IntPtr.Zero &&
+                text.Length > 0)
+                labels.Add(text.ToString().Replace('\r', ' ').Replace('\n', ' '));
+            return true;
+        };
+        if (!EnumChildWindows(window, callback, IntPtr.Zero))
+            return "<cannot enumerate owned dialog children>";
+        return String.Join(" | ", labels);
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     public struct GuiRect { public int Left, Top, Right, Bottom; }
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr hWnd, out GuiRect rect);
