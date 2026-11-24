@@ -1247,23 +1247,23 @@ int main()
             (otherDirectoryInfo.dwFileAttributes &
                 (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT)) == FILE_ATTRIBUTE_DIRECTORY;
         const std::wstring sourceVolume = Salamander::UnicodeClipboardVolumeName(sourceDirectoryHandle);
-        const std::wstring otherVolume = Salamander::UnicodeClipboardVolumeName(otherDirectoryHandle);
+        const std::wstring destinationVolumeName = Salamander::UnicodeClipboardVolumeName(otherDirectoryHandle);
         CloseHandle(sourceDirectoryHandle);
         CloseHandle(otherDirectoryHandle);
-        if (!otherIsPlainDirectory || sourceVolume.empty() || otherVolume.empty() ||
-            CompareStringOrdinal(sourceVolume.c_str(), -1, otherVolume.c_str(), -1, TRUE) == CSTR_EQUAL)
+        if (!otherIsPlainDirectory || sourceVolume.empty() || destinationVolumeName.empty() ||
+            CompareStringOrdinal(sourceVolume.c_str(), -1, destinationVolumeName.c_str(), -1, TRUE) == CSTR_EQUAL)
             return Fail("test destination must be a real directory on a different volume");
 
         const std::wstring leafName = L"opensal-crossvolume-" +
             std::to_wstring(GetCurrentProcessId()) + L"-東京_😀.bin";
         const std::wstring crossSourceName = current + L"\\" + leafName;
         const std::wstring crossTargetName = otherRoot + L"\\" + leafName;
-        std::wstring crossSourceExtended, crossTargetExtended;
+        std::wstring crossVolumeSourceExtended, crossVolumeTargetExtended;
         Salamander::Utf16DiskPath crossSource;
         if (!OwnPath(crossSourceName, crossSource) ||
-            !Convert(crossSourceName, crossSourceExtended) ||
-            !Convert(crossTargetName, crossTargetExtended) ||
-            GetFileAttributesW(crossTargetExtended.c_str()) != INVALID_FILE_ATTRIBUTES)
+            !Convert(crossSourceName, crossVolumeSourceExtended) ||
+            !Convert(crossTargetName, crossVolumeTargetExtended) ||
+            GetFileAttributesW(crossVolumeTargetExtended.c_str()) != INVALID_FILE_ATTRIBUTES)
             return Fail("prepare unique cross-volume Unicode names");
 
         const char movedPayload[] = "exact cross-volume UTF-16 payload";
@@ -1276,7 +1276,7 @@ int main()
             CloseHandle(h);
             return ok;
         };
-        if (!writePayload(crossSourceExtended, movedPayload, sizeof(movedPayload)))
+        if (!writePayload(crossVolumeSourceExtended, movedPayload, sizeof(movedPayload)))
             return Fail("create source on first volume");
         // Act / Assert: the same W-only clipboard transfer primitive used by
         // the F6 cross-volume fallback must publish exact bytes, then remove
@@ -1285,9 +1285,9 @@ int main()
         if (!Salamander::TryTransferUnicodeClipboardFiles(
                 {crossSource}, otherDirectory, DROPEFFECT_MOVE, completed, operationError) ||
             completed != 1 || operationError != ERROR_SUCCESS ||
-            GetFileAttributesW(crossSourceExtended.c_str()) != INVALID_FILE_ATTRIBUTES)
+            GetFileAttributesW(crossVolumeSourceExtended.c_str()) != INVALID_FILE_ATTRIBUTES)
             return Fail("cross-volume Unicode move must complete without duplicating source");
-        HANDLE moved = CreateFileW(crossTargetExtended.c_str(), GENERIC_READ,
+        HANDLE moved = CreateFileW(crossVolumeTargetExtended.c_str(), GENERIC_READ,
                                    FILE_SHARE_READ, nullptr, OPEN_EXISTING,
                                    FILE_ATTRIBUTE_NORMAL, nullptr);
         if (moved == INVALID_HANDLE_VALUE)
@@ -1299,7 +1299,7 @@ int main()
                                bytesRead == sizeof(movedPayload) &&
                                memcmp(actualBytes, movedPayload, sizeof(movedPayload)) == 0;
         CloseHandle(moved);
-        if (!identical || !DeleteFileW(crossTargetExtended.c_str()))
+        if (!identical || !DeleteFileW(crossVolumeTargetExtended.c_str()))
             return Fail("verify moved bytes and clean own target");
 
         // Two selected Unicode files must move across volumes without
@@ -1368,29 +1368,29 @@ int main()
 
         // A pre-existing file with the same Unicode name is never replaced.
         const char occupiedBytes[] = "unrelated destination";
-        if (!writePayload(crossSourceExtended, movedPayload, sizeof(movedPayload)) ||
-            !writePayload(crossTargetExtended, occupiedBytes, sizeof(occupiedBytes)))
+        if (!writePayload(crossVolumeSourceExtended, movedPayload, sizeof(movedPayload)) ||
+            !writePayload(crossVolumeTargetExtended, occupiedBytes, sizeof(occupiedBytes)))
             return Fail("create cross-volume no-overwrite regression");
         completed = 0;
         if (Salamander::TryTransferUnicodeClipboardFiles(
                 {crossSource}, otherDirectory, DROPEFFECT_MOVE, completed, operationError) ||
             completed != 0 || operationError != ERROR_FILE_EXISTS ||
-            GetFileAttributesW(crossSourceExtended.c_str()) == INVALID_FILE_ATTRIBUTES)
+            GetFileAttributesW(crossVolumeSourceExtended.c_str()) == INVALID_FILE_ATTRIBUTES)
             return Fail("cross-volume Unicode move must reject occupied destination");
-        HANDLE occupied = CreateFileW(crossTargetExtended.c_str(), GENERIC_READ,
+        HANDLE occupied = CreateFileW(crossVolumeTargetExtended.c_str(), GENERIC_READ,
                                       FILE_SHARE_READ, nullptr, OPEN_EXISTING,
                                       FILE_ATTRIBUTE_NORMAL, nullptr);
         if (occupied == INVALID_HANDLE_VALUE)
             return Fail("inspect protected cross-volume destination");
         char preservedBytes[sizeof(occupiedBytes)]{};
         DWORD preservedCount = 0;
-        const bool preserved = ReadFile(occupied, preservedBytes, sizeof(preservedBytes),
+        const bool destinationBytesPreserved = ReadFile(occupied, preservedBytes, sizeof(preservedBytes),
                                         &preservedCount, nullptr) &&
                                preservedCount == sizeof(occupiedBytes) &&
                                memcmp(preservedBytes, occupiedBytes, sizeof(occupiedBytes)) == 0;
         CloseHandle(occupied);
-        if (!preserved || !DeleteFileW(crossSourceExtended.c_str()) ||
-            !DeleteFileW(crossTargetExtended.c_str()))
+        if (!destinationBytesPreserved || !DeleteFileW(crossVolumeSourceExtended.c_str()) ||
+            !DeleteFileW(crossVolumeTargetExtended.c_str()))
             return Fail("cross-volume no-overwrite must preserve both file identities");
         std::puts("PASS: real two-volume Unicode move, exact bytes and no-overwrite");
     }
@@ -1540,10 +1540,10 @@ int main()
         return Fail("reopen owned Unicode destination for test restoration");
     alteredCount = 0;
     const char originalByte = workerPayload[0];
-    const bool restored = WriteFile(alteredTarget, &originalByte, 1,
+    const bool destinationByteRestored = WriteFile(alteredTarget, &originalByte, 1,
                                     &alteredCount, nullptr) && alteredCount == 1;
     CloseHandle(alteredTarget);
-    if (!restored)
+    if (!destinationByteRestored)
         return Fail("restore exact Unicode destination bytes before success test");
 
     // Both identities and all data bytes now match. A successful move
