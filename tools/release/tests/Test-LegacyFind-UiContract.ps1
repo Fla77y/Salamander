@@ -72,6 +72,17 @@ if (-not $dispatch.Contains('Salamander::CreateConfiguredEditorProcessA(') -or
     -not $nativeRegression.Contains('exitCode != 7')) {
     throw 'External Edit must launch verified absolute EXEs explicitly while keeping legacy relative command behavior.'
 }
+# HANDLES is a member-dispatch macro, not a generic call wrapper:
+# HANDLES(Salamander::Helper(...)) expands to a nonexistent
+# C__Handles::Salamander member. Retain C__Handles::CreateProcess tracking
+# and pass only the already-validated executable as its first argument.
+if ($dispatch -notmatch '(?s)HANDLES\(CreateProcess\(Salamander::GetExplicitEditorApplicationName\(expCommand\),\s*cmdLine' -or
+    $dispatch -match 'HANDLES\(Salamander::' -or
+    $dispatch -notmatch '#include "common/win32_editor_process_launch.h"') {
+    throw 'External editor must use HANDLES(CreateProcess(...)), not HANDLES(namespaced helper).'
+}
+Write-Host 'PASS: external editor CreateProcess retains Salamander HANDLE tracking without malformed macro expansion.'
+
 Write-Host 'PASS: legacy external-editor process launch keeps exact executable identity and native regression.'
 
 
