@@ -168,15 +168,21 @@ static bool ReadUnicodeClipboardFiles(IDataObject* data,
 
 static bool ReadNativeUnicodeClipboardFiles(HWND owner, DWORD sequence,
                                             std::vector<Salamander::Utf16DiskPath>& files,
-                                            DWORD& transferEffect, DWORD& error)
+                                            DWORD& transferEffect, DWORD& error,
+                                            bool* plainFileDrop = nullptr)
 {
-    if (!OpenClipboard(owner))
+    if (plainFileDrop)
+        *plainFileDrop = false;
+    // Retry only a busy read lock, never a paste or a filesystem operation.
+    for (int attempt = 0; !OpenClipboard(owner); ++attempt)
     {
         error = GetLastError();
-        return false;
+        if (error != ERROR_ACCESS_DENIED || attempt == 3)
+            return false;
+        Sleep(10);
     }
     struct ClipboardGuard { ~ClipboardGuard() { CloseClipboard(); } } clipboard;
-    if (GetClipboardSequenceNumber() != sequence)
+    if (!sequence || GetClipboardSequenceNumber() != sequence)
     {
         error = ERROR_RETRY;
         return false;
@@ -197,6 +203,27 @@ static bool ReadNativeUnicodeClipboardFiles(HWND owner, DWORD sequence,
     error = ERROR_INVALID_DATA;
     if (!preferredFormat)
         return false;
+    if (plainFileDrop)
+    {
+        // Bypass OLE only for an ordinary native file list, optionally with
+        // Preferred DropEffect. Unknown formats (including OLE private data,
+        // shell ID lists and Salamander's virtual-file marker) retain the
+        // existing IDataObject path; they must not become physical files.
+        bool hasDrop = false;
+        UINT format = 0;
+        do
+        {
+            SetLastError(ERROR_SUCCESS);
+            format = EnumClipboardFormats(format);
+            if (format == CF_HDROP)
+                hasDrop = true;
+            else if (format && format != preferredFormat)
+                return false;
+        } while (format);
+        if (GetLastError() != ERROR_SUCCESS || !hasDrop)
+            return false;
+        *plainFileDrop = true;
+    }
     if (IsClipboardFormatAvailable(preferredFormat))
     {
         const LockedData preference(preferredFormat);
@@ -248,53 +275,72 @@ BOOL CFilesWindow::ClipboardPaste(BOOL onlyLinks, BOOL onlyTest, const char* pas
             Salamander::TryGetUnicodePanelDirectory(targetPath.c_str(), wideTarget);
         else
             wideTarget = GetDiskPathW();
-        IDataObject* clipboardData = NULL;
-        if (OleGetClipboard(&clipboardData) != S_OK || clipboardData == NULL)
-            return FALSE;
-
-        const BOOL virtualFiles = IsFakeDataObject(clipboardData, NULL, NULL, 0);
-        FORMATETC fileDrop{CF_HDROP, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
-        BOOL hasFileDrop = clipboardData->QueryGetData(&fileDrop) == S_OK;
-        BOOL hasFilePayload = virtualFiles || hasFileDrop;
-        IEnumFORMATETC* formats = NULL;
-        if (clipboardData->EnumFormatEtc(DATADIR_GET, &formats) == S_OK && formats != NULL)
-        {
-            const UINT cfIdList = RegisterClipboardFormat(CFSTR_SHELLIDLIST);
-            const UINT cfFileContent = RegisterClipboardFormat(CFSTR_FILECONTENTS);
-            FORMATETC format = {};
-            formats->Reset();
-            while (formats->Next(1, &format, NULL) == S_OK)
-            {
-                if (format.cfFormat == CF_HDROP ||
-                    format.cfFormat == cfIdList ||
-                    format.cfFormat == cfFileContent)
-                    hasFilePayload = TRUE;
-                if (format.cfFormat == CF_HDROP && (format.tymed & TYMED_HGLOBAL))
-                    hasFileDrop = TRUE;
-                if (format.ptd != NULL)
-                    CoTaskMemFree(format.ptd);
-                format.ptd = NULL;
-            }
-            formats->Release();
-        }
-        const bool canTransfer = Is(ptDisk) && !onlyLinks && !virtualFiles && hasFileDrop;
-        if (onlyTest || !hasFilePayload)
-        {
-            clipboardData->Release();
-            return onlyTest && canTransfer;
-        }
-
         std::size_t completed = 0;
         std::vector<Salamander::Utf16DiskPath> files;
         DWORD transferEffect = DROPEFFECT_NONE;
         DWORD error = ERROR_NOT_SUPPORTED;
-        bool gotFiles = canTransfer && ReadUnicodeClipboardFiles(clipboardData, files, transferEffect, error);
-        clipboardData->Release();
-        // OLE can fail to expose the file list or its preferred drop effect.
-        // Re-read both from the original native clipboard snapshot before any
-        // filesystem operation; the same strict parser and effect checks apply.
-        if (!gotFiles && canTransfer && (error == ERROR_BAD_FORMAT || error == ERROR_INVALID_DATA))
-            gotFiles = ReadNativeUnicodeClipboardFiles(HWindow, clipboardSequence, files, transferEffect, error);
+        const bool hasNativeDrop = Is(ptDisk) && !onlyLinks && !onlyTest &&
+                                   IsClipboardFormatAvailable(CF_HDROP);
+        bool plainFileDrop = false;
+        bool gotFiles = hasNativeDrop &&
+            ReadNativeUnicodeClipboardFiles(HWindow, clipboardSequence, files, transferEffect, error, &plainFileDrop);
+        if (!plainFileDrop && !(hasNativeDrop && error == ERROR_RETRY))
+        {
+            IDataObject* clipboardData = NULL;
+            const HRESULT result = OleGetClipboard(&clipboardData);
+            if (result != S_OK || clipboardData == NULL)
+            {
+                if (clipboardData != NULL)
+                    clipboardData->Release();
+                if (!hasNativeDrop)
+                    return FALSE;
+                // An advertised file paste must not silently turn into path
+                // navigation merely because OLE could not open its wrapper.
+                error = HRESULT_FACILITY(result) == FACILITY_WIN32
+                    ? HRESULT_CODE(result) : ERROR_READ_FAULT;
+            }
+            else
+            {
+                const BOOL virtualFiles = IsFakeDataObject(clipboardData, NULL, NULL, 0);
+                FORMATETC fileDrop{CF_HDROP, nullptr, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
+                BOOL hasFileDrop = clipboardData->QueryGetData(&fileDrop) == S_OK;
+                BOOL hasFilePayload = virtualFiles || hasFileDrop || hasNativeDrop;
+                IEnumFORMATETC* formats = NULL;
+                if (clipboardData->EnumFormatEtc(DATADIR_GET, &formats) == S_OK && formats != NULL)
+                {
+                    const UINT cfIdList = RegisterClipboardFormat(CFSTR_SHELLIDLIST);
+                    const UINT cfFileContent = RegisterClipboardFormat(CFSTR_FILECONTENTS);
+                    FORMATETC format = {};
+                    formats->Reset();
+                    while (formats->Next(1, &format, NULL) == S_OK)
+                    {
+                        if (format.cfFormat == CF_HDROP ||
+                            format.cfFormat == cfIdList ||
+                            format.cfFormat == cfFileContent)
+                            hasFilePayload = TRUE;
+                        if (format.cfFormat == CF_HDROP && (format.tymed & TYMED_HGLOBAL))
+                            hasFileDrop = TRUE;
+                        if (format.ptd != NULL)
+                            CoTaskMemFree(format.ptd);
+                        format.ptd = NULL;
+                    }
+                    formats->Release();
+                }
+                const bool canTransfer = Is(ptDisk) && !onlyLinks && !virtualFiles && hasFileDrop;
+                if (onlyTest || !hasFilePayload)
+                {
+                    clipboardData->Release();
+                    return onlyTest && canTransfer;
+                }
+
+                error = ERROR_NOT_SUPPORTED;
+                gotFiles = canTransfer && ReadUnicodeClipboardFiles(clipboardData, files, transferEffect, error);
+                clipboardData->Release();
+                // Retain the existing validated native fallback for OLE data.
+                if (!gotFiles && canTransfer && (error == ERROR_BAD_FORMAT || error == ERROR_INVALID_DATA))
+                    gotFiles = ReadNativeUnicodeClipboardFiles(HWindow, clipboardSequence, files, transferEffect, error);
+            }
+        }
 
         bool success = false;
         if (gotFiles)
