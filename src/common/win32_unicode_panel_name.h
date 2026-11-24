@@ -279,6 +279,62 @@ inline bool TryMakeExactAnsiPanelPath(const std::wstring& path, std::string& ans
     return true;
 }
 
+// Bridge a short non-ACP disk directory to the existing ANSI panel stack
+// only when Windows supplies a real, exactly representable DOS short path.
+// The displayed/written filesystem identity remains the caller's original W
+// path. Do not create aliases, junctions or substitute best-fit characters.
+// On volumes without 8.3 names this deliberately fails closed.
+inline bool TryGetVerifiedAnsiShortDirectoryPath(
+    const std::wstring& directory, std::string& ansiPath)
+{
+    ansiPath.clear();
+    if (directory.empty() || directory.size() >= MAX_PATH - 2)
+        return false;
+
+    const DWORD required = GetShortPathNameW(directory.c_str(), nullptr, 0);
+    if (required < 2 || required >= MAX_PATH - 2)
+        return false;
+    std::wstring shortPath(required, L'\0');
+    const DWORD written = GetShortPathNameW(
+        directory.c_str(), shortPath.data(), required);
+    if (written == 0 || written >= required)
+        return false;
+    shortPath.resize(written);
+
+    std::string candidate;
+    if (!TryMakeExactAnsiPanelPath(shortPath, candidate) ||
+        candidate.size() >= MAX_PATH - 2)
+        return false;
+
+    // Guard against races, reused DOS aliases, links and another volume.
+    // The same identity must be observable through both names at this point.
+    const auto readDirectoryIdentity = [](const wchar_t* path,
+                                          BY_HANDLE_FILE_INFORMATION& info) {
+        HANDLE handle = CreateFileW(
+            path, FILE_READ_ATTRIBUTES,
+            FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+            nullptr, OPEN_EXISTING,
+            FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OPEN_REPARSE_POINT,
+            nullptr);
+        if (handle == INVALID_HANDLE_VALUE)
+            return false;
+        const bool ok = GetFileInformationByHandle(handle, &info) != FALSE;
+        CloseHandle(handle);
+        return ok && (info.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) != 0 &&
+                    (info.dwFileAttributes & FILE_ATTRIBUTE_REPARSE_POINT) == 0;
+    };
+    BY_HANDLE_FILE_INFORMATION original{}, abbreviated{};
+    if (!readDirectoryIdentity(directory.c_str(), original) ||
+        !readDirectoryIdentity(shortPath.c_str(), abbreviated) ||
+        original.dwVolumeSerialNumber != abbreviated.dwVolumeSerialNumber ||
+        original.nFileIndexHigh != abbreviated.nFileIndexHigh ||
+        original.nFileIndexLow != abbreviated.nFileIndexLow)
+        return false;
+
+    ansiPath.swap(candidate);
+    return true;
+}
+
 inline bool UnicodePanelPathAffected(std::wstring_view changed, std::wstring_view panel,
                                      bool includeSubdirectories)
 {
