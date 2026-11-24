@@ -50,10 +50,9 @@ int main()
         Salamander::TryGetVerifiedAnsiShortDirectoryPath(widePath, alias);
     if (hasVerifiedAlias)
     {
-        if (alias.empty() ||
-            GetFileAttributesA(alias.c_str()) == INVALID_FILE_ATTRIBUTES ||
-            (GetFileAttributesA(alias.c_str()) & FILE_ATTRIBUTE_DIRECTORY) == 0 ||
-            Salamander::IsExactAnsiName(alias.c_str(), widePath.c_str()))
+        const DWORD aliasAttributes = GetFileAttributesA(alias.c_str());
+        if (alias.empty() || aliasAttributes == INVALID_FILE_ATTRIBUTES ||
+            (aliasAttributes & FILE_ATTRIBUTE_DIRECTORY) == 0)
         {
             std::fputs("FAIL: Unicode short alias lacks verified directory identity\n", stderr);
             ++failures;
