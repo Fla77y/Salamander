@@ -54,6 +54,27 @@ foreach ($check in $checks.Keys) {
 }
 Write-Host 'PASS: original Find dispatch, Advanced, regex, grep, filters and result contracts.'
 
+# A packaged PowerShell editor can be launched by ProcessStartInfo when the
+# executable is supplied separately, yet fail when Windows discovers the
+# module from a combined command line. Protect the narrow launch repair:
+# verified absolute .exe => explicit lpApplicationName, all other commands
+# retain historical CreateProcess(NULL, ...) discovery. Never "fix" this by
+# skipping the original PowerShell GUI scenario.
+$launchHeader = Get-Content -LiteralPath (
+    Join-Path $root 'src\common\win32_editor_process_launch.h') -Raw
+$nativeRegression = Get-Content -LiteralPath (
+    Join-Path $root 'tools\tests\editor_process_launch.cpp') -Raw
+if (-not $dispatch.Contains('Salamander::CreateConfiguredEditorProcessA(') -or
+    -not $launchHeader.Contains('GetExplicitEditorApplicationName(command)') -or
+    -not $launchHeader.Contains('GetFileAttributesA(command)') -or
+    -not $launchHeader.Contains('CreateProcessA(GetExplicitEditorApplicationName(command)') -or
+    -not $nativeRegression.Contains('CreateConfiguredEditorProcessA(') -or
+    -not $nativeRegression.Contains('exitCode != 7')) {
+    throw 'External Edit must launch verified absolute EXEs explicitly while keeping legacy relative command behavior.'
+}
+Write-Host 'PASS: legacy external-editor process launch keeps exact executable identity and native regression.'
+
+
 # Inspect the real manager CLI and dispatch, without executing a build or GUI.
 $managerPath = Join-Path $root 'tools\Manage-Salamander.ps1'
 $managerSource = Get-Content -LiteralPath $managerPath -Raw
