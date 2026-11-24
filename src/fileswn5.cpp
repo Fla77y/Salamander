@@ -29,7 +29,7 @@
 
 #ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
 // Test-only capture before the Debug handle monitor can display a modal.
-// The GUI test owns the private TEMP directory and enables this explicitly.
+// The GUI test creates the GUID-scoped shared memory and enables this explicitly.
 static void RecordIsolatedEditorLaunch(const char* command, const char* arguments,
                                        const char* directory, const char* commandLine,
                                        const char* application, const STARTUPINFO& startup)
@@ -45,33 +45,41 @@ static void RecordIsolatedEditorLaunch(const char* command, const char* argument
               (testId[i] >= 'a' && testId[i] <= 'f')))
             return;
 
-    char temp[MAX_PATH] = {};
-    const DWORD length = GetEnvironmentVariableA("TEMP", temp, sizeof(temp));
-    if (length == 0 || length >= sizeof(temp))
+    char mappingName[96];
+    if (_snprintf_s(mappingName, _TRUNCATE, "Local\\OpenSalamander.EditorTest.%s", testId) < 0)
         return;
-    char path[MAX_PATH];
-    if (_snprintf_s(path, _TRUNCATE, "%s\\editor-launch.txt", temp) < 0)
-        return;
+    char currentDir[MAX_PATH] = {};
+    const DWORD dirLength = GetCurrentDirectoryA(_countof(currentDir), currentDir);
+    if (dirLength == 0 || dirLength >= _countof(currentDir))
+        currentDir[0] = 0;
+    const DWORD attributes = GetFileAttributesA(command);
+    const DWORD attrError = attributes == INVALID_FILE_ATTRIBUTES ? GetLastError() : ERROR_SUCCESS;
 
     char record[4096];
     const int size = _snprintf_s(record, _TRUNCATE,
         "ACP=%u\r\nexpCommand=[%s]\r\nexpArguments=[%s]\r\nexpInitDir=[%s]\r\n"
         "cmdLine=[%s]\r\nlpApplicationName=[%s]\r\n"
-        "startupFlags=0x%lX show=%u creationFlags=0x%lX inherit=FALSE\r\n",
+        "startupFlags=0x%lX show=%u creationFlags=0x%lX inherit=FALSE\r\n"
+        "currentDirectory=[%s]\r\nexeAttributes=0x%lX exeAttributesError=%lu\r\n",
         GetACP(), command, arguments, directory, commandLine,
         application != NULL ? application : "<NULL>",
         startup.dwFlags, static_cast<unsigned>(startup.wShowWindow),
-        static_cast<unsigned long>(NORMAL_PRIORITY_CLASS));
+        static_cast<unsigned long>(NORMAL_PRIORITY_CLASS),
+        currentDir, attributes, attrError);
     if (size < 0)
         return;
 
-    HANDLE file = HANDLES_Q(CreateFile(path, GENERIC_WRITE, 0, NULL, CREATE_NEW,
-                                      FILE_ATTRIBUTE_NORMAL, NULL));
-    if (file == INVALID_HANDLE_VALUE)
+    // Open only the pre-existing test-owned mapping; do not create files.
+    HANDLE mapping = ::OpenFileMappingA(FILE_MAP_WRITE, FALSE, mappingName);
+    if (mapping == NULL)
         return;
-    DWORD written = 0;
-    ::WriteFile(file, record, static_cast<DWORD>(size), &written, NULL);
-    HANDLES(CloseHandle(file));
+    void* view = ::MapViewOfFile(mapping, FILE_MAP_WRITE, 0, 0, sizeof(record));
+    if (view != NULL)
+    {
+        memcpy(view, record, static_cast<size_t>(size) + 1);
+        ::UnmapViewOfFile(view);
+    }
+    ::CloseHandle(mapping);
 }
 #endif
 

@@ -508,6 +508,12 @@ niemals stillschweigend umschreiben; Korrekturen als neue datierte Zeile.
 - **Änderungen:** `src/fileswn5.cpp`, GUI-Driver, LegacyFind-GuiCases, UI-Contract, IsolatedLegacyFind-Runner und drei Wartungsdokumente. Optionaler `-EditorScenario ExternalEditor` ermöglicht fokussierten Build-/GUI-Gegenlauf; Standard-Suite, bestehende Editor- und Dateiintegritätsassertions und Managerregistrierung bleiben erhalten. Keine Änderung an MSIX-Berechtigungen, Ausführungsrichtlinie oder produktiver Startsemantik.
 - **Restarbeit:** Windows-Build und GUI-Gegenlauf; tatsächliche Werte auswerten, dann Produktursache korrigieren und Debug/Release prüfen.
 
+### J-20261124-17 — Fehlender Diagnose-Record: GUID-gebundener gemeinsamer Speicher
+
+- **Auftrag / IDs:** FIND-04, QA-03, automatisierte Fehlerdiagnose fortsetzen.
+- **24.11.2026, `b36a1233`:** fokussierter isolierter Debug-x64-Build PASS; `ExternalEditor` 0 PASS / 1 FAIL / 0 SKIP; CreateProcess weiterhin Win32 5/NOT_STARTED, neue Prelaunch-Datei fehlt (`Editor-launch=[<editor launch record missing or oversized>]`). Bericht `legacy-find-Debug-7a9434dab54c44229fe4f23134cd42a6.results.json`. Ursache der fehlenden Datei nicht nachgewiesen. Test-only-Transport auf vor Prozessstart durch den Treiber erzeugtes GUID-gebundenes `Local\\OpenSalamander.EditorTest.<id>`-Mapping (4096 Byte) umgestellt; keine Abhängigkeit von TEMP oder ANSI-Dateipfad beim Schreiben. Native Seite öffnet ausschließlich vorhandenes Mapping, schreibt NUL-terminierten Record vor CreateProcess und schließt ihre Handles. Treiber liest begrenzt, dekodiert per erfasster ACP, meldet konkrete Lesefehler und erhält Textkopie nur in eigener Fehlerfixture; Mapping wird im finally freigegeben. Zusätzlich tatsächliches Prozessarbeitsverzeichnis und GetFileAttributes-Resultat/Fehler des EXE-Pfads. Produktlaunch, Sicherheitsprüfung und fachliche Assertions unverändert. **Neuer Code nicht unter Windows ausgeführt; FIND-04/QA-03 offen.**
+- **Nächster Schritt:** `git pull --ff-only origin bugfix/v5.2`; `pwsh -NoProfile -File tools/release/tests/Invoke-IsolatedLegacyFind.ps1 -Configuration Debug -EditorScenario ExternalEditor`. Erst gemessene Parameter begründen eine Produktänderung.
+
 ## Vorlage für zukünftige Einträge
 
 ```markdown

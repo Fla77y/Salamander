@@ -2085,6 +2085,7 @@ $copyTestReached = $null
 $copyTestContinue = $null
 $findTestReached = $null
 $findTestCancelled = $null
+$editorLaunchMapping = $null
 $largeCopyLock = $null
 $largeCopySourceFile = $null
 $largeCopyTargetFile = $null
@@ -4166,6 +4167,10 @@ try {
                 Initialize-LegacyFindExternalEditor
             }
         }
+        if ($LegacyFindScenario -in 'ExternalEditor','ExternalEditorNative') {
+            $editorLaunchMapping = [IO.MemoryMappedFiles.MemoryMappedFile]::CreateNew(
+                ('Local\OpenSalamander.EditorTest.' + $testConfigurationId), 4096)
+        }
         if ($LegacyFindScenario -eq 'Cancel') {
             $prefix = 'Local\OpenSalamander.FindTest.' + $testConfigurationId
             $created = $false
@@ -5703,6 +5708,7 @@ finally {
     if ($null -ne $copyTestContinue) { $copyTestContinue.Dispose() }
     if ($null -ne $findTestReached) { $findTestReached.Dispose() }
     if ($null -ne $findTestCancelled) { $findTestCancelled.Dispose() }
+    if ($null -ne $editorLaunchMapping) { $editorLaunchMapping.Dispose() }
 
     # A failed search may retain its screenshot and small fixtures, but it
     # must not leave a large cancellation stress file on the user's disk.

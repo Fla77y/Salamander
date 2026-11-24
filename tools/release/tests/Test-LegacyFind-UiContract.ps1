@@ -263,7 +263,7 @@ foreach ($required in @(
 Write-Host 'PASS: targeted ViewUnicode reliability runner records independent pass/fail evidence.'
 
 foreach ($required in @('#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG',
-    'OPENSAL_GUI_EDITOR_TEST_GATE', 'OPENSAL_GUI_TEST_ID', 'CREATE_NEW',
+    'OPENSAL_GUI_EDITOR_TEST_GATE', 'OPENSAL_GUI_TEST_ID', 'OpenFileMappingA(FILE_MAP_WRITE', 'MapViewOfFile(mapping',
     'expCommand=[%s]', 'expArguments=[%s]', 'expInitDir=[%s]',
     'cmdLine=[%s]', 'lpApplicationName=[%s]',
     'RecordIsolatedEditorLaunch(expCommand, expArguments, expInitDir, cmdLine, application, si);')) {
@@ -271,6 +271,10 @@ foreach ($required in @('#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG',
 }
 if ($dispatch -notmatch '(?s)const char\* application = Salamander::GetExplicitEditorApplicationName\(expCommand\);\s*#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG\s*RecordIsolatedEditorLaunch\([^;]+;\s*#endif\s*if \(!HANDLES\(CreateProcess' -or
     -not $driverText.Contains('OPENSAL_GUI_EDITOR_TEST_GATE = ') -or
+    -not $driverText.Contains('[IO.MemoryMappedFiles.MemoryMappedFile]::CreateNew(') -or
+    -not $driverText.Contains('$editorLaunchMapping.Dispose()') -or
+    -not $legacyGuiCases.Contains('Read-IsolatedEditorLaunchRecord') -or
+    -not $legacyGuiCases.Contains('$view.ReadExactly($bytes, 0, $bytes.Length)') -or
     -not $legacyGuiCases.Contains('Editor-launch=[$launch]') -or
     -not $legacyGuiCases.Contains('Isolated editor launch parameters were recorded automatically')) {
     throw 'Editor launch diagnostics must be gated, prelaunch and verified by the GUI runner.'
