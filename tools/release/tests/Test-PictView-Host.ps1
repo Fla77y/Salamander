@@ -160,6 +160,8 @@ public static class PictViewHostWindows
     private static extern int GetDlgCtrlID(IntPtr hwnd);
     [DllImport("user32.dll", SetLastError = true)]
     private static extern bool GetGUIThreadInfo(uint threadId, ref GuiThreadInfo info);
+    [DllImport("user32.dll")]
+    public static extern uint GetClipboardSequenceNumber();
     [DllImport("user32.dll", EntryPoint = "SendMessageTimeoutW", SetLastError = true)]
     public static extern IntPtr SendMessageTimeout(
         IntPtr hwnd, uint message, UIntPtr wParam, IntPtr lParam,
@@ -413,7 +415,8 @@ try {
         -Environment @{ TEMP = $processTemp; TMP = $processTemp } -PassThru
 
     # Act: open the exact selected image via Salamander's normal F3.
-    # Do not modify the user's clipboard or viewer associations.
+    # Do not modify viewer associations. The long-path variant uses a native
+    # clipboard snapshot to verify the active panel, then restores it before F3.
     $fixtures = @(Get-ChildItem -LiteralPath $fixtureDirectory -File)
     if ($fixtures.Count -ne 1 -or $fixtures[0].FullName -cne $fixture) {
         throw "Expected exactly one isolated $ImageFormat image fixture."
@@ -435,8 +438,13 @@ try {
     # panel navigation are completed after the main HWND appears.
     # Observe the live title rather than a one-time Window.Title snapshot.
     $expectedDirectoryName = Split-Path -Leaf $fixtureDirectory
-    $pathObservation = @{ Title = '<not observed>' }
+    $pathObservation = @{ Title = '<not observed>'; PathLength = -1; ClipboardTouched = $false }
+    $pathSnapshot = $null
     try {
+        if ($UnicodeLongPath) {
+            Add-Type -Path (Join-Path $PSScriptRoot 'Clipboard-Snapshot.cs')
+            $pathSnapshot = [SalamanderClipboardSnapshot]::Capture()
+        }
         Wait-For -Description 'Salamander command-line panel paths applied' -Condition {
             $process.Refresh()
             if ($process.HasExited -or
@@ -448,6 +456,43 @@ try {
                 throw "Salamander displayed a modal dialog before F3: $startupDialog"
             }
             $pathObservation.Title = [PictViewHostWindows]::GetWindowCaption($main.Handle)
+            if ($UnicodeLongPath) {
+                # SetWindowTitle deliberately uses MAINWINDOW_NAME for a long
+                # disk panel; the title cannot prove the current directory.
+                # Read the full active-panel path using the existing command.
+                [uint32]$ownerPid = 0
+                [void][PictViewHostWindows]::GetWindowThreadProcessId($main.Handle, [ref]$ownerPid)
+                if ($ownerPid -ne [uint32]$process.Id -or
+                    $main.ClassName -cne 'SalamanderMainWindowVer25') {
+                    throw 'Refusing panel-path command for an unverified main HWND.'
+                }
+                $before = [PictViewHostWindows]::GetClipboardSequenceNumber()
+                if ($before -eq 0) { throw 'Clipboard sequence unavailable before panel-path command.' }
+                [IntPtr]$commandResult = [IntPtr]::Zero
+                $pathObservation.ClipboardTouched = $true
+                $sent = [PictViewHostWindows]::SendMessageTimeout(
+                    $main.Handle, [uint32]0x0111, [UIntPtr]::new([uint32]711),
+                    [IntPtr]::Zero, [uint32]0x0002, [uint32]5000,
+                    [ref]$commandResult)
+                $commandError = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+                if ($sent -eq [IntPtr]::Zero) {
+                    throw "CopyCurrentPathToClipboard failed: Win32 error $commandError."
+                }
+                $published = [PictViewHostWindows]::GetClipboardSequenceNumber()
+                if ($published -eq 0 -or $published -eq $before) { return $false }
+                try {
+                    $observed = [Windows.Forms.Clipboard]::GetText(
+                        [Windows.Forms.TextDataFormat]::UnicodeText)
+                }
+                catch { return $false } # retry only the read-only path command
+                if ([PictViewHostWindows]::GetClipboardSequenceNumber() -ne $published) {
+                    return $false
+                }
+                $observed = $observed.TrimEnd([char]13, [char]10)
+                $pathObservation.PathLength = $observed.Length
+                return [string]::Equals($observed, $fixtureDirectory,
+                                        [StringComparison]::Ordinal)
+            }
             return $pathObservation.Title.Contains($expectedDirectoryName,
                                             [StringComparison]::OrdinalIgnoreCase)
         }
@@ -455,7 +500,28 @@ try {
     catch {
         throw ("Salamander did not apply -l/-r to the test-owned panels. " +
                "Expected directory '$fixtureDirectory'; last main title '$($pathObservation.Title)'. " +
+               "Last observed panel path length: $($pathObservation.PathLength). " +
                "Viewer not invoked. $($_.Exception.Message)")
+    }
+    finally {
+        if ($null -ne $pathSnapshot) {
+            try {
+                if ($pathObservation.ClipboardTouched) {
+                    for ($attempt = 1; $attempt -le 3; $attempt++) {
+                        try {
+                            $pathSnapshot.Restore()
+                            Write-Host 'PASS: Native clipboard snapshot restored'
+                            break
+                        }
+                        catch { if ($attempt -eq 3) { throw } }
+                    }
+                }
+            }
+            finally { $pathSnapshot.Dispose() }
+        }
+    }
+    if ($UnicodeLongPath) {
+        Write-Host "PASS: exact active panel path verified ($($fixtureDirectory.Length) UTF-16 units)"
     }
     Focus-TestOwnedSalamander -TargetProcess $process -MainHandle $main.Handle -FocusTimeoutSeconds $TimeoutSeconds
 
