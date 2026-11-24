@@ -34,7 +34,7 @@ foreach ($entry in $required.GetEnumerator()) {
 
 # The original owner requirements are immutable 0–7 constraints.
 foreach ($id in 0..7) {
-    if ($source.Requirements -notmatch "(?m)^### An(?:foarderung|forderung) $id:") {
+    if ($source.Requirements -notmatch "(?m)^### An(?:foarderung|forderung) ${id}:") {
         throw "Required original product constraint A$id is missing."
     }
 }
