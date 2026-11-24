@@ -893,6 +893,7 @@ UP-07 bleibt TEILBELEGT.
   `--update` nur nach ausdrücklicher Zustimmung.
 
 ### [ ] MGMT-02 – Fehler- und Isolationsverhalten (**P1**, TEILBELEGT)
+- **24.11.2026, neu implementiert, Windows-GREEN ausstehend:** `manage.cmd` wartet vor GUI-sensitiven Testaktionen bei bereits laufenden `salamand.exe`-Prozessen mit einmaliger PID-Meldung und 1-s-Polling auf deren reguläres Schließen; setzt anschließend ohne Rückfrage fort. Keine Prozesse werden beendet, Ctrl+C bleibt wirksam. Nach einem GUI-Fall verbleibende Prozesse werden weiterhin als Sicherheitsfehler behandelt, nicht als normales Warten kaschiert. Neuer simulierter Regressionstest `Test-Manage-GuiWait.ps1` in `--test` registriert, statisch geprüft.
 - **24.11.2026, 14:02, SHA `a928794c`:** `manage.cmd --test` tatsächlich **PASS**; 66 Skripte vom PowerShell-AST-Parser geprüft, fehlerhafte Negativfixture erkannt; Fehleraggregation/GUI-Sicherheitsvertrag und Kontinuitätstest PASS. Parserfehler von 13:56 damit behoben. Vollständige Fehler-/Isolationsmatrix bleibt TEILBELEGT.
 - **24.11.2026, 13:56:** `--test` auf `8a5cb99d` **FAIL** wegen ungültiger `$id:`-Interpolation im neuen Kontinuitätstest. `${id}:` korrigiert. Neue PowerShell-AST-Parser-Vorprüfung sammelt Syntaxfehler vor dem Restlauf; auf Windows nach Fix noch nicht ausgeführt. Status bleibt TEILBELEGT.
 - **24.11.2026:** Sammeltest-Infrastruktur mit PASS/FAIL/SKIP-JSON und nonzero-Gesamtergebnis implementiert; Windows-Sammlertest im `--test` PASS; isolierte Legacy-Find-Szenarien laufen nach FAIL weiter (36 PASS/1 FAIL). Cancellation/GUI-Sicherheitsmatrix nicht vollständig bewiesen.
@@ -905,6 +906,7 @@ UP-07 bleibt TEILBELEGT.
   keine gefälschten PASS-Meldungen.
 
 ### [ ] MGMT-03 – Test-Registry gegen unbemerkte Auslassungen (**P2**, OFFEN)
+- **24.11.2026:** `Test-Manage-GuiWait.ps1` zur Test-Registry von `tools/Manage-Salamander.ps1` hinzugefügt; Realbetrieb unter Windows noch zu prüfen, Registry-/Coverage-Gap bleibt offen.
 - **24.11.2026, 14:02, SHA `a928794c`:** `Test-PowerShellSyntax.ps1` und `Test-DevelopmentContinuity.ps1` im echten Windows-`--test` PASS. GUI-Szenarien-Registry, Coverage-Drift und gezielte Opt-in-Abgrenzung weiterhin OFFEN.
 - **24.11.2026, 13:56:** `Test-PowerShellSyntax.ps1` vor allen übrigen Vertragstests registriert, prüft `.ps1`-Dateien und enthält eine absichtlich fehlerhafte `$id:`-Negativfixture. Erst tatsächlicher Parser- und vollständiger `--test`-Lauf kann den Syntaxgate als bestanden belegen; MGMT-03 bleibt offen.
 - **24.11.2026:** Eigenständiger `Test-DevelopmentContinuity.ps1` strukturell eingebunden; ein dokumentierter neuer Test ist keine automatisch vollständige Coverage-/Registry-Garantie. Gap-/Agent-Übergabe bleibt laufende Wartungspflicht.
@@ -1109,6 +1111,7 @@ UP-07 bleibt TEILBELEGT.
   Ausschlüsse (WinAPI-/GUI-Boundaries).
 
 ### [ ] QA-03 – Wiederholbarkeit, GUI-Flakiness und Ressourcen (**P1**, TEILBELEGT)
+- **24.11.2026:** Fehlgeschlagene GUI-Preflights bei bereits laufenden Salamander-Instanzen sollen künftig kontrolliert warten statt sofort mit Exit 1 enden. Die Unterläufe behalten ihre strikten Sicherheitschecks; eine wiederholte echte GUI-Testserie nach der Änderung fehlt weiterhin.
 - **24.11.2026, 14:34, SHA `9f524264`:** Drei isolierte GUI-Aufrufe (Unicode-Elternverzeichnis Release/Debug, Legacy-Find Debug) scheiterten am **Preflight bereits laufender Salamander-Instanzen** und führten keine Produktschritte aus. Sicherheitsentscheidung korrekt: keine Benutzerinstanz abschießen, nicht als neue GUI-Produktregression verbuchen. Vor Wiederholung eigene Salamander-Fenster regulär schließen.
 - **24.11.2026:** Hypothese zum `ExternalEditor`-Fehler (relativer Scriptpfad des MSIX-Childs) mit absolutem test-eigenen Scriptpfad und unabhängiger, zurückgesetzter PowerShell-Host-Preflight-Fixture abgesichert. Kein Root-Cause-/Laufzeitnachweis bisher; nachfolgende GUI-Wiederholungen und echte Prozessstartdiagnose erforderlich.
 - **24.11.2026, 13:56:** Testinfrastruktur verursachte einen deterministischen Parserabbruch auf `8a5cb99d`; kein sporadischer Produktfehler. Regressionsfix vorhanden, auf Windows nach Fix nicht geprüft.

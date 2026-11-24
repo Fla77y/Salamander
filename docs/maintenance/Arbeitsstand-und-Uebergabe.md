@@ -2,7 +2,7 @@
 
 > **Startpunkt für jede neue ChatGPT-, Codex- oder Entwickler-Sitzung.**
 > Letzte fachliche Auswertung: **24.11.2026, 14:34 CET**.
-> Branch zum zuletzt protokollierten Windows-Lauf: `bugfix/v5.2`, SHA `9f524264af766cfc417b5b2b9870008e88b6e093` (**`--build-delta --test` PASS**, 24.11.2026, 14:32–14:34 CET). Die drei danach angeforderten GUI-Prüfungen wurden wegen einer bereits laufenden Salamander-Instanz **vor dem eigentlichen Test blockiert**. Folgende Dokumentationscommits sind keine automatisch neue Testbaseline.
+> Branch zum zuletzt protokollierten Windows-Lauf: `bugfix/v5.2`, SHA `9f524264af766cfc417b5b2b9870008e88b6e093` (**`--build-delta --test` PASS**, 24.11.2026, 14:32–14:34 CET). Die drei danach angeforderten GUI-Prüfungen wurden wegen einer bereits laufenden Salamander-Instanz **vor dem eigentlichen Test blockiert**. **Nachträgliche Manager-Änderung (Windows-Lauf noch ausstehend):** Vor GUI-relevanten Testaktionen wartet der Manager nun auf das reguläre Schließen bestehender Instanzen und setzt automatisch fort. Folgende Commits sind keine automatisch neue Testbaseline.
 > **Dieses Datum und diese SHA sind ein Snapshot, kein automatisch aktueller Git-HEAD.**
 > Die Dokumentationscommits danach benötigen eigene, angemessene Prüfungen.
 > **Release 5.2: NO-GO.** Keine vollständige A0–A7-, Plugin- oder VM-Abnahme.
@@ -57,6 +57,14 @@ Die früheren Benutzerprotokolle `manage-20261124-125928-575-54f5eb.log`, `manag
 4. **P0/P1 – weitere Hauptprogramm-/Plugin-Lücken:** Große gemischte Datei-/Ordnerauswahlen, gesamte Verzeichnisbäume, Cross-Volume inklusive ADS, Shell-/Editor-/Archiv-/Plugin-Grenzen, UNC/SMB und Reparse Points. **Der ausdrücklich beauftragte funktionsfähige UnRAR-Ersatz (Chat 09) ist weiterhin nicht belegt und muss in UP-03 geprüft werden.** Das Microsoft-Abhängigkeitsinventar liegt in `Microsoft-Dependencies-2026.md`. Siehe **UP-02 bis UP-07** und **QA-01**. Programm nicht als vollständig unicode-/langpfadfähig deklarieren.
 5. **A0, A5, A7 – Release:** Original-UI-A/B, alle Plugins, WIC-Host/Animationsparität, x86-Matrix, echte saubere Windows-11-VM, Installer-/Uninstall-/Upgrade-, Lizenz-/Signaturgates fehlen. Keine GO-Entscheidung.
 
+**Neue GUI-Voraussetzungsprüfung / MGMT-02, QA-03 (nach `9f524264`, noch nicht auf Windows ausgeführt):**
+`tools/release/Wait-SalamanderGuiAvailability.ps1` wird von `tools/Manage-Salamander.ps1` nach den nichtinteraktiven Tests, vor GUI-relevanten Aktionen eingebunden.
+Bei bereits laufender `salamand.exe` meldet der Manager deren PID(s) einmal, wartet im Abstand von 1000 ms auf das **reguläre Schließen durch den Benutzer** und setzt automatisch fort, sobald keine Instanz mehr läuft.
+Kein automatisches `Stop-Process`, kein Fenster-/Tastaturzugriff, mit Strg+C abbrechbar.
+Der Poll wird **nur einmal vor der GUI-Suite** ausgeführt; verbleibende eigene Testprozesse nach einem fehlerhaften GUI-Fall und unerwartete neue Instanzen werden weiterhin durch die vorhandenen untergeordneten Schutzprüfungen abgewehrt.
+Für normale `--test`, `--build`, `--setup` und `--run` wird nicht gewartet.
+`tools/release/tests/Test-Manage-GuiWait.ps1` ist in `--test` und `--test-all` registriert und prüft mehrere PID, den Wegfall der Prozesse, die Nicht-GUI-Ausnahme und Cancellation mit simulierten Prozessabfragen.
+**Noch offen:** echter Windows-PowerShell-Lauf des neuen Tests und erneute Debug-/Release-GUI-Produkttests. Der letzte reale erfolgreiche Build/Test-Quellstand bleibt `9f524264`; Produktfehler sind damit nicht als behoben nachgewiesen.
 ## 5. Build, Tests, Sicherheitsvorkehrungen
 
 ```powershell
@@ -71,8 +79,8 @@ git rev-parse HEAD
 # pwsh -NoProfile -File .\tools\release\tests\Test-DevelopmentContinuity.ps1
 .\manage.cmd --build-delta
 .\manage.cmd --test  # Bereits PASS auf 9f524264, einschließlich nativer 8.3-Regression
-# GUI-Voraussetzung: alle regulären Salamander-Instanzen selbst regulär schließen.
-# Vorher ausschließlich lesend kontrollieren: Get-Process salamand -ErrorAction SilentlyContinue
+# Wenn Salamander noch läuft, meldet manage.cmd dies und wartet vor GUI-Tests
+# automatisch auf das reguläre Schließen durch den Benutzer (Strg+C: Abbruch).
 .\manage.cmd --test-gui-unicode-parent --release
 .\manage.cmd --test-gui-unicode-parent --debug
 .\manage.cmd --test-gui-legacy-find --debug
