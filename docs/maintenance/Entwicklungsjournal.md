@@ -349,6 +349,42 @@ niemals stillschweigend umschreiben; Korrekturen als neue datierte Zeile.
   automatisch ein nicht verbundenes neues ChatGPT-Gespräch auf GitHub.
   Ein neues Gespräch muss die Dateien tatsächlich laden.
 
+### J-20261124-05 — PowerShell-Parserfehler der Übergabeprüfung / AST-Preflight
+
+- **Benutzerbefund / Gap-IDs:** `manage.cmd --test` am **24.11.2026
+  13:56 CET**, Windows NT 10.0.26300, PowerShell 7.7.0,
+  Quell-SHA `8a5cb99da350a494f94fdb57087c7b7f8221c336`,
+  sauberer Arbeitsbaum: Der erste Aggregationstest PASS, dann sofortiger
+  **ParserError** in `Test-DevelopmentContinuity.ps1:37`.
+  Betroffen **MGMT-02/MGMT-03 und QA-03**.
+- **Ursache:** Der neue Test enthielt in einem expandierbaren
+  PowerShell-String `$id:`. Die unmittelbar folgende Zeichenfolge
+  `:` wird als Variablenscope-Syntax interpretiert. Das ist ein
+  versehentlich eingeführter Testskript-Defekt, kein Salamander-
+  Produktfehler und kein erfolgreich gelaufener Kontinuitätstest.
+- **Korrektur:** Interpolation ausdrücklich mit `${id}:` begrenzt.
+  Zusätzlich neues, eigenständiges
+  `tools/release/tests/Test-PowerShellSyntax.ps1`: PowerShell-AST-
+  Parser prüft **alle** PS1-Skripte im Repository-Root und unter
+  `tools/` vor der übrigen Testsuite. Eine absichtlich ungültige
+  Testfixture mit `$id:` muss vom Parser verworfen werden;
+  tatsächliche Parserfehler werden gesammelt und mit Datei/Zeile/Spalte
+  ausgegeben. `tools/Manage-Salamander.ps1::Run-Tests` führt die
+  Prüfung als ersten `--test`-/`--test-all`-Schritt aus.
+- **Commits / Dateien:** `a5e0545df9a4844c42fa48dfc6cd3d3539566d3d`
+  (Korrektur der Interpolation), `275c2495` und `83078e7`
+  (Syntax-Preflight), `6c7ef4e` (Registrierung im Manager);
+  anschließend Fortschreibung der drei Entwicklungsdokumente.
+- **Verifikation:** Quellcode aus GitHub zurückgelesen; **eine
+  PowerShell-/Windows-Ausführung nach dem Fix liegt noch nicht vor**.
+  Der alte `--test`-Lauf ist **FAIL**, die neue Prüfung noch
+  `NICHT AUSGEFÜHRT`. Keinen neuen Gesamtgrünstand behaupten.
+- **Nächster Schritt:** Nach `git pull --ff-only`
+  `pwsh -NoProfile -File .\\tools\\release\\tests\\Test-PowerShellSyntax.ps1`,
+  danach `Test-DevelopmentContinuity.ps1` und
+  `.\\manage.cmd --test` auf genau dieser Source-SHA ausführen.
+  Weitere echte Produktlücken gemäß aktuellem Übergabestand.
+  
 ## Vorlage für zukünftige Einträge
 
 ```markdown
