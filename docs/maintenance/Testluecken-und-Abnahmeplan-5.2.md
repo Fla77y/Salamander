@@ -558,6 +558,7 @@ Nächste Prüfung: PowerShell-AST-Parser, dann isolierter
   Operationen begründet. Kein reiner Export-/ABI-Test als End-to-End-PASS.
 
 ### [ ] UP-02 – Unicode-Plugin-/SDK-Grenzen (**P0**, BLOCKIERT/TEILBELEGT)
+- **24.11.2026, `94f736b1`:** PictView Release x64 realer F3-Host 6/6 PASS; keine allgemeine Plugin-ABI-/Unicode-Funktionsabnahme. Nächster Opt-in Plugin-Load mit ausschließlich vertrauenswürdigen Modulen.
 - **24.11.2026, `ae0a043a`, `--test-all` 97/0/0 auf Sammlungsebene:** 35 Plugin-Exporttabellen je x64-Variante PASS, keine Funktionsabnahme. Log `manage-20261124-175557-853-fded7d.log`.
 - **Lücke:** Legacy-SDK kann ANSI-Zeiger verwenden; strenger ACP-Roundtrip
   vermeidet Datenverlust, stellt aber noch keine vollständige UTF-16-Funktion
@@ -1073,7 +1074,8 @@ UP-07 bleibt TEILBELEGT.
   erweiterte Negativ-/Datenintegritätstests in **PR #14**;
   dessen Ausführung auf Merge-SHA offen.
 
-### [ ] WIC-02 – Echter F3-Host über mehrere Bildformate (**P0**, OFFEN)
+### [ ] WIC-02 – Echter F3-Host über mehrere Bildformate (**P0**, TEILBELEGT)
+- **24.11.2026, `94f736b1981063bbc2dcca0328332efff38536fe`, sauberer Checkout:** `manage.cmd --test-pictview-host --release`, 18:15:40–18:15:50 CET, **6/6 PASS** (BMP, PNG, JPEG, GIF, TIFF, ICO), Windows 10.0.26300, PowerShell 7.7.0 außerhalb WindowsApps. Log `manage-20261124-181540-077-37d194.log`. Produktgleicher Release-x64-Build von `86fcf2b5`. Je Format eigener Salamander-Prozess, exakter geladener PictView-SPL-Pfad, echtes F3 und WIC-HWND statt internem Viewer, unveränderte SHA-256-Quelldatei vor dem Schließen, bestätigtes HWND-Schließen. WIC-02: vorgesehener F3-Smoke vollständig PASS; **TEILBELEGT** für weitergehende Abnahmekriterien, denn der Hosttreiber misst weder Bildabmessungen/Pixelanzeige noch Lock-Freigabe im realen Host explizit; native WIC-Fenster-/Pixeltests sind separate Nachweise. Keine Aussage über historische Codec-/Funktionsparität (WIC-06) oder vollständige A7-Erfüllung. **Nächster Schritt:** expliziter Opt-in `manage.cmd --test-plugin-load --release` ausschließlich mit vertrauenswürdigen installierten Plugins und geschlossenen übrigen Salamander-Instanzen; der Plugin-Manager initialisiert alle installierten Module, auch Drittanbieter, der Smoke prüft vier Zielplugins. Kein vollständiger Funktionsnachweis. Produkt und Tests unverändert; Release NO-GO.
 - **24.11.2026, `ae0a043a`, `--test-all` 97/0/0 auf Sammlungsebene:** Native Fensterregressionen PASS, echter F3-Host separat: `manage.cmd --test-pictview-host --release`. Log `manage-20261124-175557-853-fded7d.log`.
 - **Fälle:** BMP, PNG, JPEG, GIF, TIFF, ICO über echten PictView-
   Host, nicht allein `DecodeFrame`; Abmessungen, Anzeige,
