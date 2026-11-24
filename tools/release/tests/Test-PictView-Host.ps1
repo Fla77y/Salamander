@@ -14,6 +14,7 @@ param(
     [Parameter(Mandatory)][string]$SalamanderExe,
     [ValidateSet('Bmp','Png','Jpeg','Gif','Tiff','Ico')]
     [string]$ImageFormat = 'Bmp',
+    [switch]$UnicodeLongPath,
     [ValidateRange(5, 120)][int]$TimeoutSeconds = 25
 )
 
@@ -335,10 +336,30 @@ $extension = switch ($ImageFormat) {
     'Tiff' { 'tif' }
     'Ico'  { 'ico' }
 }
-$fixture = Join-Path $root ('test-image.' + $extension)
+$fixtureDirectory = $root
+$fixtureName = 'test-image.' + $extension
+if ($UnicodeLongPath) {
+    if ($ImageFormat -ne 'Png') { throw 'UnicodeLongPath requires the PNG fixture.' }
+    # Use ASCII parents to distinguish long-path support from ACP directory
+    # loss, then a unique final directory and a non-ASCII image leaf.
+    while ($fixtureDirectory.Length -lt 300) {
+        $fixtureDirectory = Join-Path $fixtureDirectory ('p-' + ('a' * 64))
+    }
+    $fixtureDirectory = Join-Path $fixtureDirectory ('leaf-' + [Guid]::NewGuid().ToString('N'))
+    $fixtureName = 'image-' + [char]0x6771 + [char]0x4eac + '-' +
+        [char]::ConvertFromUtf32(0x1f600) + '.png'
+}
+$fixture = Join-Path $fixtureDirectory $fixtureName
 $process = $null
 $viewerHandle = [IntPtr]::Zero
 try {
+    if ($UnicodeLongPath) {
+        if ($fixture.Length -le 260 -or $fixture.Length -ge 500) {
+            throw "Unexpected UnicodeLongPath fixture length: $($fixture.Length)"
+        }
+        [void][IO.Directory]::CreateDirectory($fixtureDirectory)
+        Write-Host "PictView UnicodeLongPath fixture: $($fixture.Length) UTF-16 units; $fixture"
+    }
     # Arrange: exactly one disposable image with exact byte identity.
     # ICO has no GDI+ encoder; use a validated 1x1 32-bit DIB-in-ICO fixture.
     if ($ImageFormat -eq 'Ico') {
@@ -358,7 +379,19 @@ try {
         try {
             $bitmap.SetPixel(0, 0, [Drawing.Color]::Red)
             $bitmap.SetPixel(1, 0, [Drawing.Color]::Lime)
-            $bitmap.Save($fixture, $imageCodec)
+            if ($UnicodeLongPath) {
+                # GDI+ is only the fixture encoder; do not depend on its
+                # filesystem path support when constructing a long-path test.
+                $stream = [IO.MemoryStream]::new()
+                try {
+                    $bitmap.Save($stream, $imageCodec)
+                    [IO.File]::WriteAllBytes($fixture, $stream.ToArray())
+                }
+                finally { $stream.Dispose() }
+            }
+            else {
+                $bitmap.Save($fixture, $imageCodec)
+            }
         }
         finally {
             $bitmap.Dispose()
@@ -367,7 +400,7 @@ try {
     $expectedHash = [Convert]::ToHexString(
         [Security.Cryptography.SHA256]::HashData([IO.File]::ReadAllBytes($fixture)))
     # Override both saved panel paths, following Test-SalamanderGui-LongPaths.ps1.
-    $startupArgs = '-l "{0}" -r "{0}" -p 2' -f $root
+    $startupArgs = '-l "{0}" -r "{0}" -p 2' -f $fixtureDirectory
     # Isolate the child's cache so stale SAL*.tmp directories in the user's
     # real TEMP cannot trigger a destructive cleanup question during F3.
     $processTemp = Join-Path $root 'process-temp'
@@ -381,7 +414,7 @@ try {
 
     # Act: open the exact selected image via Salamander's normal F3.
     # Do not modify the user's clipboard or viewer associations.
-    $fixtures = @(Get-ChildItem -LiteralPath $root -File)
+    $fixtures = @(Get-ChildItem -LiteralPath $fixtureDirectory -File)
     if ($fixtures.Count -ne 1 -or $fixtures[0].FullName -cne $fixture) {
         throw "Expected exactly one isolated $ImageFormat image fixture."
     }
@@ -401,7 +434,7 @@ try {
     # WaitForInputIdle is not sufficient: LoadConfig and command-line
     # panel navigation are completed after the main HWND appears.
     # Observe the live title rather than a one-time Window.Title snapshot.
-    $expectedDirectoryName = Split-Path -Leaf $root
+    $expectedDirectoryName = Split-Path -Leaf $fixtureDirectory
     $pathObservation = @{ Title = '<not observed>' }
     try {
         Wait-For -Description 'Salamander command-line panel paths applied' -Condition {
@@ -421,7 +454,7 @@ try {
     }
     catch {
         throw ("Salamander did not apply -l/-r to the test-owned panels. " +
-               "Expected directory '$root'; last main title '$($pathObservation.Title)'. " +
+               "Expected directory '$fixtureDirectory'; last main title '$($pathObservation.Title)'. " +
                "Viewer not invoked. $($_.Exception.Message)")
     }
     Focus-TestOwnedSalamander -TargetProcess $process -MainHandle $main.Handle -FocusTimeoutSeconds $TimeoutSeconds
@@ -524,6 +557,16 @@ try {
     if ($plugins.Count -ne 1) {
         throw "WIC viewer exists but expected SPL module is not loaded: $expectedPlugin"
     }
+    if ($UnicodeLongPath) {
+        # The real native viewer uses the opened W path as its window title.
+        # A different name, DOS short alias, lossy ACP or truncated path
+        # must not count as successful Unicode SDK integration.
+        $actualTitle = [PictViewHostWindows]::GetWindowCaption($viewerHandle)
+        $expectedExtended = '\\?\' + $fixture
+        if ($actualTitle -cne $fixture -and $actualTitle -cne $expectedExtended) {
+            throw "WIC viewer did not preserve the exact long UTF-16 path. Expected '$fixture'; actual '$actualTitle'."
+        }
+    }
     $actualHash = [Convert]::ToHexString(
         [Security.Cryptography.SHA256]::HashData([IO.File]::ReadAllBytes($fixture)))
     if ($actualHash -cne $expectedHash) {
@@ -535,6 +578,9 @@ try {
     }
     Wait-For -Description 'WIC PictView HWND close' -Condition {
         return -not [PictViewHostWindows]::IsWindow($viewerHandle)
+    }
+    if ($UnicodeLongPath) {
+        Write-Host 'PASS: PictView F3 exact Unicode long path and unchanged image bytes.'
     }
     Write-Host "PASS: $ImageFormat F3: owned Salamander PID $($process.Id) loaded PictView SPL, opened/closed WIC viewer without changing the image."
 }

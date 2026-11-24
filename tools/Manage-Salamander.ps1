@@ -16,7 +16,7 @@ $configuration = 'Release'
 $validOptions = @('--update', '--build', '--test', '--setup', '--run',
                   '--test-gui-large-unicode-copy', '--test-gui-large-unicode-parent-copy', '--test-gui-long-history', '--test-gui-long-clipboard', '--test-gui-viewer-reliability', '--test-gui-legacy-find', '--test-clipboard-snapshot',
                   '--test-legacy-find-efs', '--test-legacy-find-near-limit', '--test-wer-build',
-                  '--debug', '--release', '--all', '--build-delta', '--build-clean', '--test-all', '--test-gui', '--test-gui-max-path', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-gui-unicode-permanent-delete', '--test-gui-unicode-parent', '--test-recycle-restore', '--test-plugin-exports', '--test-plugin-load', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-unicode-find', '--test-gui-manual', '--test-gui-temp-delete', '--test-pictview', '--test-pictview-window', '--test-pictview-host', '--test-plugin-pictview', '--diagnose-gui', '--help', '-h', '/?')
+                  '--debug', '--release', '--all', '--build-delta', '--build-clean', '--test-all', '--test-gui', '--test-gui-max-path', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-gui-unicode-permanent-delete', '--test-gui-unicode-parent', '--test-recycle-restore', '--test-plugin-exports', '--test-plugin-load', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-unicode-find', '--test-gui-manual', '--test-gui-temp-delete', '--test-pictview', '--test-pictview-window', '--test-pictview-host', '--test-plugin-pictview', '--test-plugin-pictview-unicode', '--diagnose-gui', '--help', '-h', '/?')
 $requestedSet = [System.Collections.Generic.HashSet[string]]::new(
     [StringComparer]::OrdinalIgnoreCase)
 
@@ -61,6 +61,7 @@ Open Salamander – Verwaltung für Visual Studio 2026
                                  (unverriegelter Windows-Desktop erforderlich)
   manage.cmd --test-pictview-host  F3-Plugin-Hosttest: BMP, PNG, JPEG, GIF, TIFF, ICO
   manage.cmd --test-plugin-pictview  WIC-Unit-/Fenstertests und echte F3-Hosttests (Opt-in)
+  manage.cmd --test-plugin-pictview-unicode  F3 mit langem UTF-16-PNG-Pfad (Opt-in)
                                  (opt-in, vorher andere Salamander-Instanzen schließen)
   manage.cmd --test-gui     Automatisierter GUI-Test: lange Pfade, Unicode-Dateien, F5
   manage.cmd --test-gui-max-path  Reale GUI-Prüfung nahe 32767: 32700 Gesamt- und 255 UTF-16-Namenseinheiten
@@ -778,6 +779,17 @@ try {
                                                    '-SalamanderExe', $targetExe,
                                                    '-ImageFormat', $imageFormat)
                     }
+                }
+            }
+        }
+        if ($requestedSet.Contains('--test-plugin-pictview-unicode')) {
+            $hostGui = Join-Path $repository 'tools\release\tests\Test-PictView-Host.ps1'
+            foreach ($optMode in @(Get-AutomatedGuiModes -RequestedSet $requestedSet)) {
+                $targetExe = Join-Path (Get-VariantDirectory $optMode) 'salamand.exe'
+                Invoke-TestCase -Name "PictView F3 $optMode UnicodeLongPath" -RequiresGuiSafety -Action {
+                    Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-File', $hostGui,
+                                               '-SalamanderExe', $targetExe,
+                                               '-ImageFormat', 'Png', '-UnicodeLongPath')
                 }
             }
         }

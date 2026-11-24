@@ -689,6 +689,12 @@
       "Option": "--test-plugin-pictview",
       "Reason": "Explicit grouped alias for native tests and existing F3 host opt-ins; no additional independent scenario.",
       "PerVariant": false
+    },
+    {
+      "Name": "PictView F3 UnicodeLongPath",
+      "Option": "--test-plugin-pictview-unicode",
+      "Reason": "Explicit interactive host acceptance of new UTF-16 SDK integration; targeted RED/GREEN test before migration.",
+      "PerVariant": true
     }
   ]
 }
