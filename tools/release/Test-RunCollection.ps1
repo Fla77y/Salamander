@@ -56,6 +56,10 @@ function Invoke-TestCase {
         }
     }
     catch {
+        # Ctrl+C and explicit cancellation are not ordinary test failures.
+        # Never continue potentially destructive GUI tests after cancellation.
+        if ($_.Exception -is [System.Management.Automation.PipelineStoppedException] -or
+            $_.Exception -is [OperationCanceledException]) { throw }
         if (-not $script:CollectTestFailures) { throw }
         $detail = $_.Exception.Message
         Add-TestOutcome -Name $Name -Status FAIL -Detail $detail -DurationMs $watch.ElapsedMilliseconds
