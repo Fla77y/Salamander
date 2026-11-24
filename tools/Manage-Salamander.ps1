@@ -40,6 +40,8 @@ Open Salamander – Verwaltung für Visual Studio 2026
                             Unabhängige Fehler sammeln, JSON-Bericht schreiben; Exitcode 1 bei Fehler/SKIP
                             (Release und Debug x64; --release/--debug begrenzt die GUI-Modi)
                             Legacy-Suche und große Unicode-Kopien: isolierte Testbuilds im Worktree
+                            GUI-Tests warten vor dem Start auf das reguläre Schließen vorhandener
+                            Salamander-Instanzen und setzen danach automatisch fort (Strg+C bricht ab).
   manage.cmd --test-gui-large-unicode-copy  32-MiB-Kopie, Pause/Abbruch, Zielkollision und gesperrte Quelle
   manage.cmd --test-gui-legacy-find  Legacy-Suche (Strg+F), Filter, Unicode, Focus File und Viewer
   manage.cmd --test-clipboard-snapshot  Native Zwischenablage-Sicherung/-Wiederherstellung prüfen
@@ -242,6 +244,11 @@ function Run-Tests {
     $testCollector = Join-Path $repository 'tools\release\tests\Test-Manage-TestAggregation.ps1'
     Invoke-TestCase -Name 'Test-Manage-TestAggregation.ps1' -Action {
         Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $testCollector)
+    }
+
+    $guiWaitContract = Join-Path $repository 'tools\release\tests\Test-Manage-GuiWait.ps1'
+    Invoke-TestCase -Name 'Test-Manage-GuiWait.ps1' -Action {
+        Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $guiWaitContract)
     }
 
     # Keep the versioned requirements and cross-session handoff discoverable.
@@ -563,6 +570,7 @@ try {
 
         . (Join-Path $repository 'tools\release\Package-Helpers.ps1')
         . (Join-Path $repository 'tools\release\Build-Helpers.ps1')
+        . (Join-Path $repository 'tools\release\Wait-SalamanderGuiAvailability.ps1')
         $null = Get-BuildMode -RequestedSet $requestedSet
         $buildRoot = [IO.Path]::GetFullPath($buildRoot)
         New-Item -ItemType Directory -Path $buildRoot -Force | Out-Null
@@ -571,6 +579,17 @@ try {
         $buildMode = Get-BuildMode -RequestedSet $requestedSet
         if ($buildMode -ne 'None') { Build-Variants -Mode $buildMode }
         if ($requestedSet.Contains('--test')) { Run-Tests }
+
+        # Only GUI-sensitive test actions need an idle Salamander desktop.
+        # Wait ONCE before any GUI child starts; the existing per-case checks
+        # still catch leaked test processes and unexpected new instances.
+        # Do not wait when earlier --test-all failures already blocked GUI.
+        if (Test-RequiresGuiIdleGate -RequestedSet $requestedSet) {
+            if (-not ($requestedSet.Contains('--test-all') -and $script:GuiTestsBlocked)) {
+                Wait-ForSalamanderGuiAvailability
+            }
+        }
+
         if ($requestedSet.Contains('--test-clipboard-snapshot')) {
             $snapshotTest = Join-Path $repository 'tools\release\tests\Test-ClipboardSnapshot.ps1'
             Invoke-TestCase -Name 'Clipboard snapshot' -RequiresGuiSafety -Action {
