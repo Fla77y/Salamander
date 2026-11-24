@@ -25,6 +25,7 @@
 #include "common/win32_unicode_rename_dialog.h"
 #include "common/win32_unicode_panel_name.h"
 #include "common/win32_unicode_find_window.h"
+#include "common/win32_editor_process_launch.h"
 
 //
 // ****************************************************************************
@@ -1508,8 +1509,13 @@ void CFilesWindow::EditFile(char* name, DWORD handlerID)
                     strcpy(expInitDir, name);
                     CutDirectory(expInitDir);
                 }
-                if (!HANDLES(CreateProcess(NULL, cmdLine, NULL, NULL, FALSE,
-                                           NORMAL_PRIORITY_CLASS, NULL, expInitDir, &si, &pi)))
+                // Give Windows the verified, absolute executable separately.
+                // This prevents ambiguous command-line module discovery for
+                // packaged editors; relative and non-EXE commands retain the
+                // original CreateProcess(NULL, ...) behavior.
+                if (!HANDLES(Salamander::CreateConfiguredEditorProcessA(
+                         expCommand, cmdLine, expInitDir,
+                         NORMAL_PRIORITY_CLASS, &si, &pi)))
                 {
                     DWORD err = GetLastError();
                     char buff[4 * MAX_PATH];
