@@ -22,6 +22,8 @@
 #include "PixelAccess.h"
 #include "WicNativeViewer.h"
 #include "WicImageDecoder.h"
+#include "../shared/spl_unicode.h"
+#include <new>
 #include <string>
 
 // plugin interface object; its methods are called from Salamander
@@ -1439,6 +1441,7 @@ class CViewerThread : public CThread
 {
 protected:
     std::basic_string<TCHAR> Name;
+    std::wstring WideName;
     int Left, Top, Width, Height;
     UINT ShowCmd;
     BOOL AlwaysOnTop;
@@ -1453,13 +1456,15 @@ protected:
     int EnumFilesCurrentIndex; // index of the first file in the viewer within the source
 
 public:
-    CViewerThread(LPCTSTR name, int left, int top, int width, int height,
+    CViewerThread(LPCTSTR name, const WCHAR* wideName, int left, int top, int width, int height,
                   UINT showCmd, BOOL alwaysOnTop, BOOL returnLock,
                   HANDLE* lock, BOOL* lockOwner, HANDLE contEvent,
                   BOOL* success, int enumFilesSourceUID,
                   int enumFilesCurrentIndex) : CThread(PLUGIN_NAME_EN)
     {
         Name = name ? name : _T("");
+        if (wideName)
+            WideName.assign(wideName);
         Left = left;
         Top = top;
         Width = width;
@@ -1613,16 +1618,21 @@ static void UnregisterWicViewer(HWND window)
 unsigned CViewerThread::Body()
 {
     SetThreadNameInVCAndTrace(PLUGIN_NAME_EN);
+    if (!WideName.empty())
+        return pictview::wic::RunNativeViewerW(
+            WideName.c_str(), DLLInstance, Left, Top, Width, Height,
+            ShowCmd, AlwaysOnTop, ReturnLock, Lock, LockOwner,
+            Continue, Success, RegisterWicViewer, UnregisterWicViewer);
     return pictview::wic::RunNativeViewer(
         Name.c_str(), DLLInstance, Left, Top, Width, Height,
         ShowCmd, AlwaysOnTop, ReturnLock, Lock, LockOwner,
         Continue, Success, RegisterWicViewer, UnregisterWicViewer);
 }
 
-BOOL CPluginInterfaceForViewer::ViewFile(LPCTSTR name, int left, int top, int width, int height,
-                                         UINT showCmd, BOOL alwaysOnTop, BOOL returnLock, HANDLE* lock,
-                                         BOOL* lockOwner, CSalamanderPluginViewerData* viewerData,
-                                         int enumFilesSourceUID, int enumFilesCurrentIndex)
+static BOOL StartPictViewViewer(LPCTSTR name, const WCHAR* wideName,
+                                int left, int top, int width, int height,
+                                UINT showCmd, BOOL alwaysOnTop, BOOL returnLock, HANDLE* lock,
+                                BOOL* lockOwner, int enumFilesSourceUID, int enumFilesCurrentIndex)
 {
     HANDLE contEvent = CreateEvent(NULL, FALSE, FALSE, NULL);
     if (contEvent == NULL)
@@ -1634,10 +1644,18 @@ BOOL CPluginInterfaceForViewer::ViewFile(LPCTSTR name, int left, int top, int wi
     // viewerData are not used in PictView; otherwise values would need to be passed (not by reference)
     // to the viewer thread...
     BOOL success = FALSE;
-    CViewerThread* t = new CViewerThread(name, left, top, width, height,
-                                         showCmd, alwaysOnTop, returnLock, lock,
-                                         lockOwner, contEvent, &success,
-                                         enumFilesSourceUID, enumFilesCurrentIndex);
+    CViewerThread* t = NULL;
+    try
+    {
+        t = new CViewerThread(name, wideName, left, top, width, height,
+                              showCmd, alwaysOnTop, returnLock, lock,
+                              lockOwner, contEvent, &success,
+                              enumFilesSourceUID, enumFilesCurrentIndex);
+    }
+    catch (const std::bad_alloc&)
+    {
+        TRACE_E("Unable to allocate viewer thread.");
+    }
     BOOL failed = TRUE;
     if (t != NULL)
     {
@@ -1654,7 +1672,7 @@ BOOL CPluginInterfaceForViewer::ViewFile(LPCTSTR name, int left, int top, int wi
     {
         // before letting the main thread continue, dispose of the scanner image queued for opening
         // in the viewer (prevents an infinite loop)
-        HBITMAP scanExtraImg = _tcscmp(name, SCANEXTRA) == 0 ? ExtraScanImagesToOpen.GiveNextImage() : NULL;
+        HBITMAP scanExtraImg = name && _tcscmp(name, SCANEXTRA) == 0 ? ExtraScanImagesToOpen.GiveNextImage() : NULL;
         if (scanExtraImg != NULL)
             DeleteObject(scanExtraImg);
     }
@@ -1662,23 +1680,64 @@ BOOL CPluginInterfaceForViewer::ViewFile(LPCTSTR name, int left, int top, int wi
     return success;
 }
 
-BOOL CPluginInterfaceForViewer::CanViewFile(LPCTSTR name)
+BOOL CPluginInterfaceForViewer::ViewFile(LPCTSTR name, int left, int top, int width, int height,
+                                         UINT showCmd, BOOL alwaysOnTop, BOOL returnLock, HANDLE* lock,
+                                         BOOL* lockOwner, CSalamanderPluginViewerData* viewerData,
+                                         int enumFilesSourceUID, int enumFilesCurrentIndex)
 {
-    // The legacy SDK exposes ANSI names. Reject paths which cannot survive
-    // conversion unchanged; never substitute a best-fit or truncated alias.
-    std::wstring path;
-    if (!pictview::wic::ConvertSdkPath(name, path))
-        return FALSE;
+    return StartPictViewViewer(name, nullptr, left, top, width, height, showCmd,
+                               alwaysOnTop, returnLock, lock, lockOwner,
+                               enumFilesSourceUID, enumFilesCurrentIndex);
+}
 
+static BOOL WINAPI CanViewPictViewFileW(const WCHAR* path)
+{
+    if (!path || !*path)
+        return FALSE;
     const HRESULT init = CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
     if (FAILED(init) && init != RPC_E_CHANGED_MODE)
         return FALSE;
 
     pictview::wic::DecodedImage image;
-    const HRESULT decoded = pictview::wic::DecodeFirstFrame(path.c_str(), image);
+    const HRESULT decoded = pictview::wic::DecodeFirstFrame(path, image);
     if (SUCCEEDED(init))
         CoUninitialize();
     return SUCCEEDED(decoded) ? TRUE : FALSE;
+}
+
+BOOL CPluginInterfaceForViewer::CanViewFile(LPCTSTR name)
+{
+    // Preserve the SDK-103 round-trip validation for legacy callers.
+    std::wstring path;
+    if (!pictview::wic::ConvertSdkPath(name, path))
+        return FALSE;
+    return CanViewPictViewFileW(path.c_str());
+}
+
+static BOOL WINAPI ViewPictViewFileW(const WCHAR* name, int left, int top, int width, int height,
+                                     UINT showCmd, BOOL alwaysOnTop, BOOL returnLock, HANDLE* lock,
+                                     BOOL* lockOwner, CSalamanderPluginViewerData* viewerData,
+                                     int enumFilesSourceUID, int enumFilesCurrentIndex)
+{
+    if (!name || !*name || (returnLock && (!lock || !lockOwner)))
+        return FALSE;
+    return StartPictViewViewer(nullptr, name, left, top, width, height, showCmd,
+                               alwaysOnTop, returnLock, lock, lockOwner,
+                               enumFilesSourceUID, enumFilesCurrentIndex);
+}
+
+// Separate optional SDK extension; legacy interfaces remain unchanged.
+// The .def provides the undecorated export name on both architectures.
+extern "C" BOOL WINAPI SalamanderPluginQueryUnicodeViewer(
+    DWORD version, DWORD capacity, SalamanderSdk::UnicodeViewerV1* output)
+{
+    if (!output || version != SalamanderSdk::UnicodeViewerVersion1 ||
+        capacity < sizeof(SalamanderSdk::UnicodeViewerV1))
+        return FALSE;
+    *output = {static_cast<DWORD>(sizeof(SalamanderSdk::UnicodeViewerV1)),
+               SalamanderSdk::UnicodeViewerVersion1,
+               CanViewPictViewFileW, ViewPictViewFileW};
+    return TRUE;
 }
 
 // ****************************************************************************

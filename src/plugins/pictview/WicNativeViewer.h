@@ -24,4 +24,13 @@ unsigned RunNativeViewer(const char* path, HINSTANCE instance,
                          BOOL returnLock, HANDLE* lock, BOOL* lockOwner,
                          HANDLE ready, BOOL* created,
                          void (*onOpen)(HWND), void (*onClose)(HWND)) noexcept;
+
+// Native SDK entry: retain the exact UTF-16 path, with the same HWND, ready
+// and lock contract as the legacy ANSI entry point.
+unsigned RunNativeViewerW(const wchar_t* path, HINSTANCE instance,
+                          int left, int top, int width, int height,
+                          UINT showCommand, BOOL alwaysOnTop,
+                          BOOL returnLock, HANDLE* lock, BOOL* lockOwner,
+                          HANDLE ready, BOOL* created,
+                          void (*onOpen)(HWND), void (*onClose)(HWND)) noexcept;
 } // namespace pictview::wic

@@ -408,7 +408,7 @@ bool ConvertSdkPath(const char* path, std::wstring& output) noexcept
     }
 }
 
-unsigned RunNativeViewer(const char* path, HINSTANCE instance,
+static unsigned RunNativeViewerImpl(const char* path, const wchar_t* widePath, HINSTANCE instance,
                          int left, int top, int width, int height,
                          UINT showCommand, BOOL alwaysOnTop,
                          BOOL returnLock, HANDLE* lock, BOOL* lockOwner,
@@ -444,7 +444,9 @@ unsigned RunNativeViewer(const char* path, HINSTANCE instance,
     try
     {
         WindowState state;
-        if (!ConvertSdkPath(path, state.path))
+        if (widePath && *widePath)
+            state.path.assign(widePath);
+        else if (!ConvertSdkPath(path, state.path))
         {
             notify();
             return 1;
@@ -533,6 +535,30 @@ unsigned RunNativeViewer(const char* path, HINSTANCE instance,
         notify();
         return 1;
     }
+}
+
+unsigned RunNativeViewer(const char* path, HINSTANCE instance,
+                         int left, int top, int width, int height,
+                         UINT showCommand, BOOL alwaysOnTop,
+                         BOOL returnLock, HANDLE* lock, BOOL* lockOwner,
+                         HANDLE ready, BOOL* created,
+                         void (*onOpen)(HWND), void (*onClose)(HWND)) noexcept
+{
+    return RunNativeViewerImpl(path, nullptr, instance, left, top, width, height,
+                               showCmd, alwaysOnTop, returnLock, lock, lockOwner,
+                               ready, created, onOpen, onClose);
+}
+
+unsigned RunNativeViewerW(const wchar_t* path, HINSTANCE instance,
+                          int left, int top, int width, int height,
+                          UINT showCommand, BOOL alwaysOnTop,
+                          BOOL returnLock, HANDLE* lock, BOOL* lockOwner,
+                          HANDLE ready, BOOL* created,
+                          void (*onOpen)(HWND), void (*onClose)(HWND)) noexcept
+{
+    return RunNativeViewerImpl(nullptr, path, instance, left, top, width, height,
+                               showCmd, alwaysOnTop, returnLock, lock, lockOwner,
+                               ready, created, onOpen, onClose);
 }
 
 void UnregisterNativeViewerClass(HINSTANCE instance) noexcept

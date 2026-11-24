@@ -2,3 +2,4 @@ LIBRARY PICTVIEW.SPL
 
 EXPORTS SalamanderPluginEntry
 EXPORTS SalamanderPluginGetReqVer
+EXPORTS SalamanderPluginQueryUnicodeViewer

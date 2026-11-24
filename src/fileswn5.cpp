@@ -905,6 +905,11 @@ void CFilesWindow::FindFile(bool unicodeDialog)
     OpenFindDialog(MainWindow->HWindow, {});
 }
 
+// Native disk viewer dispatch, separate from the legacy ANSI SDK path.
+static void ViewWideDiskFile(HWND parent, const std::wstring& name,
+                             const std::wstring& fullPath, const std::wstring& extendedPath,
+                             BOOL alternate, DWORD handlerID, int sourceUID, int index);
+
 void CFilesWindow::ViewFile(char* name, BOOL altView, DWORD handlerID, int enumFileNamesSourceUID,
                             int enumFileNamesLastFileIndex, const wchar_t* wideFindPath)
 {
@@ -947,6 +952,62 @@ void CFilesWindow::ViewFile(char* name, BOOL altView, DWORD handlerID, int enumF
             {
                 if (enumFileNamesLastFileIndex == -1)
                     enumFileNamesLastFileIndex = i - Dirs->Count;
+                const size_t parentLength = strlen(GetPath());
+                const size_t prefixLength = parentLength +
+                    (parentLength != 0 && GetPath()[parentLength - 1] != '\\' ? 1 : 0);
+                const bool legacyNameTooLong = prefixLength + f->NameLen >= MAX_PATH &&
+                    (f->DosName == NULL || prefixLength + strlen(f->DosName) >= MAX_PATH);
+                if (HasLongDiskPath() ||
+                    !Salamander::IsExactAnsiName(GetPath(), GetDiskPathW().c_str()) ||
+                    UnicodeDiskNames.IsUnsafeAnsiName(f->Name) || legacyNameTooLong)
+                {
+                    try
+                    {
+                        std::wstring original;
+                        DWORD error = ERROR_SUCCESS;
+                        const auto& directory = GetDiskPathW();
+                        bool resolved = !directory.empty() &&
+                            UnicodeDiskNames.TryGetRow(f->Name, original);
+                        if (!resolved && !directory.empty())
+                        {
+                            // Legacy rows have no W row key. Require a cached
+                            // identity that still resolves uniquely in the live directory.
+                            std::wstring liveName;
+                            resolved = UnicodeDiskNames.TryGet(f->Name, original) &&
+                                Salamander::ResolveUnicodePanelFileName(
+                                    directory.c_str(), f->Name, liveName, error) ==
+                                    Salamander::UnicodePanelNameResult::Unique &&
+                                liveName == original;
+                        }
+                        if (resolved)
+                        {
+                            std::wstring fullPath = directory;
+                            if (fullPath.back() != L'\\')
+                                fullPath.push_back(L'\\');
+                            fullPath.append(original);
+                            std::wstring extended;
+                            if (Salamander::TryMakeExtendedLengthPath(fullPath.c_str(), extended, error))
+                            {
+                                const DWORD attributes = GetFileAttributesW(extended.c_str());
+                                if (attributes != INVALID_FILE_ATTRIBUTES &&
+                                    !(attributes & FILE_ATTRIBUTE_DIRECTORY))
+                                {
+                                    ViewWideDiskFile(HWindow, original, fullPath, extended,
+                                                     altView, handlerID, enumFileNamesSourceUID,
+                                                     enumFileNamesLastFileIndex);
+                                    return;
+                                }
+                            }
+                        }
+                    }
+                    catch (const std::bad_alloc&)
+                    {
+                        TRACE_E(LOW_MEMORY);
+                    }
+                    SalMessageBox(HWindow, LoadStr(IDS_SRCPATHUNICODEONLY),
+                                  LoadStr(IDS_ERRORTITLE), MB_OK | MB_ICONWARNING);
+                    return; // never dispatch an ambiguous or truncated ANSI name
+                }
                 lstrcpyn(path, GetPath(), MAX_PATH);
                 if (GetPath()[strlen(GetPath()) - 1] != '\\')
                     strcat(path, "\\");
@@ -1189,6 +1250,83 @@ static void ApplyInternalViewerPlacement(WINDOWPLACEMENT& place)
                    workRect.top - monitorRect.top);
         MultiMonEnsureRectVisible(&place.rcNormalPosition, TRUE);
     }
+}
+
+// Respect the configured viewer order and explicit handler selection. The
+// legacy file history cannot store this identity: do not save a lossy alias.
+static void ViewWideDiskFile(HWND parent, const std::wstring& name,
+                             const std::wstring& fullPath, const std::wstring& extendedPath,
+                             BOOL alternate, DWORD handlerID, int sourceUID, int index)
+{
+    CViewerMasksItem* selected = NULL;
+    if (handlerID != 0xFFFFFFFF)
+    {
+        for (int group = 0; selected == NULL && group < 2; ++group)
+        {
+            auto* viewers = group == 0 ? MainWindow->ViewerMasks : MainWindow->AltViewerMasks;
+            for (int i = 0; selected == NULL && i < viewers->Count; ++i)
+                if (viewers->At(i)->HandlerID == handlerID)
+                    selected = viewers->At(i);
+        }
+    }
+
+    auto* viewers = alternate ? MainWindow->AltViewerMasks : MainWindow->ViewerMasks;
+    for (int i = 0; ; ++i)
+    {
+        CViewerMasksItem* viewer = selected;
+        if (!viewer)
+        {
+            if (i >= viewers->Count)
+                break;
+            viewer = viewers->At(i);
+            Salamander::LegacyFindMasks masks;
+            if (!masks.PrepareAnsiGroup(viewer->Masks->GetMasksString()) || !masks.Matches(name))
+                continue;
+        }
+
+        WINDOWPLACEMENT place = GetViewerStartPlacement();
+        if (viewer->ViewerType == VIEWER_INTERNAL)
+        {
+            ApplyInternalViewerPlacement(place);
+            OpenViewer("", vtText,
+                       place.rcNormalPosition.left, place.rcNormalPosition.top,
+                       place.rcNormalPosition.right - place.rcNormalPosition.left,
+                       place.rcNormalPosition.bottom - place.rcNormalPosition.top,
+                       place.showCmd, FALSE, NULL, NULL, NULL,
+                       sourceUID, index, fullPath.c_str());
+            return;
+        }
+        if (viewer->ViewerType == VIEWER_EXTERNAL)
+            break; // external ANSI command expansion cannot preserve this identity
+
+        CPluginData* plugin = Plugins.Get(-viewer->ViewerType - 1);
+        if (!plugin || !plugin->SupportViewer)
+            break;
+        if (!selected)
+        {
+            BOOL canView = FALSE;
+            const DWORD status = plugin->TryCanViewFileW(extendedPath.c_str(), canView);
+            if (status != ERROR_SUCCESS)
+                break; // no safe ANSI retry for this path
+            if (!canView)
+                continue;
+        }
+
+        HANDLE lock = NULL;
+        BOOL lockOwner = FALSE;
+        BOOL viewed = FALSE;
+        const DWORD status = plugin->TryViewFileW(
+            extendedPath.c_str(), place.rcNormalPosition.left, place.rcNormalPosition.top,
+            place.rcNormalPosition.right - place.rcNormalPosition.left,
+            place.rcNormalPosition.bottom - place.rcNormalPosition.top,
+            place.showCmd, Configuration.AlwaysOnTop, FALSE, &lock, &lockOwner,
+            sourceUID, index, viewed);
+        if (status == ERROR_SUCCESS)
+            return; // as in legacy dispatch, the viewer owns its failure handling
+        break;
+    }
+    SalMessageBox(parent, LoadStr(IDS_SRCPATHUNICODEONLY), LoadStr(IDS_ERRORTITLE),
+                  MB_OK | MB_ICONWARNING);
 }
 
 void CFilesWindow::ViewWideFindResult(const COpenWideFindViewerData& result, BOOL alternate)
