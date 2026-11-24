@@ -385,6 +385,43 @@ niemals stillschweigend umschreiben; Korrekturen als neue datierte Zeile.
   `.\\manage.cmd --test` auf genau dieser Source-SHA ausführen.
   Weitere echte Produktlücken gemäß aktuellem Übergabestand.
   
+### J-20261124-06 — Windows bestätigt Parserfix und vollständiges `--test`-PASS
+
+- **Auftrag/Befund, MGMT-02/MGMT-03:** Benutzertranskript
+  `manage-20261124-140223-783-8d6f75.log`, 24.11.2026,
+  14:02:23–14:03:38 CET, sauberer `bugfix/v5.2`-Checkout bei
+  `a928794c7e4072777246d959ee9dd77c129e2d89`;
+  Windows NT 10.0.26300 und PowerShell 7.7.0.
+- **Verifikation:** `manage.cmd --test` **PASS**, alle angeforderten
+  Schritte erfolgreich. `Test-PowerShellSyntax.ps1` parste alle
+  **66** Repository-PowerShell-Skripte erfolgreich und erkannte die
+  absichtlich ungültige `$id:`-Negativfixture. Testaggregation samt
+  Fail-fast-/JSON-/GUI-Gating-Verträgen und
+  `Test-DevelopmentContinuity.ps1` (Anforderungen, Dokumentationslinks,
+  Journal, Übergabe und Abnahmeplan) ebenfalls **PASS**.
+  **21 native C++-Regressionen** einschließlich About-Information,
+  Unicode-Dateiidentität, Worker/Long-Path-I/O und 32.700er-Pfad
+  ausgeführt; gezeigte Ergebnisse **PASS**.
+- **Bewertung:** Der in J-20261124-05 dokumentierte ParserError um
+  13:56 ist durch den echten Windows-Lauf **nachweislich behoben**.
+  Keine produktive C++-Korrektur oder neue Abschwächung von Tests.
+  Der alte FAIL-Beleg wird nicht überschrieben.
+- **Einschränkungen:** Der physische Cross-Volume-Move blieb
+  **SKIP** (nicht gesetztes `OPENSAL_CROSS_VOLUME_TEST_DIR`).
+  Plugin-Inventarprüfungen mit `alpha`, `beta`, `rogue` sind
+  synthetisch; keine vollständige Plugin-, GUI-, Installer- oder
+  Clean-VM-Abnahme. Unicode-Elternverzeichnis und der externe
+  PowerShell-Editor sind als vorherige GUI-FAILs weiterhin offen.
+- **Änderungen:** Dokumentationsfortschreibung dieses realen
+  Testbelegs in `Entwicklungsjournal.md`, `Arbeitsstand-und-Uebergabe.md`
+  und `Testluecken-und-Abnahmeplan-5.2.md`. Der daraus resultierende
+  Dokumentations-HEAD ist nicht selbst erneut unter Windows getestet.
+- **Nächster Schritt:** P0 Unicode-Panelnavigation mit originaler
+  UTF-16-Identität prüfen (UP-04/06); danach Diagnose des
+  PowerShell-ExternalEditor-Falls (FIND-04/QA-03) und die noch
+  offenen GUI-/Release-Gates. Die MGMT-02/MGMT-03-Gaps bleiben
+  bis zum vollständigen Kriteriennachweis **TEILBELEGT/OFFEN**.
+
 ## Vorlage für zukünftige Einträge
 
 ```markdown
