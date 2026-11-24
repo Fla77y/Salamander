@@ -1078,7 +1078,7 @@ function Initialize-LegacyFindExternalEditor {
     $after = Join-Path $root 'editor-after.bin'
     [IO.File]::WriteAllText($before, 'original text')
     [IO.File]::WriteAllText($after, 'saved by the external editor')
-    @'
+    $batch = @'
 @echo off
 setlocal DisableDelayedExpansion
 >"%~dp0editor-probe.status" echo STARTED
@@ -1097,7 +1097,11 @@ if errorlevel 1 (
     exit /b 4
 )
 >"%~dp0editor-probe.status" echo SAVED
-'@ | Set-Content -LiteralPath $probe -Encoding ascii
+'@
+    # cmd.exe reads native CRLF-delimited batch files reliably; keep the
+    # fixture independent of the Git checkout's LF/CRLF configuration.
+    [IO.File]::WriteAllText(
+        $probe, (($batch -split '\r?\n') -join "`r`n"), [Text.Encoding]::ASCII)
 
     $editorExecutable = Join-Path $env:SystemRoot 'System32\cmd.exe'
     if (-not [IO.File]::Exists($editorExecutable)) {
