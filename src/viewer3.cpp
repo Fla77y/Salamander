@@ -1548,7 +1548,7 @@ CViewerWindow::WindowProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
                     // if (startSel == -1) startSel = 0; // cannot happen (-1 can only occur when both are -1, and we do not get here)
                     __int64 endSel = max(StartSelection, EndSelection);
                     // if (endSel == -1) endSel = 0; // cannot happen (-1 can only be both at once and we do not get here)
-                    if (fatalErr || !CopyHTextToClipboard(h, (int)(endSel - startSel)))
+                    if (fatalErr || !CopyHTextToClipboard(h, (int)(endSel - startSel), FALSE, HWindow))
                         NOHANDLES(GlobalFree(h));
                 }
                 if (fatalErr)

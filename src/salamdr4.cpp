@@ -1134,7 +1134,28 @@ BOOL CopyHTextToClipboard(HGLOBAL hGlobalText, int textLen, BOOL showEcho, HWND 
 
     DWORD err = ERROR_SUCCESS;
 
-    if (OpenClipboard(NULL))
+    // A viewer supplies its own window as clipboard owner. A short-lived
+    // clipboard lock by another process must not silently discard Copy.
+    // Retry acquisition only, never EmptyClipboard or publication.
+    BOOL opened = OpenClipboard(hEchoParent);
+    if (!opened)
+    {
+        err = GetLastError();
+        for (int attempt = 0; hEchoParent != NULL &&
+                              err == ERROR_ACCESS_DENIED && attempt < 20; ++attempt)
+        {
+            Sleep(10);
+            opened = OpenClipboard(hEchoParent);
+            if (opened)
+            {
+                err = ERROR_SUCCESS;
+                break;
+            }
+            err = GetLastError();
+        }
+    }
+
+    if (opened)
     {
         if (EmptyClipboard())
         {
@@ -1149,7 +1170,10 @@ BOOL CopyHTextToClipboard(HGLOBAL hGlobalText, int textLen, BOOL showEcho, HWND 
             else
                 err = GetLastError();
 
-            if (SetClipboardData(CF_TEXT, hGlobalText) == NULL) // then store the multibyte text
+            // Only transfer ownership of the caller's HGLOBAL if the
+            // preceding Unicode publication succeeded. FALSE must leave
+            // that handle owned by the caller (the viewer frees it).
+            if (err == ERROR_SUCCESS && SetClipboardData(CF_TEXT, hGlobalText) == NULL)
                 err = GetLastError();
         }
         else
@@ -1161,8 +1185,7 @@ BOOL CopyHTextToClipboard(HGLOBAL hGlobalText, int textLen, BOOL showEcho, HWND 
     }
     else
     {
-        err = GetLastError();
-        TRACE_E("OpenClipboard() has failed!");
+        TRACE_E("OpenClipboard() has failed: " << err);
     }
 
     if (showEcho)
