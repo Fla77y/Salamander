@@ -1095,12 +1095,11 @@ if ([IO.File]::ReadAllText($expected) -cne 'original text') {
     try {
         $editorKey.SetValue('Masks', '*.salfindtest')
         $editorKey.SetValue('Command', (Join-Path $PSHOME 'pwsh.exe'))
-        # -File receives an absolute, quoted test-owned script path; relying
-        # on the current directory of an MSIX PowerShell child is not a valid
-        # editor-launch requirement. The bypass applies only to this disposable
-        # test fixture, never to Salamander or the user's policy/settings.
+        # -File receives the exact absolute, quoted test-owned script path.
+        # Do not bypass the user's PowerShell execution policy merely to
+        # make a regression pass; report an actual policy failure instead.
         $editorKey.SetValue('Arguments',
-            ('-NoProfile -NonInteractive -ExecutionPolicy Bypass -File "{0}" "$(FullName)"' -f $probe))
+            ('-NoProfile -NonInteractive -File "{0}" "$(FullName)"' -f $probe))
         $editorKey.SetValue('Initial Directory', $root)
     }
     finally { $editorKey.Dispose() }
