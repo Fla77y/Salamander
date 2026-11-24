@@ -1509,13 +1509,15 @@ void CFilesWindow::EditFile(char* name, DWORD handlerID)
                     strcpy(expInitDir, name);
                     CutDirectory(expInitDir);
                 }
-                // Give Windows the verified, absolute executable separately.
-                // This prevents ambiguous command-line module discovery for
-                // packaged editors; relative and non-EXE commands retain the
-                // original CreateProcess(NULL, ...) behavior.
-                if (!HANDLES(Salamander::CreateConfiguredEditorProcessA(
-                         expCommand, cmdLine, expInitDir,
-                         NORMAL_PRIORITY_CLASS, &si, &pi)))
+                // Preserve the verified absolute executable identity, but
+                // call CreateProcess through Salamander's HANDLE tracking
+                // wrapper. HANDLES dispatches to C__Handles::CreateProcess;
+                // it cannot wrap an arbitrary namespaced helper function.
+                // Relative and non-EXE commands still pass NULL.
+                if (!HANDLES(CreateProcess(
+                         Salamander::GetExplicitEditorApplicationName(expCommand),
+                         cmdLine, NULL, NULL, FALSE,
+                         NORMAL_PRIORITY_CLASS, NULL, expInitDir, &si, &pi)))
                 {
                     DWORD err = GetLastError();
                     char buff[4 * MAX_PATH];
