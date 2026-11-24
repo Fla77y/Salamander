@@ -285,7 +285,7 @@ This project welcomes contributions to build and enhance Open Salamander!
 \translations    Translations into other languages
 ```
 
-A few Altap Salamander 4.0 plugins are either not included or cannot be compiled. For instance, the PictView engine ```pvw32cnv.dll``` is not open-sourced, so we should consider switching to [WIC](https://learn.microsoft.com/en-us/windows/win32/wic/-wic-about-windows-imaging-codec) or another library. The Encrypt plugin is incompatible with modern SSD disks and has been deprecated. The UnRAR plugin lacks [unrar.dll](https://www.rarlab.com/rar_add.htm), and the FTP plugin is missing [OpenSSL](https://www.openssl.org/) libraries. Both issues are solvable as both projects are open source. To build WinSCP plugin you need Embarcadero C++ Builder.
+Some Altap Salamander 4.0 plugins are missing sources or require additional dependencies. The PictView migration to [Windows Imaging Component (WIC)](https://learn.microsoft.com/en-us/windows/win32/wic/-wic-about-windows-imaging-codec) is implemented, but full plug-in host, codec and legacy-feature parity remains an open release gate. The UnRAR replacement is **not yet accepted**; archive support, licensing and Unicode/long-path behavior require further verification. The Encrypt plugin has historically been deprecated for modern SSDs; FTP has OpenSSL dependencies, and WinSCP requires Embarcadero C++ Builder. Consult the [plug-in acceptance inventory](docs/maintenance/Plugin-Inventar-und-Testmatrix-5.2.md) for current buildable and unverified modules.
 
 All the source code uses UTF-8-BOM encoding and is formatted with ```clang-format```. Refer to the ```\normalize.ps1``` script for more information.
 
