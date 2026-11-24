@@ -1537,8 +1537,8 @@ function Test-LegacyFindGui {
         Test-LegacyFindShellOpen -Fixture $fixture
         return
     }
-    if ($Scenario -eq 'ExternalEditor') {
-        Test-LegacyFindExternalEditor -Fixture $fixture
+    if ($Scenario -in 'ExternalEditor','ExternalEditorNative') {
+        Test-LegacyFindExternalEditor -Fixture $fixture -Native:($Scenario -eq 'ExternalEditorNative')
         return
     }
     if ($Scenario -eq 'RecycleRestore') {
