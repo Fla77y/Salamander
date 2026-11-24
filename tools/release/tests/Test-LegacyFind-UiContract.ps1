@@ -76,7 +76,7 @@ if (-not $dispatch.Contains('Salamander::GetExplicitEditorApplicationName(expCom
 # HANDLES(Salamander::Helper(...)) expands to a nonexistent
 # C__Handles::Salamander member. Retain C__Handles::CreateProcess tracking
 # and pass only the already-validated executable as its first argument.
-if ($dispatch -notmatch '(?s)HANDLES\(CreateProcess\(\s*Salamander::GetExplicitEditorApplicationName\(expCommand\),\s*cmdLine' -or
+if ($dispatch -notmatch '(?s)HANDLES\(CreateProcess\(\s*application,\s*cmdLine' -or
     $dispatch -match 'HANDLES\(Salamander::' -or
     $dispatch -notmatch '#include "common/win32_editor_process_launch.h"') {
     throw 'External editor must use HANDLES(CreateProcess(...)), not HANDLES(namespaced helper).'
@@ -261,5 +261,20 @@ foreach ($required in @(
     }
 }
 Write-Host 'PASS: targeted ViewUnicode reliability runner records independent pass/fail evidence.'
+
+foreach ($required in @('#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG',
+    'OPENSAL_GUI_EDITOR_TEST_GATE', 'OPENSAL_GUI_TEST_ID', 'CREATE_NEW',
+    'expCommand=[%s]', 'expArguments=[%s]', 'expInitDir=[%s]',
+    'cmdLine=[%s]', 'lpApplicationName=[%s]',
+    'RecordIsolatedEditorLaunch(expCommand, expArguments, expInitDir, cmdLine, application, si);')) {
+    if (-not $dispatch.Contains($required)) { throw "Isolated editor launch diagnostic missing: $required" }
+}
+if ($dispatch -notmatch '(?s)const char\* application = Salamander::GetExplicitEditorApplicationName\(expCommand\);\s*#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG\s*RecordIsolatedEditorLaunch\([^;]+;\s*#endif\s*if \(!HANDLES\(CreateProcess' -or
+    -not $driverText.Contains('OPENSAL_GUI_EDITOR_TEST_GATE = ') -or
+    -not $legacyGuiCases.Contains('Editor-launch=[$launch]') -or
+    -not $legacyGuiCases.Contains('Isolated editor launch parameters were recorded automatically')) {
+    throw 'Editor launch diagnostics must be gated, prelaunch and verified by the GUI runner.'
+}
+Write-Host 'PASS: isolated external editor automatically records launch parameters.'
 
 Write-Host 'PASS: --test-all dispatches isolated, automatically discovered Legacy Find GUI scenarios.'

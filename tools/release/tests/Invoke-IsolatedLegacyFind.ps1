@@ -2,7 +2,8 @@
 # SPDX-FileCopyrightText: 2026 Open Salamander Authors
 # SPDX-License-Identifier: GPL-2.0-or-later
 [CmdletBinding()]
-param([ValidateSet('Release','Debug')][string]$Configuration = 'Release')
+param([ValidateSet('Release','Debug')][string]$Configuration = 'Release',
+      [ValidateSet('ExternalEditor','ExternalEditorNative')][string]$EditorScenario)
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
@@ -18,6 +19,11 @@ $optIn = @('EncryptedFixture','NearLimit','RecycleRestore')
 $scenarioAttribute = (Get-Command -Name $driver).Parameters['LegacyFindScenario'].Attributes |
     Where-Object { $_ -is [System.Management.Automation.ValidateSetAttribute] }
 $scenarios = @($scenarioAttribute.ValidValues | Where-Object { $_ -notin $optIn })
+# Optional focused editor diagnosis; default full-suite coverage is unchanged.
+if ($PSBoundParameters.ContainsKey('EditorScenario')) {
+    if ($EditorScenario -notin $scenarios) { throw 'Requested editor scenario is not registered.' }
+    $scenarios = @($EditorScenario)
+}
 
 $binary = & (Join-Path $PSScriptRoot 'Build-IsolatedGuiTest.ps1') -Configuration $Configuration -OutputName 'isolated-legacy-find'
 

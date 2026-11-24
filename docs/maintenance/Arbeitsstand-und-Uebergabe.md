@@ -1,8 +1,8 @@
 # Salamander 5.2 – aktueller Entwicklungsstand und Übergabe
 
 > **Startpunkt für jede neue ChatGPT-, Codex- oder Entwickler-Sitzung.**
-> Letzte fachliche Auswertung: **24.11.2026, 15:32 CET**.
-> **Letzter tatsächlicher Windows-Lauf:** `bugfix/v5.2`, SHA `8a6de88c3eafe54cc874bdec85019ea67a5fdfcc`, **24.11.2026, 15:28:41–15:32:06 CET**, isoliertes `--test-gui-legacy-find --debug`: **Debug-x64-Build PASS** (C2039 behoben), **34 PASS / 3 FAIL / 0 SKIP**. FAIL: `AdvancedInputs` (Shift-Zustand blockiert Auswahl), `ShellClipboard` (Copy-Dateiliste/Drop-Effekt nicht veröffentlicht), `ExternalEditor` (PowerShell-Kontrollstart PASS, aber GUI `NOT_STARTED`, Dialog „Open Salamander“ sichtbar). **Letzter vollständiger `--build-delta --test`-PASS:** SHA `9f524264`, 14:32–14:34 CET. Nachträgliche Test-/Diagnosecommits sind unter Windows noch nicht ausgeführt.
+> Letzte fachliche Auswertung: **24.11.2026, 17:09 CET**.
+> **Letzter tatsächlicher Windows-Lauf:** `bugfix/v5.2`, SHA `d93cb4d5eb63a61d406c3d98c1ef6979621c5d5e`, 24.11.2026 17:06:29–17:09:22 CET; isoliertes `--test-gui-legacy-find --debug`: Debug-x64-Build PASS, **36 PASS / 1 FAIL / 0 SKIP**, nur `ExternalEditor` Win32 5. Letzter vollständiger `--build-delta --test`-PASS weiterhin `9f524264`.
 > **Dieses Datum und diese SHA sind ein Snapshot, kein automatisch aktueller Git-HEAD.**
 > Die Dokumentationscommits danach benötigen eigene, angemessene Prüfungen.
 > **Release 5.2: NO-GO.** Keine vollständige A0–A7-, Plugin- oder VM-Abnahme.
@@ -51,6 +51,10 @@
 Die früheren Benutzerprotokolle `manage-20261124-125928-575-54f5eb.log`, `manage-20261124-130047-583-958536.log` und `manage-20261124-140223-783-8d6f75.log` sowie der neue erfolgreiche Lauf `manage-20261124-143247-926-e31128.log` und die drei blockierten GUI-Läufe `manage-20261124-143441-351-f441ec.log`, `manage-20261124-143443-659-54878a.log`, `manage-20261124-143445-886-a11170.log` und der neue fehlgeschlagene Debug-Legacy-Find-Lauf `manage-20261124-145926-376-de4931.log` sowie die fehlgeschlagenen Build-/GUI-Build-Läufe `manage-20261124-151235-015-5be57f.log` und `manage-20261124-151238-827-08f672.log` befinden sich **nur lokal** unter `.Build/logs/`, nicht im Git. Testresultate nicht ohne eindeutige SHA/Variante/Datum in einen späteren Commit übertragen. Im nativen `long_path_io.cpp`-Test wurde der optionale echte Cross-Volume-Fall mangels `OPENSAL_CROSS_VOLUME_TEST_DIR` **SKIP** gemeldet; das ist kein PASS.
 
 ## 4. Aktive Fehler und nächste konkrete Arbeit
+
+**24.11.2026, 17:06–17:09 CET, `d93cb4d5`:** isolierter Debug-x64-Build PASS, Legacy Find **36 PASS / 1 FAIL / 0 SKIP**; `AdvancedInputs`, `ShellClipboard`, `ExternalEditorNative` PASS, `ExternalEditor` FAIL/NOT_STARTED, CreateProcess Win32 **5 (ERROR_ACCESS_DENIED)**. Log: `manage-20261124-170629-100-b3066a.log`. Gleiches Ergebnis im Lauf 15:57–16:01. Nutzer-Gegenproben: vier A/W-API-/ApplicationName-Kombinationen im PowerShell-Prozess PASS (Exit 7); absoluter MSIX-EXE-Start aus administrativer cmd.exe PASS (Exit 7); vollständige ursprüngliche Editor-Fixture aus cmd.exe PASS (Exit 0, SAVED). Allgemeine MSIX-Startblockade nicht belegt. Neue testbuild- und GUID-gesteuerte One-shot-Datei `process-temp/editor-launch.txt` erfasst vor CreateProcess expandierten Befehl, Argumente, Arbeitsverzeichnis, Commandline, ApplicationName, ACP und Startflags. GUI-Runner meldet sie bei FAIL mit dem vorhandenen Win32-Dialog; bei PASS verlangt er eine nichtleere Datei. **Kein Windows-Lauf auf dem neuen Diagnosecode; Produktfehler bleibt offen.**
+
+**Unmittelbar nächster Schritt:** Diagnosecommit beziehen und `pwsh -NoProfile -File tools/release/tests/Invoke-IsolatedLegacyFind.ps1 -Configuration Debug -EditorScenario ExternalEditor` ausführen; `Editor-launch` und `Owned-error-dialog` auswerten. Der normale Manager-Test bleibt vollständig.
 
 **Testinfrastrukturfehler vom 13:56-Lauf inzwischen verifiziert behoben (MGMT-02/MGMT-03):** Der ParserError aus `Test-DevelopmentContinuity.ps1` wurde mit `${id}:` korrigiert. Auf `a928794c` lief `manage.cmd --test` am 24.11. von 14:02 bis 14:03 erfolgreich; die Parser-Vorprüfung prüfte 66 Skripte und erkannte den negativen Syntaxfall. Die weitergehenden MGMT-02-/MGMT-03-Abnahmekriterien sind dennoch offen.
 

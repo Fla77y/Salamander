@@ -27,6 +27,54 @@
 #include "common/win32_unicode_find_window.h"
 #include "common/win32_editor_process_launch.h"
 
+#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
+// Test-only capture before the Debug handle monitor can display a modal.
+// The GUI test owns the private TEMP directory and enables this explicitly.
+static void RecordIsolatedEditorLaunch(const char* command, const char* arguments,
+                                       const char* directory, const char* commandLine,
+                                       const char* application, const STARTUPINFO& startup)
+{
+    char gate[2] = {};
+    char testId[33] = {};
+    if (GetEnvironmentVariableA("OPENSAL_GUI_EDITOR_TEST_GATE", gate, sizeof(gate)) != 1 ||
+        gate[0] != '1' ||
+        GetEnvironmentVariableA("OPENSAL_GUI_TEST_ID", testId, sizeof(testId)) != 32)
+        return;
+    for (int i = 0; i < 32; ++i)
+        if (!((testId[i] >= '0' && testId[i] <= '9') ||
+              (testId[i] >= 'a' && testId[i] <= 'f')))
+            return;
+
+    char temp[MAX_PATH] = {};
+    const DWORD length = GetEnvironmentVariableA("TEMP", temp, sizeof(temp));
+    if (length == 0 || length >= sizeof(temp))
+        return;
+    char path[MAX_PATH];
+    if (_snprintf_s(path, _TRUNCATE, "%s\\editor-launch.txt", temp) < 0)
+        return;
+
+    char record[4096];
+    const int size = _snprintf_s(record, _TRUNCATE,
+        "ACP=%u\r\nexpCommand=[%s]\r\nexpArguments=[%s]\r\nexpInitDir=[%s]\r\n"
+        "cmdLine=[%s]\r\nlpApplicationName=[%s]\r\n"
+        "startupFlags=0x%lX show=%u creationFlags=0x%lX inherit=FALSE\r\n",
+        GetACP(), command, arguments, directory, commandLine,
+        application != NULL ? application : "<NULL>",
+        startup.dwFlags, static_cast<unsigned>(startup.wShowWindow),
+        static_cast<unsigned long>(NORMAL_PRIORITY_CLASS));
+    if (size < 0)
+        return;
+
+    HANDLE file = HANDLES_Q(CreateFile(path, GENERIC_WRITE, 0, NULL, CREATE_NEW,
+                                      FILE_ATTRIBUTE_NORMAL, NULL));
+    if (file == INVALID_HANDLE_VALUE)
+        return;
+    DWORD written = 0;
+    ::WriteFile(file, record, static_cast<DWORD>(size), &written, NULL);
+    HANDLES(CloseHandle(file));
+}
+#endif
+
 //
 // ****************************************************************************
 // CFilesWindow
@@ -1514,8 +1562,12 @@ void CFilesWindow::EditFile(char* name, DWORD handlerID)
                 // wrapper. HANDLES dispatches to C__Handles::CreateProcess;
                 // it cannot wrap an arbitrary namespaced helper function.
                 // Relative and non-EXE commands still pass NULL.
+                const char* application = Salamander::GetExplicitEditorApplicationName(expCommand);
+#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
+                RecordIsolatedEditorLaunch(expCommand, expArguments, expInitDir, cmdLine, application, si);
+#endif
                 if (!HANDLES(CreateProcess(
-                         Salamander::GetExplicitEditorApplicationName(expCommand),
+                         application,
                          cmdLine, NULL, NULL, FALSE,
                          NORMAL_PRIORITY_CLASS, NULL, expInitDir, &si, &pi)))
                 {

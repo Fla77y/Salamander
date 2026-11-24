@@ -1275,12 +1275,26 @@ function Test-LegacyFindExternalEditor {
                         $_.Handle, [uint32]$process.Id)
                 }) -join ' || '
         } catch { '<test dialog text unavailable>' }
+        # Read the one-shot record while the Debug handle monitor is modal.
+        $launchPath = Join-Path $root 'process-temp\editor-launch.txt'
+        $launch = try {
+            if ([IO.File]::Exists($launchPath) -and [IO.FileInfo]::new($launchPath).Length -le 4096) {
+                $bytes = [IO.File]::ReadAllBytes($launchPath)
+                $prefix = [Text.Encoding]::ASCII.GetString($bytes)
+                if ($prefix -notmatch '^ACP=(\d+)\r?\n') { throw 'Invalid editor diagnostic header.' }
+                [Text.Encoding]::RegisterProvider([Text.CodePagesEncodingProvider]::Instance)
+                [Text.Encoding]::GetEncoding([int]$Matches[1]).GetString($bytes)
+            } else { '<editor launch record missing or oversized>' }
+        } catch { '<editor launch record unreadable>' }
         # Reading only the test-owned window's actual child labels provides
         # the CreateProcess/argument failure reason. Never auto-close a modal.
         throw ("Legacy Find external editor did not modify the selected fixture. " +
                "Test editor state=$state; Test-process windows=$ownedWindows; " +
-               "Owned-error-dialog=[$ownedDialogs]; $($_.Exception.Message)")
+               "Owned-error-dialog=[$ownedDialogs]; Editor-launch=[$launch]; $($_.Exception.Message)")
     }
+    $launchPath = Join-Path $root 'process-temp\editor-launch.txt'
+    Assert-True ([IO.File]::Exists($launchPath)) 'Isolated editor launch parameters were recorded automatically'
+    Assert-True ([IO.FileInfo]::new($launchPath).Length -gt 0) 'Editor launch record is nonempty'
     Assert-True ([IO.File]::ReadAllText($neighbor) -ceq 'keep this') 'External editor preserves the unselected file'
 }
 
