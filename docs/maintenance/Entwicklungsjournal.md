@@ -1,6 +1,7 @@
 # Salamander 5.2 – chronologisches Entwicklungsjournal
 
 > **Append-only Gedächtnis für ChatGPT, Codex und Entwickler.**
+> Letzte Konsolidierung: **2026-11-24**; weitere Einträge nur datiert ergänzen.
 > Konsolidiert aus **Salamander-Chat-01.pdf bis Salamander-Chat-12.pdf**,
 > `Master-Prompt.odt`, `Anforderungen.md`, den bereits versionierten
 > Architektur-/Migrationsdokumenten und den nachfolgenden Benutzerlogs
