@@ -1070,38 +1070,68 @@ function Test-LegacyFindShellOpen {
 }
 
 function Initialize-LegacyFindExternalEditor {
-    # Use the built-in Windows command processor rather than the host PowerShell
-    # executable. A Store/MSIX pwsh.exe can have different child-process
-    # activation semantics, which are unrelated to Salamander's editor contract.
-    $probe = Join-Path $root 'editor-probe.cmd'
-    $before = Join-Path $root 'editor-before.bin'
-    $after = Join-Path $root 'editor-after.bin'
+    # Preserve the original external-editor regression using the PowerShell
+    # executable chosen by the current test host. Record whether it was
+    # launched, without changing the configured editor or its file argument.
+    $probe = Join-Path $root 'editor-probe.ps1'
+    @'
+param([string]$Target)
+$state = Join-Path $PSScriptRoot 'editor-probe-pwsh.status'
+[IO.File]::WriteAllText($state, 'STARTED')
+$expected = Join-Path $PSScriptRoot 'find\editor fixture.salfindtest'
+if ($Target -cne $expected) {
+    [IO.File]::WriteAllText($state, 'WRONG_ARGUMENT')
+    exit 1
+}
+if ([IO.File]::ReadAllText($expected) -cne 'original text') {
+    [IO.File]::WriteAllText($state, 'ORIGINAL_CONTENT_CHANGED')
+    exit 1
+}
+[IO.File]::WriteAllText($expected, 'saved by the external editor')
+[IO.File]::WriteAllText($state, 'SAVED')
+'@ | Set-Content -LiteralPath $probe -Encoding utf8
+
+    $editorKey = [Microsoft.Win32.Registry]::CurrentUser.CreateSubKey($testConfigurationKey + '\Config0\Editors\1')
+    try {
+        $editorKey.SetValue('Masks', '*.salfindtest')
+        $editorKey.SetValue('Command', (Join-Path $PSHOME 'pwsh.exe'))
+        $editorKey.SetValue('Arguments', '-NoProfile -NonInteractive -File editor-probe.ps1 "$(FullName)"')
+        $editorKey.SetValue('Initial Directory', $root)
+    }
+    finally { $editorKey.Dispose() }
+}
+
+function Initialize-LegacyFindExternalEditorNative {
+    # Compare with a built-in Windows editor stand-in. This test keeps the
+    # same registry configuration, exact Find selection and $(FullName)
+    # expansion, while removing packaged PowerShell from the child process.
+    $probe = Join-Path $root 'editor-probe-native.cmd'
+    $before = Join-Path $root 'editor-native-before.bin'
+    $after = Join-Path $root 'editor-native-after.bin'
     [IO.File]::WriteAllText($before, 'original text')
     [IO.File]::WriteAllText($after, 'saved by the external editor')
     $batch = @'
 @echo off
 setlocal DisableDelayedExpansion
->"%~dp0editor-probe.status" echo STARTED
+>"%~dp0editor-probe-native.status" echo STARTED
 if not "%~1"=="%~dp0find\editor fixture.salfindtest" (
-    >"%~dp0editor-probe.status" echo WRONG_ARGUMENT
+    >"%~dp0editor-probe-native.status" echo WRONG_ARGUMENT
     exit /b 2
 )
-fc /b "%~1" "%~dp0editor-before.bin" >nul
+fc /b "%~1" "%~dp0editor-native-before.bin" >nul
 if errorlevel 1 (
-    >"%~dp0editor-probe.status" echo ORIGINAL_CONTENT_CHANGED
+    >"%~dp0editor-probe-native.status" echo ORIGINAL_CONTENT_CHANGED
     exit /b 3
 )
-copy /y /b "%~dp0editor-after.bin" "%~1" >nul
+copy /y /b "%~dp0editor-native-after.bin" "%~1" >nul
 if errorlevel 1 (
-    >"%~dp0editor-probe.status" echo COPY_FAILED
+    >"%~dp0editor-probe-native.status" echo COPY_FAILED
     exit /b 4
 )
->"%~dp0editor-probe.status" echo SAVED
+>"%~dp0editor-probe-native.status" echo SAVED
 '@
-    # cmd.exe reads native CRLF-delimited batch files reliably; keep the
-    # fixture independent of the Git checkout's LF/CRLF configuration.
     [IO.File]::WriteAllText(
-        $probe, (($batch -split '\r?\n') -join "`r`n"), [Text.Encoding]::ASCII)
+        $probe, (($batch -split '\r?\n') -join [Environment]::NewLine), [Text.Encoding]::ASCII)
 
     $editorExecutable = Join-Path $env:SystemRoot 'System32\cmd.exe'
     if (-not [IO.File]::Exists($editorExecutable)) {
@@ -1111,19 +1141,21 @@ if errorlevel 1 (
     try {
         $editorKey.SetValue('Masks', '*.salfindtest')
         $editorKey.SetValue('Command', $editorExecutable)
-        $editorKey.SetValue('Arguments', '/D /C call editor-probe.cmd "$(FullName)"')
+        $editorKey.SetValue('Arguments', '/D /C call editor-probe-native.cmd "$(FullName)"')
         $editorKey.SetValue('Initial Directory', $root)
     }
     finally { $editorKey.Dispose() }
 }
 
 function Test-LegacyFindExternalEditor {
-    param([string]$Fixture)
+    param([string]$Fixture, [switch]$Native)
 
-    # Arrange: only the intended result may be changed by the external editor.
+    # Arrange: both independent cases demand exact source identity and bytes.
     $target = Join-Path $Fixture 'editor fixture.salfindtest'
     $neighbor = Join-Path $Fixture 'neighbor.txt'
-    $statusFile = Join-Path $root 'editor-probe.status'
+    $stateName = if ($Native) { 'editor-probe-native.status' }
+                 else { 'editor-probe-pwsh.status' }
+    $statusFile = Join-Path $root $stateName
     [IO.File]::WriteAllText($target, 'original text')
     [IO.File]::WriteAllText($neighbor, 'keep this')
     Set-LegacyFindQuery -SearchRoot $Fixture -Mask '*.salfindtest'
@@ -1131,15 +1163,20 @@ function Test-LegacyFindExternalEditor {
     Assert-True ((Read-LegacyFindResult -Index 0) -ceq $target) (
         'External editor targets the exact verified Find result')
 
-    # Act: exercise the unchanged legacy Find Edit command and real CreateProcess.
+    # Act: use the real legacy Find Edit handler. No retry of this command.
     $ownerPid = [uint32]$process.Id
     [SalamanderGuiNative]::SelectLegacyFindRow($legacyWindow, $ownerPid, 0)
     [SalamanderGuiNative]::LegacyFindCommand($legacyWindow, $ownerPid, 2223, $true)
 
-    # Assert: verify bytes, not merely that an editor child was launched.
+    # Assert: require exact output and positive confirmation that the
+    # configured editor received the correct argument and original bytes.
     try {
         Wait-Until {
-            try { return [IO.File]::ReadAllText($target) -ceq 'saved by the external editor' }
+            try {
+                return [IO.File]::ReadAllText($target) -ceq 'saved by the external editor' -and
+                    [IO.File]::Exists($statusFile) -and
+                    [IO.File]::ReadAllText($statusFile).Trim() -ceq 'SAVED'
+            }
             catch [IO.IOException] { return $false }
         } 'The configured external editor received and saved the exact fixture with spaces'
     }
@@ -1153,8 +1190,6 @@ function Test-LegacyFindExternalEditor {
                "Test editor state=$state; $($_.Exception.Message)")
     }
     Assert-True ([IO.File]::ReadAllText($neighbor) -ceq 'keep this') 'External editor preserves the unselected file'
-    Assert-True (([IO.File]::ReadAllText($statusFile).Trim()) -ceq 'SAVED') (
-        'External editor confirms the exact command argument and original bytes')
 }
 
 function Test-LegacyFindRecycleRestore {
