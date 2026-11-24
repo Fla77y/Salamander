@@ -95,6 +95,9 @@ eine kürzere Fixture erfüllt den Grenzfall **nicht**.
 
 ## Arbeitsfortschritt M1 – nachgeführter Windows-Stand (24. November 2026)
 
+**Windows-Gegenlauf 24.11.2026, 15:12 / SHA `3820e636...`:** `--build-delta --test` **FAIL** im Debug-C++-Build, `src/fileswn5.cpp:1516` C2039 (ungültige `HANDLES(Salamander::CreateConfiguredEditorProcessA(...))`-Expansion). Direkt danach `--test-gui-legacy-find --debug` **FAIL ebenfalls im isolierten Debug-Build**, keinerlei GUI-Szenario ausgeführt. In Folgecommits durch vorhandene `C__Handles::CreateProcess`-Schnittstelle als `HANDLES(CreateProcess(...))` behoben; überflüssige Wrapperfunktion entfernt, native Regression und statischer Vertrag angepasst. **MSVC-/PowerShell-/GUI-GREEN ausstehend**. Diese Quellcodeänderung stellt noch keine neue grüne Baseline dar.
+
+
 **Neuer Debug-Legacy-Find-Nachweis am 24.11.2026, 14:59–15:02 (Quell-SHA `3119af034cf5eb6d1a65b27880d891baa5258ca9`):** 36 PASS, 1 FAIL, 0 SKIP.
 `ExternalEditorNative` und PowerShell-Host-Preflight beide **PASS**; ausschließlich tatsächliches Legacy-Find-`ExternalEditor` bleibt `NOT_STARTED` / FAIL. Dagegen sind die 36 anderen Szenarien erfolgreich.
 **Nachfolgende ungetestete Produktkorrektur:** Für vorhandene absolute `.exe`-Editoren wird dem Win32-`CreateProcessA` der Anwendungsname explizit übergeben, für andere Editorbefehle bleibt Legacy-Verhalten erhalten. Neuer nativer Editor-Prozessstarttest und statische Vertragsprüfung hinzugefügt.
@@ -871,6 +874,7 @@ UP-07 bleibt TEILBELEGT.
 ## 5. A3 – Vollständiger Visual-Studio-2026-Build
 
 ### [ ] BUILD-01 – Komplette Vierfach-Buildmatrix (**P0**, TEILBELEGT)
+- **24.11.2026, 15:12, SHA `3820e636`:** Debug-x64-Delta-Kompilierung **FAIL C2039** in `fileswn5.cpp`, Release-Build und alle `--test`-Schritte des kombinierten Laufs nicht erreicht. Korrektur des falsch verwendeten `HANDLES`-Makros eingecheckt; neuer realer Build ausstehend.
 - **Fälle:** Clean-Checkout/Solution mit Win32/x64 × Debug/Release; alle
   zugehörigen Projekte/Plugins/Ressourcen/Help; Warnungen als Fehler,
   exakte Toolset-/SDK- und CRT-Abhängigkeiten protokollieren.
@@ -1007,6 +1011,7 @@ UP-07 bleibt TEILBELEGT.
   Plugin-Fähigkeiten je Modul vorher spezifizieren; **UP-01/UP-02**.
 
 ### [ ] FIND-04 – Erweiterte Funktionen und Ergebnisaktionen (**P1**, TEILBELEGT)
+- **24.11.2026, 15:12, SHA `3820e636`:** Neuer `CreateConfiguredEditorProcessA`-Aufruf innerhalb `HANDLES(...)` **C2039, Debug-Build FAIL**, isolierter Legacy-Find-GUI-Build ebenfalls FAIL; keine neuen GUI-Produktbelege. **Korrektur nach dem Lauf:** direkter `HANDLES(CreateProcess(GetExplicitEditorApplicationName(expCommand), ...))`, mit unverändertem Handle-Monitoring und Legacy-Fallback; Test ergänzt, nicht unter Windows ausgeführt. FIND-04 bleibt TEILBELEGT.
 - **24.11.2026, 15:02; SHA `3119af03`, realer Debug-GUI-Lauf:** 36 PASS/1 FAIL/0 SKIP; PowerShell-Host-Preflight erfolgreich, `ExternalEditorNative` erfolgreich, *nur* tatsächlicher `ExternalEditor` FAIL mit `NOT_STARTED`. Neuer enger Produkt-Fix (absolute existierende `.exe` als explizites `lpApplicationName` in `CreateProcessA`; sonst Legacy-Fallback), nativer Test `editor_process_launch.cpp`, statischer Vertrag und Eigentümer-Fensterdiagnose eingecheckt, **MSVC-/GUI-GREEN auf neuem HEAD ausstehend**. Nicht als geschlossen markieren.
 - **24.11.2026, SHA `9f524264`:** Die PowerShell-Editor-Kontraktprüfungen im echten Windows-`--test` sind PASS, aber der GUI-Editorlauf wurde wegen vorhandener Salamander-Instanz **vor Produktausführung blockiert**; die eigentliche Änderung ist nicht GUI-verifiziert. Der PowerShell-Editor erhält einen absoluten, korrekt zitierten `-File`-Pfad; vor dem eigentlichen GUI-Edit-Befehl wird der konkrete `pwsh.exe`-Host mit einem test-eigenen File unabhängig geprüft und die Fixture nachweisbar zurückgesetzt. So unterscheiden wir Host-/Policy-Fehler von Produkt-CreateProcess-Fehlern. Die Vertragsprüfung erzwingt Vorlauf und Zurücksetzen des Statusmarkers (`be853b54`). Beide Editorvarianten bleiben erhalten; Ausführungsrichtlinie bleibt unverändert. `ExternalEditorNative` und strenge Original-/Nachbar-/Argumentprüfungen bleiben bestehen. Vorhandenes Debug-FAIL `NOT_STARTED` nicht als behoben markieren, bis erneuter realer Lauf bestanden ist.
 - **24.11.2026:** Debug-Legacy-Find 36 PASS, 1 FAIL; originaler PowerShell-`ExternalEditor` meldet `NOT_STARTED`, Native-Vergleich PASS. Beide Szenarien bleiben erhalten, Verhalten und Root Cause offen.
@@ -1119,6 +1124,7 @@ UP-07 bleibt TEILBELEGT.
   Ausschlüsse (WinAPI-/GUI-Boundaries).
 
 ### [ ] QA-03 – Wiederholbarkeit, GUI-Flakiness und Ressourcen (**P1**, TEILBELEGT)
+- **24.11.2026, 15:12:** Die erneute Legacy-Find-Debug-GUI-Prüfung scheiterte **bereits bei der isolierten Kompilierung**, ohne Testergebnis. Statischer Schutz gegen `HANDLES(Salamander::...)` eingeführt; ein echter neuer GUI-Gegenlauf steht aus.
 - **24.11.2026, 14:59–15:02:** Trotz isoliertem GUI-Runner und erfolgreichem unabhängigen PowerShell-Start reproduzierbarer `ExternalEditor`-FAIL `NOT_STARTED` (36/1/0). Produktlaunch-Hypothese durch separate ausführbare Modulidentität und neue native Regression abgesichert, aber noch nicht live verifiziert. Test-Runner meldet bei erneuter Timeout-Ausnahme zusätzlich Fenster des test-eigenen Salamander-Prozesses, ohne fremde Fenster zu manipulieren.
 - **24.11.2026:** Fehlgeschlagene GUI-Preflights bei bereits laufenden Salamander-Instanzen sollen künftig kontrolliert warten statt sofort mit Exit 1 enden. Die Unterläufe behalten ihre strikten Sicherheitschecks; eine wiederholte echte GUI-Testserie nach der Änderung fehlt weiterhin.
 - **24.11.2026, 14:34, SHA `9f524264`:** Drei isolierte GUI-Aufrufe (Unicode-Elternverzeichnis Release/Debug, Legacy-Find Debug) scheiterten am **Preflight bereits laufender Salamander-Instanzen** und führten keine Produktschritte aus. Sicherheitsentscheidung korrekt: keine Benutzerinstanz abschießen, nicht als neue GUI-Produktregression verbuchen. Vor Wiederholung eigene Salamander-Fenster regulär schließen.
