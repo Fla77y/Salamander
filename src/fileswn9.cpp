@@ -290,7 +290,10 @@ BOOL CFilesWindow::ClipboardPaste(BOOL onlyLinks, BOOL onlyTest, const char* pas
         DWORD error = ERROR_NOT_SUPPORTED;
         bool gotFiles = canTransfer && ReadUnicodeClipboardFiles(clipboardData, files, transferEffect, error);
         clipboardData->Release();
-        if (!gotFiles && canTransfer && error == ERROR_BAD_FORMAT)
+        // OLE can fail to expose the file list or its preferred drop effect.
+        // Re-read both from the original native clipboard snapshot before any
+        // filesystem operation; the same strict parser and effect checks apply.
+        if (!gotFiles && canTransfer && (error == ERROR_BAD_FORMAT || error == ERROR_INVALID_DATA))
             gotFiles = ReadNativeUnicodeClipboardFiles(HWindow, clipboardSequence, files, transferEffect, error);
 
         bool success = false;
