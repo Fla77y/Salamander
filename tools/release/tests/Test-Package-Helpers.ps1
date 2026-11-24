@@ -271,16 +271,30 @@ if ($guiDriver -notmatch '\[switch\]\$TemporaryDirectoryDeletionOnly' -or
 
 
 # A single Shift+Up marks only the previously focused row in Salamander.
-# Both F5 and F6 fixtures must explicitly mark two verified regular files.
+# Each of the four F5/F6 transfers (small synchronous and 17-MiB worker)
+# must explicitly mark two verified regular files using Insert.
 $multiSelectBlock = [regex]::Match(
     $guiDriver,
     '(?s)if \(\$ShortUnicodeMultiSelectOnly\) \{\s*# Arrange: existing, distinct source and destination directories\.(.*?)if \(\$ShortUnicodeRowIdentityOnly\) \{'
 ).Groups[1].Value
+$selectionActions = [regex]::Matches(
+    $multiSelectBlock,
+    'Select-TwoRegularFiles -ExpectedNames @\(\$utfName, \$secondName\)\s*Send-Keys ''\{F([56])\}'''
+)
+$selectionOrder = @($selectionActions | ForEach-Object { $_.Groups[1].Value }) -join ','
+$selectionHelper = [regex]::Match(
+    $guiDriver, '(?s)function Select-TwoRegularFiles\s*\{(.*?)\r?\n\}'
+).Groups[1].Value
 if ([string]::IsNullOrEmpty($multiSelectBlock) -or
     $multiSelectBlock -match "Send-Keys '\+\{UP\}'" -or
-    ([regex]::Matches($multiSelectBlock, 'Select-TwoRegularFiles')).Count -ne 2 -or
-    $guiDriver -notmatch '(?s)function Select-TwoRegularFiles\s*\{.*?Send-Keys ''\{INSERT\}''.*?Send-Keys ''\{INSERT\}''') {
-    throw 'GUI F5/F6 multiselect must mark two verified file rows using Insert, not a single Shift+Up.'
+    ([regex]::Matches($multiSelectBlock, 'Select-TwoRegularFiles')).Count -ne 4 -or
+    $selectionActions.Count -ne 4 -or
+    $selectionOrder -cne '5,6,5,6' -or
+    [string]::IsNullOrEmpty($selectionHelper) -or
+    ([regex]::Matches($selectionHelper, 'Send-Keys ''\{INSERT\}''')).Count -ne 2 -or
+    $selectionHelper -notmatch 'Read-FocusedFilename' -or
+    $selectionHelper -notmatch 'Both adjacent file rows match the expected source filenames') {
+    throw 'GUI F5/F6 multiselect must verify and Insert-mark both rows in all four transfer paths.'
 }
 
 
