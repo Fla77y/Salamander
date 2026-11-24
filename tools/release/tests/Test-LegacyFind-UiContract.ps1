@@ -124,7 +124,9 @@ if ($legacyGuiCases -notmatch 'function Initialize-LegacyFindExternalEditor\s*\{
     $legacyGuiCases -notmatch 'System32\\cmd\.exe' -or
     $legacyGuiCases -notmatch 'ReadAllText\(\$neighbor\)' -or
     $legacyGuiCases -notmatch 'WRONG_ARGUMENT' -or
-    $legacyGuiCases -notmatch 'ORIGINAL_CONTENT_CHANGED') {
+    $legacyGuiCases -notmatch 'ORIGINAL_CONTENT_CHANGED' -or
+    -not $legacyGuiCases.Contains('-NoProfile -NonInteractive -File "{0}" "$(FullName)"') -or
+    -not $legacyGuiCases.Contains(' -f $probe)')) {
     throw 'Both external-editor launch paths must verify exact file identity and keep the original PowerShell coverage.'
 }
 Write-Host 'PASS: independent PowerShell and Win32 editor tests retain full original Find Edit coverage.'
