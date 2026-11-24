@@ -534,6 +534,12 @@
       "Kind": "Automatic",
       "Owner": "tools/Manage-Salamander.ps1",
       "Reason": ""
+    },
+    {
+      "Path": "tools/tests/plugin_unicode_sdk.cpp",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
     }
   ],
   "AutomaticOptions": [
@@ -676,6 +682,12 @@
       "Name": "Clean VM and full plugin functionality acceptance",
       "Option": "",
       "Reason": "Requires separate controlled environment and additional functional coverage.",
+      "PerVariant": false
+    },
+    {
+      "Name": "Grouped PictView baseline (alias)",
+      "Option": "--test-plugin-pictview",
+      "Reason": "Explicit grouped alias for native tests and existing F3 host opt-ins; no additional independent scenario.",
       "PerVariant": false
     }
   ]

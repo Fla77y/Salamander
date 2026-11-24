@@ -2630,6 +2630,13 @@ public:
                   HANDLE* lock, BOOL* lockOwner,
                   int enumFilesSourceUID, int enumFilesCurrentIndex);
 
+    // Optional Unicode viewer extension; legacy SDK interface stays unchanged.
+    DWORD TryCanViewFileW(const WCHAR* name, BOOL& canView);
+    DWORD TryViewFileW(const WCHAR* name, int left, int top, int width, int height,
+                       UINT showCmd, BOOL alwaysOnTop, BOOL returnLock,
+                       HANDLE* lock, BOOL* lockOwner, int enumFilesSourceUID,
+                       int enumFilesCurrentIndex, BOOL& viewed);
+
     // plugin call: OpenFS
     CPluginFSInterfaceAbstract* OpenFS(const char* fsName, int fsNameIndex);
 

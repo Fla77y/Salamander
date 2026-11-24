@@ -16,6 +16,7 @@
 #include <uxtheme.h>
 #include "dialogs.h"
 #include "common/win32_plugin_module_path.h"
+#include "plugins/shared/spl_unicode.h"
 
 CPlugins Plugins;
 
@@ -3750,6 +3751,56 @@ BOOL CPluginData::ViewFile(const char* name, int left, int top, int width, int h
         }
     }
     return ret;
+}
+
+// The new W entry points are deliberately separate from the SDK-103
+// dispatch. ERROR_NOT_SUPPORTED means no negotiated extension, not a
+// negative CanViewFileW result. Do not retry a failed W operation via ANSI.
+DWORD CPluginData::TryCanViewFileW(const WCHAR* name, BOOL& canView)
+{
+    canView = FALSE;
+    if (!name || !*name)
+        return ERROR_INVALID_PARAMETER;
+    if (!InitDLL(MainWindow->HWindow))
+        return ERROR_DLL_INIT_FAILED;
+    if (!PluginIfaceForViewer.NotEmpty())
+        return ERROR_NOT_SUPPORTED;
+    const auto query = reinterpret_cast<SalamanderSdk::QueryUnicodeViewer>(
+        GetProcAddress(DLL, SalamanderSdk::UnicodeViewerExportName));
+    SalamanderSdk::UnicodeViewerV1 extension{};
+    EnterPlugin();
+    const bool supported = SalamanderSdk::NegotiateUnicodeViewerV1(query, extension);
+    if (supported)
+        canView = extension.CanViewFileW(name);
+    LeavePlugin();
+    return supported ? ERROR_SUCCESS : ERROR_NOT_SUPPORTED;
+}
+
+DWORD CPluginData::TryViewFileW(const WCHAR* name, int left, int top, int width, int height,
+                               UINT showCmd, BOOL alwaysOnTop, BOOL returnLock,
+                               HANDLE* lock, BOOL* lockOwner, int enumFilesSourceUID,
+                               int enumFilesCurrentIndex, BOOL& viewed)
+{
+    viewed = FALSE;
+    if (!name || !*name || (returnLock && (!lock || !lockOwner)))
+        return ERROR_INVALID_PARAMETER;
+    if (!InitDLL(MainWindow->HWindow))
+        return ERROR_DLL_INIT_FAILED;
+    if (!PluginIfaceForViewer.NotEmpty())
+        return ERROR_NOT_SUPPORTED;
+    const auto query = reinterpret_cast<SalamanderSdk::QueryUnicodeViewer>(
+        GetProcAddress(DLL, SalamanderSdk::UnicodeViewerExportName));
+    SalamanderSdk::UnicodeViewerV1 extension{};
+    EnterPlugin();
+    const bool supported = SalamanderSdk::NegotiateUnicodeViewerV1(query, extension);
+    if (supported)
+        viewed = extension.ViewFileW(name, left, top, width, height, showCmd,
+                                     alwaysOnTop, returnLock, lock, lockOwner, NULL,
+                                     enumFilesSourceUID, enumFilesCurrentIndex);
+    LeavePlugin();
+    if (viewed && returnLock && *lock != NULL && *lockOwner)
+        HANDLES_ADD(__htEvent, __hoCreateEvent, *lock);
+    return supported ? ERROR_SUCCESS : ERROR_NOT_SUPPORTED;
 }
 
 CPluginFSInterfaceAbstract*
