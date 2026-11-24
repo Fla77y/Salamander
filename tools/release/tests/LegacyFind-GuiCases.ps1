@@ -1242,8 +1242,15 @@ function Test-LegacyFindExternalEditor {
         } else {
             'NOT_STARTED'
         }
+        # A failing CreateProcess call normally raises an editor error dialog.
+        # Observe only the isolated test-owned Salamander process; do not
+        # dismiss a modal or retry the command, which would mask the failure.
+        $ownedWindows = try {
+            Get-ProcessWindowSummary -OwnerProcessId ([uint32]$process.Id)
+        } catch { '<test window inventory unavailable>' }
         throw ("Legacy Find external editor did not modify the selected fixture. " +
-               "Test editor state=$state; $($_.Exception.Message)")
+               "Test editor state=$state; Test-process windows=$ownedWindows; " +
+               "$($_.Exception.Message)")
     }
     Assert-True ([IO.File]::ReadAllText($neighbor) -ceq 'keep this') 'External editor preserves the unselected file'
 }
