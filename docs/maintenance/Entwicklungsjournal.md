@@ -15,6 +15,25 @@
 > **Verbindliche Aufgabenliste:** [Testluecken-und-Abnahmeplan-5.2](Testluecken-und-Abnahmeplan-5.2.md).
 > **Produktvertrag:** [Anforderungen A0–A7](../../Anforderungen.md).
 
+## Quellenqualität und Nachvollziehbarkeit
+
+- Die Archive **Chat 01–10** liegen als bildbasierte PDFs ohne eingebetteten
+  Text vor. Sie wurden über die gerenderten Bildseiten textlich ausgewertet;
+  die automatische Erkennung kann einzelne Wörter, Zahlen oder Codefragmente
+  falsch erfassen. **Chat 11–12** enthalten extrahierbaren Text.
+- Deshalb enthält dieses Journal ausdrücklich **thematische, überprüfte
+  Verdichtungen**, keine wörtliche, in jedem Zeichen garantierte Wiedergabe
+  der 644 bildbasierten Seiten. Exakte Commit-SHAs, API-Namen und
+  Abnahmewerte wurden soweit möglich mit heutigen Repository-Dokumenten
+  und späteren Nutzer-Logs abgeglichen.
+- Bei einer fachlich strittigen historischen Detailfrage zuerst den
+  konkreten Archiv-Chat und dessen Originalseite erneut prüfen. Diese
+  Regel verhindert, dass OCR-Verwechslungen zum neuen Programmvertrag werden.
+- Die gespeicherten Archiv-PDFs sind historische Projektquellen und
+  **nicht** Bestandteil dieses Git-Commits. Die in ihnen enthaltenen
+  personenbezogenen lokalen Testpfade, Bildschirmtitel und möglichen
+  Diagnosedaten werden absichtlich nicht ins Git kopiert.
+
 ## Entscheidungsregeln
 
 **R-01 – Benutzeraufträge erhalten:** Arbeite eigenständig und gründlich an
