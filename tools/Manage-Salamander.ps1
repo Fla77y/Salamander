@@ -4,6 +4,7 @@
 
 # Command-line entry: manage.cmd --update --build --test --setup --run
 # Keep the tool native to PowerShell/Windows; all output is transcript-logged.
+$runStopwatch = [System.Diagnostics.Stopwatch]::StartNew()
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $PSNativeCommandUseErrorActionPreference = $false
@@ -1068,6 +1069,12 @@ catch {
     Write-Host "FEHLER: $($_.Exception.Message)" -ForegroundColor Red
 }
 finally {
+    $runStopwatch.Stop()
+    $elapsed = $runStopwatch.Elapsed
+    # Total hours must not wrap at midnight; record before closing the transcript.
+    Write-Host ('Gesamtlaufzeit: {0:00}:{1:00}:{2:00}.{3:000}' -f
+        [long][Math]::Floor($elapsed.TotalHours), $elapsed.Minutes,
+        $elapsed.Seconds, $elapsed.Milliseconds)
     if ($transcriptStarted) {
         Write-Host "Protokoll: $logPath"
         Write-Host 'Die gesamte protokollierte Ausgabe wird nun in die Zwischenablage kopiert.'
