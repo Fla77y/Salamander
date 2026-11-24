@@ -416,6 +416,19 @@ CAboutDialog::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
         new CStaticText(HWindow, IDS_ABOUT_SALAMANDER, STF_BOLD);
         //      new CStaticText(HWindow, IDS_ABOUT_FIRM, STF_BOLD);
 
+        // if the environment is in Czech or in Slovak, show the Czech website automatically
+        BOOL english = LanguageID != 0x405 /* Czech */ && LanguageID != 0x41B /* Slovak */;
+
+        hl = new CHyperLink(HWindow, IDC_ABOUT_WWW);
+        if (hl != NULL)
+        {
+            const char* url = english ? "https://www.altap.cz" : "https://www.altap.cz/cz";
+            SetDlgItemText(HWindow, IDC_ABOUT_WWW, url + 8);
+            hl->SetActionOpen(url);
+        }
+
+        BackgroundBitmap = AboutAndEvalDlgCreateBkgnd(HWindow);
+
         // Use the unused row below the license text. Keep the original 5.0
         // dialog resource and existing controls untouched for UI compatibility.
         RECT buildInfoRect = {10, 141, 286, 151};
@@ -437,18 +450,6 @@ CAboutDialog::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
             }
         }
 
-        // if the environment is in Czech or in Slovak, show the Czech website automatically
-        BOOL english = LanguageID != 0x405 /* Czech */ && LanguageID != 0x41B /* Slovak */;
-
-        hl = new CHyperLink(HWindow, IDC_ABOUT_WWW);
-        if (hl != NULL)
-        {
-            const char* url = english ? "https://www.altap.cz" : "https://www.altap.cz/cz";
-            SetDlgItemText(HWindow, IDC_ABOUT_WWW, url + 8);
-            hl->SetActionOpen(url);
-        }
-
-        BackgroundBitmap = AboutAndEvalDlgCreateBkgnd(HWindow);
         break;
     }
 
