@@ -64,11 +64,11 @@ $launchHeader = Get-Content -LiteralPath (
     Join-Path $root 'src\common\win32_editor_process_launch.h') -Raw
 $nativeRegression = Get-Content -LiteralPath (
     Join-Path $root 'tools\tests\editor_process_launch.cpp') -Raw
-if (-not $dispatch.Contains('Salamander::CreateConfiguredEditorProcessA(') -or
-    -not $launchHeader.Contains('GetExplicitEditorApplicationName(command)') -or
+if (-not $dispatch.Contains('Salamander::GetExplicitEditorApplicationName(expCommand)') -or
+    -not $launchHeader.Contains('GetExplicitEditorApplicationName(const char* command)') -or
     -not $launchHeader.Contains('GetFileAttributesA(command)') -or
-    -not $launchHeader.Contains('CreateProcessA(GetExplicitEditorApplicationName(command)') -or
-    -not $nativeRegression.Contains('CreateConfiguredEditorProcessA(') -or
+    -not $nativeRegression.Contains('CreateProcessA(') -or
+    -not $nativeRegression.Contains('Salamander::GetExplicitEditorApplicationName(command.c_str())') -or
     -not $nativeRegression.Contains('exitCode != 7')) {
     throw 'External Edit must launch verified absolute EXEs explicitly while keeping legacy relative command behavior.'
 }
