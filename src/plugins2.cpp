@@ -3168,6 +3168,28 @@ void CPlugins::OpenPackOrUnpackDlgForMarkedPlugins(CPluginData** data, int* plug
     *data = NULL; // not found
 }
 
+BOOL CPlugins::RemoveRetiredDemoPlugins(HWND parent)
+{
+    // These two bundled modules were explicitly retired in 5.2. A same-version
+    // upgrade does not run AutoInstallStdPluginsDir or necessarily read plugins.ver.
+    // Never remove another plugin, an existing module, or an inaccessible path.
+    const char* const retired[] = {"demomenu\\demomenu.spl", "demoplug\\demoplug.spl"};
+    BOOL changed = FALSE;
+    for (const char* name : retired)
+    {
+        int index;
+        if (FindDLL(name, index) && !Data[index]->GetLoaded())
+        {
+            DWORD error = ERROR_SUCCESS;
+            if (Salamander::ProbePluginModulePresence(HInstance, Data[index]->DLLName, error) ==
+                    Salamander::PluginModulePresence::Missing &&
+                Remove(parent, index, FALSE)) // retain private plugin settings
+                changed = TRUE;
+        }
+    }
+    return changed;
+}
+
 void CPlugins::RemoveNoLongerExistingPlugins(BOOL canDelPluginRegKey, BOOL loadAllPlugins,
                                              char* notLoadedPluginNames, int notLoadedPluginNamesSize,
                                              int maxNotLoadedPluginNames, int* numOfSkippedNotLoadedPluginNames,

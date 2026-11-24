@@ -2873,6 +2873,9 @@ public:
                                        int* numOfSkippedNotLoadedPluginNames = NULL,
                                        HWND parent = NULL);
 
+    // Retire missing bundled demo modules even when the config version is unchanged.
+    BOOL RemoveRetiredDemoPlugins(HWND parent);
+
     // automatically installs plugins from the standard "plugins" directory (adds only
     // those not yet added) and automatically uninstalls plugins whose .spl files disappeared
     void AutoInstallStdPluginsDir(HWND parent);

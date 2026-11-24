@@ -4344,6 +4344,11 @@ FIND_NEW_SLG_FILE:
                     // so files do not pop up one by one as their icons load
                     UpdateWindow(MainWindow->HWindow);
 
+                    // Also migrate retired bundled plugins for existing 5.2 profiles.
+                    // Use the normal removal path to preserve all remaining plugin indices.
+                    if (Plugins.RemoveRetiredDemoPlugins(MainWindow->HWindow))
+                        saveNewConfig = TRUE;
+
                     BOOL doNotDeleteImportedCfg = FALSE;
                     if (autoImportConfig && // Check whether the new version has fewer plugins than the old one, so part of the old configuration would not be imported.
                         FindPluginsWithoutImportedCfg(&doNotDeleteImportedCfg))

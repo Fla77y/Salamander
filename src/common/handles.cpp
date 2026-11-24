@@ -2131,7 +2131,20 @@ C__Handles::LoadLibraryW(LPCWSTR lpLibFileName)
 #endif // MULTITHREADED_HANDLES_ENABLE
 
     ::SetLastError(loadError);
-    CheckCreate(ret != NULL, __htLibrary, __hoLoadLibrary, ret, loadError, TRUE, "UTF-16 module path");
+    // Keep the diagnostic bounded for the legacy message formatter, but
+    // identify the actual failed module without an ACP conversion.
+    WCHAR diagnosticPath[MAX_PATH] = {};
+    if (lpLibFileName != NULL)
+    {
+        const int length = lstrlenW(lpLibFileName);
+        if (length < MAX_PATH)
+            lstrcpynW(diagnosticPath, lpLibFileName, MAX_PATH);
+        else
+            _snwprintf_s(diagnosticPath, _TRUNCATE, L"...%ls",
+                         lpLibFileName + length - (MAX_PATH - 4));
+    }
+    CheckCreate(ret != NULL, __htLibrary, __hoLoadLibrary, ret, loadError, TRUE,
+                NULL, NULL, diagnosticPath);
     ::SetLastError(loadError);
     return ret;
 }
