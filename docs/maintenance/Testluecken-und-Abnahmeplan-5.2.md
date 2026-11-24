@@ -5,7 +5,7 @@
 > Stand: **24. November 2026** (Fortschreibung des historischen
 > Arbeitskatalogs vom 23.11.). Ursprüngliche grüne Referenz
 > `a7ab5b40d859509ffe5fead2d8f00739399a5067`; zuletzt
-> unter Windows ausgewerteter Quellstand `02acf27c87ddbe509d7044e3a416c5ebf265224d`.
+> unter Windows ausgewerteter Quellstand `a928794c7e4072777246d959ee9dd77c129e2d89` (`--test` PASS am 24.11.2026, 14:02–14:03 CET).
 > Die Dokumentationscommits danach sind **keine** neue grüne Testbaseline.
 > **Keine vollständige Anforderungsabdeckung und keine Release-Freigabe behauptet.**
 >
@@ -97,7 +97,8 @@ eine kürzere Fixture erfüllt den Grenzfall **nicht**.
 
 **Beleg- und Umfangsgrenze:** User-Transkripte, nicht in Git gespeicherte
 Logdateien. Der letzte **tatsächlich** geprüfte aktuelle Code-Stand ist
-`bugfix/v5.2` bei `02acf27c87ddbe509d7044e3a416c5ebf265224d`.
+`bugfix/v5.2` bei `a928794c7e4072777246d959ee9dd77c129e2d89`
+(`manage.cmd --test` **PASS**, 24.11.2026, 14:02–14:03 CET).
 Ein darauf folgender **Dokumentationscommit** gilt nicht als neu getesteter
 Produktcode. Detailgeschichte und Folgeaufträge:
 [Entwicklungsjournal](Entwicklungsjournal.md), aktueller
@@ -130,6 +131,25 @@ Der vorhandene historische Gesamtgrünstand vom 23.11. wird dadurch
 das ersetzt **nicht** die fachliche Prüfung, ob der Text noch aktuell ist.
 Bei jedem künftigen autorisierten Code-Commit die betroffenen Gap-Sektionen
 und Journal/Handoff nachziehen (A4 / MGMT-03).
+
+**24.11.2026, 14:02–14:03 CET – PowerShell-Parserfix unter Windows verifiziert:**
+`manage.cmd --test` wurde auf dem sauberen Checkout
+`a928794c7e4072777246d959ee9dd77c129e2d89`
+(Windows NT 10.0.26300, PowerShell 7.7.0) vollständig ausgeführt:
+**Gesamtergebnis PASS**. Der neue AST-Parser prüfte **alle 66**
+Repository-PowerShell-Skripte erfolgreich; die bewusst fehlerhafte
+`$id:`-Negativfixture wurde erkannt. Die Test-Fehleraggregation,
+die Dokumentations-Kontinuitätsprüfung und die 21 registrierten
+nativen C++-Regressionen liefen erfolgreich. **Physischer Cross-Volume-
+Move SKIP** mangels `OPENSAL_CROSS_VOLUME_TEST_DIR`. Die Plugin-Inventar-
+Fixtures `alpha`, `beta` und `rogue` sind synthetisch; sie ersetzen
+keine echte Plugin-Abnahme.
+**Beleg:** `manage-20261124-140223-783-8d6f75.log`
+(Benutzertranskript, lokal unter `.Build/logs/`, nicht in Git).
+Die um 13:56 dokumentierte Parserregression ist damit **behoben**;
+die allgemeinen MGMT-02-/MGMT-03-Gates und das Release bleiben
+**TEILBELEGT/OFFEN beziehungsweise NO-GO**. Dokumentationscommits
+nach dem getesteten SHA stellen keine neue automatische Testfreigabe dar.
 
 **24.11.2026, 13:56 CET – Regression im neu integrierten Kontinuitätstest:**
 `manage.cmd --test` auf `8a5cb99da350a494f94fdb57087c7b7f8221c336`
@@ -869,6 +889,7 @@ UP-07 bleibt TEILBELEGT.
   `--update` nur nach ausdrücklicher Zustimmung.
 
 ### [ ] MGMT-02 – Fehler- und Isolationsverhalten (**P1**, TEILBELEGT)
+- **24.11.2026, 14:02, SHA `a928794c`:** `manage.cmd --test` tatsächlich **PASS**; 66 Skripte vom PowerShell-AST-Parser geprüft, fehlerhafte Negativfixture erkannt; Fehleraggregation/GUI-Sicherheitsvertrag und Kontinuitätstest PASS. Parserfehler von 13:56 damit behoben. Vollständige Fehler-/Isolationsmatrix bleibt TEILBELEGT.
 - **24.11.2026, 13:56:** `--test` auf `8a5cb99d` **FAIL** wegen ungültiger `$id:`-Interpolation im neuen Kontinuitätstest. `${id}:` korrigiert. Neue PowerShell-AST-Parser-Vorprüfung sammelt Syntaxfehler vor dem Restlauf; auf Windows nach Fix noch nicht ausgeführt. Status bleibt TEILBELEGT.
 - **24.11.2026:** Sammeltest-Infrastruktur mit PASS/FAIL/SKIP-JSON und nonzero-Gesamtergebnis implementiert; Windows-Sammlertest im `--test` PASS; isolierte Legacy-Find-Szenarien laufen nach FAIL weiter (36 PASS/1 FAIL). Cancellation/GUI-Sicherheitsmatrix nicht vollständig bewiesen.
 
@@ -880,6 +901,7 @@ UP-07 bleibt TEILBELEGT.
   keine gefälschten PASS-Meldungen.
 
 ### [ ] MGMT-03 – Test-Registry gegen unbemerkte Auslassungen (**P2**, OFFEN)
+- **24.11.2026, 14:02, SHA `a928794c`:** `Test-PowerShellSyntax.ps1` und `Test-DevelopmentContinuity.ps1` im echten Windows-`--test` PASS. GUI-Szenarien-Registry, Coverage-Drift und gezielte Opt-in-Abgrenzung weiterhin OFFEN.
 - **24.11.2026, 13:56:** `Test-PowerShellSyntax.ps1` vor allen übrigen Vertragstests registriert, prüft `.ps1`-Dateien und enthält eine absichtlich fehlerhafte `$id:`-Negativfixture. Erst tatsächlicher Parser- und vollständiger `--test`-Lauf kann den Syntaxgate als bestanden belegen; MGMT-03 bleibt offen.
 - **24.11.2026:** Eigenständiger `Test-DevelopmentContinuity.ps1` strukturell eingebunden; ein dokumentierter neuer Test ist keine automatisch vollständige Coverage-/Registry-Garantie. Gap-/Agent-Übergabe bleibt laufende Wartungspflicht.
 
