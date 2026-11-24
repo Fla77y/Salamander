@@ -43,7 +43,7 @@ param(
     [switch]$ShortOperationsOnly,
     [switch]$TemporaryDirectoryDeletionOnly,
     [switch]$UnicodeFindOnly,
-    [ValidateSet('Baseline','Cancel','AdvancedInputs','ViewResults','ViewUnicode','ViewLong','ViewStale','ViewMixed','FocusUnicode','FocusLong','FocusStale','ShellClipboard','ShellOpen','ShellProperties','ExternalEditor','RecycleRestore',
+    [ValidateSet('Baseline','Cancel','AdvancedInputs','ViewResults','ViewUnicode','ViewLong','ViewStale','ViewMixed','FocusUnicode','FocusLong','FocusStale','ShellClipboard','ShellOpen','ShellProperties','ExternalEditor','ExternalEditorNative','RecycleRestore',
         'EncryptedFixture','UnicodeName','UnicodeResult',
         'UnicodeDistinct','UnicodeMasks','UnicodeFeatures','UnicodeSettings','UnicodeSettingsStorage','UnicodeRoot','UnicodeRootIgnore','LongRoot','LongDescendant','LongResult',
         'ExtendedLongRoot','LongDuplicates','DirectoryLinkCycle',
@@ -4099,9 +4099,14 @@ try {
             . (Join-Path $PSScriptRoot 'LegacyFind-GuiCases.ps1')
             Initialize-LegacyFindBaseline
         }
-        if ($LegacyFindScenario -eq 'ExternalEditor') {
+        if ($LegacyFindScenario -in 'ExternalEditor','ExternalEditorNative') {
             . (Join-Path $PSScriptRoot 'LegacyFind-GuiCases.ps1')
-            Initialize-LegacyFindExternalEditor
+            if ($LegacyFindScenario -eq 'ExternalEditorNative') {
+                Initialize-LegacyFindExternalEditorNative
+            }
+            else {
+                Initialize-LegacyFindExternalEditor
+            }
         }
         if ($LegacyFindScenario -eq 'Cancel') {
             $prefix = 'Local\OpenSalamander.FindTest.' + $testConfigurationId
