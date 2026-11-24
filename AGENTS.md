@@ -547,6 +547,21 @@ Abschlussbericht auf **Deutsch**, knapp und nachvollziehbar:
 5. Bei anforderungsrelevanten Änderungen den Status von A0–A7 ausdrücklich
    berücksichtigen; **nicht geprüfte Anforderungen als nicht geprüft** markieren.
 
+## 16. Unterbrechbarkeit und Wiederaufnahme von Aufträgen
+
+Bei umfangreichen Aufträgen gelten folgende Regeln:
+
+- Zerlege umfangreiche Aufgaben in nachvollziehbare Teilschritte.
+- Dokumentiere den Bearbeitungsfortschritt regelmäßig in einer separaten Statusdatei.
+- Dokumentiere abgeschlossene und noch offene Arbeitsschritte.
+- Halte durchgeführte Tests und deren Ergebnisse fest.
+- Dokumentiere getroffene Architekturentscheidungen und bekannte Probleme.
+- Hinterlasse nach Möglichkeit einen kompilierbaren Zwischenstand.
+- Prüfe bei der Wiederaufnahme eines unterbrochenen Auftrags zunächst die Statusdatei und den tatsächlichen Zustand des Git-Worktrees.
+- Wiederhole keine bereits erfolgreich abgeschlossenen Arbeitsschritte ohne triftigen Grund.
+- Aktualisiere die Statusdatei nach jedem wesentlichen Arbeitsschritt, nicht erst am Ende des Auftrags.
+
+
 **Abschließende Selbstkontrolle:** Ist die Ursache behoben? Sind TDD-Nachweise
 wirklich erbracht? Bleiben Legacy-Suche, Unicode, Langpfade, Plugin-ABI,
 PictView/WIC, `manage.cmd`, Packaging und Benutzeroberfläche intakt? Gibt es
