@@ -13,6 +13,9 @@
 
 ## 1. Zweck und Geltungsbereich
 
+**Audit-Fortsetzung vom 25.11.2026 auf bf51d3a6.** UP-04/QA-01: AUD-WORKER-0001. UP-06: AUD-SHELL-0001. UP-03: AUD-ARCHIVER-0001. WIC-02/QA-03: AUD-GUI-0001. PKG-02/03/04: AUD-PKG-0001 bleibt nach Einführung der unabhängigen Positivliste für die Paket-/VM-Abnahme offen. Keine Gap-ID geschlossen. [Aktueller Maßnahmenkatalog](Code-Audit-und-Massnahmenkatalog-5.2.md)
+
+
 Dieses Dokument ist die **fortlaufend zu pflegende, zentrale Arbeitsliste**
 für die Anforderungen **A0–A8** aus `Anforderungen.md`. Es ergänzt, ersetzt
 aber nicht die verbindlichen Produktanforderungen oder die Release-Gates.

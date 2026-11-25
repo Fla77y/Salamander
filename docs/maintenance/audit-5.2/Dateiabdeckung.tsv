@@ -8,18 +8,18 @@ Pfad	Blob	Kategorie	Textzeilen	Bereiche	Status	Audit-IDs	Offen	Grenze
 .github/workflows/auto-label-author.yml	0d460773f98b9fdc699c1b1128ce1c28299c1c49	Build+Konfiguration	59		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 .github/workflows/pr-comments-guard.yml	8dac60b74fff7b21e8b9d8ddc94092a23444fe3a	Build+Konfiguration	347		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 .github/workflows/pr-long-path.yml	39c3c86ac08a49544259209ff7b1b5e1875918e8	Build+Konfiguration	179		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-.github/workflows/pr-msbuild.yml	0d95a032f9a6609463d3af06570284ee48faed97	Build+Konfiguration	108	1-108	FULLY_REVIEWED		Verifikation gemäß Maßnahmenkatalog	Quellenreview, Laufzeitbelege gesondert im Katalog
+.github/workflows/pr-msbuild.yml	0d95a032f9a6609463d3af06570284ee48faed97	Build+Konfiguration	108	1-108	FULLY_REVIEWED		Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
 .github/workflows/pr-package-scripts.yml	a75004e71be73027c15384de53aae17922f520ca	Build+Konfiguration	39		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 .github/workflows/pr-pictview-local.yml	14f75d9949ed3669ab5e8a7cb0bfb25523a7787d	Build+Konfiguration	41		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 .github/workflows/pr-pictview-wic.yml	84115ec63b9c229850ceead7a9c8bfafbca6a7f3	Build+Konfiguration	98		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-.github/workflows/pr-release-package.yml	a942b94740f2bcf7ab5bddaf26514c89138c1d37	Build+Konfiguration	126	1-126	FULLY_REVIEWED		Verifikation gemäß Maßnahmenkatalog	Quellenreview, Laufzeitbelege gesondert im Katalog
+.github/workflows/pr-release-package.yml	81c942b9e27289e3423b946cdcf14589ca248f08	Build+Konfiguration	126		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 .github/workflows/pr-squash-guard.yml	9c28b6b2ac1d594033d6723302fd5912960db1d3	Build+Konfiguration	47		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-.github/workflows/pr-test-gap-preflight.yml	741e6c5bbfc794074e795dd3080f0c05bcaef46e	Build+Konfiguration	55	1-55	FULLY_REVIEWED	AUD-CI-0001	Verifikation gemäß Maßnahmenkatalog	Quellenreview, Laufzeitbelege gesondert im Katalog
+.github/workflows/pr-test-gap-preflight.yml	741e6c5bbfc794074e795dd3080f0c05bcaef46e	Build+Konfiguration	55	1-55	FULLY_REVIEWED	AUD-CI-0001	Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
 .gitignore	52058b706922c6ab7075b9c0fc92796c02dd58c2	Konfiguration	24		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-.vsconfig	d8329c784025e7881738326e8b8de73dc850aa4d	Build+Konfiguration	12	1-12	FULLY_REVIEWED		Verifikation gemäß Maßnahmenkatalog	Quellenreview, Laufzeitbelege gesondert im Katalog
-AGENTS.md	d4751faff63a9994436b5c081af4681dfab7f182	Dokumentation	571		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+.vsconfig	d8329c784025e7881738326e8b8de73dc850aa4d	Build+Konfiguration	12	1-12	FULLY_REVIEWED		Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
+AGENTS.md	673679bbda49f65da6737e4537eb72c67e2693d4	Dokumentation	572		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 AUTHORS	2e27cebaf9078465f8ff75dd3afe52b7bfa1ff8a	Dokumentation	49		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-Anforderungen.md	b0d4d0d79f7a3ba189f2a7e88877988d241ed2e8	Dokumentation	22	1-22	FULLY_REVIEWED	AUD-TEST-0001	Verifikation gemäß Maßnahmenkatalog	Quellenreview, Laufzeitbelege gesondert im Katalog
+Anforderungen.md	b0d4d0d79f7a3ba189f2a7e88877988d241ed2e8	Dokumentation	22	1-22	FULLY_REVIEWED	AUD-TEST-0001	Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
 LICENSE	d159169d1050894d3ea3b98e1c965c4058208fe1	Dokumentation	339		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 Master-Prompt-C++.md	0b5ffe85eedd3c7b908fbd8325c54c507e0bbdcf	Dokumentation	1137		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 README.md	8acd66c82200619a556326c8bebec94260219a05	Dokumentation	304		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -100,22 +100,36 @@ doc/license/license_gpl.txt	8860b2a8afa8c8586992f7f374a099956563a152	Dokumentati
 doc/license/license_gpl3.txt	94a9ed024d3859793618152ea559a168bbcbb5e2	Dokumentation	674		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 doc/license/license_mit.txt	e69f9d468c78bf919756a13c863d8d2a431e998a	Dokumentation	19		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 doc/license/license_zlib.txt	8466eecacb9ed0c0e79a7a14f8611eeddaa4976e	Dokumentation	17		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-doc/third_party.txt	9e53c4606cfed81a5e895081461871a1bfcc50ec	Dokumentation	96		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+doc/third_party.txt	7b6720aa2eb2be30d6258cb066ef125858f0c101	Dokumentation	99		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 docs/legacy-branch-reconciliation.md	f909f3d1d0ae359b728d06fbbca4f8e180f047b9	Dokumentation	88		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 docs/long-path-migration.md	15770556b8bedadacd8674f8a401c1167727e7cc	Dokumentation	876		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-docs/maintenance/Arbeitsstand-und-Uebergabe.md	460259900a0145db23e53d253233aa757cc6b911	Dokumentation	277	1-20	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
-docs/maintenance/Entwicklungsjournal.md	e77c7c74c3deb11e86151829130a2ffb432ace16	Dokumentation	888		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+docs/maintenance/Arbeitsstand-und-Uebergabe.md	936d7c1fad97d87ce5de39a000c28f281647ca17	Dokumentation	303		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+docs/maintenance/Code-Audit-und-Massnahmenkatalog-5.2.md	7df0791718a731eef4e84c44c2a9a1d8f2610af5	Dokumentation	509		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+docs/maintenance/Entwicklungsjournal.md	b6992b5c7b1fc9e3d437259434ad989d50405d74	Dokumentation	917	917-917	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 docs/maintenance/Entwicklungsuebergabe-2026-11-18.md	e7da6cbbf751ec1362877644050361d5c7dc5969	Dokumentation	79		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 docs/maintenance/Legacy-Find-UTF16-Migration.md	68f7190c1a42345e2e5008ad0b7d58ef4ccdf9e3	Dokumentation	432		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 docs/maintenance/Legacy-Verhalten-und-Konfiguration-5.2.md	5d28b1bfb91993e5d4bfe65ea445dfcbef709cae	Dokumentation	149		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 docs/maintenance/Microsoft-Dependencies-2026.md	07158bf65f98877e2ab3a2cbf334f2157720b30f	Dokumentation	44		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 docs/maintenance/Plugin-Inventar-und-Testmatrix-5.2.md	80c64a1c0299ea34e0aa2c51bc401ea081d4cb59	Dokumentation	181		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 docs/maintenance/Plugin-Migrationsprioritaet-5.2.md	c662dd322b33e8e3b2e46e7ffc6b2a7a72b19822	Dokumentation	56		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-docs/maintenance/Testluecken-und-Abnahmeplan-5.2.md	5b0456f0107b722153d129f8382ff0b9d09596ba	Dokumentation	1894		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+docs/maintenance/Testluecken-und-Abnahmeplan-5.2.md	0c66e6629ee82e7e967465c25e9bd029bdb40af3	Dokumentation	1980		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 docs/maintenance/Unicode-LongPath-Implementation.md	2ad2ecbaf77c8aef819b32ad972108772aada4da	Dokumentation	541		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 docs/maintenance/WER-Local-Crash-Dumps.md	b021a6916d2c6abfe835df257cecb1df5a9f94ee	Dokumentation	111		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+docs/maintenance/audit-5.2/Cache.md	b374ffafce45806903200b420e785742248faebe	Dokumentation	10		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+docs/maintenance/audit-5.2/Dateiabdeckung.tsv	c05ae8058acac4c959d6ce8a11acc2e24940d844	Dokumentation	4955		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+docs/maintenance/audit-5.2/Distribution.md	95061244ed8f63cc7656dcb7725f147708140790	Dokumentation	15		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+docs/maintenance/audit-5.2/Kern-und-Suche.md	7917c6a5f9d8ad1beccac5bdadf232bee6c83444	Dokumentation	74		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+docs/maintenance/audit-5.2/Plugin-Matrix.md	29fa7d6b0c0efc49aa6c7302871d000325913f00	Dokumentation	91		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+docs/maintenance/audit-5.2/SDK-und-PictView.md	6b471a5b3f8c2e8f6616f0e571b4984a9a628175	Dokumentation	72		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+docs/maintenance/audit-5.2/Worker.md	1510c9d6f0f4fed82ad88c39bfe3fb072d8d7fce	Dokumentation	25		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+docs/maintenance/audit-5.2/cache.ranges	339fc667c7167a9fcedffe3f822a3c4c86c8e634	Dokumentation	7		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+docs/maintenance/audit-5.2/distribution.ranges	48d1447a6edc91c12412b5f91f2a35bc666261e6	Dokumentation	4		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+docs/maintenance/audit-5.2/plugins.ranges	84a33b70bc3429c8bfd6bc12349add63d1f2cf42	Dokumentation	48		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+docs/maintenance/audit-5.2/sdk.ranges	de610665133446b9f9d51c79b8d4b91ff58594e0	Dokumentation	20		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+docs/maintenance/audit-5.2/unicode.ranges	50de215a085b81b74e9de06056e43869293517be	Dokumentation	10		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+docs/maintenance/audit-5.2/worker.ranges	5be48d60b1dbdf9ba54d173cdf91f94550875a4b	Dokumentation	5		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 docs/maintenance/test-coverage-audit-2026-11-23.md	58ca37b9ba312a082d554a026d9d0f65ec5b7361	Dokumentation	79		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-docs/pictview-wic-migration.md	40df48cbda8d129d157ebd1bb08d1ca2c112bc03	Dokumentation	173	1-173	FULLY_REVIEWED	AUD-PLUGIN-PICTVIEW-0001,AUD-TEST-PICTVIEW-0001	Verifikation gemäß Maßnahmenkatalog	Quellenreview, Laufzeitbelege gesondert im Katalog
+docs/pictview-wic-migration.md	40df48cbda8d129d157ebd1bb08d1ca2c112bc03	Dokumentation	173	1-173	FULLY_REVIEWED	AUD-PLUGIN-PICTVIEW-0001,AUD-TEST-PICTVIEW-0001	Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
 docs/releases/5.2.md	e6cb1e2f699abe6b64b6eeeaa066321a585ae177	Dokumentation	99		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 docs/unicode-plugin-recycle-integration.md	f8726ae67f8552b08333617c71c46929a5f5f5ff	Dokumentation	354		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 help/src/compile.bat	a01ac2d0fd7f7411fbdc44a84291cebe177d1d8b	Skript+Dokumentation	19		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -370,14 +384,14 @@ help/src/hh/salamander_help_shared.css	487883e54ad3d9796d1f676ba42c0e662a67f91c	
 help/src/salamand.hhc	8d937498b13302e80c5d8db9d0d70a53c5d12517	Dokumentation	1371		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 help/src/salamand.hhk	98ea1b5bc0305ab65c0390d5331f1c2c94f26982	Dokumentation	839		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 help/src/salamand.hhp	9b4eacffee4019c12a3a6973a789b49a5bcded7e	Dokumentation	394		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-manage.cmd	6d73bc5978616f42b5c81f61c24f4c8f0965d903	Skript	10	1-10	FULLY_REVIEWED	AUD-MGMT-0001	Verifikation gemäß Maßnahmenkatalog	Quellenreview, Laufzeitbelege gesondert im Katalog
+manage.cmd	6d73bc5978616f42b5c81f61c24f4c8f0965d903	Skript	10	1-10	FULLY_REVIEWED	AUD-MGMT-0001	Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
 normalize.ps1	8dad1779af9a84191887d7267cd502dfd9acae12	Skript	1470		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 normalize_config.json	3e42879524ca858062f4ee6c9f44be839b00ea08	Konfiguration	83		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/bitmap.cpp	35c15b0d75784c010aadbf87efc0ddc0e7ba7546	Implementierung	256		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/bitmap.h	99e8a9e9d974bc259ba39b56f580e6ab86b48689	Schnittstelle	59		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/bugreprt.cpp	43bcdd4a892f74d858ddade1e07cc847b9bce602	Implementierung	2700		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/cache.cpp	9fa7f991fbd7fad07cbc591a2b923e1818d6943f	Implementierung	1710	126-137,1541-1709	PARTIALLY_REVIEWED	AUD-CACHE-0001	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
-src/cache.h	1cd198166389dfbcf415aa6753677c171e3f0019	Schnittstelle	538	501-535	PARTIALLY_REVIEWED	AUD-CACHE-0001	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/cache.cpp	9fa7f991fbd7fad07cbc591a2b923e1818d6943f	Implementierung	1710	126-137,1541-1709	PARTIALLY_REVIEWED	AUD-CACHE-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
+src/cache.h	1cd198166389dfbcf415aa6753677c171e3f0019	Schnittstelle	538	501-535	PARTIALLY_REVIEWED	AUD-CACHE-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/callstk.cpp	fd597a50714b30c1a806ddba54e8ecb9c53abe78	Implementierung	704		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/callstk.h	fada6206f461aa77b1a734ee6623c8639c72af65	Schnittstelle	384		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/cfgdlg.h	442fc22ab7c16b03d0deb5d4a1082e680ad93b05	Schnittstelle	1210		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -390,7 +404,7 @@ src/common/allochan.cpp	5a5492cc270e63a1f5375794cf466f7c4443fad9	Implementierung
 src/common/allochan.h	45ccd94da1f2b8e46b4a1187b6928176849fcd49	Schnittstelle	26		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/common/array.cpp	c9aa91955d00d3c277fa9c79e0b203b192a936a1	Implementierung	78		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/common/array.h	eba656d113e008bd4af8a2e4236a813b59483a73	Schnittstelle	1513		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/common/buffer_bounds.h	476213b68de7c225b1be7be26a09f15eddcc1a1b	Schnittstelle	16		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+src/common/buffer_bounds.h	476213b68de7c225b1be7be26a09f15eddcc1a1b	Schnittstelle	16	1-16	FULLY_REVIEWED		Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
 src/common/bug_report_path.h	dd2a04effb5a2879ca7aa50b4f96aac5ee87227c	Schnittstelle	44		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/common/crc32.cpp	0749b5b91ed0059e98eb0eaf15546e2a9a95e709	Implementierung	135		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/common/crc32.h	e50650ac61c45a009452003d6ebb6d98f41bd88b	Schnittstelle	25		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -507,7 +521,7 @@ src/common/isolated_test_configuration.h	69765683c8650fdf7c2c8f74b919735b0b68ff1
 src/common/legacy_default_directory_registry.h	85028bc6b12ed4625df1a4e8fcd02aaa45c77903	Schnittstelle	64		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/common/legacy_disk_name_safety.h	6fdcc5703c55a7c2e3146e04d369f5d9dc446fb2	Schnittstelle	79		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/common/legacy_find_masks.h	9ff224e77794db94a2482e429b7165709e96bffb	Schnittstelle	161		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/common/legacy_find_query.h	241dc94c5be9640fc1aca2867c230b45f396d15f	Schnittstelle	142	1-142	FULLY_REVIEWED	AUD-FIND-0001	Verifikation gemäß Maßnahmenkatalog	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/common/legacy_find_query.h	241dc94c5be9640fc1aca2867c230b45f396d15f	Schnittstelle	142	1-142	FULLY_REVIEWED	AUD-FIND-0001	Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
 src/common/legacy_find_utf16_identity.h	59a674b3d51b926e53f6d953667628a97a405d28	Schnittstelle	64		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/common/lstrfix.c	c5db1e977c88aafe2c5004967f478fd5711a9c7a	Implementierung	6		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/common/lstrfix.cpp	3b25b93a51084c3052217317e4e22c004c5fcc2a	Implementierung	8		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -532,14 +546,14 @@ src/common/strutils.cpp	3e209ea7ac2cc7085d0aed03cf291949837875ef	Implementierung
 src/common/strutils.h	d2b2b938cef91b535fc342d1223740483f2eb813	Schnittstelle	85		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/common/trace.cpp	8d1107b871ddaba1c5dc072a2e9d70e0cf500573	Implementierung	1180		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/common/trace.h	4698d5e32ce3b4cd30997afaf78c90dcb0c99b7c	Schnittstelle	703		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/common/utf16_disk_path.h	aaabad43858ad7efb1fd6887677205ae6f13f75b	Schnittstelle	232	78-97	PARTIALLY_REVIEWED	AUD-FIND-0001	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/common/utf16_disk_path.h	aaabad43858ad7efb1fd6887677205ae6f13f75b	Schnittstelle	232	78-97	PARTIALLY_REVIEWED	AUD-FIND-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/common/win32_editor_process_launch.h	c2d35391cd08c2ed65f5dbf7aa3cce34f72da833	Schnittstelle	42		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/common/win32_long_directory.h	098d17f1fbaf601f02459389ccbeb12c95a71553	Schnittstelle	143		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/common/win32_long_path.h	69391d434532613e556d7c4d960fc0741c4000fd	Schnittstelle	191		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/common/win32_plugin_module_path.h	2de3ee4a0581c09b772d2b3ef0daecdd611059b8	Schnittstelle	309		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/common/win32_unicode_clipboard_files.h	9d641323f682b9e9c71da4ac10ce7579b92b53a6	Schnittstelle	566		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/common/win32_unicode_directory_delete.h	8d78cebe95005f2a7efd81f44b16f5b54801e79a	Schnittstelle	119		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/common/win32_unicode_file_ops.h	4c38d40fca5a4357a3c24e55bb41e67ac7da1406	Schnittstelle	578	445-562	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/common/win32_unicode_file_ops.h	4c38d40fca5a4357a3c24e55bb41e67ac7da1406	Schnittstelle	578	445-562	PARTIALLY_REVIEWED	AUD-WORKER-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/common/win32_unicode_find.h	bab7a7d22c6646b0dd5c02542c67ea636b07c3f7	Schnittstelle	489		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/common/win32_unicode_find_window.h	8ab66baf831a0081efb1256c264ded5bb75d117d	Schnittstelle	802		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/common/win32_unicode_panel_name.h	69b650975e423f50d1d7599a0c21697bdfb69a98	Schnittstelle	417		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -547,10 +561,10 @@ src/common/win32_unicode_primary_panel.h	60718a026fc1a271888ccf5648fcce8228c66d2
 src/common/win32_unicode_recycle.h	3e302e591784e88cb20390f18bdb4d25144026bc	Schnittstelle	214		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/common/win32_unicode_rename_dialog.h	6b0f2c9c8f146997413edfd8c70457ea23f296ec	Schnittstelle	193		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/common/win32_utf16_static_text.h	203d7bde262a6d35865f67b781af05c07a81fd80	Schnittstelle	165		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/common/win32_worker_copy_io.h	4d3bf711c8e54bf44342fbaa70ec14c63fa7c479	Schnittstelle	294	1-219	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/common/win32_worker_copy_io.h	4d3bf711c8e54bf44342fbaa70ec14c63fa7c479	Schnittstelle	294	1-294	FULLY_REVIEWED		Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
 src/common/winlib.cpp	74d7f336bb808a76c3464b7f8734d7caf6071d5c	Implementierung	1381		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/common/winlib.h	19a97b2429673d2f313fb639909a5d2817eb00ee	Schnittstelle	531		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/common/worker_copy_paths.h	12188c0e60199b9b390bff20f0638d61e8956df2	Schnittstelle	150		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+src/common/worker_copy_paths.h	12188c0e60199b9b390bff20f0638d61e8956df2	Schnittstelle	150	1-150	FULLY_REVIEWED		Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
 src/consts.h	35ac62c802a75d2c05c410cc4458771ee5539812	Schnittstelle	2511		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/dialogs.cpp	ba693121bc3b4eaacc5e8c302fe766a4577f5cf1	Implementierung	2399		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/dialogs.h	92f09a757c21b622dcfd14c28f1e2be14ed325bd	Schnittstelle	1592		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -566,7 +580,7 @@ src/drivelst.h	7b0cc4d37994e5fe0a07a4501e908701470e52c8	Schnittstelle	237		NOT_R
 src/editwnd.cpp	1c5a30fc47aec41ad4104bd77e52c2d07b1ad6d6	Implementierung	2101		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/editwnd.h	a974d8e627defc7091530a8bc5ab04b1295edc6b	Schnittstelle	123		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/edtlbwnd.cpp	314698ca42227c22955df5c31bdc8de2c9fa19af	Implementierung	1086		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/edtlbwnd.h	8372d0bcdf9f98c56ca16615bfee0aad1d1f9e28	Schnittstelle	167	30-45	PARTIALLY_REVIEWED	AUD-FIND-0002	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/edtlbwnd.h	8372d0bcdf9f98c56ca16615bfee0aad1d1f9e28	Schnittstelle	167	30-45	PARTIALLY_REVIEWED	AUD-FIND-0002	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/execute.cpp	dbbf9b88c07bc35b1e1c98e2aaad5a5266eab395	Implementierung	2178		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/execute.h	4a9ab15042369971351d523c3c7a0bfacfac2d2d	Schnittstelle	224		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/filesbox.h	bddc8b5f8a1d727e1ae6ea0f935058191396b6af	Schnittstelle	237		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -578,20 +592,20 @@ src/fileswn1.cpp	ebe37b23b60b51d040f463a712967f988372640c	Implementierung	2457		
 src/fileswn2.cpp	fe98c2ab466bff42fe8ebfd8680b9cd0a7b332fc	Implementierung	4503		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/fileswn3.cpp	9f071de4ccc3c63ac50d22bcd2fdc648b8008651	Implementierung	2856		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/fileswn4.cpp	f35703a57bb003e0f97803891728c3d92a9cc9e1	Implementierung	2138		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/fileswn5.cpp	0fadb572ce80799788f72bca8e11ac1a0d50ae47	Implementierung	3556	921-1038,1207-1475,1571-1619	PARTIALLY_REVIEWED	AUD-SDK-0001,AUD-VIEW-0001,AUD-VIEW-0002	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/fileswn5.cpp	0fadb572ce80799788f72bca8e11ac1a0d50ae47	Implementierung	3556	921-1038,1207-1475,1571-1619	PARTIALLY_REVIEWED	AUD-SDK-0001,AUD-VIEW-0001,AUD-VIEW-0002	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/fileswn6.cpp	968c965fbae301defba08cef944c1a91805603c9	Implementierung	3252		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/fileswn7.cpp	83cb5b5d7f2e0471a59cc57fa97cc1d1741b635c	Implementierung	2118		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/fileswn8.cpp	e2c493455be08f8bc06042791c41a1c37bfd2284	Implementierung	2916	561-659,752-948	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/fileswn8.cpp	e2c493455be08f8bc06042791c41a1c37bfd2284	Implementierung	2916	561-659,752-948	PARTIALLY_REVIEWED	AUD-WORKER-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/fileswn9.cpp	6f31870d43e3e53f80da5d7d996a21678a996103	Implementierung	2639		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/fileswna.cpp	7a5ddecb74c1b034cea529e52608a9f5f62d3397	Implementierung	1185		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/fileswnb.cpp	fd1ddb681b677a9b1062a7f446b25f491c5a2432	Implementierung	1600	878-885	PARTIALLY_REVIEWED	AUD-SDK-0001	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/fileswnb.cpp	fd1ddb681b677a9b1062a7f446b25f491c5a2432	Implementierung	1600	878-885	PARTIALLY_REVIEWED	AUD-SDK-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/fileswnd.h	42f0de1d8b2ed4d358b0131cd18541418850cb3f	Schnittstelle	1772		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/filter.cpp	ec07ab43a308cc0c6e6f63bacd27fb122fae0908	Implementierung	1346		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/filter.h	7a3dea35f70575922eb9eb6121f78bde8f439ef8	Schnittstelle	135		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/find.cpp	334150556d3ad1442d29a955b3e972ae5f50c53a	Implementierung	2310	177-206,437-667,1738-1760,2004-2027	PARTIALLY_REVIEWED	AUD-FIND-0001,AUD-FIND-0002,AUD-FIND-0003	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
-src/find.h	407b2144684f1f73ddf17ab0d13c834d150cfe8c	Schnittstelle	903	252-311	PARTIALLY_REVIEWED	AUD-FIND-0002,AUD-FIND-0003	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
-src/finddlg1.cpp	1c1c4b414441d57e0ff94540bf2a230ef89eef0e	Implementierung	4545	1526-1526,1841-1849,1852-1867,1903-1924,2526-2559,3652-3662	PARTIALLY_REVIEWED	AUD-FIND-0001,AUD-FIND-0003,AUD-SDK-0001	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
-src/finddlg2.cpp	0916df66579df5032de909bdd2098f51d4dae206	Implementierung	2176	975-1050,1701-1746,2096-2111	PARTIALLY_REVIEWED	AUD-FIND-0002,AUD-FIND-0003	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/find.cpp	334150556d3ad1442d29a955b3e972ae5f50c53a	Implementierung	2310	177-206,437-667,1738-1760,2004-2027	PARTIALLY_REVIEWED	AUD-FIND-0001,AUD-FIND-0002,AUD-FIND-0003	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
+src/find.h	407b2144684f1f73ddf17ab0d13c834d150cfe8c	Schnittstelle	903	252-311	PARTIALLY_REVIEWED	AUD-FIND-0002,AUD-FIND-0003	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
+src/finddlg1.cpp	1c1c4b414441d57e0ff94540bf2a230ef89eef0e	Implementierung	4545	1526-1526,1841-1849,1852-1867,1903-1924,2526-2559,3652-3662	PARTIALLY_REVIEWED	AUD-FIND-0001,AUD-FIND-0003,AUD-SDK-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
+src/finddlg2.cpp	0916df66579df5032de909bdd2098f51d4dae206	Implementierung	2176	975-1050,1701-1746,2096-2111	PARTIALLY_REVIEWED	AUD-FIND-0002,AUD-FIND-0003	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/geticon.cpp	2058db47feed32f2a59eb71945358151d959e494	Implementierung	385		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/geticon.h	a871f0d2931db3407f3c95e31aa9544a063b92ea	Schnittstelle	42		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/gui.cpp	a63385cffa3a4d67dd55771d159d1c891dfe18f8	Implementierung	3809		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -608,13 +622,13 @@ src/keyboard.cpp	189a6346dc7b4394f54096e0e78f1752d0d4678a	Implementierung	1156		
 src/lang/lang.rc	90ff495bc0df9d5115d94ea37691f60f07a181cd	UI-Ressource	2402		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/lang/lang.rc2	66df709ee96cdd561f786f4a4d706b712fd0a7f9	UI-Ressource	120		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/lang/lang.rh	b3deae919240047f9def59238b7edc88b75644de	UI-Ressource	700		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/lang/texts.rc2	60d79875b17df9a1482b8e74f8b04b1ed9855262	UI-Ressource	1910		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+src/lang/texts.rc2	60d79875b17df9a1482b8e74f8b04b1ed9855262	UI-Ressource	1910	1299-1299	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/logo.cpp	6854dea1434beb12c6e4fc25a984c8488e8c3ac5	Implementierung	502		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/logo.h	862f923d301fc2a566ba68a76e9ea88334ada90e	Schnittstelle	16		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/mainwnd.h	54a4f7aa074213a430006daba43aca0c7d2cb479	Schnittstelle	806		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/mainwnd1.cpp	9e204125a45aaeb162f79af9faa30ad7229d6bea	Implementierung	3227		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/mainwnd2.cpp	28be6e9274f3efd74f18f386be69284dccb37132	Implementierung	4069		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/mainwnd3.cpp	57156d4749499e9f1ef0738347d90fab6b3b2209	Implementierung	7126	1503-1510,3554-3566,5868-5874	PARTIALLY_REVIEWED	AUD-CACHE-0001,AUD-SDK-0001	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/mainwnd3.cpp	57156d4749499e9f1ef0738347d90fab6b3b2209	Implementierung	7126	1503-1510,3554-3566,5868-5874	PARTIALLY_REVIEWED	AUD-CACHE-0001,AUD-SDK-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/mainwnd4.cpp	6e6bf89c8abc66d7e52abdc1b2c129f07d33befb	Implementierung	2075		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/mainwnd5.cpp	84d70240ce398fa0d7e4f46f2e8723b93a9ed29c	Implementierung	1873		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/manifest.xml	432a92f4828a4378540965938d6616addf724c1a	Konfiguration	46		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -635,7 +649,7 @@ src/msgbox.cpp	532533f6a7b4bd75c4117108c121cb2dd8d99e4a	Implementierung	1172		NO
 src/olespy.cpp	d7fa50926799519dc5359e4af7dccd340d4204f3	Implementierung	1181		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/olespy.h	e959160644fd5145c563c99a8ae5cba7b51680af	Schnittstelle	30		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/pack.h	a97b0fca96b62146f3df287bdfbeae58e49fb772	Schnittstelle	778		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/pack1.cpp	5748d33754d752c5d75a1d2434764d0bc1d71efd	Implementierung	1916		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+src/pack1.cpp	5748d33754d752c5d75a1d2434764d0bc1d71efd	Implementierung	1916	670-713,808-835	PARTIALLY_REVIEWED	AUD-ARCHIVER-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/pack2.cpp	94ad5af5b104b34e3335337004df22ea7ecf9fbf	Implementierung	773		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/pack3.cpp	2902f937239dd5225d461fbf81d4c504bb9aba8f	Implementierung	2052		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/packac.cpp	262c15a9fc94c9a0a366287b65cbef9dd7ff01cb	Implementierung	1989		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -1303,11 +1317,11 @@ src/plugins/7zip/7za/spl/VersionInfo.rc	f86b2d96ae02987cfbb9e3b8ae21626afd501b17
 src/plugins/7zip/7za/spl/main.cpp	7f6993703ecc4ab5e1c4d8a61d64317c93c1dee2	Plugin+Drittanbieter+Implementierung	123		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/7zip/7za/spl/splthread.c	c6e77b492573c3f111e03d7a1f1ceedd0a5b1bd7	Plugin+Drittanbieter+Implementierung	44		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/7zip/7za/spl/splthread.cpp	9472be96ae0b3d9e7db9c059f45f0b2db18e1ca4	Plugin+Drittanbieter+Implementierung	43		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/7zip/7zclient.cpp	c98af3dd3d06f3ac4548adc70459b7fcfe3ffd50	Plugin+Implementierung	1275	140-365	PARTIALLY_REVIEWED	AUD-PLUGIN-7Z-0001,AUD-PLUGIN-7Z-0002	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/7zip/7zclient.cpp	c98af3dd3d06f3ac4548adc70459b7fcfe3ffd50	Plugin+Implementierung	1275	140-365	PARTIALLY_REVIEWED	AUD-PLUGIN-7Z-0001,AUD-PLUGIN-7Z-0002	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/7zip/7zclient.h	573b45ef60f3146e87e48d8bbe24cb1d68749198	Plugin+Schnittstelle	121		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/7zip/7zip.cpp	354c80db57050be654c05aead4b79ab6385a0269	Plugin+Implementierung	1616	173-173,633-661,890-919	PARTIALLY_REVIEWED	AUD-PLUGIN-7Z-0001	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/7zip/7zip.cpp	354c80db57050be654c05aead4b79ab6385a0269	Plugin+Implementierung	1616	173-173,633-661,890-919	PARTIALLY_REVIEWED	AUD-PLUGIN-7Z-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/7zip/7zip.def	61318d8fe8a8a9d05c08088a3feb7ca4db8f664d	Plugin+Schnittstelle	5		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/7zip/7zip.h	b4f95a44f78078db2f71b7c74e8eb9db37191759	Plugin+Schnittstelle	238	73-75	PARTIALLY_REVIEWED	AUD-CACHE-0001	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/7zip/7zip.h	b4f95a44f78078db2f71b7c74e8eb9db37191759	Plugin+Schnittstelle	238	73-75	PARTIALLY_REVIEWED	AUD-CACHE-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/7zip/7zip.rc	46e8873e32bbd67ffeb1196c0c1d9c68af4ff734	Plugin+UI-Ressource	72		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/7zip/7zip.rc2	3485656cf3c371d40dd04a832b1647b4d1ec9501	Plugin+UI-Ressource	17		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/7zip/7zip.rh	63d426145a90c179b6ee4460444b22713746848c	Plugin+UI-Ressource	15		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -1387,7 +1401,7 @@ src/plugins/automation/dialogimpl.h	9c87ca42bf1392300e22384d9e97403b2ce24d4f	Plu
 src/plugins/automation/dispimpl.h	0bc2216ef2f1c614b65eac2995928fb85aaf1346	Plugin+Schnittstelle	334		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/automation/engassoc.cpp	bb58352784b1695ff24e3a751c4e1d54d77aaadd	Plugin+Implementierung	135		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/automation/engassoc.h	fc9cac7700f586afcd4a07070c4b6625b0937846	Plugin+Schnittstelle	43		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/automation/entry.cpp	90f397e16d7e09f34948c9cdfff0d0da27c35852	Plugin+Implementierung	140	116-116	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/automation/entry.cpp	90f397e16d7e09f34948c9cdfff0d0da27c35852	Plugin+Implementierung	140	116-116	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/automation/fileinfo.cpp	531cd1d8cc702b8e02caf6398bed5cbf62cd3aaf	Plugin+Implementierung	277		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/automation/fileinfo.h	a2577e54c484cef1f8e63d6a1273343dc58c7d78	Plugin+Schnittstelle	63		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/automation/generated/.clang-format	e3845288a2aece185aa94e88e303e0134efde368	Plugin+Generatorbereich	1		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -1589,7 +1603,7 @@ src/plugins/automation/waitwndaut.cpp	b016299502ebb630595e04d2622c59282e957873	P
 src/plugins/automation/waitwndaut.h	bec48fc5b17e327974aaef28c32efa7a73fe08fd	Plugin+Schnittstelle	65		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/checksum/checkmrk.ico	23540428664e0525589c90c071a2974c38f81233	Plugin+UI-Ressource+Binärressource			NOT_REVIEWED		Format, Herkunft und Einbindung	Blobidentität geprüft
 src/plugins/checksum/checksum.bmp	3af7654010e5af1af04b4a657677f9bc6d420217	Plugin+UI-Ressource+Binärressource			NOT_REVIEWED		Format, Herkunft und Einbindung	Blobidentität geprüft
-src/plugins/checksum/checksum.cpp	f2af422ad88dfdf7828e94eb5731a601be98087e	Plugin+Implementierung	335	124-124	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/checksum/checksum.cpp	f2af422ad88dfdf7828e94eb5731a601be98087e	Plugin+Implementierung	335	124-124	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/checksum/checksum.def	df70ec59dc8986d8b9d5d36871c9a87e3a0a5355	Plugin+Schnittstelle	4		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/checksum/checksum.h	ccb58c3ef632155405757420ee25ae00eb4f0603	Plugin+Schnittstelle	109		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/checksum/checksum.rc	fd3348351f67bc5459f654fc012046e12ea20df7	Plugin+UI-Ressource	73		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -1644,7 +1658,7 @@ src/plugins/checksum/vcxproj/lang_checksum.vcxproj	fe68960f70f189e15345fb597da3d
 src/plugins/checksum/versinfo.rh2	c5f4a00405fa1001c62aa4e57221700b840fad41	Plugin+UI-Ressource	35		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/checksum/wrappers.cpp	c1187331a1c6804d76e1030383503f0effc356bc	Plugin+Implementierung	526		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/checksum/wrappers.h	244a41d7eb2974b1c3df075b0c06ead9561e10f2	Plugin+Schnittstelle	26		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/checkver/checkver.cpp	2f6ab0425b8877d758f7ae16574c8804bba08d68	Plugin+Implementierung	539	140-140	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/checkver/checkver.cpp	2f6ab0425b8877d758f7ae16574c8804bba08d68	Plugin+Implementierung	539	140-140	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/checkver/checkver.def	a29a2146bb0b621b83d0f0426ae866dc18f59904	Plugin+Schnittstelle	4		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/checkver/checkver.h	f3d3d2a45cefdb5a8ffa06d5378515ebc87acca3	Plugin+Schnittstelle	188		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/checkver/checkver.rc	cede3c3c24c65dc0b682e4075e2d3556eb904c2f	Plugin+UI-Ressource	74		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -1688,7 +1702,7 @@ src/plugins/dbviewer/data.cpp	2bb9d5711855dd67f35c6fa46af3dd87ac5924ec	Plugin+Im
 src/plugins/dbviewer/data.h	fdf886fb12eba320a9553e16850be44b5957d8f8	Plugin+Schnittstelle	127		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/dbviewer/dbflib/dbflib.cpp	4686099b073296f68e9bb75e55fe23fee0566a16	Plugin+Implementierung	662		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/dbviewer/dbflib/dbflib.h	e510b660813893a9c6067c26efacd003fac7edc3	Plugin+Schnittstelle	211		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/dbviewer/dbviewer.cpp	a4408c824c7e1624f4c9b5c79b6767503a556f4f	Plugin+Implementierung	1735	363-363	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/dbviewer/dbviewer.cpp	a4408c824c7e1624f4c9b5c79b6767503a556f4f	Plugin+Implementierung	1735	363-363	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/dbviewer/dbviewer.def	628fb4993c804163dbc7e33846a7b98b772c7323	Plugin+Schnittstelle	4		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/dbviewer/dbviewer.h	f451c7fbe4eb478bbd6b42395f47175e76a94188	Plugin+Schnittstelle	153		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/dbviewer/dbviewer.rc	4728ffc0923b72a060d0a206a8bed9bc6ccf407f	Plugin+UI-Ressource	71		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -1744,7 +1758,7 @@ src/plugins/dbviewer/vcxproj/dbviewer.vcxproj.filters	c472f356261cf5ebdb36b6ad4b
 src/plugins/dbviewer/vcxproj/lang_dbviewer.props	3e1aa8dc5d4446dc309d4e893a6fa06c3dc88e17	Plugin+Build	13		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/dbviewer/vcxproj/lang_dbviewer.vcxproj	dc17a2fecca41bf37172e59184431c1df29720c1	Plugin+Build	140		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/dbviewer/versinfo.rh2	c7184ad4f0fa69d259580c1d25f508cc17e56c3b	Plugin+UI-Ressource	35		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/demoview/demoview.cpp	f60f1a2a3b7269435adf6b6795c5c387bc649d0d	Plugin+Implementierung	300	167-167	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/demoview/demoview.cpp	f60f1a2a3b7269435adf6b6795c5c387bc649d0d	Plugin+Implementierung	300	167-167	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/demoview/demoview.def	8484d5c4fc48bd347d92334f101a07ec33240774	Plugin+Schnittstelle	4		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/demoview/demoview.h	20c38f30020f7dbc307af3e1304e5016497be97f	Plugin+Schnittstelle	195		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/demoview/demoview.rc	f17c6f19d538b5b0f4cbd59ae9d13bed6410319d	Plugin+UI-Ressource	89		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -1840,7 +1854,7 @@ src/plugins/diskmap/DiskMap/Utils.CZLocalizer.cpp	a13b98d469fddd3e1ccb1a655ec5a9
 src/plugins/diskmap/DiskMap/Utils.CZLocalizer.h	eb610f445ef94da234d3cf7eca1875f63ac9a122	Plugin+Schnittstelle	70		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/diskmap/DiskMap/Utils.CZSmartIconLoader.h	fb20fe34986b9789e949751d171a9d03cf216cc7	Plugin+Schnittstelle	103		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/diskmap/DiskMap/Utils.CZString.h	6f42c7890252193bc8b1c7501e4747e8783b556d	Plugin+Schnittstelle	180		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/diskmap/DiskMapPlugin/DiskMapPlugin.cpp	050d56acf183aee1ae5802d186237513a399b55a	Plugin+Implementierung	748	306-306	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/diskmap/DiskMapPlugin/DiskMapPlugin.cpp	050d56acf183aee1ae5802d186237513a399b55a	Plugin+Implementierung	748	306-306	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/diskmap/DiskMapPlugin/DiskMapPlugin.def	f4fccd6af68a7c6e7d65c755cb637a11cc843d0f	Plugin+Schnittstelle	5		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/diskmap/DiskMapPlugin/DiskMapPlugin.h	b95bf651c05240899d61d68a3f672772c2338bfd	Plugin+Schnittstelle	58		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/diskmap/DiskMapPlugin/DiskMapPlugin.rc	0bdbbe40d8e99ce5f96e8d79bee995ab8d6693d6	Plugin+UI-Ressource	80		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -1887,7 +1901,7 @@ src/plugins/filecomp/fcremote/precomp.h	a5f3ea11c4f11a8d62b040295315a53581db0007
 src/plugins/filecomp/filecache.cpp	514d5954fbf102c93d17da0639b43e6b9ecfa83c	Plugin+Implementierung	128		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/filecomp/filecache.h	b2823f1b790946e043667f37e3a718c36e6c7fd6	Plugin+Schnittstelle	23		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/filecomp/filecomp.bmp	98c389d9134e577fc773eda3b1396f16f86d3737	Plugin+UI-Ressource+Binärressource			NOT_REVIEWED		Format, Herkunft und Einbindung	Blobidentität geprüft
-src/plugins/filecomp/filecomp.cpp	d95d848c70d2a75902b92cc65fd3cbdecd056e5b	Plugin+Implementierung	747	95-95	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/filecomp/filecomp.cpp	d95d848c70d2a75902b92cc65fd3cbdecd056e5b	Plugin+Implementierung	747	95-95	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/filecomp/filecomp.def	39efcbc1f08e21ce2f8fed76dafb360434073298	Plugin+Schnittstelle	4		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/filecomp/filecomp.h	2c2f23f8c64c5327435c06398a0b36c96ec4e236	Plugin+Schnittstelle	99		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/filecomp/filecomp.rc	b1bff077a91978ac64ad7423e42aa6c520d1a01f	Plugin+UI-Ressource	119		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -1962,7 +1976,7 @@ src/plugins/filecomp/xunicode.cpp	b15f99b4cd6697b8f7fe26486a4e4cb5d9d3b477	Plugi
 src/plugins/filecomp/xunicode.h	2d460ea622a4479ab7d1c27d4f18e319c06d31f6	Plugin+Schnittstelle	131		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/folders/dialogs.cpp	668b625a21cde37de06d81bde0377da5853d065f	Plugin+Implementierung	38		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/folders/dialogs.h	8c550c3b6c3cfcc23110f9774a5af801a3699a23	Plugin+Schnittstelle	22		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/folders/folders.cpp	a9e1a78ca9e7920889b1d902aefcf155029db221	Plugin+Implementierung	166	99-99	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/folders/folders.cpp	a9e1a78ca9e7920889b1d902aefcf155029db221	Plugin+Implementierung	166	99-99	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/folders/folders.def	6f837970ca258792cf777a9d0f46becb9793baf9	Plugin+Schnittstelle	4		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/folders/folders.h	0950eaefbac48887bead8d2ea3b2bd4915b55e2b	Plugin+Schnittstelle	276		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/folders/folders.rc	a0b306fb161a43d2b63eaa619f2fdc9c35ac4539	Plugin+UI-Ressource	71		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -2010,7 +2024,7 @@ src/plugins/ftp/fs3.cpp	2b7fa14b0e0000f379bd22d299813f6796481906	Plugin+Implemen
 src/plugins/ftp/fs4.cpp	09de194788a37805f842208cf3379a1c4b36f9b3	Plugin+Implementierung	1354		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/ftp/fs5.cpp	b469f253fdc6f25d5d6f1a1c31a743c0d37ecaee	Plugin+Implementierung	1260		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/ftp/ftp.bmp	cfc3e475d478a32297d663e0fc08825c8d371ef7	Plugin+UI-Ressource+Binärressource			NOT_REVIEWED		Format, Herkunft und Einbindung	Blobidentität geprüft
-src/plugins/ftp/ftp.cpp	02ab50456d535c0f105dec3c0965535d265a7c02	Plugin+Implementierung	1764	336-336	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/ftp/ftp.cpp	02ab50456d535c0f105dec3c0965535d265a7c02	Plugin+Implementierung	1764	336-336	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/ftp/ftp.def	797b49d1cb50f58820b7b45652007a7321271b5e	Plugin+Schnittstelle	4		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/ftp/ftp.h	a18083ed04d284f303a0c6ad639990e53b9fe381	Plugin+Schnittstelle	1749		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/ftp/ftp.ico	81101f0490b0edfc6fe81e8e11472aa034032fa8	Plugin+UI-Ressource+Binärressource			NOT_REVIEWED		Format, Herkunft und Einbindung	Blobidentität geprüft
@@ -2268,7 +2282,7 @@ src/plugins/ieviewer/help/hh/salamander_help_shared.css	89cde4e4c92767f66a644113
 src/plugins/ieviewer/help/ieviewer.hhc	7047c9a6fba99e2cc8963ab1c172ad03858d0762	Plugin+Dokumentation	21		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/ieviewer/help/ieviewer.hhk	bd239a6e2e5fef2e512d710205b9fea00388b81b	Plugin+Dokumentation	17		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/ieviewer/help/ieviewer.hhp	f7c9ed5efe43601510d0f5d0b188e387bbcdd9f5	Plugin+Dokumentation	66		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/ieviewer/ieviewer.cpp	40a6a1269e1e531c5274ee045ee9e392756be654	Plugin+Implementierung	2180	224-224	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/ieviewer/ieviewer.cpp	40a6a1269e1e531c5274ee045ee9e392756be654	Plugin+Implementierung	2180	224-224	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/ieviewer/ieviewer.def	e0d7197808a5ff24556e5f1066cd27bdcc021a10	Plugin+Schnittstelle	4		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/ieviewer/ieviewer.h	1b38fea1a569a5b7db65a39b1659ba8a93404d96	Plugin+Schnittstelle	472		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/ieviewer/ieviewer.ico	88d5e25e311ed8390b09f7d4343cae88c4b693ea	Plugin+UI-Ressource+Binärressource			NOT_REVIEWED		Format, Herkunft und Einbindung	Blobidentität geprüft
@@ -2307,7 +2321,7 @@ src/plugins/mmviewer/help/mmviewer.hhp	acc7703c13686c2e3f201ead097fe5eea8fd60fe	
 src/plugins/mmviewer/lang/lang.rc	ef847286a2190fc1502956a573c9149c3ff1a0b8	Plugin+UI-Ressource	100		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/mmviewer/lang/lang.rc2	c0a897e5cc8dff65346a8af74fd20a429c1b53b4	Plugin+UI-Ressource	318		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/mmviewer/lang/lang.rh	e72e259133121e156622756165a339ab09f39ab6	Plugin+UI-Ressource	23		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/mmviewer/mmviewer.cpp	62b27c1e4fb84c2adebcc32f08396401dacb8f6d	Plugin+Implementierung	1583	299-299	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/mmviewer/mmviewer.cpp	62b27c1e4fb84c2adebcc32f08396401dacb8f6d	Plugin+Implementierung	1583	299-299	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/mmviewer/mmviewer.def	91682152c7ae930f03ab04a01eff0d8cc140d356	Plugin+Schnittstelle	4		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/mmviewer/mmviewer.h	a942e26185c6ced00fac98ac70b785c251119256	Plugin+Schnittstelle	176		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/mmviewer/mmviewer.rc	beacb7bc7c7a85d9326ba81f96e79e2421f1c0d0	Plugin+UI-Ressource	74		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -2374,7 +2388,7 @@ src/plugins/nethood/cache.h	e8c957343908c3107bd3ba7a153aee553116f854	Plugin+Schn
 src/plugins/nethood/cfgdlg.cpp	4eb788d4d4a442806fc2d019e5331f5cd1712f86	Plugin+Implementierung	149		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/nethood/cfgdlg.h	43f1bc8c07a12f0811918f94ded30316d7890846	Plugin+Schnittstelle	39		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/nethood/config.h	82a587819370d815251528f0a96aa6df4f7c1561	Plugin+Schnittstelle	19		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/nethood/entry.cpp	37edbeba54f7afff5aceeeff2030e874bdb592bd	Plugin+Implementierung	206	172-172	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/nethood/entry.cpp	37edbeba54f7afff5aceeeff2030e874bdb592bd	Plugin+Implementierung	206	172-172	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/nethood/globals.cpp	e74f5d3d5ee0cd3f7c72b47c9739d715fcee3063	Plugin+Implementierung	39		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/nethood/globals.h	76283951ff5ea263330dfe2b86c693b5677b53c7	Plugin+Schnittstelle	133		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/nethood/help/compile.bat	a16f56af1ccb4957c89630632ecf9860ca92db9f	Plugin+Skript	19		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -2436,7 +2450,7 @@ src/plugins/pak/spl/lang/lang.rc	3b258c68c899a35d89197828d61452cde220e19e	Plugin
 src/plugins/pak/spl/lang/lang.rc2	3f82bcedcb7b84a72b8166201ff4d50f9881cec4	Plugin+UI-Ressource	51		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/pak/spl/lang/lang.rh	2de09c3d438da0a14368c6aa32c819c0f91668d7	Plugin+UI-Ressource	19		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/pak/spl/pak.bmp	e1c702f51f2a970542134d55508ea0de94789fc6	Plugin+UI-Ressource+Binärressource			NOT_REVIEWED		Format, Herkunft und Einbindung	Blobidentität geprüft
-src/plugins/pak/spl/pak.cpp	69d7dfd215fba198602c5c6a50087ab685e2eefb	Plugin+Implementierung	982	139-139	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/pak/spl/pak.cpp	69d7dfd215fba198602c5c6a50087ab685e2eefb	Plugin+Implementierung	982	139-139	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/pak/spl/pak.h	7ac7d6ce4b833eb73fafbaeba31a354d55939280	Plugin+Schnittstelle	191		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/pak/spl/pak.rc2	d7d86e35b2df97446b35f639bf6aebaaaac44290	Plugin+UI-Ressource	15		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/pak/spl/pak.rh	70359cf877b5c07a6fd243869662cc08f02164f6	Plugin+UI-Ressource	15		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -2471,7 +2485,7 @@ src/plugins/peviewer/lang/lang.rc2	3fa2618ece341ebe638cf27f5664503a5951a337	Plug
 src/plugins/peviewer/lang/lang.rh	9e5659e68c5163125e8e3e0f7b76192df17dccab	Plugin+UI-Ressource	23		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/peviewer/pefile.cpp	287cd7bba855e4c2ff224a9d6532c68f7a3e8863	Plugin+Implementierung	2735		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/peviewer/pefile.h	51eb26ee70d75f45c94d59de7cde6badd32de759	Plugin+Schnittstelle	560		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/peviewer/peviewer.cpp	8ff4e4c9a3cc1de24403ca78c203fc294c026ebe	Plugin+Implementierung	447	112-112	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/peviewer/peviewer.cpp	8ff4e4c9a3cc1de24403ca78c203fc294c026ebe	Plugin+Implementierung	447	112-112	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/peviewer/peviewer.def	6222bc67215d6bd40bcd87e5f5d1a68bd270ad76	Plugin+Schnittstelle	4		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/peviewer/peviewer.h	063b159650da63e2bd54e766d40c7f817b425344	Plugin+Schnittstelle	53		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/peviewer/peviewer.rc	68398feb174af88c4a791790d52ac7ec1d8d799d	Plugin+UI-Ressource	75		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -2501,14 +2515,14 @@ src/plugins/pictview/WicBitmapPresenter.cpp	0e0964140ea3e261a721f8e50bb212782ae3
 src/plugins/pictview/WicBitmapPresenter.h	dd2b5e6acb4431c73e471b3c07e90c6b46ab6fc8	Plugin+Schnittstelle	32		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/pictview/WicImageClipboard.cpp	13128570e46da460e41263af308d08ffa54a8e91	Plugin+Implementierung	211		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/pictview/WicImageClipboard.h	0ea3f0aaca9fbd2dd00a5a08b475b85293082810	Plugin+Schnittstelle	32		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/pictview/WicImageDecoder.cpp	02ead48e87f64ad74f3db634467cda5b9a580b03	Plugin+Implementierung	129	1-129	FULLY_REVIEWED	AUD-PLUGIN-PICTVIEW-0001	Verifikation gemäß Maßnahmenkatalog	Quellenreview, Laufzeitbelege gesondert im Katalog
-src/plugins/pictview/WicImageDecoder.h	f20e31a0b3bfa060fdc8f703b84d07174ec8cfac	Plugin+Schnittstelle	34	1-34	FULLY_REVIEWED	AUD-PLUGIN-PICTVIEW-0001	Verifikation gemäß Maßnahmenkatalog	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/pictview/WicImageDecoder.cpp	02ead48e87f64ad74f3db634467cda5b9a580b03	Plugin+Implementierung	129	1-129	FULLY_REVIEWED	AUD-PLUGIN-PICTVIEW-0001	Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
+src/plugins/pictview/WicImageDecoder.h	f20e31a0b3bfa060fdc8f703b84d07174ec8cfac	Plugin+Schnittstelle	34	1-34	FULLY_REVIEWED	AUD-PLUGIN-PICTVIEW-0001	Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/pictview/WicImageTransforms.cpp	eb449b8875f9b127a97f63b6e677639574425999	Plugin+Implementierung	96		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/pictview/WicImageTransforms.h	2f2c6550452346f3e01559da54174fc68c78aec6	Plugin+Schnittstelle	20		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/pictview/WicImageWriter.cpp	04056f4d979b6704468aa3a84b258c5212c8df9a	Plugin+Implementierung	281		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/pictview/WicImageWriter.h	ddeebaf153ee137c82d4a78d469ae529ec46388c	Plugin+Schnittstelle	29		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/pictview/WicNativeViewer.cpp	d4dd2c85b751ceda9cd590b99fc60cbad689b415	Plugin+Implementierung	570	191-200,413-563	PARTIALLY_REVIEWED	AUD-PLUGIN-PICTVIEW-0001	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
-src/plugins/pictview/WicNativeViewer.h	a0fcdbbf877d01701a65d7f878f8dd12d2824f48	Plugin+Schnittstelle	36	1-36	FULLY_REVIEWED	AUD-PLUGIN-PICTVIEW-0001	Verifikation gemäß Maßnahmenkatalog	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/pictview/WicNativeViewer.cpp	d4dd2c85b751ceda9cd590b99fc60cbad689b415	Plugin+Implementierung	570	191-200,413-563	PARTIALLY_REVIEWED	AUD-PLUGIN-PICTVIEW-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
+src/plugins/pictview/WicNativeViewer.h	a0fcdbbf877d01701a65d7f878f8dd12d2824f48	Plugin+Schnittstelle	36	1-36	FULLY_REVIEWED	AUD-PLUGIN-PICTVIEW-0001	Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/pictview/dialogs.cpp	e7e2992647e829b44d1a00fc96cb6b782f5b0c80	Plugin+Implementierung	1946		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/pictview/dialogs.h	af459e62b2abab375bead048d835f3e6b571a08c	Plugin+Schnittstelle	487		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/pictview/exif/Translation.cpp	c2ea1988aec7904084fe1e84e17edd612b900057	Plugin+Implementierung	328		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -2636,8 +2650,8 @@ src/plugins/pictview/lang/lang.rc2	c31286b902f7bd4b697bbcd5e9734495a8d72c24	Plug
 src/plugins/pictview/lang/lang.rh	a050031c557d9f03e90a4f2684ef0d3b791d2ebc	Plugin+UI-Ressource	134		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/pictview/lib/PVW32DLL.h	34040a70c1a8e3cd50c269b2426a12304cafaf85	Plugin+Schnittstelle	558		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/pictview/lib/readme.txt	a72d1de9851c4f8353c9a6575c9d9d5c92e6cbc5	Plugin	7		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/pictview/pictview.cpp	b0e905f2bf7dd2f271be4d784b28eaf61908798d	Plugin+Implementierung	2927	528-528,966-967,1440-1484,1619-1749	PARTIALLY_REVIEWED	AUD-PLUGIN-PICTVIEW-0001	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
-src/plugins/pictview/pictview.def	a6686b666c5fd76c7b56a1df9350d74d58a6d472	Plugin+Schnittstelle	5	1-5	FULLY_REVIEWED	AUD-PLUGIN-PICTVIEW-0001	Verifikation gemäß Maßnahmenkatalog	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/pictview/pictview.cpp	b0e905f2bf7dd2f271be4d784b28eaf61908798d	Plugin+Implementierung	2927	528-528,966-967,1440-1484,1619-1749	PARTIALLY_REVIEWED	AUD-PLUGIN-PICTVIEW-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
+src/plugins/pictview/pictview.def	a6686b666c5fd76c7b56a1df9350d74d58a6d472	Plugin+Schnittstelle	5	1-5	FULLY_REVIEWED	AUD-PLUGIN-PICTVIEW-0001	Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/pictview/pictview.h	f20d591f13c0c91fe67cab1bd210c96631570803	Plugin+Schnittstelle	499		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/pictview/pictview.rc	40be197cf03795e0e6c979f3b21a67839d5ed9e2	Plugin+UI-Ressource	74		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/pictview/pictview.rc2	3d0df66f8c9726a189428201243dfef6e4ff16ab	Plugin+UI-Ressource	108		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -2670,7 +2684,7 @@ src/plugins/pictview/salpvenv.rc	619b21538fba7caf83f1617c0a145ad86d4b67d4	Plugin
 src/plugins/pictview/salpvenv.xml	83eb7f965edd60b05a46c943b0ececd1581a3ee8	Plugin+Konfiguration	46		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/pictview/saveas.cpp	2211dd5e20327161c1e894243387305055696f84	Plugin+Implementierung	1045		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/pictview/statsbar.cpp	47eb7f5bc458cdd55c90be8c29e23be0f43ca670	Plugin+Implementierung	237		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/pictview/thumbs.cpp	99c1775f2eec62cdd54ac3a24275f2980290f02f	Plugin+Implementierung	908	818-889	PARTIALLY_REVIEWED	AUD-PLUGIN-PICTVIEW-0001	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/pictview/thumbs.cpp	99c1775f2eec62cdd54ac3a24275f2980290f02f	Plugin+Implementierung	908	818-889	PARTIALLY_REVIEWED	AUD-PLUGIN-PICTVIEW-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/pictview/twain/.clang-format	e3845288a2aece185aa94e88e303e0134efde368	Plugin	1		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/pictview/twain/twain.h	03ce15894bb36b093e5b080a1aa50fb4aae65143	Plugin+Schnittstelle	1969		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/pictview/utils.cpp	85b2d3a7bcb6b6cbc8d9a5c2981a91ab5aabe639	Plugin+Implementierung	181		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -2695,7 +2709,7 @@ src/plugins/pictview/wiawrap.h	29cfe817c6eb8204a81d96e44c17c5a34bb866a5	Plugin+S
 src/plugins/portables/config.h	2045f24e8f2143eaebfe6d70e8053b7a935f9e47	Plugin+Schnittstelle	16		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/portables/device.cpp	9006808d92756592d30eab201b982af2f6f65eff	Plugin+Implementierung	477		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/portables/device.h	ff9340e4fc0b779046d45b9033b2574d15c1cf7c	Plugin+Schnittstelle	183		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/portables/entry.cpp	7b3f78188bf899c9bd4c30d4939d48d102d7f1b8	Plugin+Implementierung	143	112-112	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/portables/entry.cpp	7b3f78188bf899c9bd4c30d4939d48d102d7f1b8	Plugin+Implementierung	143	112-112	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/portables/fx.cpp	137b524f2929f877d98ab66d58f85b1adff31a36	Plugin+Implementierung	812		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/portables/fx.h	9f5772d2326b21f2f684326f9ba00e5154dda26e	Plugin+Schnittstelle	408		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/portables/fx.rh	a9fc5478457c7efec236444d5fa744d3387a9f21	Plugin+UI-Ressource	24		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -2835,7 +2849,7 @@ src/plugins/regedt/precomp.h	daae15fe82ff82a8b0ac303c4ba970f4d2c7ca4b	Plugin+Sch
 src/plugins/regedt/regedt.RC	28a1c1f37d6212d082577e431d94e42957ad363d	Plugin+UI-Ressource	74		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/regedt/regedt.RH	dc426a45b3e560a43d2b64f689baeb00be1f6ae5	Plugin+UI-Ressource	15		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/regedt/regedt.bmp	f2f3de178f532be72cffeda0977ee35db1858bd4	Plugin+UI-Ressource+Binärressource			NOT_REVIEWED		Format, Herkunft und Einbindung	Blobidentität geprüft
-src/plugins/regedt/regedt.cpp	a252566307c1da21d3facc472a824db30d77edd6	Plugin+Implementierung	529	252-252	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/regedt/regedt.cpp	a252566307c1da21d3facc472a824db30d77edd6	Plugin+Implementierung	529	252-252	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/regedt/regedt.def	470044e09d878d1b0b61bc0140e513cb48880d45	Plugin+Schnittstelle	4		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/regedt/regedt.h	3e5a3228a8e231fa250ce178d32004513b88afa5	Plugin+Schnittstelle	503		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/regedt/regedt.ico	3ebfa3ace3528dcdfb2575240933107b298cba33	Plugin+UI-Ressource+Binärressource			NOT_REVIEWED		Format, Herkunft und Einbindung	Blobidentität geprüft
@@ -2854,7 +2868,7 @@ src/plugins/regedt/versinfo.rh2	87120df2c0ebaf75fedd90f8d2ee3fe070df985b	Plugin+
 src/plugins/renamer/RENAMER.RC2	47b6784a7be03838a79d160d0f056b9c1c7649ae	Plugin+UI-Ressource	17		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/renamer/RENAMER.RH	4a4054719c49ac92c05fbddf1abaf68d8910b7f8	Plugin+UI-Ressource	16		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/renamer/crename2.cpp	92fc97712d5fd75045cca9fb6bdf579a3089f376	Plugin+Implementierung	668		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/renamer/crenamer.cpp	e1bd610c1385a29d8c22d57cc2dc4604d1a53552	Plugin+Implementierung	772	11-35	PARTIALLY_REVIEWED	AUD-PLUGIN-REN-0001	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/renamer/crenamer.cpp	e1bd610c1385a29d8c22d57cc2dc4604d1a53552	Plugin+Implementierung	772	11-35	PARTIALLY_REVIEWED	AUD-PLUGIN-REN-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/renamer/crenamer.h	06969520c27f700ddb7c449172adffa414804f11	Plugin+Schnittstelle	158		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/renamer/dialogs.cpp	6f39fc33f6a3cc4ae77cc7b7bfb5ab703704d207	Plugin+Implementierung	1249		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/renamer/dialogs.h	c1dec91d78b1e0ed12c0bf012d06f4ce5e237acb	Plugin+Schnittstelle	280		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -2874,7 +2888,7 @@ src/plugins/renamer/help/renamer.hhp	37cd3b1074e1e114101e67701537b3a77adfa0a5	Pl
 src/plugins/renamer/lang/lang.rc	15dc548e56f78012780d0b58f2c66ace822baa74	Plugin+UI-Ressource	249		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/renamer/lang/lang.rc2	c72d12c668ea57e5839decefcb7a0da9c08417a1	Plugin+UI-Ressource	301		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/renamer/lang/lang.rh	a55cc4f77c42412dd0c616dd07806b162c0142a6	Plugin+UI-Ressource	85		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/renamer/menu.cpp	a4459123e11f92f403eca35d1efba2e1c72e9e91	Plugin+Implementierung	69	1-69	FULLY_REVIEWED	AUD-PLUGIN-REN-0001	Verifikation gemäß Maßnahmenkatalog	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/renamer/menu.cpp	a4459123e11f92f403eca35d1efba2e1c72e9e91	Plugin+Implementierung	69	1-69	FULLY_REVIEWED	AUD-PLUGIN-REN-0001	Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/renamer/precomp.cpp	7a876fd3c25bbfe355dd6cf84d3e771afc55a60f	Plugin+Implementierung	11		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/renamer/precomp.h	9bde30e5949e8db1930d2297bfaa8c32e976be69	Plugin+Schnittstelle	50		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/renamer/preview.cpp	f0cb7bc2b2b31e33b9d00bd8177d2abb4e8ef34b	Plugin+Implementierung	714		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -2883,16 +2897,16 @@ src/plugins/renamer/regexp.cpp	3908ed2587bb56786675681c8d86844c09d10845	Plugin+I
 src/plugins/renamer/regexp.h	01306ad85b0372159954d0b5cc2da5d530f19d31	Plugin+Schnittstelle	107		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/renamer/regiface.h	757026471a5a7ca6cad303373faf89ed8e3f7f51	Plugin+Schnittstelle	143		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/renamer/renamer.bmp	73b583c85c0e458b81df1f082089c8e0d8396227	Plugin+UI-Ressource+Binärressource			NOT_REVIEWED		Format, Herkunft und Einbindung	Blobidentität geprüft
-src/plugins/renamer/renamer.cpp	0aa98eb9caf2c4763558006e5aaedfb83316eeeb	Plugin+Implementierung	542	219-219	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/renamer/renamer.cpp	0aa98eb9caf2c4763558006e5aaedfb83316eeeb	Plugin+Implementierung	542	219-219	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/renamer/renamer.def	67b86c998a4305948118958f8f57f01a56fafe27	Plugin+Schnittstelle	4		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/renamer/renamer.h	dc88acda21b70ffeda22eb52ddfeb73b61a69758	Plugin+Schnittstelle	118		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/renamer/renamer.ico	b7dc67bcf15fba2a35fc2f4e0e3d7e7a53b60d16	Plugin+UI-Ressource+Binärressource			NOT_REVIEWED		Format, Herkunft und Einbindung	Blobidentität geprüft
 src/plugins/renamer/renamer.rc	26b80a37b53c6d41bc70dcc4a8f8842305f15da3	Plugin+UI-Ressource	100		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/renamer/renamer.rh2	f8126827d72e3bb6ba07e721307a3cad9c9ba440	Plugin+UI-Ressource	324		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/renamer/rendlg.cpp	8a67803c0745d1dafb30e46ca05cfaee4ea68b8c	Plugin+Implementierung	2353	1137-1167	PARTIALLY_REVIEWED	AUD-PLUGIN-REN-0001	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/renamer/rendlg.cpp	8a67803c0745d1dafb30e46ca05cfaee4ea68b8c	Plugin+Implementierung	2353	1137-1167	PARTIALLY_REVIEWED	AUD-PLUGIN-REN-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/renamer/rendlg.h	179e3d1bf7177db383dcca8995c76dfa8666cc74	Plugin+Schnittstelle	184		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/renamer/rendlg2.cpp	f737858c0362c35a5b9ec36338cb432aa1823f7d	Plugin+Implementierung	734		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/renamer/rendlg3.cpp	865b9a40c730288e4ec172feaa72a1eaaff0fe9f	Plugin+Implementierung	415	6-46	PARTIALLY_REVIEWED	AUD-PLUGIN-REN-0001	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/renamer/rendlg3.cpp	865b9a40c730288e4ec172feaa72a1eaaff0fe9f	Plugin+Implementierung	415	6-46	PARTIALLY_REVIEWED	AUD-PLUGIN-REN-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/renamer/rendlg4.cpp	96cb6a13a45961e7a6d52e39f6b800fd60def37c	Plugin+Implementierung	334		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/renamer/utils.cpp	98d6ace30f11af1df21e6780564d1edbb0614ea1	Plugin+Implementierung	674		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/renamer/utils.h	3443e51bbb88126b05000d3fb6ce8b05ac78044f	Plugin+Schnittstelle	97		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -2935,7 +2949,7 @@ src/plugins/shared/lukas/utilbase.cpp	95c480519f68becd9514a07c6c96b47c492a3f28	S
 src/plugins/shared/lukas/utildlg.cpp	80197eb125637469c002269ef24064ddd5726b6c	SDK+Implementierung	131		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/shared/mhandles.cpp	90f5245beff88f38fe38aac6c6fe92fa307a436c	SDK+Implementierung	2467		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/shared/mhandles.h	3a7b2d2f5f6248e5efb3070e04595b463cb5ca52	SDK+Schnittstelle	691		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/shared/spl_arc.h	57959325b489a4e3265f66cf29f1a90152aaa80c	SDK+Schnittstelle	193	144-172	PARTIALLY_REVIEWED	AUD-CACHE-0001	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/shared/spl_arc.h	57959325b489a4e3265f66cf29f1a90152aaa80c	SDK+Schnittstelle	193	144-172	PARTIALLY_REVIEWED	AUD-CACHE-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/shared/spl_base.h	7207eef724a2656fbb0544027367d4c0ca022f36	SDK+Schnittstelle	984		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/shared/spl_bzip2.h	020a9c883964588c2df83a01badeafd9ffdca6fc	SDK+Schnittstelle	91		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/shared/spl_com.h	338c1935dc84270b6619dccdf0d3cadb990907f8	SDK+Schnittstelle	883		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -2946,9 +2960,9 @@ src/plugins/shared/spl_gen.h	cf39963e914edc98f96635884884aaef6e6b31f9	SDK+Schnit
 src/plugins/shared/spl_gui.h	410c812a6428976dea9ba75e2f7869e53557edd9	SDK+Schnittstelle	2209		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/shared/spl_menu.h	2566801631507b0b77558a747066c9bbc9868391	SDK+Schnittstelle	120		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/shared/spl_thum.h	415d0d6418620969fe9e4ec2f678a406ce8ea44b	SDK+Schnittstelle	127		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/shared/spl_unicode.h	96f1fb8042865ca4491c78bce8523303f57fb9d5	SDK+Schnittstelle	59	1-59	FULLY_REVIEWED	AUD-ARCH-0001,AUD-PLUGIN-PICTVIEW-0001,AUD-SDK-0001	Verifikation gemäß Maßnahmenkatalog	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/shared/spl_unicode.h	96f1fb8042865ca4491c78bce8523303f57fb9d5	SDK+Schnittstelle	59	1-59	FULLY_REVIEWED	AUD-ARCH-0001,AUD-PLUGIN-PICTVIEW-0001,AUD-SDK-0001	Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/shared/spl_vers.h	848143bcea36f4d863cf2d82bfc2e8c265a7108d	SDK+Schnittstelle	195		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/shared/spl_view.h	f4788afe9814588571d9ad479fef4b4fc04f7570	SDK+Schnittstelle	74	1-74	FULLY_REVIEWED	AUD-SDK-0001,AUD-VIEW-0001	Verifikation gemäß Maßnahmenkatalog	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/shared/spl_view.h	f4788afe9814588571d9ad479fef4b4fc04f7570	SDK+Schnittstelle	74	1-74	FULLY_REVIEWED	AUD-SDK-0001,AUD-VIEW-0001	Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/shared/spl_zlib.h	282f4de459abd7728237d1fa4cddf174047f815f	SDK+Schnittstelle	87		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/shared/sqlite/sqlite3.h	2b6529088b2dc13d649713f55c52047d7d0c26fc	SDK+Schnittstelle	11720		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/shared/statics.rh2	d43752653414f3b16fe28b7d82e4f0e6b2c0c476	SDK+UI-Ressource	60		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -2992,7 +3006,7 @@ src/plugins/splitcbn/split.cpp	ccaa1f95cf92cf107fb3f33fe16605a167d1528c	Plugin+I
 src/plugins/splitcbn/split.h	a7c27e134ba4f7dc38c376d76f5a0ade43ba0e1e	Plugin+Schnittstelle	8		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/splitcbn/split.ico	3de6d52f68e0af886cbbddc7715bcbc63b729017	Plugin+UI-Ressource+Binärressource			NOT_REVIEWED		Format, Herkunft und Einbindung	Blobidentität geprüft
 src/plugins/splitcbn/splitcbn.bmp	a51dffc4d8d6248c6027dd88a3f2934f17eb6d6a	Plugin+UI-Ressource+Binärressource			NOT_REVIEWED		Format, Herkunft und Einbindung	Blobidentität geprüft
-src/plugins/splitcbn/splitcbn.cpp	cfc11170297852bbcf92747dfac3ceba9121069e	Plugin+Implementierung	370	101-101	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/splitcbn/splitcbn.cpp	cfc11170297852bbcf92747dfac3ceba9121069e	Plugin+Implementierung	370	101-101	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/splitcbn/splitcbn.def	a7fbc1060b05e29718142ff19ae9e21a8d4c0520	Plugin+Schnittstelle	4		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/splitcbn/splitcbn.h	c579715d657e40b4ee72bee9ae4cf8d31b5dd4b9	Plugin+Schnittstelle	79		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/splitcbn/splitcbn.rc	9499806558774147bb74d610c3197e3ef5a2bc21	Plugin+UI-Ressource	75		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -3051,7 +3065,7 @@ src/plugins/tar/tar.rc	875042ea55c2eab17bcd965095f3aea5eb117d28	Plugin+UI-Ressou
 src/plugins/tar/tar.rc2	62e9a6752f7eb2e63aed15f21cd39a2edb1d273c	Plugin+UI-Ressource	13		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/tar/tar.rh	e8d99d659e644e9f0f7b5f4e2b9ec761a4a874a6	Plugin+UI-Ressource	15		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/tar/tar.rh2	a264aa64855d0dc923336718f5b09836c9482599	Plugin+UI-Ressource	97		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/tar/tardll.cpp	3802eae4ac2c56789fb590c393fe1de6a7dfc41b	Plugin+Implementierung	517	154-154	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/tar/tardll.cpp	3802eae4ac2c56789fb590c393fe1de6a7dfc41b	Plugin+Implementierung	517	154-154	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/tar/tardll.h	74141a520b21eb72de8f0338b0dfe39dd6a88aae	Plugin+Schnittstelle	91		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/tar/untar.cpp	9190e2d0bfa328100da481c1d56d072e64ac8f0a	Plugin+Implementierung	1854		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/tar/vcxproj/lang_tar.props	a27b495522ca851c495c4b9b755abc7394a97d2d	Plugin+Build	13		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -3084,7 +3098,7 @@ src/plugins/unarj/unarj.h	ba17be654905f797a5442976335147d39c6cfe92	Plugin+Schnit
 src/plugins/unarj/unarj.rc2	2a7cdb39a7fdac7b8ecfd512c592779b0f878531	Plugin+UI-Ressource	13		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/unarj/unarj.rh2	9aec2a717f04a24309e14fb9c890bd053f5d877c	Plugin+UI-Ressource	50		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/unarj/unarjdll.h	14878798a1ba09b8d4688377de99a66c3f9c8859	Plugin+Schnittstelle	79		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/unarj/unarjspl.cpp	c51e6ce9ea6b582a204dce66b0ecfd0abe55e02c	Plugin+Implementierung	1146	113-113	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/unarj/unarjspl.cpp	c51e6ce9ea6b582a204dce66b0ecfd0abe55e02c	Plugin+Implementierung	1146	113-113	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/unarj/unarjspl.h	5e244869bf54728f99720799ba4fb63fefc2341f	Plugin+Schnittstelle	149		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/unarj/vcxproj/lang_unarj.props	0eec6db8608f697f74804305fcfd818f80e2811c	Plugin+Build	13		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/unarj/vcxproj/lang_unarj.vcxproj	d9b832e711305ac0dd9e09f0ec717157107d3e77	Plugin+Build	140		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -3106,7 +3120,7 @@ src/plugins/uncab/lang/lang.rc2	0e06e40cde5809c54e016f165a96ab1582fcdace	Plugin+
 src/plugins/uncab/lang/lang.rh	92a0942140deed55a5e26bdf078bc760f911e1cc	Plugin+UI-Ressource	30		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/uncab/precomp.cpp	0f65cf08970e95c9aa0259090c76075c3095e3f1	Plugin+Implementierung	4		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/uncab/precomp.h	67920344fd6aa51a5a92137a45b62df9fd689ce2	Plugin+Schnittstelle	30		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/uncab/uncab.cpp	c5eb9be03d02ad3bd24127b2673625b7a836e9da	Plugin+Implementierung	1691	116-116	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/uncab/uncab.cpp	c5eb9be03d02ad3bd24127b2673625b7a836e9da	Plugin+Implementierung	1691	116-116	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/uncab/uncab.def	f04b72ea86ad0af2d32b7fc732a2b714fa8fccde	Plugin+Schnittstelle	4		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/uncab/uncab.h	66b486c9059d928be69b562c16c0da0777dc8086	Plugin+Schnittstelle	216		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/uncab/uncab.rc	5ac8f61e090043bfdfa1b41aeba529437f1a1de8	Plugin+UI-Ressource	74		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -3142,7 +3156,7 @@ src/plugins/unchm/lang/lang.rc2	571343b926c4be737bb7dd3b7902609995dbf11b	Plugin+
 src/plugins/unchm/lang/lang.rh	c74deabe98a75c802e5bc6d312645f731aafd1b9	Plugin+UI-Ressource	15		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/unchm/precomp.cpp	590100ad6180a57fc0360c07956925a87a3e7ece	Plugin+Implementierung	11		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/unchm/precomp.h	e0f2376b18a06d0c9317f9bde4e69d2798726d32	Plugin+Schnittstelle	41		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/unchm/unchm.cpp	5c97420b3f4cb7794968879c12acb706ca44cf2f	Plugin+Implementierung	578	111-111	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/unchm/unchm.cpp	5c97420b3f4cb7794968879c12acb706ca44cf2f	Plugin+Implementierung	578	111-111	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/unchm/unchm.def	45a32db521888981f7f4d2dc66eacebc73a34c65	Plugin+Schnittstelle	4		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/unchm/unchm.h	127ecabeb3503ec49baa60bba91f02b77e44e8b9	Plugin+Schnittstelle	176		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/unchm/unchm.rc	6037c7325eeb3553107169d4cace208efec7b68b	Plugin+UI-Ressource	73		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -3210,7 +3224,7 @@ src/plugins/undelete/res/fs.bmp	0f13a42ccb456b3c5ff0aa0e0a15842f57c1d324	Plugin+
 src/plugins/undelete/res/fs.ico	3284b4dd750d393ef0281e3997649f49595054af	Plugin+UI-Ressource+Binärressource			NOT_REVIEWED		Format, Herkunft und Einbindung	Blobidentität geprüft
 src/plugins/undelete/restore.cpp	bf9dc9f01b71b54b9aca96e6a8959fe41a3118ec	Plugin+Implementierung	405		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/undelete/restore.h	0232afe586ae000423499223e0ac986c9204a9d3	Plugin+Schnittstelle	6		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/undelete/undelete.cpp	0b8095b5f839862bbcf7e0f59620aa5e7db979f8	Plugin+Implementierung	521	259-259	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/undelete/undelete.cpp	0b8095b5f839862bbcf7e0f59620aa5e7db979f8	Plugin+Implementierung	521	259-259	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/undelete/undelete.def	5952dea0d2c5bd1af1ee4eabebcb151a18f3dd75	Plugin+Schnittstelle	4		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/undelete/undelete.h	0b28f80c2ddac301d6f5015d05618140cacd0195	Plugin+Schnittstelle	361		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/undelete/undelete.rc	4e968dca33e77ea942b04037c22dcbd44fc02137	Plugin+UI-Ressource	74		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -3237,7 +3251,7 @@ src/plugins/unfat/lang/lang.rc2	7ca8fa740b503bb6e0a8d1f40e3d91fc65ca6b89	Plugin+
 src/plugins/unfat/lang/lang.rh	c74deabe98a75c802e5bc6d312645f731aafd1b9	Plugin+UI-Ressource	15		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/unfat/precomp.cpp	568b08b7525f75b55ae15b219227edd57380e53f	Plugin+Implementierung	12		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/unfat/precomp.h	4a64f41d501d923ad675e43692feeb3ee4bf8d21	Plugin+Schnittstelle	50		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/unfat/unfat.cpp	117a6e852795cec9822e774d6bc6f6ff6fe21c8e	Plugin+Implementierung	689	120-120	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/unfat/unfat.cpp	117a6e852795cec9822e774d6bc6f6ff6fe21c8e	Plugin+Implementierung	689	120-120	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/unfat/unfat.def	b7553789d8422553bb27b5821d4908fe9fae0fa9	Plugin+Schnittstelle	4		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/unfat/unfat.h	d8ebd22684e6f23d99725f13f1d058a91a301d87	Plugin+Schnittstelle	127		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/unfat/unfat.rc	559aed4c9f427fb9c542ab137b8118d9c7fe33d6	Plugin+UI-Ressource	74		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -3294,7 +3308,7 @@ src/plugins/uniso/udf.cpp	d772d95ee22ab5876325c6839d73bf7ae8be8fe0	Plugin+Implem
 src/plugins/uniso/udf.h	fd7deada34946b0eba5f36db7365da03f92a9bba	Plugin+Schnittstelle	296		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/uniso/udfiso.cpp	d9f45b10f128db928d8c686e62e205c19d4e31f3	Plugin+Implementierung	201		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/uniso/udfiso.h	a4044dc86fbd3f4f20a719c61d6bb74328a89b08	Plugin+Schnittstelle	37		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/uniso/uniso.cpp	b48228a44200cf2dfd53bd25a390a2931f62a108	Plugin+Implementierung	895	148-148	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/uniso/uniso.cpp	b48228a44200cf2dfd53bd25a390a2931f62a108	Plugin+Implementierung	895	148-148	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/uniso/uniso.def	ede85ad488d7749ebd25d874cb068aaa22b73380	Plugin+Schnittstelle	4		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/uniso/uniso.h	56e6a4b0d5128af228a91d9d9b5c76612b270feb	Plugin+Schnittstelle	180		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/uniso/uniso.rc	988782a61e0b5d3df685d610b6517cbb31c7de92	Plugin+UI-Ressource	74		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -3324,7 +3338,7 @@ src/plugins/unlha/lha.cpp	2f388c2afe401a827e3e5588a6ad64da624866a4	Plugin+Implem
 src/plugins/unlha/lha.h	7f0d893c9a2103846bbec00a36e3ac56c9593be2	Plugin+Schnittstelle	135		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/unlha/precomp.cpp	0f65cf08970e95c9aa0259090c76075c3095e3f1	Plugin+Implementierung	4		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/unlha/precomp.h	a7fd67ff505f6ed4ad0cbf6d905e93e3fa080147	Plugin+Schnittstelle	29		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/unlha/unlha.cpp	6fe18d64bddb5592cb9f513f278d3b789167b9da	Plugin+Implementierung	777	79-79	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/unlha/unlha.cpp	6fe18d64bddb5592cb9f513f278d3b789167b9da	Plugin+Implementierung	777	79-79	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/unlha/unlha.def	78381648699669103cc3139da36d50632a4c6ca5	Plugin+Schnittstelle	4		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/unlha/unlha.h	2f794a9f7158f4e87e1eea91eec205510c33cc72	Plugin+Schnittstelle	109		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/unlha/unlha.rc	4461b60a0e4df573f103942367ea9c7196348d66	Plugin+UI-Ressource	74		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -3353,7 +3367,7 @@ src/plugins/unmime/parser.cpp	6b96b2449cacbaea3c950b68d7e293d49d4fe62a	Plugin+Im
 src/plugins/unmime/parser.h	670fe0538c2863289d9d915761fa431b0f23272f	Plugin+Schnittstelle	98		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/unmime/precomp.cpp	0f65cf08970e95c9aa0259090c76075c3095e3f1	Plugin+Implementierung	4		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/unmime/precomp.h	ea460e93be57bde069d0f7c52a3495c4b3a8c052	Plugin+Schnittstelle	30		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/unmime/unmime.cpp	ccd6046378b8a5a76d21e3eff67b4c33098d9e3b	Plugin+Implementierung	565	103-103	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/unmime/unmime.cpp	ccd6046378b8a5a76d21e3eff67b4c33098d9e3b	Plugin+Implementierung	565	103-103	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/unmime/unmime.def	d5c7a5470407f3fb2542439d38bfe3e3481d5bf7	Plugin+Schnittstelle	4		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/unmime/unmime.h	94b8a670269c1ddd25ff3d4934713643bc3e717d	Plugin+Schnittstelle	140		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/unmime/unmime.rc	644fd009097fcb240bd22f204773b4c4d53da601	Plugin+UI-Ressource	74		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -3374,7 +3388,7 @@ src/plugins/unole/lang/lang.rh	c74deabe98a75c802e5bc6d312645f731aafd1b9	Plugin+U
 src/plugins/unole/precomp.cpp	0f65cf08970e95c9aa0259090c76075c3095e3f1	Plugin+Implementierung	4		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/unole/precomp.h	b6d1ef04541c8898cf9a0f417bc3503111ab62f1	Plugin+Schnittstelle	28		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/unole/unole.def	5dedaaf253ed3f51681a7d3d0219bbe791cabb80	Plugin+Schnittstelle	4		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/unole/unole2.cpp	b892dacf0cf41fbf12310b0c6b1afc0d4dd8a44b	Plugin+Implementierung	555	115-115	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/unole/unole2.cpp	b892dacf0cf41fbf12310b0c6b1afc0d4dd8a44b	Plugin+Implementierung	555	115-115	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/unole/unole2.h	9620455b77ab228599bbd61e18dc1f4b924149b0	Plugin+Schnittstelle	103		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/unole/unole2.rc	711e1d6980b1837ed07c017cd6f30d9e166a3d36	Plugin+UI-Ressource	74		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/unole/unole2.rc2	da19b515c61f74a99f5d84437aaf64f4d21441de	Plugin+UI-Ressource	13		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -3401,7 +3415,7 @@ src/plugins/unrar/lang/lang.rh	3866243e2cb51972df484685f86e288060b2d00b	Plugin+U
 src/plugins/unrar/lock.ico	4b5d9066c065155abd7b454a4c4ed436ca0d17c9	Plugin+UI-Ressource+Binärressource			NOT_REVIEWED		Format, Herkunft und Einbindung	Blobidentität geprüft
 src/plugins/unrar/precomp.cpp	0f65cf08970e95c9aa0259090c76075c3095e3f1	Plugin+Implementierung	4		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/unrar/precomp.h	be9b951d0f53af178303fb2f08dbbf4557f52af8	Plugin+Schnittstelle	37		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/unrar/unrar.cpp	0501fae0bf1c09e630413dd99c42fd0de741881b	Plugin+Implementierung	1898	109-109	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/unrar/unrar.cpp	0501fae0bf1c09e630413dd99c42fd0de741881b	Plugin+Implementierung	1898	109-109	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/unrar/unrar.def	c98f3791e121a39cf05aeed143db7897a0967eca	Plugin+Schnittstelle	4		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/unrar/unrar.h	ff2121ec9cb1f6ecad233ef61941f140ac7503f2	Plugin+Schnittstelle	301		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/unrar/unrar.rc	3c51d83f9f0ad3400735175e8812aecb08f6d2b0	Plugin+UI-Ressource	74		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -3739,7 +3753,7 @@ src/plugins/winscp/salamander/LocalInterface.h	1e2769b6c30f1f9d1daa9eb642a3b584f
 src/plugins/winscp/salamander/MenuInterface.cpp	38ba25adf2300782abdc246c1fe2e722c857357a	Plugin+ohne aktives Solution-Projekt+Implementierung	112		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/winscp/salamander/MenuInterface.h	710e1799ad56d2ebdcfd60cd5241868305bdff26	Plugin+ohne aktives Solution-Projekt+Schnittstelle	22		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/winscp/salamander/Precomp.h	caf450064365cc21a14a1f012dba9f0b35491f5b	Plugin+ohne aktives Solution-Projekt+Schnittstelle	7		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/winscp/salamander/Salamand.cpp	a69503f3090036fcf0456830a189740bbf85d0eb	Plugin+ohne aktives Solution-Projekt+Implementierung	687	409-409	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/winscp/salamander/Salamand.cpp	a69503f3090036fcf0456830a189740bbf85d0eb	Plugin+ohne aktives Solution-Projekt+Implementierung	687	409-409	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/winscp/salamander/Salamand.h	d93676e6ef2049a44e33da5b62a70d72c1ffbbe9	Plugin+ohne aktives Solution-Projekt+Schnittstelle	120		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/winscp/salamander/SalamandConfiguration.cpp	21f5b66ac82a4011b0494cce643b75c1ab136786	Plugin+ohne aktives Solution-Projekt+Implementierung	301		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/winscp/salamander/SalamandConfiguration.h	e09ea2ff8a63143cbeff106db4755333af141c8a	Plugin+ohne aktives Solution-Projekt+Schnittstelle	68		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -3838,7 +3852,7 @@ src/plugins/wmobile/vcxproj/wmobile.props	7d4f48ebd7c87fac9474cc75f8d21c6537d897
 src/plugins/wmobile/vcxproj/wmobile.vcxproj	78e7d811c56963fd0c3a6d9dcf1cb4a5ae512983	Plugin+Build	219		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/wmobile/vcxproj/wmobile.vcxproj.filters	f2018f4c0a169121b7f392aad61601706f00f0bb	Plugin+Build	135		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/wmobile/versinfo.rh2	f5fc6a6898aff34263a5c9fa19a47c3c32e09497	Plugin+UI-Ressource	35		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/wmobile/wmobile.cpp	512c2e9a677a540223a5cb9afc8c894d8d4ea672	Plugin+Implementierung	276	154-154	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/wmobile/wmobile.cpp	512c2e9a677a540223a5cb9afc8c894d8d4ea672	Plugin+Implementierung	276	154-154	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/wmobile/wmobile.def	d0239aad529147cbd75af07fa6cf7aae22a1d502	Plugin+Schnittstelle	4		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/wmobile/wmobile.h	f86287d392c0dd0c6fca274a9f148cd00d8527e8	Plugin+Schnittstelle	337		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/wmobile/wmobile.rc	0ea7c27dceec3ad3e7aea5976f6f5523e2a0a6b2	Plugin+UI-Ressource	74		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -3854,7 +3868,7 @@ src/plugins/zip/beta.txt	e17cf7d9a0bd930678b0ed3f4537adb8fcde5a90	Plugin	190		NO
 src/plugins/zip/bits.cpp	3ed8a81f15567a2a6999768e6d232ed296824403	Plugin+Implementierung	250		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/zip/chicon.cpp	920b522ffe603546836ae184976cbe18be1cf53c	Plugin+Implementierung	459		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/zip/chicon.h	744a099a0479f057438275dd535567847f7c7783	Plugin+Schnittstelle	72		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/zip/common.cpp	5e272014a80c8e30510db88227de18cbfbfd6585	Plugin+Implementierung	2691	176-241,1389-1503	PARTIALLY_REVIEWED	AUD-PLUGIN-ZIP-0001	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/zip/common.cpp	5e272014a80c8e30510db88227de18cbfbfd6585	Plugin+Implementierung	2691	176-241,1389-1503	PARTIALLY_REVIEWED	AUD-PLUGIN-ZIP-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/zip/common.h	976d93c397e0c2185f656b23aba3c96ade20d683	Plugin+Schnittstelle	326		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/zip/common2.cpp	ba18eff29579a64866751289d17b3e204d1f2fa4	Plugin+Implementierung	285		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/zip/config.h	b27a60dc97a87a752b081f9de133f6dc0011f2c2	Plugin+Schnittstelle	40		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -3902,10 +3916,10 @@ src/plugins/zip/iosfxset.h	9ad7b16710c525a2f6e72a6cc84465d9a07774d2	Plugin+Schni
 src/plugins/zip/lang/lang.rc	1ed4ebb042be081476ef49f4bd5729b504284650	Plugin+UI-Ressource	507		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/zip/lang/lang.rc2	412d8e882a99c2b55e3bec8ce912dfda7aaa8fb4	Plugin+UI-Ressource	246		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/zip/lang/lang.rh	d673cb816c91a7f56e6bd906688fa5273b0e9e38	Plugin+UI-Ressource	120		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/zip/list.cpp	ef68e69d8e6cb88db80cd4260a81db7c07f21f1d	Plugin+Implementierung	233	28-210	PARTIALLY_REVIEWED	AUD-PLUGIN-ZIP-0001	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/zip/list.cpp	ef68e69d8e6cb88db80cd4260a81db7c07f21f1d	Plugin+Implementierung	233	28-210	PARTIALLY_REVIEWED	AUD-PLUGIN-ZIP-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/zip/list.h	ca3fc771b60e6e9313f78cca805dec5847f86c97	Plugin+Schnittstelle	15		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/zip/lock.ico	4b5d9066c065155abd7b454a4c4ed436ca0d17c9	Plugin+UI-Ressource+Binärressource			NOT_REVIEWED		Format, Herkunft und Einbindung	Blobidentität geprüft
-src/plugins/zip/main.cpp	05ebb171c670b5677106feec62a3ca809c177fc6	Plugin+Implementierung	1128	169-169	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/plugins/zip/main.cpp	05ebb171c670b5677106feec62a3ca809c177fc6	Plugin+Implementierung	1128	169-169	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins/zip/main.h	cb740ca4867c4181904f6a8b6bbf9dbbb0ab3683	Plugin+Schnittstelle	18		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/zip/memapi.cpp	4b17c25dc76683f9a8f365472b7c5b26c14f20b4	Plugin+Implementierung	33		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/zip/memapi.h	d3b13d8b7fd64d1a91e2b67aa59eb621095748df	Plugin+Schnittstelle	16		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -4031,9 +4045,9 @@ src/plugins/zip/zip2sfx/zip2sfx.h	08b43214085035bbe6f48f47c2a4b9a2d078f4bd	Plugi
 src/plugins/zip/zip2sfx/zip2sfx.rc	e9e298e5598b504aec2facdc08e9ddcd51d872eb	Plugin+UI-Ressource	48		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/zip/zip2sfx/zip2sfx.rh	3d79187c604a8838131e4fe11084ecb31a372c56	Plugin+UI-Ressource	16		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins/zip/zip2sfx/zip2sfx2.cpp	8e6fd21a19d315c007e3434935cb81f55379eb93	Plugin+Implementierung	364		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/plugins/zip/zipdll.h	4c94540aee8d1a29c269adcba5987c3c8617edb8	Plugin+Schnittstelle	109	68-70	PARTIALLY_REVIEWED	AUD-CACHE-0001	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
-src/plugins1.cpp	dcc41c70fd83b235d71d4ef71237ff7c17434d7f	Implementierung	4095	3756-3817,3926-3934	PARTIALLY_REVIEWED	AUD-CACHE-0001,AUD-SDK-0001,AUD-VIEW-0002	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
-src/plugins2.cpp	9b2d0c5630139be44c9f14138dd61571b16d3784	Implementierung	3700		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+src/plugins/zip/zipdll.h	4c94540aee8d1a29c269adcba5987c3c8617edb8	Plugin+Schnittstelle	109	68-70	PARTIALLY_REVIEWED	AUD-CACHE-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
+src/plugins1.cpp	dcc41c70fd83b235d71d4ef71237ff7c17434d7f	Implementierung	4095	3756-3817,3926-3934	PARTIALLY_REVIEWED	AUD-CACHE-0001,AUD-SDK-0001,AUD-VIEW-0002	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
+src/plugins2.cpp	9b2d0c5630139be44c9f14138dd61571b16d3784	Implementierung	3700	3002-3035	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/plugins3.cpp	2d68a956ba36abdb2d2e3b91740f8dfbfa51a821	Implementierung	605		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/plugins4.cpp	d5f712319e166708b625563b8a5490df24061ea2	Implementierung	424		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/precomp.cpp	1d3893acd1f883d5b3cb07d3b76f6ab96aa0009a	Implementierung	21		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -4171,7 +4185,7 @@ src/salamand.rh	88a7dc977d4a08b3211afca4158d6218c90e3249	UI-Ressource	32		NOT_RE
 src/salamdr1.cpp	405b4b158f54ccb7953777f2849f158ff4f968b5	Implementierung	4853		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/salamdr2.cpp	d9ecaba913aebaade798e72cde735518d20c7570	Implementierung	3127		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/salamdr3.cpp	9b7a41d26785b5735a537f67306481a6c2101f79	Implementierung	3943		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/salamdr4.cpp	cf2331432a9279b846e8c61455db0080f7a80a3c	Implementierung	1882		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+src/salamdr4.cpp	cf2331432a9279b846e8c61455db0080f7a80a3c	Implementierung	1882	1757-1827	PARTIALLY_REVIEWED	AUD-SHELL-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/salamdr5.cpp	44c341a47d485236a5bb63fb7f7f321fbf9216df	Implementierung	1928		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/salamdr6.cpp	56860e9144299628ddff955ec25ac0813d85a10d	Implementierung	2369		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/salamdr7.cpp	83e9ae1116c1fadd631dddae24f704c4d57c1e0a	Implementierung	552		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -4180,13 +4194,13 @@ src/salinflt.cpp	47b120d90f331b4fbf6e2cbfe90aa508584a2db2	Implementierung	1117		
 src/salinflt.h	13d4e884f57ef745f3e7e73e6744e51545ccbbf7	Schnittstelle	91		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/salopen/manifest.xml	5f26dadc08b32a23f8505f0464d69c4e786538d4	Konfiguration	34		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/salopen/precomp.h	d79dc56fa72c23c09486a3013d19bfd4120a6f40	Schnittstelle	4		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/salopen/salopen.cpp	20e4117566406722eb24d190e58e1021679318e8	Implementierung	807		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+src/salopen/salopen.cpp	20e4117566406722eb24d190e58e1021679318e8	Implementierung	807	580-580,731-771	PARTIALLY_REVIEWED	AUD-SHELL-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/salopen/salopen.rc	5a1e4d5e9eeb7238245818a582237436a17ec876	UI-Ressource	36		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/salshlib.cpp	b53cf051ddff64fd95a79613454eec6e038401fb	Implementierung	861		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/salshlib.h	9f1004845c89383e910ebf8f3d1c90dd51642c2e	Schnittstelle	340		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/salspawn/manifest.xml	e0f8814b44fa83ca7eceb91ea4357fb5a94e1aa6	Konfiguration	34		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/salspawn/precomp.h	827e0749096338f7796b1cbb951080946ed5c480	Schnittstelle	4		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/salspawn/salspawn.cpp	2379cced280925f205647110e9efed865c8e30f3	Implementierung	193		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+src/salspawn/salspawn.cpp	2379cced280925f205647110e9efed865c8e30f3	Implementierung	193	1-193	FULLY_REVIEWED	AUD-ARCHIVER-0001	Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
 src/salspawn/salspawn.rc	3cea05766f56804cb9ba8f7467fa1feaaeee9729	UI-Ressource	36		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/salzlib.cpp	2bc9f3dfb3de9bb5fab4775042f1fdb80a835b69	Implementierung	135		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/setup/doinst.c	ec516e506cf93024693fe6a3c5ba52db65455101	Installer+Implementierung	2935		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -4280,7 +4294,7 @@ src/shellext/shellext.rc	fd0a7862fe98493cf2537e6210b8c69a17398035	UI-Ressource	5
 src/shellext/shexinit.c	8eca8367307e05ede665e3cdb4c83689397362d9	Implementierung	90		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/shellib.cpp	d0f7c004b2fb8d227f500ac3ce826e9a50b75d87	Implementierung	3036		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/shellib.h	885536f2f5c64c16ac43220523b8bb23d8df7553	Schnittstelle	517		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/shellsup.cpp	9ff249995d2dd65299378043d00643ef0ee578fd	Implementierung	2874	707-774	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/shellsup.cpp	9ff249995d2dd65299378043d00643ef0ee578fd	Implementierung	2874	707-774,2709-2727	PARTIALLY_REVIEWED	AUD-SHELL-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/shexreg.c	1af8ad9e0783a3061791fdc92c66c3af25f996f6	Implementierung	742		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/shexreg.h	6d84ab2957906ac3ef8dcf5f1b32a77faa66445b	Schnittstelle	253		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/shiconov.cpp	681015fcbfcd5ec6d834be418a8df8b41fb8dd0c	Implementierung	991		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -4401,8 +4415,8 @@ src/vcxproj/lang_debug.props	0c5562f7f2fcbc24aaae05bed74571d8a78dd8f4	Build	18		
 src/vcxproj/lang_release.props	889e1110ac3e49daabbf0fe7d79250ce5468de11	Build	17		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/vcxproj/rebuild.cmd	1c31fc006947062f2b8893c5e138bdea096d2e93	Skript	155		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/vcxproj/sal_base.props	86a715a7ec351883ef127626360ead904f9de862	Build	41		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/vcxproj/sal_debug.props	88837885bd425d94cf65203b0c2c1a20799d9658	Build	25	1-25	FULLY_REVIEWED		Verifikation gemäß Maßnahmenkatalog	Quellenreview, Laufzeitbelege gesondert im Katalog
-src/vcxproj/sal_release.props	b23937f8bf469d536d1f9d93e8a0c4682f120545	Build	32	1-32	FULLY_REVIEWED		Verifikation gemäß Maßnahmenkatalog	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/vcxproj/sal_debug.props	88837885bd425d94cf65203b0c2c1a20799d9658	Build	25	1-25	FULLY_REVIEWED		Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
+src/vcxproj/sal_release.props	b23937f8bf469d536d1f9d93e8a0c4682f120545	Build	32	1-32	FULLY_REVIEWED		Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
 src/vcxproj/salamand.sln	b37c93c96bfa0b89e82728786d64e29f0b4810cb	Build	1024		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/vcxproj/salamand.vcxproj	fc2c56caa7036fbf3230ffecc272c68ad4f2e117	Build	951		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/vcxproj/salamand.vcxproj.filters	569083aaaec53f5ff8725adf0262d3e2c7dfd61a	Build	887		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -4411,7 +4425,7 @@ src/vcxproj/salopen/salopen_base.props	3cf9632c1e7ec2c3377535a76bb9ecd048af8f6a	
 src/vcxproj/salopen/salopen_debug.props	a04eb42f2a9c7c49613464367e1283f0ae99dad0	Build	24		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/vcxproj/salopen/salopen_release.props	be834ff5172de3b8c68f005d6ceb6b93d4133b5c	Build	29		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/vcxproj/salspawn/salspawn.vcxproj	12eb80edc986e04b23dbda17d65630c0c85b8417	Build	133		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/vcxproj/salspawn/salspawn_base.props	90826bcda900a9bee9b8bb0b7a016fa9af4f3585	Build	34		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+src/vcxproj/salspawn/salspawn_base.props	90826bcda900a9bee9b8bb0b7a016fa9af4f3585	Build	34	1-34	FULLY_REVIEWED	AUD-ARCHIVER-0001	Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
 src/vcxproj/salspawn/salspawn_debug.props	a04eb42f2a9c7c49613464367e1283f0ae99dad0	Build	24		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/vcxproj/salspawn/salspawn_release.props	ea8a91d0232de1de948e1b147a43a04dce267b1e	Build	31		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/vcxproj/setup/remove.vcxproj	1f707d8ebcbf645d806315bc419ec9d191856525	Build	127		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -4458,12 +4472,12 @@ src/viewer.cpp	da08187c9db2ce1ebf8d97abf7d9ac0199a23652	Implementierung	1697		NO
 src/viewer.h	964bb7bf29799a73243abae311606c7360876135	Schnittstelle	450		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/viewer2.cpp	fdb06642ce1cf0272837247bada155fb59f1719d	Implementierung	1838		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 src/viewer3.cpp	12f2b8ae9df7c65151ef44a3d35a79e2cf192d0d	Implementierung	3551		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/worker.cpp	56af75804b481b86859837d8e9eb2ee45291eb0f	Implementierung	8965	8180-8247,8559-8590	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
-src/worker.h	298122b59f4b095e8b39e3239052e680d3d302bc	Schnittstelle	555		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-src/zip.cpp	0659dcd572a5fc39d91f3725095b8ffed4f3444f	Implementierung	6572	2617-2627	PARTIALLY_REVIEWED	AUD-SDK-0001	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+src/worker.cpp	56af75804b481b86859837d8e9eb2ee45291eb0f	Implementierung	8965	1952-2040,2085-2109,8180-8247,8550-8648	PARTIALLY_REVIEWED	AUD-WORKER-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
+src/worker.h	298122b59f4b095e8b39e3239052e680d3d302bc	Schnittstelle	555	543-554	PARTIALLY_REVIEWED	AUD-WORKER-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
+src/zip.cpp	0659dcd572a5fc39d91f3725095b8ffed4f3444f	Implementierung	6572	2617-2627	PARTIALLY_REVIEWED	AUD-SDK-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 src/zip.h	3b095a1676b82d4a4a290f25773b54dee1d0507d	Schnittstelle	591		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/.venv/.clang-format	e3845288a2aece185aa94e88e303e0134efde368	Begleitdatei	1		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-tools/Manage-Salamander.ps1	73d534f9bcb0a831772742c1bea159cd0047391b	Skript	1217	19-19,42-44,66-67,125-145,162-196,658-662,700-710,948-973,1024-1028,1180-1180	PARTIALLY_REVIEWED	AUD-MGMT-0001,AUD-TEST-PLUGIN-0001	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+tools/Manage-Salamander.ps1	c6f09de211611238f51054e576d6f52070330bfd	Skript	1222	787-816	PARTIALLY_REVIEWED	AUD-GUI-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 tools/README.md	89feaa00f069cb3a354bb850eafe06bbbd6f4a36	Dokumentation	33		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/codesign/sign_with_retry.cmd	26192bb25d950ef1ebcddc4efbebacdc0df2a8be	Skript	1		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/comments/.gitignore	c18dd8d83ceed1806b50b0aaa46beb7e335fff13	Begleitdatei	1		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -4519,23 +4533,24 @@ tools/duration.cmd	73bfc2ac64c787d5569168847037c5a1fa64d6e8	Skript	43		NOT_REVIE
 tools/natvis/opensal.natvis	c095f9cd3e3aad5e5e3a2497af1d54b803ef9259	Begleitdatei	59		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/natvis/readme.txt	fa78e653653ce182687bfd7c256383347c67c07e	Begleitdatei	5		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/pyproject.toml	668255dbe27a92dfdd89ac2baac06e11736bb353	Konfiguration	26		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-tools/release/Build-Helpers.ps1	6da449a6ec8fed683696b8b6965c16bb23b032c2	Skript	266	1-52	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+tools/release/Build-Helpers.ps1	41ab17c4a9eaf25cc1a3c6ce0476faef71912a7f	Skript	409	268-409	PARTIALLY_REVIEWED	AUD-PKG-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 tools/release/Configure-LocalCrashDumps.ps1	d08d4c89ec3a0c7c8dd2c8f5eb84bc09b1167842	Skript	93		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/release/Invoke-PluginCoverageInventory.ps1	1e8f7734fd9614ec6b905cabaec0d0a881a78adf	Skript	134		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-tools/release/OpenSalamander.iss	793605cf538d4c6d23de36b946e7a44128bf5f08	Installer	55	44-45	PARTIALLY_REVIEWED	AUD-PKG-0001	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
-tools/release/Package-Helpers.ps1	91f6025a7dde457c082f39e16cd7bb9ccd88e59f	Skript	444	268-292,296-339,341-417,422-443	PARTIALLY_REVIEWED	AUD-PKG-0001	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+tools/release/OpenSalamander.iss	793605cf538d4c6d23de36b946e7a44128bf5f08	Installer	55	44-45	PARTIALLY_REVIEWED	AUD-PKG-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
+tools/release/Package-Helpers.ps1	ae20770dc82700c5994edfeccae37be56eb09a95	Skript	556	343-444	PARTIALLY_REVIEWED	AUD-PKG-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 tools/release/Plugin-Binary-Inventory.ps1	e7277848fb95ad0934601d53029fed9e7361654c	Skript	29		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/release/Plugin-CoverageInventory.ps1	d0e0f25f0d03d86c175baeb421a33af2b906cf38	Skript	224		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/release/Plugin-Export-Parser.ps1	46b9f299b93b4493a8859685b95a6083da8f8fc2	Skript	65		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-tools/release/Plugin-Runtime-Prerequisites.ps1	f60ac81c6445c0957b99ca56ddd27202c9c3ad84	Skript	30		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+tools/release/Plugin-Runtime-Prerequisites.ps1	f60ac81c6445c0957b99ca56ddd27202c9c3ad84	Skript	30	1-30	FULLY_REVIEWED	AUD-GUI-0001	Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
 tools/release/Production-Binary-Contract.ps1	598bc27950d7fa2afdfc6ebae6c3f21ee5b7a3c5	Skript	8		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/release/README.md	008dede27b13ee012b909116e8ce5d2f6a86eb1a	Dokumentation	251		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-tools/release/Release-5.2-Gates.md	7a73ab75359be162a2b53990d43c3c028b8f30f0	Dokumentation	100		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-tools/release/Test-Registry.json	d7ed359a1589c7d2106713fb15af5a9eee89fc6e	Konfiguration	721	563-567	PARTIALLY_REVIEWED	AUD-TEST-PLUGIN-0001	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
-tools/release/Test-RunCollection.ps1	f15cf9a9149fbe36009dddd49263743864e9ed89	Skript	123	1-123	FULLY_REVIEWED	AUD-MGMT-0001	Verifikation gemäß Maßnahmenkatalog	Quellenreview, Laufzeitbelege gesondert im Katalog
-tools/release/Update-Build-Test-Package.ps1	32198a3817440f26f336955860f6ac98307a9608	Skript	210	139-158	PARTIALLY_REVIEWED	AUD-PKG-0001	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+tools/release/Release-5.2-Gates.md	d0a8f9d094b17393edc154621b3f55f0b46ad937	Dokumentation	105		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+tools/release/Release-Payload.tsv	29f6540c83da89629303e5a307103a45117fba17	Paketkonfiguration	281		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+tools/release/Test-Registry.json	d7ed359a1589c7d2106713fb15af5a9eee89fc6e	Konfiguration	721	563-567	PARTIALLY_REVIEWED	AUD-TEST-PLUGIN-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
+tools/release/Test-RunCollection.ps1	f15cf9a9149fbe36009dddd49263743864e9ed89	Skript	123	1-123	FULLY_REVIEWED	AUD-MGMT-0001	Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
+tools/release/Update-Build-Test-Package.ps1	f9df67d6e2887bd36379db3d295de92c6770afef	Skript	239	121-189	PARTIALLY_REVIEWED	AUD-PKG-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 tools/release/Wait-SalamanderGuiAvailability.ps1	e20812724566084945f454aa19c9aab1193b2cd2	Skript	62		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-tools/release/plugin-source-inventory-baseline.json	3801b7ec7fd8880984012aa911bb49f03098595e	Konfiguration	79	1-79	FULLY_REVIEWED		Verifikation gemäß Maßnahmenkatalog	Quellenreview, Laufzeitbelege gesondert im Katalog
+tools/release/plugin-source-inventory-baseline.json	3801b7ec7fd8880984012aa911bb49f03098595e	Konfiguration	79	1-79	FULLY_REVIEWED		Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
 tools/release/test-gap-ids-baseline.json	8d86d8a198d91c6e731626eefd01d150784eb09c	Konfiguration	42		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/release/tests/Build-IsolatedGuiTest.ps1	62258950aa0f046ec33f6ce7a9cb4c93a051b0a2	Test+Skript	59		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/release/tests/Clipboard-Snapshot.cs	f97ddd01af39848cb511057d1751c98cb40332fd	Test+Implementierung	177		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -4543,20 +4558,20 @@ tools/release/tests/Invoke-GuiReliability.ps1	01962011e39fc815252beb47cc0c629013
 tools/release/tests/Invoke-IsolatedLegacyFind.ps1	63f10bf5d177b2e82acf4079192493042db5904f	Test+Skript	72		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/release/tests/Invoke-IsolatedLongPaths.ps1	3c02ca780a74d7a57b3b290500f01ef780a34f8a	Test+Skript	26		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/release/tests/Invoke-IsolatedUnicodeCopy.ps1	bf2a3537058513cefe96a6e80d174ef386d557f0	Test+Skript	28		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-tools/release/tests/Invoke-LegacyViewerReliability.ps1	56f409dd6dc26c70619686d90506eda9dbb3826d	Test+Skript	116		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-tools/release/tests/Invoke-PictViewTests.ps1	961284537b9cc0e19b6bb48775983504134b2b7d	Test+Skript	150	1-150	FULLY_REVIEWED	AUD-TEST-PICTVIEW-0001	Verifikation gemäß Maßnahmenkatalog	Quellenreview, Laufzeitbelege gesondert im Katalog
+tools/release/tests/Invoke-LegacyViewerReliability.ps1	56f409dd6dc26c70619686d90506eda9dbb3826d	Test+Skript	116	30-43	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
+tools/release/tests/Invoke-PictViewTests.ps1	961284537b9cc0e19b6bb48775983504134b2b7d	Test+Skript	150	1-150	FULLY_REVIEWED	AUD-TEST-PICTVIEW-0001	Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
 tools/release/tests/Invoke-WerBuildVerification.ps1	f681308d7d78e1d719c8eafc360bb96e2293aaf5	Test+Skript	137		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/release/tests/Invoke-WerGuiFollowUp.ps1	f77725cf9ad73332d7e09f76ee46a7ac9fd0d258	Test+Skript	112		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/release/tests/LegacyConfig-Canary.ps1	2df6f73b3f38e9f49b2c8dcf3021701dd57f2e1f	Test+Skript	141		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-tools/release/tests/LegacyFind-GuiCases.ps1	34aafd2c99b639554a48699612a8f7472b3d5c04	Test+Skript	1783	1400-1425	PARTIALLY_REVIEWED	AUD-FIND-0002	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+tools/release/tests/LegacyFind-GuiCases.ps1	34aafd2c99b639554a48699612a8f7472b3d5c04	Test+Skript	1783	1400-1425	PARTIALLY_REVIEWED	AUD-FIND-0002	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 tools/release/tests/PictView-HostDiagnostics.ps1	41cc2b77061ac5a51ef279fc7c3a84ab71f29f58	Test+Skript	53		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/release/tests/Test-BuildModes.ps1	90d4fd4e907d4383858fd320ab54698e41786d3b	Test+Skript	203		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/release/tests/Test-ClipboardSnapshot.ps1	e61a76eea45dedea388da620540037f210c92516	Test+Skript	65		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-tools/release/tests/Test-DevelopmentContinuity.ps1	c1e799a2afd64ccddedd6273b8aeaba8c96115ab	Test+Skript	72	1-72	FULLY_REVIEWED	AUD-TEST-0001	Verifikation gemäß Maßnahmenkatalog	Quellenreview, Laufzeitbelege gesondert im Katalog
+tools/release/tests/Test-DevelopmentContinuity.ps1	c1e799a2afd64ccddedd6273b8aeaba8c96115ab	Test+Skript	72	1-72	FULLY_REVIEWED	AUD-TEST-0001	Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
 tools/release/tests/Test-FilenamesAndPaths.ps1	b98064c80d1fa149ca03e737fa8e75a93081e0cc	Test+Skript	152		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/release/tests/Test-GuiClipboard-Isolation.ps1	7eb36693e0bdd41cdeb2da167db94c05d2906468	Test+Skript	341		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/release/tests/Test-GuiConfig-Isolation.ps1	d9a24871339663b4b8bf695ef0cc2b120660b9a7	Test+Skript	69		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-tools/release/tests/Test-GuiDriver-Contract.ps1	9bf2b9ee26a3b36410fd22225244a655a795e835	Test+Skript	1218		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+tools/release/tests/Test-GuiDriver-Contract.ps1	f7f07eb183618965812658b93bc3f325fd317292	Test+Skript	1223		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/release/tests/Test-GuiProcessTemp-Isolation.ps1	babc80d8dc63e53a007fbbd0f0960ae0b31cf7a3	Test+Skript	81		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/release/tests/Test-GuiReliability-Contract.ps1	0dcb9622a9147c1b8ea94a4152c26b391e2037e6	Test+Skript	75		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/release/tests/Test-HandlesLoaderLock-Contract.ps1	9b9a223d325e466dd31b57a1705ac8ebd526a7e1	Test+Skript	86		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -4566,11 +4581,11 @@ tools/release/tests/Test-LegacyConfig-Canary.ps1	95f1e3d2244c8fed43f5f7ac3c1635c
 tools/release/tests/Test-LegacyFind-UiContract.ps1	44aecb1440b050ab083c467e19f3ad167a1a29c9	Test+Skript	288		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/release/tests/Test-LegacyUiSurfaceInventory.ps1	df43ec8b96176200caf30e0cdf51cf0db74ce5f0	Test+Skript	154		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/release/tests/Test-Manage-GuiWait.ps1	af56f941c2fc87e1a472282cde8e9985a43f8895	Test+Skript	87		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-tools/release/tests/Test-Manage-Native-Output.ps1	2453d418adf4a7f12dd9733d94a953b5aa90cfd2	Test+Skript	70	1-38	PARTIALLY_REVIEWED	AUD-MGMT-0001	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+tools/release/tests/Test-Manage-Native-Output.ps1	2453d418adf4a7f12dd9733d94a953b5aa90cfd2	Test+Skript	70	1-38	PARTIALLY_REVIEWED	AUD-MGMT-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 tools/release/tests/Test-Manage-TestAggregation.ps1	43938caf57bb905fc1092dc263af1799cc7d8541	Test+Skript	79		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/release/tests/Test-Manage-UnicodeCopy.ps1	a1331f025dc5e9e125cc8584cc70ddc8fe0931f3	Test+Skript	63		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-tools/release/tests/Test-Package-Helpers.ps1	50adb264488f6cf8b2b4b0576e8ce31878419cb6	Test+Skript	1150		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-tools/release/tests/Test-PictView-Host.ps1	b7aae6bdc65fb4b1ac6c5cd7dfbc01940103c3d5	Test+Skript	673	328-391,625-651	PARTIALLY_REVIEWED	AUD-TEST-PICTVIEW-0001	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+tools/release/tests/Test-Package-Helpers.ps1	407435089b57d63d854afe9678cbe5844021cf85	Test+Skript	1270		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+tools/release/tests/Test-PictView-Host.ps1	b7aae6bdc65fb4b1ac6c5cd7dfbc01940103c3d5	Test+Skript	673	328-391,625-651	PARTIALLY_REVIEWED	AUD-TEST-PICTVIEW-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 tools/release/tests/Test-PictView-Management.ps1	496c510829cf37577f6a549d52c601662b92a45b	Test+Skript	263		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/release/tests/Test-PictViewRuntime-Prerequisites.ps1	28afa00dccfa0b9c5a9a24aa98f74436e97fdcda	Test+Skript	71		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/release/tests/Test-PluginBinary-Contract.ps1	d76984a26c4d250d449c46516bd80ad3d0b7aa46	Test+Skript	110		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -4579,23 +4594,23 @@ tools/release/tests/Test-PluginCoverageInventory.ps1	818381e1228bd9ee8bf8e350d60
 tools/release/tests/Test-PluginExport-Parser.ps1	100538439ce6329c351d3a0c76f1c548be018454	Test+Skript	152		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/release/tests/Test-PluginModulePaths-Contract.ps1	e5691b3c8aa6aa7099d30d8be59c649198e8dee4	Test+Skript	36		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/release/tests/Test-PortableManifest-Regression.ps1	cc5f151fbf6781f0f0c601e009f69d3455cc5c05	Test+Skript	48		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-tools/release/tests/Test-PortableManifest.ps1	b40a51ada1c9ac6113aef3bf26772ebc4819b143	Test+Skript	71	1-71	FULLY_REVIEWED	AUD-PKG-0001	Verifikation gemäß Maßnahmenkatalog	Quellenreview, Laufzeitbelege gesondert im Katalog
+tools/release/tests/Test-PortableManifest.ps1	125e31c95d502ba23918edd77f16b41afd30a3b5	Test+Skript	76		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/release/tests/Test-PowerShellSyntax.ps1	01096bc624dd9746939c6e741329572ce4ada412	Test+Skript	52		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/release/tests/Test-ProductVersion.ps1	73309c76c977ecd351d4b6b6a86995546015c6cb	Test+Skript	83		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/release/tests/Test-ProductionBinary-Contract.ps1	3a38700d0db780d41ac0f32bd17ab4ffba8f4511	Test+Skript	67		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/release/tests/Test-ReleaseChecksumManifest.ps1	f82f15ef81cac422d8c46cb10e44649ac3993e30	Test+Skript	73		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-tools/release/tests/Test-ReleaseInstaller.ps1	80943183249d6dad0d68fe6d507c73c8c12cef20	Test+Skript	127		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+tools/release/tests/Test-ReleaseInstaller.ps1	93d4f4b01884a88266894bfdb09d35d84f8db107	Test+Skript	134		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/release/tests/Test-ReleasePublicArtifact.ps1	01cef3c40464b6c86054f977062ffc56c05278c7	Test+Skript	82		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-tools/release/tests/Test-ReleaseWorkflow-Order.ps1	c330b8f21c38bdfb04ce45e5395e0cac4d09a1ea	Test+Skript	54	1-54	FULLY_REVIEWED		Verifikation gemäß Maßnahmenkatalog	Quellenreview, Laufzeitbelege gesondert im Katalog
-tools/release/tests/Test-SalamanderGui-LongPaths.ps1	8fc0fd17043439665ef5f84693a2191c025b67c5	Test+Skript	5976	4746-4752	PARTIALLY_REVIEWED	AUD-MGMT-0001	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
-tools/release/tests/Test-TestGapTracker.ps1	6c11608933f04d59f156e2715ce47ec4794a1a00	Test+Skript	84	1-84	FULLY_REVIEWED		Verifikation gemäß Maßnahmenkatalog	Quellenreview, Laufzeitbelege gesondert im Katalog
-tools/release/tests/Test-TestRegistry.ps1	b2aad5aa2ade0753032c5eae6ebc68265a386b54	Test+Skript	144	1-144	FULLY_REVIEWED	AUD-CI-0001	Verifikation gemäß Maßnahmenkatalog	Quellenreview, Laufzeitbelege gesondert im Katalog
+tools/release/tests/Test-ReleaseWorkflow-Order.ps1	c330b8f21c38bdfb04ce45e5395e0cac4d09a1ea	Test+Skript	54	1-54	FULLY_REVIEWED		Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
+tools/release/tests/Test-SalamanderGui-LongPaths.ps1	4723782f6b6291d06edca2171f9c1874ebc6790f	Test+Skript	6024	1179-1238,3784-3916	PARTIALLY_REVIEWED	AUD-GUI-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
+tools/release/tests/Test-TestGapTracker.ps1	6c11608933f04d59f156e2715ce47ec4794a1a00	Test+Skript	84	1-84	FULLY_REVIEWED		Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
+tools/release/tests/Test-TestRegistry.ps1	b2aad5aa2ade0753032c5eae6ebc68265a386b54	Test+Skript	144	1-144	FULLY_REVIEWED	AUD-CI-0001	Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
 tools/release/tests/Test-VS2026-ProjectMetadata.ps1	17093cf8eb3b5694d4df9a235041b306f85499a7	Test+Skript	160		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/release/tests/Test-VS2026Discovery.ps1	a1860a4dd4f8c13b2df13285cd4b4d0d7de41540	Test+Skript	45		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/release/tests/Test-WerCrashReporting-Contract.ps1	81227a245aca1555cbdfafe7446c6ded24dffa3a	Test+Skript	111		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-tools/release/tests/Test-ZipSfxRoundtrip.ps1	8a6cb34a880c1997abed3e624ecc28f1400daa8f	Test+Skript	262	250-262	PARTIALLY_REVIEWED	AUD-TEST-PLUGIN-0001	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
-tools/release/tests/Zip-HostGuiCase.ps1	7c99c8297936709cc06f9fc9b2ef1a371db31e40	Test+Skript	402	371-402	PARTIALLY_REVIEWED	AUD-TEST-PLUGIN-0001	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
-tools/release/tests/Zip-HostMutationCases.ps1	318b193f0b718a4dd076aacf3c34f8e5d3d13d99	Test+Skript	126	29-69,115-126	PARTIALLY_REVIEWED	AUD-TEST-PLUGIN-0001	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+tools/release/tests/Test-ZipSfxRoundtrip.ps1	8a6cb34a880c1997abed3e624ecc28f1400daa8f	Test+Skript	262	250-262	PARTIALLY_REVIEWED	AUD-TEST-PLUGIN-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
+tools/release/tests/Zip-HostGuiCase.ps1	7c99c8297936709cc06f9fc9b2ef1a371db31e40	Test+Skript	402	371-402	PARTIALLY_REVIEWED	AUD-TEST-PLUGIN-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
+tools/release/tests/Zip-HostMutationCases.ps1	318b193f0b718a4dd076aacf3c34f8e5d3d13d99	Test+Skript	126	29-69,115-126	PARTIALLY_REVIEWED	AUD-TEST-PLUGIN-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 tools/release/ui-resource-inventory-baseline.json	eb7836e76d7fb6c9cdad5517119493690fc232d6	Konfiguration	217		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/salbreak/!clear.bat	c5aa69f3fb47c9420852db6b768d87c085de1ea5	Skript	6		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/salbreak/manifest.xml	8193da042cd929cef2b063e83895f4b67fd3f88b	Konfiguration	46		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -4621,19 +4636,19 @@ tools/tests/editor_process_launch.cpp	43d045fb049d0f56f1f3bc037f0c38d61e084f40	T
 tools/tests/isolated_test_configuration.cpp	ebec36eac52c89f54ef6078ee325113dc68118ba	Test+Implementierung	31		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/tests/legacy_default_directory_registry.cpp	49a3bfa9c9915dca29d644575001b758d941c8d4	Test+Implementierung	141		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/tests/legacy_disk_name_safety.cpp	c0b3303f40ff821a44fb33cc3969223ef3209261	Test+Implementierung	105		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-tools/tests/legacy_find_utf16_identity.cpp	ec8153f277d0e06aabde41ac959262291e64f868	Test+Implementierung	215	1-215	FULLY_REVIEWED	AUD-FIND-0001	Verifikation gemäß Maßnahmenkatalog	Quellenreview, Laufzeitbelege gesondert im Katalog
-tools/tests/long_path_io.cpp	fac6e89479820d0022ecb48bc04969e443892873	Test+Implementierung	1654	1207-1255	PARTIALLY_REVIEWED		Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+tools/tests/legacy_find_utf16_identity.cpp	ec8153f277d0e06aabde41ac959262291e64f868	Test+Implementierung	215	1-215	FULLY_REVIEWED	AUD-FIND-0001	Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
+tools/tests/long_path_io.cpp	fac6e89479820d0022ecb48bc04969e443892873	Test+Implementierung	1654	1207-1255	PARTIALLY_REVIEWED		Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 tools/tests/pictview_wic_clipboard.cpp	32d1b226fc1a263daea6e01b35c9874bbf7890d4	Test+Implementierung	78		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/tests/pictview_wic_decode.cpp	4d88fe32d28bf56e7d1ed2666dad32c8ba757fb0	Test+Implementierung	281		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-tools/tests/pictview_wic_formats.cpp	a805fda782cf86b19da43be748b1551ecd4bd4dd	Test+Implementierung	451	201-226	PARTIALLY_REVIEWED	AUD-TEST-PICTVIEW-0001	Restliche Zeilen und abhängige Aufrufer	Quellenreview, Laufzeitbelege gesondert im Katalog
+tools/tests/pictview_wic_formats.cpp	a805fda782cf86b19da43be748b1551ecd4bd4dd	Test+Implementierung	451	201-226	PARTIALLY_REVIEWED	AUD-TEST-PICTVIEW-0001	Restintervalle und Aufrufketten	Semantische Quellprüfung, Testbelege separat im Katalog
 tools/tests/pictview_wic_presenter.cpp	faf08adb03c52dfe96317535ac28203a384df27e	Test+Implementierung	72		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/tests/pictview_wic_transforms.cpp	ed7b1ed88ef2a5f3ff24f2295d74f9a3b13abb5f	Test+Implementierung	86		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/tests/pictview_wic_viewer_path.cpp	ff0bd8fe84fc16dc838f6ed8de6ebfee24e95628	Test+Implementierung	36		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/tests/pictview_wic_window.cpp	c1df24e4b417d12bc84c9b5a5acb083e4bde0350	Test+Implementierung	126		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/tests/pictview_wic_writer.cpp	19a570d7ddcda30cbfe0b1be29544518bdb256e6	Test+Implementierung	206		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/tests/plugin_module_path.cpp	5a00d0195ec8be5c0bb78204024b3c3a812cf716	Test+Implementierung	282		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-tools/tests/plugin_unicode_sdk.cpp	416509c783ecae0d404d2d352f6151ff468497cc	Test+Implementierung	71	1-71	FULLY_REVIEWED	AUD-SDK-0001,AUD-TEST-PICTVIEW-0001	Verifikation gemäß Maßnahmenkatalog	Quellenreview, Laufzeitbelege gesondert im Katalog
-tools/tests/quicksearch_bounds.cpp	07cd0ddce602e967ea340eb213973a200f6d4afc	Test+Implementierung	19		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+tools/tests/plugin_unicode_sdk.cpp	416509c783ecae0d404d2d352f6151ff468497cc	Test+Implementierung	71	1-71	FULLY_REVIEWED	AUD-SDK-0001,AUD-TEST-PICTVIEW-0001	Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
+tools/tests/quicksearch_bounds.cpp	07cd0ddce602e967ea340eb213973a200f6d4afc	Test+Implementierung	19	1-19	FULLY_REVIEWED		Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
 tools/tests/saved_panel_path_registry.cpp	1fdcb72e760a801ed6b35830022777a35e86a654	Test+Implementierung	108		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/tests/shell_file_operation_name_list.cpp	551fa367f4781a8ff524feb1938e8152dc02206c	Test+Implementierung	159		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/tests/unicode_directory_delete.cpp	04348f9cefc83cfa0a213270333039130139d4fe	Test+Implementierung	132		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
@@ -4646,7 +4661,7 @@ tools/tests/win32_unicode_recycle.cpp	764ebf64712960d9e3a61230be41a9f6c2368000	T
 tools/tests/win32_unicode_rename_dialog.cpp	04483e0a6a7bbfb112e4b8a892a02646ab403ae5	Test+Implementierung	43		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/tests/win32_utf16_static_text.cpp	7b963a62ec91187c1fbed5b3edcc7d8251c810d0	Test+Implementierung	42		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/tests/worker_copy_io.cpp	ffe5b6fc1c8abda27732dadc1876efa34fb94970	Test+Implementierung	310		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
-tools/tests/worker_copy_paths.cpp	1a65e7cd24f5a34cc061aad0f4df90f52f0eefae	Test+Implementierung	80		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
+tools/tests/worker_copy_paths.cpp	1a65e7cd24f5a34cc061aad0f4df90f52f0eefae	Test+Implementierung	80	1-80	FULLY_REVIEWED		Laufzeitabnahme laut Katalog	Semantische Quellprüfung, Testbelege separat im Katalog
 tools/utfnames/utfnames.cpp	ea7772d79479021ca09dd07a40da0eed42f478c5	Implementierung	1037		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/utfnames/utfnames.manifest	aa3a85fb1be6ab6bf1b478abda590c297d00f5d4	Konfiguration	8		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
 tools/utfnames/utfnames.vcxproj	798ba31cd7bf9156f74c05f5cd9e5df257c1c9de	Build	153		NOT_REVIEWED		Semantische Prüfung	Blobidentität geprüft
