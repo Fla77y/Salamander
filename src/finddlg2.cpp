@@ -1366,16 +1366,24 @@ const char* MyEnumFileNames(int index, void* param)
 
 #ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
 // Metadata only: never read, render, write or lock the clipboard.
-// The test launcher supplies a GUID-owned process TEMP and an explicit gate.
+// The test launcher creates a GUID-owned mapping and enables an explicit gate.
+// This uses the same transport as the isolated editor diagnostics.
 static void TraceIsolatedFindClipboard(const char* stage, HRESULT result)
 {
     const DWORD savedError = GetLastError();
-    wchar_t gate[2];
-    wchar_t testId[33];
-    if (GetEnvironmentVariableW(L"OPENSAL_GUI_FIND_CLIPBOARD_TRACE", gate, _countof(gate)) == 1 &&
-        gate[0] == L'1' &&
-        GetEnvironmentVariableW(L"OPENSAL_GUI_TEST_ID", testId, _countof(testId)) == 32)
+    char gate[2] = {};
+    char testId[33] = {};
+    if (GetEnvironmentVariableA("OPENSAL_GUI_FIND_CLIPBOARD_TRACE", gate, _countof(gate)) == 1 &&
+        gate[0] == '1' &&
+        GetEnvironmentVariableA("OPENSAL_GUI_TEST_ID", testId, _countof(testId)) == 32)
     {
+        for (int i = 0; i < 32; ++i)
+            if (!((testId[i] >= '0' && testId[i] <= '9') ||
+                  (testId[i] >= 'a' && testId[i] <= 'f')))
+            {
+                SetLastError(savedError);
+                return;
+            }
         const DWORD sequenceBefore = GetClipboardSequenceNumber();
         const HWND owner = GetClipboardOwner();
         const HWND foreground = GetForegroundWindow();
@@ -1394,20 +1402,25 @@ static void TraceIsolatedFindClipboard(const char* stage, HRESULT result)
                                   stage, (unsigned long)result, sequenceBefore, sequenceAfter,
                                   ownerPid, foregroundPid, fileDrop != FALSE, unicodeText != FALSE);
 
-        wchar_t path[MAX_PATH];
-        const DWORD count = GetTempPathW(_countof(path), path);
-        const wchar_t leaf[] = L"find-clipboard-trace.txt";
-        if (len > 0 && count > 0 && count < _countof(path) &&
-            count + _countof(leaf) <= _countof(path) &&
-            wcscat_s(path, _countof(path), leaf) == 0)
+        char name[96];
+        if (len > 0 &&
+            _snprintf_s(name, _TRUNCATE, "Local\\OpenSalamander.FindClipboardTest.%s", testId) >= 0)
         {
-            HANDLE file = CreateFileW(path, FILE_APPEND_DATA, FILE_SHARE_READ, NULL,
-                                      OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
-            if (file != INVALID_HANDLE_VALUE)
+            // The first LONG allocates slots; each record is NUL terminated.
+            // 31 fixed 512-byte slots fit within the 16 KiB mapping.
+            HANDLE mapping = ::OpenFileMappingA(FILE_MAP_WRITE, FALSE, name);
+            if (mapping != NULL)
             {
-                DWORD written = 0;
-                WriteFile(file, line, (DWORD)len, &written, NULL);
-                CloseHandle(file);
+                void* view = ::MapViewOfFile(mapping, FILE_MAP_WRITE, 0, 0, 16384);
+                if (view != NULL)
+                {
+                    const LONG slot = InterlockedIncrement(static_cast<volatile LONG*>(view)) - 1;
+                    if (slot >= 0 && slot < 31)
+                        memcpy(static_cast<char*>(view) + sizeof(LONG) + slot * 512,
+                               line, static_cast<size_t>(len) + 1);
+                    ::UnmapViewOfFile(view);
+                }
+                ::CloseHandle(mapping);
             }
         }
     }

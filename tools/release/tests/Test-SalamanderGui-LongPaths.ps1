@@ -120,6 +120,7 @@ public static class SalamanderGuiNative
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int nCmdShow);
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern uint GetClipboardSequenceNumber();
+    [DllImport("user32.dll")] public static extern IntPtr GetClipboardOwner();
 
     // A managed OLE clipboard owner in this PowerShell STA can deadlock when
     // SendMessageTimeout synchronously invokes Salamander's OleGetClipboard.
@@ -2170,6 +2171,9 @@ $copyTestContinue = $null
 $findTestReached = $null
 $findTestCancelled = $null
 $editorLaunchMapping = $null
+$findClipboardMapping = $null
+$findClipboardTraceRequested = $IsolatedConfiguration -and $LegacyFindScenario -eq 'ShellClipboard' -and
+    [Environment]::GetEnvironmentVariable('OPENSAL_GUI_FIND_CLIPBOARD_TRACE') -eq '1'
 $largeCopyLock = $null
 $largeCopySourceFile = $null
 $largeCopyTargetFile = $null
@@ -4266,6 +4270,10 @@ try {
             $editorLaunchMapping = [IO.MemoryMappedFiles.MemoryMappedFile]::CreateNew(
                 ('Local\OpenSalamander.EditorTest.' + $testConfigurationId), 4096)
         }
+        if ($findClipboardTraceRequested) {
+            $findClipboardMapping = [IO.MemoryMappedFiles.MemoryMappedFile]::CreateNew(
+                ('Local\OpenSalamander.FindClipboardTest.' + $testConfigurationId), 16384)
+        }
         if ($LegacyFindScenario -eq 'Cancel') {
             $prefix = 'Local\OpenSalamander.FindTest.' + $testConfigurationId
             $created = $false
@@ -4288,6 +4296,7 @@ try {
                 TEMP = $processTemp; TMP = $processTemp; OPENSAL_GUI_TEST_ID = $testConfigurationId
                 OPENSAL_GUI_COPY_TEST_GATE = $(if ($LargeUnicodeCopyOnly) { '1' } else { '0' })
                 OPENSAL_GUI_FIND_TEST_GATE = $(if ($LegacyFindScenario -eq 'Cancel') { '1' } else { '0' })
+                OPENSAL_GUI_FIND_CLIPBOARD_TRACE = $(if ($findClipboardTraceRequested) { '1' } else { '0' })
                 OPENSAL_GUI_EDITOR_TEST_GATE = $(if ($LegacyFindScenario -in 'ExternalEditor','ExternalEditorNative') { '1' } else { '0' })
                 OPENSAL_GUI_EDITOR_PROBE_EXE = $(if ($LegacyFindScenario -eq 'ExternalEditor') { Join-Path $PSHOME 'pwsh.exe' } else { $null })
             } -PassThru
@@ -5780,6 +5789,22 @@ try {
 catch {
     Write-Warning "GUI integration FAILED: $($_.Exception.Message)"
     $primaryGuiFailure = $_.Exception.Message
+    if ($null -ne $findClipboardMapping) {
+        try {
+            $seqBefore = [SalamanderGuiNative]::GetClipboardSequenceNumber()
+            $clipOwner = [SalamanderGuiNative]::GetClipboardOwner()
+            [uint32]$clipOwnerPid = 0
+            if ($clipOwner -ne [IntPtr]::Zero) {
+                [void][SalamanderGuiNative]::GetWindowThreadProcessId($clipOwner, [ref]$clipOwnerPid)
+            }
+            $seqAfter = [SalamanderGuiNative]::GetClipboardSequenceNumber()
+            $ownerProcess = if ($clipOwnerPid -ne 0) {
+                (Get-Process -Id $clipOwnerPid -ErrorAction SilentlyContinue).ProcessName
+            } else { '<none>' }
+            Write-Host "Find clipboard at failure: seq=$seqBefore/$seqAfter ownerPid=$clipOwnerPid ownerProcess=$ownerProcess"
+        }
+        catch { Write-Warning "Find clipboard owner diagnosis failed: $($_.Exception.Message)" }
+    }
     Save-FailureScreenshot
     # A dump is never collected unless explicitly requested. Only inspect
     # this test's process, and only when Windows detects a hung GUI window.
@@ -5826,6 +5851,39 @@ finally {
     if ($null -ne $findTestReached) { $findTestReached.Dispose() }
     if ($null -ne $findTestCancelled) { $findTestCancelled.Dispose() }
     if ($null -ne $editorLaunchMapping) { $editorLaunchMapping.Dispose() }
+    if ($null -ne $findClipboardMapping) {
+        try {
+            $view = $findClipboardMapping.CreateViewStream(0, 16384, [IO.MemoryMappedFiles.MemoryMappedFileAccess]::Read)
+            try {
+                $bytes = [byte[]]::new(16384)
+                $view.ReadExactly($bytes, 0, $bytes.Length)
+            }
+            finally { $view.Dispose() }
+            $recordCount = [BitConverter]::ToInt32($bytes, 0)
+            if ($recordCount -le 0 -or $recordCount -gt 31) {
+                throw "Find clipboard diagnostic record count invalid: $recordCount"
+            }
+            $records = foreach ($slot in 0..($recordCount - 1)) {
+                $offset = 4 + 512 * $slot
+                $end = [Array]::IndexOf($bytes, [byte]0, $offset, 512)
+                if ($end -le $offset) { throw "Find clipboard diagnostic slot $slot incomplete." }
+                [Text.Encoding]::ASCII.GetString($bytes, $offset, $end - $offset).TrimEnd()
+            }
+            $trace = $records -join [Environment]::NewLine
+            Write-Host "=== FIND CLIPBOARD PRODUCT TRACE ($recordCount records) ==="
+            Write-Host $trace
+            [IO.File]::WriteAllText((Join-Path $processTemp 'find-clipboard-trace.txt'), $trace)
+        }
+        catch {
+            Write-Warning "Find clipboard diagnostic unavailable: $($_.Exception.Message)"
+            $KeepFixture = $true
+            if ($passed) {
+                $passed = $false
+                $testConfigurationCleanupAllowed = $false
+            }
+        }
+        finally { $findClipboardMapping.Dispose() }
+    }
 
     # A failed search may retain its screenshot and small fixtures, but it
     # must not leave a large cancellation stress file on the user's disk.
