@@ -117,12 +117,17 @@ if (-not $SkipBuild) {
             param($Executable, $Arguments)
             Invoke-Checked $Executable $Arguments
         }
+    Invoke-ZipSfxBuild -Msbuild $msbuild -Repository $repository -BuildRoot $buildRootFull -Mode $BuildMode -Invoke {
+        param($Executable, $Arguments)
+        Invoke-Checked $Executable $Arguments
+    }
 }
 foreach ($configuration in @('Debug', 'Release')) {
     $expectedBinary = Join-Path $variantPaths[$configuration] 'salamand.exe'
     if (-not (Test-Path -LiteralPath $expectedBinary -PathType Leaf)) {
         throw "Build output is missing: $expectedBinary"
     }
+    Assert-ZipSfxPayload -Directory $variantPaths[$configuration]
 }
 
 Build-CompiledHelp -Repository $repository -HhcExe $hhcExe -OutputDirectories @(
@@ -140,6 +145,7 @@ foreach ($configuration in @('Debug', 'Release')) {
         -Repository $repository -BuiltDirectory $variantPaths[$configuration] `
         -StagedDirectory $stage -RequireMatchingPayloads -RequireSolutionPluginPayloads `
         -RequiredShippedModules @('7zip','checksum','filecomp','renamer','pictview')
+    Assert-StagedZipSfx -BuiltDirectory $variantPaths[$configuration] -Stage $stage
     Test-DistributionStage -Stage $stage -Configuration $configuration -DumpbinExe $dumpbinExe
     Assert-StagedBuiltPlugins -BuiltDirectory $variantPaths[$configuration] -Stage $stage
 

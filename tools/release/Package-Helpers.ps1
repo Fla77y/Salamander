@@ -105,7 +105,15 @@ function Add-ApplicationResources {
     Copy-ResourceDirectory (Join-Path $Repository 'src\res\toolbars') (Join-Path $Stage 'toolbars')
     Copy-ResourceDirectory (Join-Path $Repository 'src\plugins\automation\sample-scripts') (Join-Path $Stage 'plugins\automation\scripts')
     Copy-ResourceDirectory (Join-Path $Repository 'src\plugins\ieviewer\cmark-gfm\css') (Join-Path $Stage 'plugins\ieviewer\css')
-    Copy-ResourceDirectory (Join-Path $Repository 'src\plugins\zip\zip2sfx') (Join-Path $Stage 'plugins\zip\zip2sfx')
+    # Preserve the built converter copied by robocopy. Only its documented
+    # settings examples and usage guide are runtime/user resources, not the
+    # entire C++ source directory.
+    $zip2sfxSource = Join-Path $Repository 'src\plugins\zip\zip2sfx'
+    $zip2sfxStage = Join-Path $Stage 'plugins\zip\zip2sfx'
+    New-Item -ItemType Directory -Path $zip2sfxStage -Force | Out-Null
+    foreach ($name in @('readme.txt', 'sample.set', 'sam_cz.set')) {
+        Copy-Item -LiteralPath (Join-Path $zip2sfxSource $name) -Destination (Join-Path $zip2sfxStage $name) -Force
+    }
     Copy-Item -LiteralPath (Join-Path $Repository 'LICENSE') -Destination (Join-Path $Stage 'LICENSE') -Force
     Copy-Item -LiteralPath (Join-Path $Repository 'doc\third_party.txt') -Destination (Join-Path $Stage 'THIRD_PARTY_LICENSES.txt') -Force
 }
@@ -407,3 +415,30 @@ function Test-DistributionStage {
     $entries | Set-Content -LiteralPath $manifest -Encoding utf8
     Write-Host "Validated $($binaries.Count) PE files and $($files.Count) package files: $Configuration"
 }
+
+# Called by the real packaging pipeline before any archive/installer.
+# The SFX subtree has an explicit runtime allowlist; in particular no raw
+# stub, build utility, C++ source or undeclared language package may ship.
+function Assert-StagedZipSfx {
+    param([string]$BuiltDirectory, [string]$Stage)
+    Assert-ZipSfxPayload -Directory $Stage -ReferenceDirectory $BuiltDirectory
+    $allowed = @((Get-ZipSfxPayloadPaths)) + @(
+        'plugins\zip\zip2sfx\readme.txt',
+        'plugins\zip\zip2sfx\sample.set',
+        'plugins\zip\zip2sfx\sam_cz.set')
+    foreach ($relative in $allowed) {
+        if (-not (Test-Path -LiteralPath (Join-Path $Stage $relative) -PathType Leaf)) {
+            throw "Missing required ZIP SFX distribution file: $relative"
+        }
+    }
+    foreach ($subdirectory in @('plugins\zip\sfx', 'plugins\zip\zip2sfx')) {
+        foreach ($file in (Get-ChildItem -LiteralPath (Join-Path $Stage $subdirectory) -Recurse -File -Force)) {
+            $relative = [IO.Path]::GetRelativePath($Stage, $file.FullName)
+            if ($relative -notin $allowed) {
+                throw "Unexpected ZIP SFX distribution file: $relative"
+            }
+        }
+    }
+    Write-Host 'PASS: exact ZIP SFX runtime allowlist and built/staged SHA-256 identity.'
+}
+

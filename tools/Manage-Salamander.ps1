@@ -286,6 +286,10 @@ function Build-Variants {
             param($Executable, $Arguments)
             Invoke-Native $Executable $Arguments
         }
+    Invoke-ZipSfxBuild -Msbuild $msbuild -Repository $repository -BuildRoot $buildRoot -Mode $Mode -Invoke {
+        param($Executable, $Arguments)
+        Invoke-Native $Executable $Arguments
+    }
     foreach ($variant in @('Debug', 'Release')) {
         $binary = Join-Path (Get-VariantDirectory $variant) 'salamand.exe'
         $productVersionTest = Join-Path $repository 'tools\release\tests\Test-ProductVersion.ps1'
