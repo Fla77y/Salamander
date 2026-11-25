@@ -757,11 +757,21 @@ HRESULT PublishFindFileSelection(IDataObject* data, UINT expectedCount, BOOL cop
         return FAILED(hr) ? hr : E_FAIL;
 
     // The Shell data object retains its native formats and move semantics.
-    // No independent clipboard mutation or replay of a Shell verb follows.
-    hr = OleSetClipboard(data);
-    if (hr != S_OK)
-        return FAILED(hr) ? hr : E_FAIL;
-    return S_OK;
+    // Clipboard acquisition can briefly fail when another process holds it
+    // open. Retry only that error, using the same fully prepared data object.
+    // No metadata mutation, selection rebuild or replay of a Shell verb.
+    constexpr int maxAttempts = 20;
+    constexpr DWORD retryDelayMs = 25;
+    for (int attempt = 0; attempt < maxAttempts; ++attempt)
+    {
+        hr = OleSetClipboard(data);
+        if (hr == S_OK)
+            return S_OK;
+        if (hr != CLIPBRD_E_CANT_OPEN || attempt + 1 == maxAttempts)
+            return FAILED(hr) ? hr : E_FAIL;
+        Sleep(retryDelayMs);
+    }
+    return hr;
 }
 
 void SetClipCutCopyInfo(HWND hwnd, BOOL copy, BOOL salObject)
