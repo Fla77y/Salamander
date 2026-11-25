@@ -1364,6 +1364,57 @@ const char* MyEnumFileNames(int index, void* param)
     return NULL;
 }
 
+#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
+// Metadata only: never read, render, write or lock the clipboard.
+// The test launcher supplies a GUID-owned process TEMP and an explicit gate.
+static void TraceIsolatedFindClipboard(const char* stage, HRESULT result)
+{
+    const DWORD savedError = GetLastError();
+    wchar_t gate[2];
+    wchar_t testId[33];
+    if (GetEnvironmentVariableW(L"OPENSAL_GUI_FIND_CLIPBOARD_TRACE", gate, _countof(gate)) == 1 &&
+        gate[0] == L'1' &&
+        GetEnvironmentVariableW(L"OPENSAL_GUI_TEST_ID", testId, _countof(testId)) == 32)
+    {
+        const DWORD sequenceBefore = GetClipboardSequenceNumber();
+        const HWND owner = GetClipboardOwner();
+        const HWND foreground = GetForegroundWindow();
+        DWORD ownerPid = 0, foregroundPid = 0;
+        if (owner != NULL)
+            GetWindowThreadProcessId(owner, &ownerPid);
+        if (foreground != NULL)
+            GetWindowThreadProcessId(foreground, &foregroundPid);
+        const BOOL fileDrop = IsClipboardFormatAvailable(CF_HDROP);
+        const BOOL unicodeText = IsClipboardFormatAvailable(CF_UNICODETEXT);
+        const DWORD sequenceAfter = GetClipboardSequenceNumber();
+        char line[512];
+        const int len = sprintf_s(line, _countof(line),
+                                  "tick=%llu pid=%lu stage=%s hr=0x%08lX seq=%lu/%lu ownerPid=%lu foregroundPid=%lu hdrop=%d unicodeText=%d\r\n",
+                                  (unsigned long long)GetTickCount64(), GetCurrentProcessId(),
+                                  stage, (unsigned long)result, sequenceBefore, sequenceAfter,
+                                  ownerPid, foregroundPid, fileDrop != FALSE, unicodeText != FALSE);
+
+        wchar_t path[MAX_PATH];
+        const DWORD count = GetTempPathW(_countof(path), path);
+        const wchar_t leaf[] = L"find-clipboard-trace.txt";
+        if (len > 0 && count > 0 && count < _countof(path) &&
+            count + _countof(leaf) <= _countof(path) &&
+            wcscat_s(path, _countof(path), leaf) == 0)
+        {
+            HANDLE file = CreateFileW(path, FILE_APPEND_DATA, FILE_SHARE_READ, NULL,
+                                      OPEN_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+            if (file != INVALID_HANDLE_VALUE)
+            {
+                DWORD written = 0;
+                WriteFile(file, line, (DWORD)len, &written, NULL);
+                CloseHandle(file);
+            }
+        }
+    }
+    SetLastError(savedError);
+}
+#endif
+
 void ContextMenuInvoke(IContextMenu2* contextMenu, CMINVOKECOMMANDINFO* ici)
 {
     CALL_STACK_MESSAGE_NONE
@@ -1373,9 +1424,16 @@ void ContextMenuInvoke(IContextMenu2* contextMenu, CMINVOKECOMMANDINFO* ici)
     int oldThreadPriority = GetThreadPriority(hThread);
     SetThreadPriority(hThread, THREAD_PRIORITY_NORMAL);
 
+#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
+    HRESULT invokeResult = E_UNEXPECTED;
+#endif
     __try
     {
+#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
+        invokeResult = contextMenu->InvokeCommand(ici);
+#else
         contextMenu->InvokeCommand(ici);
+#endif
     }
     __except (CCallStack::HandleException(GetExceptionInformation(), 8))
     {
@@ -1383,6 +1441,9 @@ void ContextMenuInvoke(IContextMenu2* contextMenu, CMINVOKECOMMANDINFO* ici)
     }
 
     SetThreadPriority(hThread, oldThreadPriority);
+#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
+    TraceIsolatedFindClipboard("shell-invoke-result", invokeResult);
+#endif
 }
 
 void ContextMenuQuery(IContextMenu2* contextMenu, HMENU h)
@@ -1628,11 +1689,23 @@ BOOL CFindDialog::InvokeContextMenu(const char* lpVerb)
 
 void CFindDialog::OnCutOrCopy(BOOL cut)
 {
+#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
+    TraceIsolatedFindClipboard(cut ? "cut-begin" : "copy-begin", S_OK);
+#endif
     if (InvokeContextMenu(cut ? "cut" : "copy"))
     {
+#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
+        TraceIsolatedFindClipboard("before-drop-metadata", S_OK);
+#endif
         // also set the preferred drop effect and origin from Salamander
         SetClipCutCopyInfo(HWindow, !cut, TRUE);
+#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
+        TraceIsolatedFindClipboard("after-drop-metadata", S_OK);
+#endif
     }
+#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
+    TraceIsolatedFindClipboard(cut ? "cut-end" : "copy-end", S_OK);
+#endif
 }
 
 void CFindDialog::OnProperties()
