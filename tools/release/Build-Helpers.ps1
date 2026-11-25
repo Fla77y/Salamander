@@ -264,3 +264,146 @@ function Invoke-ZipSfxBuild {
     }
 }
 
+
+# RARLAB's versioned source distribution provides the original UnRARDll.vcxproj.
+# Compile the Release engine for both host variants: the DLL uses a C ABI and
+# its own statically linked Release CRT. Never execute a downloaded SFX.
+# Source SHA-256 independently agrees in FreeBSD ports and Buildroot:
+# https://cgit.freebsd.org/ports/tree/archivers/unrar/distinfo
+# https://lists.busybox.net/pipermail/buildroot/2026-July/806112.html
+function Get-UnrarRuntimeContract {
+    @{
+        Version = '7.2.7'
+        SourceSha256 = '01D903A7DCF413CB2925696D7796E48E38D471F79BFE7EF3AD2AEBF6C12DBEFD'
+        LicenseSha256 = '6ECC1687808B7D66B24F874755ABFED7464D9751ED0001CD4E8E5D9BF397FF8A'
+        Dll = 'plugins\unrar\unrar.dll'
+        License = 'plugins\unrar\UNRAR-LICENSE.txt'
+    }
+}
+
+function Assert-UnrarRuntime {
+    param([Parameter(Mandatory)][string]$Directory,
+          [string]$ReferenceDirectory)
+    $contract = Get-UnrarRuntimeContract
+    foreach ($relative in @($contract.Dll, $contract.License)) {
+        $path = Join-Path $Directory $relative
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            throw "Missing required UnRAR runtime: $path"
+        }
+        if ((Get-Item -LiteralPath $path -Force).Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)) {
+            throw "Unsafe UnRAR runtime file: $path"
+        }
+        if ($ReferenceDirectory) {
+            $reference = Join-Path $ReferenceDirectory $relative
+            if ((Get-FileHash -LiteralPath $reference -Algorithm SHA256 -ErrorAction Stop).Hash -cne
+                (Get-FileHash -LiteralPath $path -Algorithm SHA256 -ErrorAction Stop).Hash) {
+                throw "Staged UnRAR runtime differs from build: $relative"
+            }
+        }
+    }
+    $dll = Join-Path $Directory $contract.Dll
+    $license = Join-Path $Directory $contract.License
+    if ((Get-FileHash -LiteralPath $license -Algorithm SHA256 -ErrorAction Stop).Hash -cne $contract.LicenseSha256) {
+        throw "UnRAR license does not match the pinned upstream source: $license"
+    }
+    $bytes = [IO.File]::ReadAllBytes($dll)
+    if ($bytes.Length -lt 64 -or [BitConverter]::ToUInt16($bytes, 0) -ne 0x5A4D) {
+        throw "Invalid UnRAR DOS header: $dll"
+    }
+    $pe = [BitConverter]::ToInt32($bytes, 60)
+    if ($pe -lt 64 -or $pe -gt ($bytes.Length - 26) -or
+        [BitConverter]::ToUInt32($bytes, $pe) -ne 0x00004550 -or
+        [BitConverter]::ToUInt16($bytes, ($pe + 4)) -ne 0x8664 -or
+        [BitConverter]::ToUInt16($bytes, ($pe + 24)) -ne 0x020B -or
+        ([BitConverter]::ToUInt16($bytes, ($pe + 22)) -band 0x2000) -eq 0) {
+        throw "Expected AMD64 PE32+ UnRAR DLL: $dll"
+    }
+    Write-Host "PASS: UnRAR x64 runtime and pinned license: $Directory; DLL SHA256: $((Get-FileHash -LiteralPath $dll -Algorithm SHA256).Hash)"
+}
+
+function Invoke-UnrarRuntimeBuild {
+    param([Parameter(Mandatory)][string]$Msbuild,
+          [Parameter(Mandatory)][string]$Repository,
+          [Parameter(Mandatory)][string]$BuildRoot,
+          [Parameter(Mandatory)][scriptblock]$Invoke)
+    Assert-BuildDirectory -Repository $Repository -BuildRoot $BuildRoot
+    $contract = Get-UnrarRuntimeContract
+    $cache = New-ZipSfxDirectory -Root $BuildRoot -Relative ("unrar-source-" + $contract.Version)
+    $name = "unrarsrc-$($contract.Version).tar.gz"
+    $archive = Join-Path $cache $name
+    if (Test-Path -LiteralPath $archive) {
+        $item = Get-Item -LiteralPath $archive -Force
+        if ($item.PSIsContainer -or $item.Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)) {
+            throw "Unsafe UnRAR archive cache: $archive"
+        }
+    } else {
+        $download = Join-Path $cache ([Guid]::NewGuid().ToString('N') + '.tar.gz')
+        try {
+            # A content-pinned distribution mirror is only a transport fallback;
+            # both downloads must match the identical reviewed digest.
+            $urls = @("https://www.rarlab.com/rar/$name", "https://distfiles.macports.org/unrar/$name")
+            $downloaded = $false
+            foreach ($url in $urls) {
+                try {
+                    Invoke-WebRequest -Uri $url -OutFile $download -TimeoutSec 120 -ErrorAction Stop
+                    $downloaded = $true
+                    break
+                }
+                catch {
+                    Write-Warning "UnRAR source download unavailable: $url"
+                    Remove-Item -LiteralPath $download -Force -ErrorAction SilentlyContinue
+                }
+            }
+            if (-not $downloaded) { throw "Unable to retrieve pinned UnRAR source $name" }
+            if ((Get-FileHash -LiteralPath $download -Algorithm SHA256 -ErrorAction Stop).Hash -cne $contract.SourceSha256) {
+                throw "UnRAR source SHA-256 mismatch: $name"
+            }
+            Move-Item -LiteralPath $download -Destination $archive -ErrorAction Stop
+        }
+        finally {
+            if (Test-Path -LiteralPath $download) { Remove-Item -LiteralPath $download -Force }
+        }
+    }
+    if ((Get-FileHash -LiteralPath $archive -Algorithm SHA256 -ErrorAction Stop).Hash -cne $contract.SourceSha256) {
+        throw "UnRAR cached source SHA-256 mismatch: $archive; remove this cache file and retry."
+    }
+    Write-Host "=== UnRAR $($contract.Version) source SHA-256 verified; building upstream x64 DLL ==="
+    # Fresh extraction and output every time; never trust edited extracted
+    # sources, stale DLLs or an executable left over from an earlier build.
+    $work = New-ZipSfxDirectory -Root $cache -Relative ([Guid]::NewGuid().ToString('N'))
+    try {
+        $tar = Join-Path $env:SystemRoot 'System32\tar.exe'
+        & $Invoke $tar @('-xzf', $archive, '-C', $work)
+        $source = Join-Path $work 'unrar'
+        $project = Join-Path $source 'UnRARDll.vcxproj'
+        $license = Join-Path $source 'license.txt'
+        if (-not (Test-Path -LiteralPath $project -PathType Leaf) -or
+            (Get-FileHash -LiteralPath $license -Algorithm SHA256 -ErrorAction Stop).Hash -cne $contract.LicenseSha256) {
+            throw 'Pinned UnRAR source has no expected DLL project or license.'
+        }
+        $out = New-ZipSfxDirectory -Root $work -Relative 'output'
+        $obj = New-ZipSfxDirectory -Root $work -Relative 'obj'
+        $arguments = @($project, '/t:Rebuild', '/p:Configuration=Release', '/p:Platform=x64',
+            '/p:PreferredToolArchitecture=x64', '/p:PlatformToolset=v143',
+            '/p:WindowsTargetPlatformVersion=10.0', "/p:OutDir=$out/", "/p:IntDir=$obj/",
+            '/p:PostBuildEventUseInBuild=false', '/m', '/nr:false', '/v:minimal')
+        & $Invoke $Msbuild $arguments
+        $dll = Join-Path $out 'unrar.dll'
+        if (-not (Test-Path -LiteralPath $dll -PathType Leaf)) {
+            throw 'Upstream UnRAR build did not produce unrar.dll.'
+        }
+        $verify = New-ZipSfxDirectory -Root $work -Relative 'verify\plugins\unrar'
+        Copy-ZipSfxBuildFile -Source $dll -Destination (Join-Path $verify 'unrar.dll')
+        Copy-ZipSfxBuildFile -Source $license -Destination (Join-Path $verify 'UNRAR-LICENSE.txt')
+        Assert-UnrarRuntime -Directory (Join-Path $work 'verify')
+        foreach ($configuration in @('Debug', 'Release')) {
+            $destination = New-ZipSfxDirectory -Root $BuildRoot -Relative "salamander\${configuration}_x64\plugins\unrar"
+            Copy-ZipSfxBuildFile -Source $dll -Destination (Join-Path $destination 'unrar.dll')
+            Copy-ZipSfxBuildFile -Source $license -Destination (Join-Path $destination 'UNRAR-LICENSE.txt')
+            Assert-UnrarRuntime -Directory (Join-Path $BuildRoot "salamander\${configuration}_x64") -ReferenceDirectory (Join-Path $work 'verify')
+        }
+    }
+    finally {
+        Remove-Item -LiteralPath $work -Recurse -Force
+    }
+}

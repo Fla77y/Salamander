@@ -1194,7 +1194,7 @@ Write-Host 'PASS: opt-in Recycle Bin restoration checks exact Unicode identity; 
 # The opt-in plug-in load test exercises Salamander's own Plugin Manager,
 # not an arbitrary DLL LoadLibrary call or a guessed menu accelerator.
 # It must verify the dialog's HWND/PID/controls before any WM_COMMAND and
-# assert exact paths for all four target modules in the child process.
+# assert exact paths for all declared shipping modules and the dynamic UnRAR DLL in the child process.
 $pluginLoadFixture = $driverText
 if ($pluginLoadFixture -notmatch '\[switch\]\$PluginLoadSmokeOnly' -or
     $pluginLoadFixture -notmatch 'FindPluginManagerWindow' -or
@@ -1204,15 +1204,20 @@ if ($pluginLoadFixture -notmatch '\[switch\]\$PluginLoadSmokeOnly' -or
     $pluginLoadFixture -notmatch 'Blocking plug-in initialization dialog' -or
     $pluginLoadFixture -notmatch 'Missing target plug-in modules' -or
     $pluginLoadFixture -notmatch 'Get-MissingPictViewRuntimeFiles' -or
+    $pluginLoadFixture -notmatch "'renamer', 'unrar'" -or
+    $pluginLoadFixture -notmatch 'plugins\\unrar\\unrar\.dll' -or
     $manager -notmatch 'Get-MissingPictViewRuntimeFiles' -or
     $pluginLoadFixture -notmatch 'GetWindow\(top.Handle, 4\) != mainWindow' -or
     $pluginLoadFixture -notmatch 'GetDlgItem\(top.Handle, 2601\)' -or
     $pluginLoadFixture -notmatch 'VerifiedChild\(dialog, pid, 2616\)' -or
     $pluginLoadFixture -notmatch '\$process\.Modules' -or
     $pluginLoadFixture -notmatch 'OrdinalIgnoreCase' -or
+    $pluginLoadFixture -notmatch 'Get-ReleasePayloadEntries' -or
+    $pluginLoadFixture -notmatch 'All plugins seem to work correctly' -or
+    $pluginLoadFixture -notmatch 'Test All reports success but declared modules are missing' -or
     $pluginLoadFixture -notmatch 'Plugin test preserved original Unicode fixture bytes' -or
     $manager -notmatch "'--test-plugin-load'" -or
     $manager -notmatch "'-PluginLoadSmokeOnly'") {
-    throw 'Opt-in plug-in load test must verify UI ownership, all four real modules, and unchanged source bytes.'
+    throw 'Opt-in plug-in load test must verify UI ownership, all declared real modules and UnRAR engine, successful Test All completion and unchanged source bytes.'
 }
 Write-Host 'PASS: opt-in plug-in initialization smoke is owned, bounded and excluded from automatic GUI mode selection.'

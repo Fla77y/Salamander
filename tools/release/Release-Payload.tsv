@@ -186,6 +186,8 @@ plugins/unmime/unmime.spl	Release	Build	plugins/unmime/unmime.spl	unmime.vcxproj
 plugins/unole/lang/english.slg	Release	Build	plugins/unole/lang/english.slg	lang_unole.vcxproj; plugin English language resource
 plugins/unole/unole.spl	Release	Build	plugins/unole/unole.spl	unole.vcxproj; Solution plugin
 plugins/unrar/lang/english.slg	Release	Build	plugins/unrar/lang/english.slg	lang_unrar.vcxproj; plugin English language resource
+plugins/unrar/UNRAR-LICENSE.txt	Release	Build	plugins/unrar/UNRAR-LICENSE.txt	Unmodified RARLAB UnRAR 7.2.7 source license; pinned SHA-256
+plugins/unrar/unrar.dll	Release	Build	plugins/unrar/unrar.dll	RARLAB UnRAR 7.2.7 x64 DLL from SHA-256-pinned upstream source; dynamic plugin dependency
 plugins/unrar/unrar.spl	Release	Build	plugins/unrar/unrar.spl	unrar.vcxproj; Solution plugin
 plugins/wmobile/lang/english.slg	Release	Build	plugins/wmobile/lang/english.slg	lang_wmobile.vcxproj; plugin English language resource
 plugins/wmobile/wmobile.spl	Release	Build	plugins/wmobile/wmobile.spl	wmobile.vcxproj; Solution plugin

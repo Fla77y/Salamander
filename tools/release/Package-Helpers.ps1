@@ -454,7 +454,9 @@ function Test-DistributionStage {
                             'LICENSE', 'THIRD_PARTY_LICENSES.txt', 'vcruntime140.dll', 'msvcp140.dll',
                             'plugins\pictview\pictview.spl',
                             'plugins\pictview\lang\english.slg',
-                            'plugins\pictview\exif.dll')) {
+                            'plugins\pictview\exif.dll', 'plugins\unrar\unrar.spl',
+                            'plugins\unrar\lang\english.slg', 'plugins\unrar\unrar.dll',
+                            'plugins\unrar\UNRAR-LICENSE.txt')) {
         if (-not (Test-Path -LiteralPath (Join-Path $Stage $required) -PathType Leaf)) {
             throw "Distribution is incomplete. Missing: $required in $Stage"
         }

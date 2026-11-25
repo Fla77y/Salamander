@@ -1198,8 +1198,29 @@ public static class SalamanderGuiNative
                 continue;
 
             IntPtr owner = GetWindow(top.Handle, 4); // GW_OWNER
-            if (owner == dialog || owner == mainWindow)
-                return DescribeWindow(top.Handle);
+            if (owner != dialog && owner != mainWindow)
+                continue;
+            // Read only visible, owned message-box Static controls with a
+            // bounded WM_GETTEXT; GetWindowText cannot read foreign child text.
+            List<string> labels = new List<string>();
+            labels.Add(GetWindowCaption(top.Handle));
+            WindowCallback callback = (child, parameter) => {
+                uint childPid;
+                if (labels.Count >= 12 ||
+                    GetWindowThreadProcessId(child, out childPid) == 0 ||
+                    childPid != pid || ClassName(child) != "Static")
+                    return true;
+                StringBuilder label = new StringBuilder(1024);
+                IntPtr result;
+                if (SendMessageTimeoutReadText(child, 0x000D, new UIntPtr(1024),
+                        label, 0x0002, 750, out result) != IntPtr.Zero &&
+                    label.Length > 0)
+                    labels.Add(label.ToString().Replace('\r', ' ').Replace('\n', ' '));
+                return true;
+            };
+            if (!EnumChildWindows(top.Handle, callback, IntPtr.Zero))
+                throw new InvalidOperationException("Cannot enumerate owned plugin test dialog");
+            return String.Join(" | ", labels);
         }
         return null;
     }
@@ -3766,7 +3787,7 @@ function Test-UnicodeFindGui {
 function Test-PluginLoadSmoke {
     $binaryRoot = [IO.Path]::GetDirectoryName([IO.Path]::GetFullPath($SalamanderExe))
     # Fail closed even when the GUI driver is invoked directly rather than
-    # via manage.cmd. PictView is unrelated to the four target plugins.
+    # via manage.cmd. PictView has its own explicit native host prerequisite.
     . (Join-Path $PSScriptRoot '..\Plugin-Runtime-Prerequisites.ps1')
     $missingPictView = @(Get-MissingPictViewRuntimeFiles -BuildDirectory $binaryRoot -WicViewerVerified:$WicViewerVerified)
     if ($missingPictView.Count -gt 0) {
@@ -3775,7 +3796,7 @@ function Test-PluginLoadSmoke {
                ". Targeted plugin initialization is required instead.")
     }
     $expected = @(
-        @('7zip', 'checksum', 'filecomp', 'renamer') | ForEach-Object {
+        @('7zip', 'checksum', 'filecomp', 'renamer', 'unrar') | ForEach-Object {
             $name = $_
             $fullPath = [IO.Path]::GetFullPath(
                 (Join-Path $binaryRoot ("plugins\{0}\{0}.spl" -f $name)))
@@ -3785,7 +3806,27 @@ function Test-PluginLoadSmoke {
             $fullPath
         }
     )
-    Assert-True ($expected.Count -eq 4) 'All four built x64 plug-in paths exist'
+    Assert-True ($expected.Count -eq 5) 'All five original and new mandatory x64 plug-in paths exist'
+    # The independent Solution-derived shipping inventory must also be present.
+    # Do not stop as soon as a few early plugins have loaded.
+    . (Join-Path $PSScriptRoot '..\Package-Helpers.ps1')
+    $allSpl = @(Get-ReleasePayloadEntries | Where-Object { $_.Path.EndsWith('.spl', [StringComparison]::OrdinalIgnoreCase) })
+    Assert-True ($allSpl.Count -ge 5) 'Complete declared shipping plug-in inventory is available'
+    $expected = @($allSpl | ForEach-Object {
+        $fullPath = [IO.Path]::GetFullPath((Join-Path $binaryRoot $_.Path))
+        if (-not [IO.File]::Exists($fullPath)) {
+            throw "Missing declared shipping plug-in for GUI integration: $fullPath"
+        }
+        $fullPath
+    })
+    foreach ($name in @('7zip', 'checksum', 'filecomp', 'renamer', 'unrar')) {
+        if ($expected -notcontains (Join-Path $binaryRoot "plugins\$name\$name.spl")) {
+            throw "Mandatory plug-in missing from independent shipping inventory: $name"
+        }
+    }
+    $unrarEngine = Join-Path $binaryRoot 'plugins\unrar\unrar.dll'
+    if (-not [IO.File]::Exists($unrarEngine)) { throw "Missing UnRAR runtime for GUI integration: $unrarEngine" }
+    $expected += [IO.Path]::GetFullPath($unrarEngine)
 
     # Arrange: use the checked GUID-scoped source and the verified main HWND.
     Assert-True (Test-Content $unicodeShortFile) 'Plugin smoke source fixture intact before loading'
@@ -3821,13 +3862,20 @@ function Test-PluginLoadSmoke {
                 -not $loadedPaths.Contains($_)
             })
 
-            # Check completion before reporting a modal dialog: Test All may
-            # show an informational success dialog after modules are loaded.
-            if ($missing.Paths.Count -eq 0) { return $true }
-
+            # Require the actual successful completion message from CPlugins::TestAll
+            # as well as every expected module. No early success while Test All
+            # is still running (another plugin may subsequently fail).
             $blocked = [SalamanderGuiNative]::GetBlockingPluginDialog(
                 $manager.Window, $mainWindowHandle, [uint32]$process.Id)
             if (-not [string]::IsNullOrWhiteSpace($blocked)) {
+                # src/lang/texts.rc2: IDS_PLUGINTESTALLOK. A title alone
+                # is not enough: the English status text is mandatory.
+                if ($blocked -match '(^| \| )All plugins seem to work correctly\.( \| |$)') {
+                    if ($missing.Paths.Count -ne 0) {
+                        throw "Test All reports success but declared modules are missing: $($missing.Paths -join '; ')"
+                    }
+                    return $true
+                }
                 $diagnostic = ("Blocking plug-in initialization dialog: {0}; " +
                                "Missing target plug-in modules: {1}") -f
                                $blocked, ($missing.Paths -join '; ')
@@ -3848,7 +3896,7 @@ function Test-PluginLoadSmoke {
                 throw $diagnostic
             }
             return $false
-        } 'four exact plug-in modules loaded in the Salamander process' -TimeoutSecondsOverride 90
+        } 'Test All completion, every declared plug-in and exact UnRAR DLL loaded in the Salamander process' -TimeoutSecondsOverride 90
     }
     catch {
         $message = $_.Exception.Message
@@ -3864,7 +3912,7 @@ function Test-PluginLoadSmoke {
         Write-Host "PASS: Salamander loaded and retained plug-in module $path"
     }
     Assert-True (Test-Content $unicodeShortFile) 'Plugin test preserved original Unicode fixture bytes'
-    Write-Host 'PASS: real Plug-in Manager Test All initialized four built-in x64 plug-in modules.'
+    Write-Host "PASS: real Plug-in Manager Test All completed successfully; $($allSpl.Count) declared x64 plug-ins and exact UnRAR engine retained."
 }
 
 # Capture an opt-in, minimal native dump before the owned hung process is

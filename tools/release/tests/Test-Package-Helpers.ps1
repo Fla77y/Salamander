@@ -686,6 +686,28 @@ exit /b 0
             throw 'Rejected payload must not regenerate the previously verified manifest.'
         }
     }
+    # Reproduce the clean-VM omission independently for both build modes.
+    # The synthetic files below are intentionally not executable PE binaries.
+    foreach ($relative in @('plugins/unrar/unrar.dll', 'plugins/unrar/UNRAR-LICENSE.txt')) {
+        $runtime = Join-Path $stage $relative
+        $runtimeBytes = [IO.File]::ReadAllBytes($runtime)
+        Remove-Item -LiteralPath $runtime
+        try {
+            foreach ($configuration in @('Release', 'Debug')) {
+                $failure = $null
+                try { Test-DistributionStage -Stage $stage -Configuration $configuration -DumpbinExe $fakeDumpbin }
+                catch { $failure = $_.Exception.Message }
+                if ($null -eq $failure -or -not $failure.Contains('Missing: ' + $relative.Replace('/', '\'))) {
+                    throw "Expected missing UnRAR runtime rejection for $configuration/$relative; got '$failure'"
+                }
+            }
+            if ((Get-FileHash -LiteralPath $verifiedManifest -Algorithm SHA256).Hash -cne $verifiedHash) {
+                throw 'Missing UnRAR runtime must be rejected before manifest regeneration.'
+            }
+        }
+        finally { [IO.File]::WriteAllBytes($runtime, $runtimeBytes) }
+    }
+    Write-Host 'PASS: both package variants reject missing UnRAR DLL or license before manifest generation.'
     $extraFile = Join-Path $stage 'audit-extra.txt'
     Set-Content -LiteralPath $extraFile -Value 'harmless unapproved file' -Encoding ascii
     Assert-PayloadMismatch 'Unexpected: audit-extra.txt'

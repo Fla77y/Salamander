@@ -35,6 +35,9 @@ Copyright (C) Microsoft Corporation 1993-1997
 === Alexander Roshal ===
 Portions of UnRAR plugin utilizes decompression library written by Alexander Roshal.
 Copyright (C) 1993-2019 Alexander Roshal
+The separately built UnRAR 7.2.7 engine is derived from RARLAB's original source archive.
+Its unmodified license is distributed as plugins/unrar/UNRAR-LICENSE.txt.
+Source: https://www.rarlab.com/rar/unrarsrc-7.2.7.tar.gz
 
 === Martin Prikryl ===
 Portions of WinSCP plugin licensed from Martin Prikryl.

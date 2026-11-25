@@ -127,6 +127,10 @@ if (-not $SkipBuild) {
         param($Executable, $Arguments)
         Invoke-Checked $Executable $Arguments
     }
+    Invoke-UnrarRuntimeBuild -Msbuild $msbuild -Repository $repository -BuildRoot $buildRootFull -Invoke {
+        param($Executable, $Arguments)
+        Invoke-Checked $Executable $Arguments
+    }
 }
 foreach ($configuration in @('Debug', 'Release')) {
     $expectedBinary = Join-Path $variantPaths[$configuration] 'salamand.exe'
@@ -134,6 +138,7 @@ foreach ($configuration in @('Debug', 'Release')) {
         throw "Build output is missing: $expectedBinary"
     }
     Assert-ZipSfxPayload -Directory $variantPaths[$configuration]
+    Assert-UnrarRuntime -Directory $variantPaths[$configuration]
 }
 
 Build-CompiledHelp -Repository $repository -HhcExe $hhcExe -OutputDirectories @(
@@ -152,6 +157,7 @@ foreach ($configuration in @('Debug', 'Release')) {
         -StagedDirectory $stage -RequireMatchingPayloads -RequireSolutionPluginPayloads `
         -RequiredShippedModules @('7zip','checksum','filecomp','renamer','pictview')
     Assert-StagedZipSfx -BuiltDirectory $variantPaths[$configuration] -Stage $stage
+    Assert-UnrarRuntime -Directory $stage -ReferenceDirectory $variantPaths[$configuration]
     if ($configuration -eq 'Release') {
         Assert-ReleasePayloadOrigins -Stage $stage -Repository $repository -BuiltDirectory $variantPaths[$configuration] -RuntimeDirectory $crt.Release
     }

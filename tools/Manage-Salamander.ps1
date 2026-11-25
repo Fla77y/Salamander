@@ -77,7 +77,7 @@ Open Salamander – Verwaltung für Visual Studio 2026
   manage.cmd --test-gui-unicode-parent  F5/F6 in kurzen Unicode-Elternverzeichnissen prüfen
   manage.cmd --test-recycle-restore  Opt-in: echten Unicode-F8-Papierkorb und verlustfreie Wiederherstellung prüfen
   manage.cmd --test-plugin-exports  x64-Debug/Release-Plugins auf PE-Exports und SDK-ABI prüfen (nur lesen)
-  manage.cmd --test-plugin-load  Opt-in: reale Plugin-Manager-Initialisierung für vier Plugins (lädt alle installierten)
+  manage.cmd --test-plugin-load  Opt-in: reale Plugin-Manager-Initialisierung aller deklarierten Plugins inkl. UnRAR
   manage.cmd --test-gui-unicode-transfer  UTF-16-F5/F6 mit einem Dateieintrag prüfen
   manage.cmd --test-gui-unicode-transfer-collision  UTF-16-F5/F6-Zielkollision ohne Überschreiben prüfen
   manage.cmd --test-gui-bestfit  Best-Fit-ANSI-Namensverfälschung ohne Fragezeichen prüfen
@@ -291,6 +291,10 @@ function Build-Variants {
             Invoke-Native $Executable $Arguments
         }
     Invoke-ZipSfxBuild -Msbuild $msbuild -Repository $repository -BuildRoot $buildRoot -Mode $Mode -Invoke {
+        param($Executable, $Arguments)
+        Invoke-Native $Executable $Arguments
+    }
+    Invoke-UnrarRuntimeBuild -Msbuild $msbuild -Repository $repository -BuildRoot $buildRoot -Invoke {
         param($Executable, $Arguments)
         Invoke-Native $Executable $Arguments
     }
@@ -784,6 +788,7 @@ try {
                 Invoke-TestCase -Name "Plugin initialization $optMode" -RequiresGuiSafety -Action {
                     . (Join-Path $repository 'tools\release\Plugin-Runtime-Prerequisites.ps1')
                     $pluginBuild = Get-VariantDirectory $optMode
+                    Assert-UnrarRuntime -Directory $pluginBuild
                     $testedExe = Join-Path $pluginBuild 'salamand.exe'
                     $pictviewFile = Join-Path $pluginBuild 'plugins\pictview\pictview.spl'
                     $verifiedWic = $false
