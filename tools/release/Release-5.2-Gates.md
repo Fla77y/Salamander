@@ -77,6 +77,8 @@ The original PictView/PVW32 engine is **not fully replaced feature-for-feature**
 
 ## 3. Mandatory clean Windows 11 x64 release test
 
+**25 November 2026 — owner-reported functional PASS:** following the rebuild/setup on `1b803c7d87f1d786ee210f93213ecf41df62a02a`, the owner reported that all tests in a clean VM succeeded. This refers to the requested portable startup, installer, Plugin Manager Test All, RAR4/RAR5 open/extract, PictView, F1 and uninstall checks. The earlier missing UnRAR DLL error was not reported again. Exact tested artifact hashes, VM OS build, separate snapshot evidence, per-case logs/screenshots and uninstall cleanup details were not supplied. The final artifact gates, upgrade/rollback, and release approval remain open. See PKG-03/04 and J-20261125-35.
+
 Use two **fresh Windows 11 x64 VM snapshots** without Visual Studio, Windows SDK, or a separately installed VC++ redistributable. The GitHub-hosted Windows builder is **not** an acceptable substitute.
 
 - [ ] Snapshot A: download the exact final-head artifact ZIP; verify Release-only SHA-256 manifest locally; extract the Release portable 7z to a disposable user folder. Start `salamand.exe` (no SDK/IDE), browse a few directories, open F1 help, check Plugin Manager and launch representative plugins, F3 PictView for BMP/PNG/JPEG/TIFF, close normally. Check Event Viewer and any missing-DLL dialogs.

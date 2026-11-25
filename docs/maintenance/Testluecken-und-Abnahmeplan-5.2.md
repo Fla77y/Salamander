@@ -2,7 +2,7 @@
 
 > **Verbindlicher Arbeitskatalog für offene Qualitäts- und Release-Nachweise**
 >
-> Stand 25. November 2026. Audit-Fortsetzung auf `bf51d3a6` (Dokumentationscommit `0b6c0365`); letzte dokumentierte Vollregression auf `bf51d3a6`: 132 PASS / 0 FAIL / 33 SKIP. Rebuild/Setup GREEN auf `1b803c7d`, neue Clean-VM-Abnahme offen. Release NO-GO. Historische RED-Nachweise und einzelne SHAs bleiben bei den jeweiligen Gap-IDs erhalten.
+> Stand 25. November 2026. Audit-Fortsetzung auf `bf51d3a6` (Dokumentationscommit `0b6c0365`); letzte dokumentierte Vollregression auf `bf51d3a6`: 132 PASS / 0 FAIL / 33 SKIP. Rebuild/Setup GREEN auf `1b803c7d`, Clean-VM-Funktionstest PASS laut Nutzer, formale finale Artefaktabnahme offen. Release NO-GO. Historische RED-Nachweise und einzelne SHAs bleiben bei den jeweiligen Gap-IDs erhalten.
 >
 > [Technische Maßnahmen und Abdeckungsverzeichnis](Code-Audit-und-Massnahmenkatalog-5.2.md) ergänzen die folgenden verbindlichen Abnahmebedingungen.
 >
@@ -632,6 +632,8 @@ Technische Maßnahmen: [AUD-ARCH-0001](Code-Audit-und-Massnahmenkatalog-5.2.md#a
 - **Quellen:** `src/plugins/shared/`, `docs/pictview-wic-migration.md`.
 
 ### [ ] UP-03 – Archive und externe/virtuelle Dateisysteme (**P0**, OFFEN)
+
+**25.11.2026 – Clean-VM-Funktionsabnahme PASS laut Nutzer:** korrigierter Paketstand im unmittelbar vorangegangenen Prüfschritt erfolgreich; siehe PKG-03/04 und J-20261125-35. Kein unabhängiger finaler Artefaktnachweis und keine pauschale Schließung.
 
 **25.11.2026 – neuer Teilnachweis:** Vollregression `bf51d3a696bb3e6641ff9df5ded8053ef10bf836` 132/0/33; siehe QA-03 und Entwicklungsjournal J-20261125-33. Kein Abschluss dieser ID; bisherige offene Abnahmebedingungen bleiben bestehen.
 
@@ -1289,6 +1291,8 @@ Technische Maßnahmen: [AUD-TEST-0001](Code-Audit-und-Massnahmenkatalog-5.2.md#a
 
 ### [ ] PKG-01 – Vollständiges und byteidentisches Plugin-Paket (**P0**, VORBEREITET)
 
+**25.11.2026 – Clean-VM-Funktionsabnahme PASS laut Nutzer:** korrigierter Paketstand im unmittelbar vorangegangenen Prüfschritt erfolgreich; siehe PKG-03/04 und J-20261125-35. Kein unabhängiger finaler Artefaktnachweis und keine pauschale Schließung.
+
 **25.11.2026 – Paket-Teilnachweis GREEN:** `manage.cmd --setup` auf `1b803c7d87f1d786ee210f93213ecf41df62a02a` erfolgreich; siehe PKG-02 und Journal J-20261125-34. Keine Schließung dieser ID; verbleibende Abnahmebedingungen unverändert.
 
 **25.11.2026 – echte Clean-VM-Abnahme RED (AUD-PKG-0001, P0; Nutzerbericht):** Installationstest soweit erfolgreich, beim ersten Salamander-Start und der Plugin-Installation Meldung `unrar.dll nicht gefunden`. Keine vollständigen VM-Logs vorgelegt. `git ls-files '*unrar*.dll'` und rekursive Suche `.Build` nach `unrar*.dll` ohne Fund laut Nutzer. `src/plugins/unrar/unrar.cpp`, `InterfaceForArchiver.Init` (um Z. 914–940) lädt die benachbarte `unrar.dll` via LoadLibrary und prüft `RARGetDllVersion >= 8` sowie sechs weitere Exporte. Der DLL-Build fehlt in der Solution und der vorherige Sollvertrag enthielt nur SPL, SLG und CHM. Direkte PE-Imports und vier erfolgreich beobachtete Plugins konnten dies nicht erkennen. Der frühere Sollbestand war bezüglich dynamischer Abhängigkeiten unvollständig. Release NO-GO.
@@ -1324,6 +1328,8 @@ Technische Maßnahmen: [AUD-TEST-0001](Code-Audit-und-Massnahmenkatalog-5.2.md#a
   Verzeichnis-Fixture; echte Paketabnahme steht aus.
 
 ### [ ] PKG-02 – Allowlist, Abhängigkeiten, Lizenzdateien (**P0**, TEILBELEGT)
+
+**25.11.2026 – Clean-VM-Funktionsabnahme PASS laut Nutzer:** korrigierter Paketstand im unmittelbar vorangegangenen Prüfschritt erfolgreich; siehe PKG-03/04 und J-20261125-35. Kein unabhängiger finaler Artefaktnachweis und keine pauschale Schließung.
 
 **25.11.2026 – Rebuild und Paketierung GREEN (PKG-01/02/03/04, BUILD-01, AUD-PKG-0001):** `manage.cmd --setup`, 19:05:23–19:09:45 CET, sauberer getrackter HEAD `1b803c7d87f1d786ee210f93213ecf41df62a02a`, SkipBuild=False, Windows NT 10.0.26300, PowerShell 7.7.0, VS 2026/MSBuild 18.12.3, Windows SDK 10.0.26100.0, Release-CRT 14.44.35112. Dauer 00:04:21.197; Nutzertranskript `.Build/logs/manage-20261125-190523-943-78cea4.log`. Rebuild Debug/Release x64, Win32-SFX-Konverter und elf Sprachpakete je Variante, 32 HTML-Hilfeprojekte, UnRAR-7.2.7-Quellhash und neuer x64-DLL-Build PASS. DLL-SHA256 `9226EB386FBE7725A2359BA84D785B27DE91CEB3F21FF60802FE74B92DB70FEF` identisch in Build und beiden Stages, Lizenzprüfung PASS; anderer Binärhash als im vorherigen Plugin-Load-Test, daher keine Übertragung dessen Binärnachweises. Je 40 Sidecars und 33 SPLs mit Build-/Stage-SHA-256 identisch, keine undeclared SPLs; WinSCP weiterhin source-only (34 Module, 408 Operationsslots, Fähigkeiten NOT_ASSESSED). Debug: 63 PE, 409 Dateien vor Manifest, 410 im 7z; Release: 52 PE, 279 nichtgenerierte Dateien mit exakter unabhängiger Positivliste und Herkunfts-SHA256, 280 inkl. Manifest im erneut extrahierten 7z, 279 interne Datei-Hashes verifiziert. Beide 7z-Integritätsprüfungen und Inno-Setup-6.7.4-Kompilierungen PASS. Vier Ausgaben unter `.Build/dist/`: `OpenSalamander-Debug-x64-Setup.exe` 35206851 Bytes, `OpenSalamander-Debug-x64.7z` 30604400 Bytes, `OpenSalamander-Release-x64-Setup.exe` 7858306 Bytes, `OpenSalamander-Release-x64.7z` 5819169 Bytes. Äußere Artefakt-SHA256 nicht im Transkript ausgewiesen; vor VM-Transfer ermitteln und vergleichen. Keine Installation, kein Start der neu gebauten Paketbinärdateien, keine Deinstallation oder Upgradeprüfung in diesem Lauf. Debug ausschließlich intern. Vorheriger Volltest auf `bf51d3a6` 132/0/33 bleibt eigener Nachweis. PKG-01/02 und BUILD-01 teilbelegt; PKG-03/04/05 und AUD-PKG-0001 bleiben offen (Auditstatus IMPLEMENTED_UNVERIFIED). Nächster Abnahmeschritt: separate frische Windows-11-x64-VM-Snapshots ohne Entwicklungswerkzeuge/zusätzliche VC++-Redist für portable Variante und Installer, Erststart, Plugin Manager Test All, RAR4/5-Lesen und bytegenaues Entpacken, F1/F3, Deinstallation; Upgrade/Rollback separat. Dynamische Abhängigkeiten und Lizenz-/Lieferfreigaben bleiben offen. Keine Produkt-/Testcodeänderung; Release NO-GO.
 
@@ -1370,7 +1376,9 @@ Technische Maßnahmen: [AUD-PKG-0001](Code-Audit-und-Massnahmenkatalog-5.2.md#au
 - **Quellen:** `tools/release/Package-Helpers.ps1`,
   `tools/release/tests/Test-ReleasePublicArtifact.ps1`.
 
-### [ ] PKG-03 – Saubere Windows-11-VM: portable Variante (**P0**, OFFEN)
+### [ ] PKG-03 – Saubere Windows-11-VM: portable Variante (**P0**, TEILBELEGT)
+
+**25.11.2026 – Clean-VM-Funktionsabnahme PASS (Nutzerbericht):** Nach dem dokumentierten Rebuild/Setup auf `1b803c7d87f1d786ee210f93213ecf41df62a02a` meldet der Nutzer: „Alle Tests waren in einer sauberen VM erfolgreich“. Bezug ist die unmittelbar zuvor angeforderte Prüfliste: portable Version starten, Release-Setup installieren/starten, Plugin Manager Test All, RAR4/RAR5 öffnen und entpacken, PictView und F1-Hilfe prüfen, beenden/deinstallieren. Der frühere UnRAR-Erststartfehler wurde im berichteten Gegenlauf nicht erneut gemeldet. Positiver manueller Funktionsnachweis; keine unabhängig eingesehenen VM-Protokolle oder Screenshots, keine separat bestätigten Artefakt-SHA256, VM-OS-Build, Einzelresultate, Snapshot-Trennung, konkreten Formate/Dateihashes oder Bereinigung von Dateien/Shortcuts. Erwarteter Paketursprung ist der genannte Build, nicht unabhängig attestiert. PKG-03/04 jetzt TEILBELEGT; PKG-02 und AUD-PKG-0001 bleiben wegen der formalen finalen Artefaktabnahme, vollständigen Abhängigkeits-/Lizenzprüfung und weiterer Kriterien offen (Auditstatus IMPLEMENTED_UNVERIFIED). Upgrade/Rollback 5.0→5.2, übrige Plugin-Funktionsfälle, 33 SKIP der Vollregression, finale CI-, Signatur-/Public-Artifact-Gates und Code-Audit nicht pauschal als PASS werten. Keine Produkt-/Teständerung. Release NO-GO. Nächste priorisierte Produktarbeit gemäß Maßnahmenkatalog: AUD-WORKER-0001 (P0), F6-Vorprüfung leerer benannter NTFS-Datenströme und Abfragefehler; RED/GREEN-Regression und tatsächliche Zweivolumen-Abnahme gemäß UP-04/QA-01. Kein erneuter Build oder Test ausschließlich wegen dieses Dokumentationscommits erforderlich.
 
 **25.11.2026 – Paket-Teilnachweis GREEN:** `manage.cmd --setup` auf `1b803c7d87f1d786ee210f93213ecf41df62a02a` erfolgreich; siehe PKG-02 und Journal J-20261125-34. Keine Schließung dieser ID; verbleibende Abnahmebedingungen unverändert.
 
@@ -1392,7 +1400,9 @@ Neue DLL-Paketierung und Erststartkorrektur siehe PKG-02. Clean-VM-Test mit korr
 - **Abnahme:** Vollständiger protokollierter PASS auf **exakten finalen
   Artefakthashes**. Eine CI-Runner-VM mit Entwicklerwerkzeugen zählt nicht.
 
-### [ ] PKG-04 – Saubere VM: Installer, Deinstallation, Upgrade (**P0**, OFFEN)
+### [ ] PKG-04 – Saubere VM: Installer, Deinstallation, Upgrade (**P0**, TEILBELEGT)
+
+**25.11.2026 – Clean-VM-Funktionsabnahme PASS laut Nutzer:** korrigierter Paketstand im unmittelbar vorangegangenen Prüfschritt erfolgreich; siehe PKG-03/04 und J-20261125-35. Kein unabhängiger finaler Artefaktnachweis und keine pauschale Schließung.
 
 **25.11.2026 – Paket-Teilnachweis GREEN:** `manage.cmd --setup` auf `1b803c7d87f1d786ee210f93213ecf41df62a02a` erfolgreich; siehe PKG-02 und Journal J-20261125-34. Keine Schließung dieser ID; verbleibende Abnahmebedingungen unverändert.
 
