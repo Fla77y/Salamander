@@ -16,7 +16,7 @@ $configuration = 'Release'
 $validOptions = @('--update', '--build', '--test', '--setup', '--run',
                   '--test-gui-large-unicode-copy', '--test-gui-large-unicode-parent-copy', '--test-gui-long-history', '--test-gui-long-clipboard', '--test-gui-viewer-reliability', '--test-gui-legacy-find', '--test-clipboard-snapshot',
                   '--test-legacy-find-efs', '--test-legacy-find-near-limit', '--test-wer-build',
-                  '--debug', '--release', '--all', '--build-delta', '--build-clean', '--test-all', '--test-gui', '--test-gui-max-path', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-gui-unicode-permanent-delete', '--test-gui-unicode-parent', '--test-recycle-restore', '--test-plugin-exports', '--test-plugin-load', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-unicode-find', '--test-gui-manual', '--test-gui-temp-delete', '--test-pictview', '--test-pictview-window', '--test-pictview-host', '--test-plugin-pictview', '--test-plugin-pictview-unicode', '--diagnose-gui', '--help', '-h', '/?')
+                  '--debug', '--release', '--all', '--build-delta', '--build-clean', '--test-all', '--test-gui', '--test-gui-max-path', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-gui-unicode-permanent-delete', '--test-gui-unicode-parent', '--test-recycle-restore', '--test-plugin-exports', '--test-zip-sfx', '--test-plugin-load', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-unicode-find', '--test-gui-manual', '--test-gui-temp-delete', '--test-pictview', '--test-pictview-window', '--test-pictview-host', '--test-plugin-pictview', '--test-plugin-pictview-unicode', '--diagnose-gui', '--help', '-h', '/?')
 $requestedSet = [System.Collections.Generic.HashSet[string]]::new(
     [StringComparer]::OrdinalIgnoreCase)
 
@@ -39,6 +39,7 @@ Open Salamander – Verwaltung für Visual Studio 2026
   manage.cmd --build-clean  Output-Ordner loeschen und vollstaendig neu bauen
   manage.cmd --test         Windows-Dateisystem-/Namens-Tests und Projekt-Regressionstests
   manage.cmd --test-all     Alle registrierten automatischen Standardtests; Opt-ins als begründete SKIPs
+  manage.cmd --test-zip-sfx  Store/Deflate, ohne/mit ZipCrypto, beide Buildvarianten (7-Zip, Windows-Desktop; Passwort automatisch)
                             JSON-Bericht; Exitcode 1 bei FAIL oder erforderlichem SKIP
                             Geplante Scope-Ausschlüsse sind kein PASS und keine Release-Abnahme.
                             (Release und Debug x64; --release/--debug begrenzt die GUI-Modi)
@@ -130,6 +131,7 @@ function Expand-AutomatedTestActions {
     [void]$RequestedSet.Add('--test-pictview')
     [void]$RequestedSet.Add('--test-pictview-window')
     [void]$RequestedSet.Add('--test-plugin-exports')
+    [void]$RequestedSet.Add('--test-zip-sfx')
     [void]$RequestedSet.Add('--test-clipboard-snapshot')
     [void]$RequestedSet.Add('--test-wer-build')
     foreach ($option in $AvailableOptions) {
@@ -688,6 +690,28 @@ try {
             $werBuild = Join-Path $repository 'tools\release\tests\Invoke-WerBuildVerification.ps1'
             Invoke-TestCase -Name 'WER isolated core build matrix' -Action {
                 Invoke-Native 'pwsh.exe' @('-NoProfile', '-File', $werBuild, '-AllConfigurations')
+            }
+        }
+
+        # Isolated SFX executables do not use the running Salamander host or
+        # send foreground keystrokes. Exercise all eight cases independently.
+        if ($requestedSet.Contains('--test-zip-sfx')) {
+            $sfxTest = Join-Path $repository 'tools\release\tests\Test-ZipSfxRoundtrip.ps1'
+            foreach ($sfxMode in @('Release', 'Debug')) {
+                if ($requestedSet.Contains('--release') -and $sfxMode -ne 'Release') { continue }
+                if ($requestedSet.Contains('--debug') -and $sfxMode -ne 'Debug') { continue }
+                foreach ($sfxMethod in @('Store', 'Deflate')) {
+                    foreach ($sfxEncryption in @('None', 'ZipCrypto')) {
+                        Invoke-TestCase -Name "ZIP SFX $sfxMode $sfxMethod $sfxEncryption" -Action {
+                            $sevenZip = Find-Executable '7z.exe' @(
+                                (Join-Path ([Environment]::GetFolderPath('ProgramFiles')) '7-Zip\7z.exe'),
+                                (Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) '7-Zip\7z.exe'))
+                            Invoke-Native 'pwsh.exe' @('-NoProfile', '-NonInteractive', '-File', $sfxTest,
+                                '-BuildDirectory', (Get-VariantDirectory $sfxMode), '-BuildRoot', $buildRoot,
+                                '-SevenZipExe', $sevenZip, '-Method', $sfxMethod, '-Encryption', $sfxEncryption)
+                        }
+                    }
+                }
             }
         }
 
