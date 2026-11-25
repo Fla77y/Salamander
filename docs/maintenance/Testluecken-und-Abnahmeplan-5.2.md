@@ -2,7 +2,7 @@
 
 > **Verbindlicher Arbeitskatalog für offene Qualitäts- und Release-Nachweise**
 >
-> Stand 25. November 2026. Code-Audit auf `8c136b61`, zuletzt dokumentierter Standardlauf auf `22279c58` grün, gezielter ShellClipboard-Test dort rot. Letzte dokumentierte Vollregression auf `e0dd5d57` mit 129 PASS / 1 FAIL / 35 SKIP. Release NO-GO. Die einzelnen historischen Läufe und ihre SHAs stehen bei den jeweiligen Gap-IDs.
+> Stand 25. November 2026. Audit-Fortsetzung auf `bf51d3a6` (Dokumentationscommit `0b6c0365`); letzte dokumentierte Vollregression auf `bf51d3a6`: 132 PASS / 0 FAIL / 33 SKIP. Release NO-GO. Historische RED-Nachweise und einzelne SHAs bleiben bei den jeweiligen Gap-IDs erhalten.
 >
 > [Technische Maßnahmen und Abdeckungsverzeichnis](Code-Audit-und-Massnahmenkatalog-5.2.md) ergänzen die folgenden verbindlichen Abnahmebedingungen.
 >
@@ -583,6 +583,8 @@ Nächste Prüfung: PowerShell-AST-Parser, dann isolierter
 
 ### [ ] UP-02 – Unicode-Plugin-/SDK-Grenzen (**P0**, BLOCKIERT/TEILBELEGT)
 
+**25.11.2026 – neuer Teilnachweis:** Vollregression `bf51d3a696bb3e6641ff9df5ded8053ef10bf836` 132/0/33; siehe QA-03 und Entwicklungsjournal J-20261125-33. Kein Abschluss dieser ID; bisherige offene Abnahmebedingungen bleiben bestehen.
+
 Technische Maßnahmen: [AUD-ARCH-0001](Code-Audit-und-Massnahmenkatalog-5.2.md#aud-arch-0001), [AUD-SDK-0001](Code-Audit-und-Massnahmenkatalog-5.2.md#aud-sdk-0001), [AUD-VIEW-0002](Code-Audit-und-Massnahmenkatalog-5.2.md#aud-view-0002).
 
 **25.11.2026, `8b9a31b`:** Beide PictView-PE-Gates, native Unicode-SDK-Regression, PictView headless/interaktive WIC-Fenstertests und 66/66 x64-Plugin-ABI-Prüfungen PASS. F3-Host-Opt-ins in `--test-all` SKIP, separate GREEN-Baseline `cc0b8ab` unverändert. Gesamtregression 108/2/35; keine vollständige Plugin-Abnahme.
@@ -630,6 +632,8 @@ Technische Maßnahmen: [AUD-ARCH-0001](Code-Audit-und-Massnahmenkatalog-5.2.md#a
 - **Quellen:** `src/plugins/shared/`, `docs/pictview-wic-migration.md`.
 
 ### [ ] UP-03 – Archive und externe/virtuelle Dateisysteme (**P0**, OFFEN)
+
+**25.11.2026 – neuer Teilnachweis:** Vollregression `bf51d3a696bb3e6641ff9df5ded8053ef10bf836` 132/0/33; siehe QA-03 und Entwicklungsjournal J-20261125-33. Kein Abschluss dieser ID; bisherige offene Abnahmebedingungen bleiben bestehen.
 
 **25.11.2026 – manueller UnRAR-Funktionstest PASS (Nutzerbericht; UP-03/PKG-02/AUD-PKG-0001):** Sämtliche bereitgestellten RAR4- und RAR5-Testarchive konnten im Salamander-UnRAR-Plugin durchsucht und entpackt werden. Remote-HEAD zum Berichtszeitpunkt `1a1b49f799e11d0e544a323fc5b31dec8b263ab1` (UnRAR-Runtime-Korrektur); tatsächliche Test-SHA, Buildvariante, Testumgebung, Archivliste und unabhängige Byte-/Hashprüfung nicht übermittelt. Positiver manueller Funktionsnachweis für die getesteten Archive, keine vollständige Clean-VM-, Paket-, Plugin-, Unicode-/Langpfad-, Passwort- oder Negativfall-Abnahme. UP-03, PKG-02 und AUD-PKG-0001 nicht schließen. Release NO-GO. Keine Produkt- oder Teständerung. Nächste noch nicht belegte Prüfungen: Pakethelfer, Setup, Plugin-Load Debug/Release, Vollregression sowie Clean-VM-Erststart mit dem neuen Paket; bereits ausgeführte Prüfungen durch Protokolle belegen.
 
@@ -958,6 +962,8 @@ der Shell-Properties steht noch aus.
 
 ### [ ] UP-06 – Shell, Zwischenablage, externe Programme, Dateiattribute (**P1**, OFFEN)
 
+**25.11.2026 – neuer Teilnachweis:** Vollregression `bf51d3a696bb3e6641ff9df5ded8053ef10bf836` 132/0/33; siehe QA-03 und Entwicklungsjournal J-20261125-33. Kein Abschluss dieser ID; bisherige offene Abnahmebedingungen bleiben bestehen.
+
 **25.11.2026, `51683c3`, Vollregression 110 PASS/0 FAIL/35 SKIP:** Alle automatisierten Clipboard-, Shell-, Editor- und GUI-Sicherheitsfälle in diesem Scope PASS; Recycle-Restore-Opt-ins nicht ausgeführt. Siehe J-20261125-06. Keine pauschale Schließung.
 
 **25.11.2026, `48db923`:** ASCII-Operationsbaseline, Unicode-Transfer, Unicode-Rename und Unicode-Multiselect Release PASS, einschließlich 263er Pfad, 17-MiB+-Same-Volume-Move und 17-MiB-Hintergrundtransfers. Keine Produkt-/Teständerung, keine pauschale Schließung; physischer Cross-Volume-Unterfall weiterhin offen. Siehe QA-03/J-20261125-05.
@@ -1071,6 +1077,8 @@ Windows-Ausführung liegt für diese Commits vor.**
 UP-07 bleibt TEILBELEGT.
 
 ### [ ] UP-07 – Pfadgrenzwerte und Dateisystembedingungen (**P1**, TEILBELEGT)
+
+**25.11.2026 – neuer Teilnachweis:** Vollregression `bf51d3a696bb3e6641ff9df5ded8053ef10bf836` 132/0/33; siehe QA-03 und Entwicklungsjournal J-20261125-33. Kein Abschluss dieser ID; bisherige offene Abnahmebedingungen bleiben bestehen.
 
 **25.11.2026 – Vollregression GREEN auf `8c136b618abe727e92243bd215941afb40bbdbb2`:** sauberer Quellstand; isolierter ShellClipboard Debug 50/50 und Release 50/50 PASS ohne Trace-Gate (exakte Copy-/Cut-Pfade, Effekte, Quellintegrität und Clipboard-Restore); `manage.cmd --build-delta --test-all` 130 PASS / 0 FAIL / 35 SKIP in 18:31,777 min, beide Legacy-Find-Matrizen 37/37, x64 Debug/Release-Build, vier WER-Buildvarianten, ZIP/SFX-Matrix und 33 SPL-ABI-Prüfungen je Variante PASS. Der frühere sporadische F8-Temp-Delete-RED trat nicht erneut auf; seine ursprüngliche Ursache bleibt unbelegt. SKIP ist keine Abnahme.
 
@@ -1197,6 +1205,8 @@ Technische Maßnahmen: [AUD-MGMT-0001](Code-Audit-und-Massnahmenkatalog-5.2.md#a
 
 ### [ ] MGMT-03 – Test-Registry gegen unbemerkte Auslassungen (**P2**, TEILBELEGT)
 
+**25.11.2026 – neuer Teilnachweis:** Vollregression `bf51d3a696bb3e6641ff9df5ded8053ef10bf836` 132/0/33; siehe QA-03 und Entwicklungsjournal J-20261125-33. Kein Abschluss dieser ID; bisherige offene Abnahmebedingungen bleiben bestehen.
+
 Technische Maßnahmen: [AUD-TEST-0001](Code-Audit-und-Massnahmenkatalog-5.2.md#aud-test-0001), [AUD-CI-0001](Code-Audit-und-Massnahmenkatalog-5.2.md#aud-ci-0001).
 
 **25.11.2026, 00:52:13–01:07:17 CET, sauberer Windows-HEAD `51683c3853b274a39a84331dbb4f9ee35428179d`: `--test-all` GREEN, 110 PASS / 0 FAIL / 35 SKIP (Sammlungsebene), 00:15:03.964.** Log `manage-20261125-005213-136-23b815.log`, JSON `manage-20261125-005213-136-23b815.results.json` (lokal, JSON nicht separat vorgelegt). Standardtests einschließlich 70 PS-Parser, 90 Registry-Testquellen, 24 native C++-Regressionen und 18 Windows/.NET-Dateisystemassertions PASS; WER-Core 4/4 (x86/x64 Debug/Release), 66/66 x64-Plugin-PE-Tabellen, native WIC headless und interaktiver HWND-/Lock-Vertrag x86/x64, alle 50 GUI-Sammlungsgruppen Debug/Release, Legacy Find je 37/37 und ViewUnicode je 5/5 ohne überlebende Salamander-Prozesse PASS. Alle fünf Fokus-/Modalabbrüche aus J-20261125-04 auch im Volltest nicht reproduziert; keine neue Produkt- oder Teständerung seit den gezielten Gegenläufen. Zwei begrenzte reine Clipboard-Schreibwiederholungen und acht begrenzte read-only Clipboard-Abfragewiederholungen im Protokoll erfolgreich toleriert; keine blinde Wiederholung destruktiver Eingaben, Restursache der temporären Clipboard-Störungen nicht untersucht. Reale GUI-Navigation/Clipboard mit 32700 UTF-16-Einheiten und 255er Namen in beiden x64-Modi PASS, kein Nachweis für Legacy-Find-NearLimit. 32-MiB-Worker-Copy inklusive Pause/Resume, Zeitstempel, ReadOnly und Unicode-ADS sowie Cancel/Collision/LockedSource in isolierten Fällen PASS; physischer Cross-Volume-Unterfall SKIP. Git-Vergleich mit `cc0b8ab` bestätigt ausschließlich Wartungsdokumente und zwei Testdateien geändert, kein Produktcode. PictView-F3-Opt-ins separat auf `cc0b8ab` GREEN (14 Hostfälle), hier 14 Scope-SKIPs. Weitere SKIPs: 8 Recycle-Restore-Fälle, 2 Plugin-Manager-Initialisierungen, 2 EFS-, 2 Legacy-Find-NearLimit-Fälle, 1 Cross-Volume-Unterfall und 6 manuelle/diagnostische/Abnahme-/Alias-Einträge. Keine Umwertung von SKIP zu PASS. Kein erneuter vollständiger Solution-Build oder aktuelles Setup in diesem Lauf; vorheriger x64-Solution-/PE-Gate-Nachweis auf produktgleichem `8b9a31b` bleibt gültig. Keine vollständige Win32-Plugin-Matrix, VM-, Paket-, historische Funktionsparitäts- oder Release-Abnahme. **Neue grüne automatisierte Referenzbaseline `51683c3`.** Keine weitere GUI-Treiberkorrektur ohne neuen Befund. Nächster operativer Windows-Schritt: `manage.cmd --build-delta --test --setup` für aktuellen Debug/Release-x64-Build, Exportgates und neue Paketbaseline (letzter Paketnachweis noch vor Entfernung der zwei Demo-Plugins und SDK-Erweiterung); keine Installation/Veröffentlichung. Anschließend ZIP/7-Zip/Renamer-Funktionsbaselines und getrennte CLI-Suiten vor Unicode-Migration vorbereiten. Release weiterhin NO-GO.
@@ -1310,6 +1320,8 @@ Technische Maßnahmen: [AUD-TEST-0001](Code-Audit-und-Massnahmenkatalog-5.2.md#a
   Verzeichnis-Fixture; echte Paketabnahme steht aus.
 
 ### [ ] PKG-02 – Allowlist, Abhängigkeiten, Lizenzdateien (**P0**, TEILBELEGT)
+
+**25.11.2026 – neuer Teilnachweis:** Vollregression `bf51d3a696bb3e6641ff9df5ded8053ef10bf836` 132/0/33; siehe QA-03 und Entwicklungsjournal J-20261125-33. Kein Abschluss dieser ID; bisherige offene Abnahmebedingungen bleiben bestehen.
 
 **25.11.2026 – manueller UnRAR-Funktionstest PASS (Nutzerbericht; UP-03/PKG-02/AUD-PKG-0001):** Sämtliche bereitgestellten RAR4- und RAR5-Testarchive konnten im Salamander-UnRAR-Plugin durchsucht und entpackt werden. Remote-HEAD zum Berichtszeitpunkt `1a1b49f799e11d0e544a323fc5b31dec8b263ab1` (UnRAR-Runtime-Korrektur); tatsächliche Test-SHA, Buildvariante, Testumgebung, Archivliste und unabhängige Byte-/Hashprüfung nicht übermittelt. Positiver manueller Funktionsnachweis für die getesteten Archive, keine vollständige Clean-VM-, Paket-, Plugin-, Unicode-/Langpfad-, Passwort- oder Negativfall-Abnahme. UP-03, PKG-02 und AUD-PKG-0001 nicht schließen. Release NO-GO. Keine Produkt- oder Teständerung. Nächste noch nicht belegte Prüfungen: Pakethelfer, Setup, Plugin-Load Debug/Release, Vollregression sowie Clean-VM-Erststart mit dem neuen Paket; bereits ausgeführte Prüfungen durch Protokolle belegen.
 
@@ -1435,6 +1447,8 @@ Neue DLL-Paketierung und Erststartkorrektur siehe PKG-02. Clean-VM-Test mit korr
   Plugin-Fähigkeiten je Modul vorher spezifizieren; **UP-01/UP-02**.
 
 ### [ ] FIND-04 – Erweiterte Funktionen und Ergebnisaktionen (**P1**, TEILBELEGT)
+
+**25.11.2026 – neuer Teilnachweis:** Vollregression `bf51d3a696bb3e6641ff9df5ded8053ef10bf836` 132/0/33; siehe QA-03 und Entwicklungsjournal J-20261125-33. Kein Abschluss dieser ID; bisherige offene Abnahmebedingungen bleiben bestehen.
 
 **25.11.2026 – Vollregression GREEN auf `8c136b618abe727e92243bd215941afb40bbdbb2`:** sauberer Quellstand; isolierter ShellClipboard Debug 50/50 und Release 50/50 PASS ohne Trace-Gate (exakte Copy-/Cut-Pfade, Effekte, Quellintegrität und Clipboard-Restore); `manage.cmd --build-delta --test-all` 130 PASS / 0 FAIL / 35 SKIP in 18:31,777 min, beide Legacy-Find-Matrizen 37/37, x64 Debug/Release-Build, vier WER-Buildvarianten, ZIP/SFX-Matrix und 33 SPL-ABI-Prüfungen je Variante PASS. Der frühere sporadische F8-Temp-Delete-RED trat nicht erneut auf; seine ursprüngliche Ursache bleibt unbelegt. SKIP ist keine Abnahme.
 
@@ -1667,6 +1681,8 @@ Technische Maßnahmen: [AUD-TEST-PLUGIN-0001](Code-Audit-und-Massnahmenkatalog-5
   Ausschlüsse (WinAPI-/GUI-Boundaries).
 
 ### [ ] QA-03 – Wiederholbarkeit, GUI-Flakiness und Ressourcen (**P1**, TEILBELEGT)
+
+**25.11.2026 – Vollregression GREEN (132 PASS / 0 FAIL / 33 SKIP):** `manage.cmd --test-all --test-plugin-load`, 18:12:27–18:27:59 CET, sauberer getrackter HEAD `bf51d3a696bb3e6641ff9df5ded8053ef10bf836`, Windows NT 10.0.26300, PowerShell 7.7.0, Laufzeit 00:15:31.302. Nutzertranskript `manage-20261125-181227-759-194dd9.log`, zugehöriger `.results.json` unter `.Build/logs/` (JSON nicht separat eingelesen). Beide Legacy-Find-Matrizen 37/37 PASS, ViewUnicode je 5/5 ohne verbleibende Prozesse, ShellClipboard, ExternalEditor, ExternalEditorNative, UnicodeMasks, Temp-Delete und alle übrigen ausgeführten GUI-Fälle PASS. 73 PowerShell-Skripte, 93 klassifizierte Testquellen, vier WER-Core-Builds, acht SFX-Fälle, zwölf ZIP-Hostfälle (vier Extraktion, acht Mutation), PictView/WIC x86/x64, Pakethelfer inkl. UnRAR-DLL-/Lizenz-Negativfällen und 33 SPL-ABI-Prüfungen je x64-Variante PASS. Echter Plugin-Manager Test All lädt je 33 SPLs und die exakte UnRAR-DLL in Debug/Release; DLL-SHA256 `633A7B1C5688E4F27BA89EFB8E9B2620A63064F95CD59F0BB249145C3CF79903`, Lizenzprüfung PASS. Vier Warnungen bei read-only Clipboard-Kommando 710: einmal fehlender Sentinel-Roundtrip, dreimal keine neue Publikation; begrenzte Wiederholung jeweils erfolgreich. Historischer RED 121/11/33 auf `1a1b49f7` nicht reproduziert, Ursachen nicht abschließend bewiesen. `bf51d3a6` und der nachfolgende Audit-Commit `0b6c0365` ändern nur Dokumentation; der Testnachweis bleibt ausdrücklich auf der tatsächlichen Test-SHA. 33 geplante SKIP-Einträge bleiben ohne neuen Abnahmenachweis (Cross-Volume 1, Recycle-Restore 8, PictView-F3 12, EFS 2, NearLimit 2, manuelle GUI-/A/B-/WER-/Artefakt-/VM-Abnahme bzw. Diagnose und PictView-Alias 6, PictView UnicodeLongPath 2). Die BMP-F3-Baseline innerhalb Plugin-Load ist separat PASS. UP-02/03/06/07, FIND-04, QA-03, MGMT-03, PKG-02 und AUD-PKG-0001 nicht schließen. Keine Produkt-/Testcodeänderung. Paketabnahme: neues Release-Paket mit `manage.cmd --setup`, danach kontrollierte Clean-VM-Installation/Erststart, Plugin-Initialisierung und RAR4/RAR5-Funktionsprüfung. Dynamische Abhängigkeiten, Lizenz-/Lieferfreigaben und weitere Release-Gates bleiben offen. Unabhängig davon bleibt der neue P0-Auditbefund AUD-WORKER-0001 zur F6-Vorprüfung benannter Datenströme die nächste priorisierte Produktaufgabe. Release NO-GO.
 
 **25.11.2026 – Vollregression RED:** HEAD `1a1b49f799e11d0e544a323fc5b31dec8b263ab1`, Arbeitsbaum nicht sauber. `manage.cmd --test-all --test-plugin-load`: 121 PASS / 11 FAIL / 33 geplante SKIP. Log `manage-20261125-161357-362-2fca11.log`. Plugin-Initialisierung aller 33 SPLs und UnRAR-DLL/Lizenz in Debug und Release PASS. Identischer DLL-SHA256: `633A7B1C5688E4F27BA89EFB8E9B2620A63064F95CD59F0BB249145C3CF79903`. Legacy Find Release 37/37, Debug 36/37. Zwei Viewer-Reliability-Fehler wegen unsauberem Arbeitsbaum; sieben Clipboard-/Navigationsfehler, ein Fokusfehler bei offenem Dialog und ein UnicodeMasks-Startfehler. Externe Fokusübernahme durch Hyper-V beobachtet, nicht alle Fehlerursachen abschliessend geklaert. Nachfolgender Git-Diff zeigt ausschliesslich Dokumentationsaenderungen. Keine Produkt- oder Testaenderungen. UP-02/03/06, QA-03, MGMT-03, PKG-02 und AUD-PKG-0001 bleiben offen bzw. teilbelegt. Naechster Schritt: Dokumentation einchecken und Vollregression bei sauberem Arbeitsbaum und ungestoertem Desktop wiederholen. Release NO-GO.
 
