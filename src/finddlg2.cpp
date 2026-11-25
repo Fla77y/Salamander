@@ -1625,15 +1625,14 @@ void CFindDialog::OnContextMenu(int x, int y)
             ici.ptInvoke.x = x;
             ici.ptInvoke.y = y;
 
-            if (!cmdDelete)
-            {
-                ContextMenuInvoke(ContextMenu, (CMINVOKECOMMANDINFO*)&ici); // invoke delete ourselves so it behaves the same via key or context menu
-            }
-
+            // The canonical file Copy/Cut commands use the same verified
+            // OLE publication as the keyboard commands. Other Shell verbs
+            // continue to use the original context menu implementation.
             if (cmdCut || cmdCopy)
+                OnCutOrCopy(cmdCut);
+            else if (!cmdDelete)
             {
-                // also set the preferred drop effect and the origin from Salamander
-                SetClipCutCopyInfo(HWindow, cmdCopy, TRUE);
+                ContextMenuInvoke(ContextMenu, (CMINVOKECOMMANDINFO*)&ici);
             }
 
             // post the Delete command
@@ -1697,7 +1696,7 @@ BOOL CFindDialog::InvokeContextMenu(const char* lpVerb)
                           MB_ICONEXCLAMATION | MB_OK);
     }
     SetCursor(hOldCursor);
-    return TRUE;
+    return ret;
 }
 
 void CFindDialog::OnCutOrCopy(BOOL cut)
@@ -1705,19 +1704,45 @@ void CFindDialog::OnCutOrCopy(BOOL cut)
 #ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
     TraceIsolatedFindClipboard(cut ? "cut-begin" : "copy-begin", S_OK);
 #endif
-    if (InvokeContextMenu(cut ? "cut" : "copy"))
+    // A successful IContextMenu::InvokeCommand("copy"/"cut") does not
+    // guarantee clipboard publication. Publish the native Shell data
+    // object directly, as used by the existing Find drag operation.
+    HWND hListView = FoundFilesListView->HWindow;
+    const DWORD selCount = ListView_GetSelectedCount(hListView);
+    HRESULT hr = E_FAIL;
+    if (selCount > 0 && ValidateSelectedLegacyFindResults() && InitializeOle())
     {
-#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
-        TraceIsolatedFindClipboard("before-drop-metadata", S_OK);
-#endif
-        // also set the preferred drop effect and origin from Salamander
-        SetClipCutCopyInfo(HWindow, !cut, TRUE);
-#ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
-        TraceIsolatedFindClipboard("after-drop-metadata", S_OK);
-#endif
+        HCURSOR hOldCursor = SetCursor(LoadCursor(NULL, IDC_WAIT));
+        char commonPrefixPath[MAX_PATH];
+        int commonPrefixChars;
+        if (GetCommonPrefixPath(commonPrefixPath, MAX_PATH, commonPrefixChars))
+        {
+            CMyEnumFileNamesData data;
+            data.FindDialog = this;
+            data.HListView = hListView;
+            data.CommonPrefixChars = commonPrefixChars;
+            data.LastIndex = -1;
+            IDataObject* selection = CreateIDataObject(HWindow, commonPrefixPath,
+                                                      selCount, MyEnumFileNames, &data);
+            if (selection != NULL)
+            {
+                hr = PublishFindFileSelection(selection, selCount, !cut);
+                selection->Release();
+            }
+            else
+                SalMessageBox(HWindow, LoadStr(IDS_FOUNDITEMNOTFOUND), LoadStr(IDS_ERRORTITLE),
+                              MB_ICONEXCLAMATION | MB_OK);
+        }
+        else
+            SalMessageBox(HWindow, LoadStr(IDS_COMMONPREFIXNOTFOUND), LoadStr(IDS_ERRORTITLE),
+                          MB_ICONEXCLAMATION | MB_OK);
+        SetCursor(hOldCursor);
     }
+    if (FAILED(hr))
+        TRACE_E("Find clipboard publication failed: 0x" << std::hex << hr << std::dec);
 #ifdef OPENSAL_ENABLE_ISOLATED_TEST_CONFIG
-    TraceIsolatedFindClipboard(cut ? "cut-end" : "copy-end", S_OK);
+    TraceIsolatedFindClipboard("data-object-publish-result", hr);
+    TraceIsolatedFindClipboard(cut ? "cut-end" : "copy-end", hr);
 #endif
 }
 

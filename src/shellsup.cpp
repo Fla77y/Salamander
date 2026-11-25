@@ -702,6 +702,68 @@ void EnterLeaveDrop(BOOL enter, void* param)
 // SetClipCutCopyInfo
 //
 
+// Set the metadata on the data object before handing it to OLE. In
+// particular, never add metadata to the previous clipboard owner's data.
+static HRESULT SetFindClipboardDword(IDataObject* data, UINT id, DWORD value)
+{
+    if (id == 0)
+        return E_FAIL;
+    HGLOBAL memory = GlobalAlloc(GMEM_MOVEABLE, sizeof(value));
+    if (memory == NULL)
+        return E_OUTOFMEMORY;
+    void* bytes = GlobalLock(memory);
+    if (bytes == NULL)
+    {
+        GlobalFree(memory);
+        return E_OUTOFMEMORY;
+    }
+    memcpy(bytes, &value, sizeof(value));
+    GlobalUnlock(memory);
+    FORMATETC format = {static_cast<CLIPFORMAT>(id), NULL, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
+    STGMEDIUM medium = {};
+    medium.tymed = TYMED_HGLOBAL;
+    medium.hGlobal = memory;
+    const HRESULT hr = data->SetData(&format, &medium, TRUE);
+    if (hr != S_OK)
+        GlobalFree(memory);
+    return hr;
+}
+
+HRESULT PublishFindFileSelection(IDataObject* data, UINT expectedCount, BOOL copy)
+{
+    if (data == NULL || expectedCount == 0)
+        return E_INVALIDARG;
+
+    // CreateIDataObject is all-or-nothing, but also verify that the Shell
+    // actually exposes the complete selection as a file-drop list.
+    FORMATETC format = {CF_HDROP, NULL, DVASPECT_CONTENT, -1, TYMED_HGLOBAL};
+    STGMEDIUM medium = {};
+    HRESULT hr = data->GetData(&format, &medium);
+    if (FAILED(hr))
+        return hr;
+    const bool complete = medium.tymed == TYMED_HGLOBAL && medium.hGlobal != NULL &&
+        DragQueryFileW(reinterpret_cast<HDROP>(medium.hGlobal), 0xFFFFFFFF, NULL, 0) == expectedCount;
+    ReleaseStgMedium(&medium);
+    if (!complete)
+        return DV_E_FORMATETC;
+
+    hr = SetFindClipboardDword(data, RegisterClipboardFormat(CFSTR_PREFERREDDROPEFFECT),
+                               copy ? (DROPEFFECT_COPY | DROPEFFECT_LINK) : DROPEFFECT_MOVE);
+    if (hr != S_OK)
+        return FAILED(hr) ? hr : E_FAIL;
+    // The legacy origin format is a presence marker; initialize its payload.
+    hr = SetFindClipboardDword(data, RegisterClipboardFormat(SALCF_IDATAOBJECT), 0);
+    if (hr != S_OK)
+        return FAILED(hr) ? hr : E_FAIL;
+
+    // The Shell data object retains its native formats and move semantics.
+    // No independent clipboard mutation or replay of a Shell verb follows.
+    hr = OleSetClipboard(data);
+    if (hr != S_OK)
+        return FAILED(hr) ? hr : E_FAIL;
+    return S_OK;
+}
+
 void SetClipCutCopyInfo(HWND hwnd, BOOL copy, BOOL salObject)
 {
     UINT cfPrefDrop = RegisterClipboardFormat(CFSTR_PREFERREDDROPEFFECT);

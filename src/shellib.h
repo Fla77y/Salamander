@@ -20,6 +20,10 @@ typedef const char* (*CEnumFileNamesFunction)(int index, void* param);
 IDataObject* CreateIDataObject(HWND hOwnerWindow, const char* rootDir, int files,
                                CEnumFileNamesFunction nextFile, void* param);
 
+// Publish a complete Shell file selection, including its drop effect and
+// Salamander origin, in one OLE clipboard operation.
+HRESULT PublishFindFileSelection(IDataObject* data, UINT expectedCount, BOOL copy);
+
 // Creates a context menu interface for the selected files and directories from rootDir
 IContextMenu2* CreateIContextMenu2(HWND hOwnerWindow, const char* rootDir, int files,
                                    CEnumFileNamesFunction nextFile, void* param);
