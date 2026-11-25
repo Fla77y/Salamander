@@ -41,6 +41,8 @@ param(
     [switch]$ShortUnicodeDirectoryRenameOnly,
     [switch]$ShortUnicodeUnsafeOperationsOnly,
     [switch]$ShortOperationsOnly,
+    [ValidateSet('None','ZipCrypto')][string]$ZipHostEncryption,
+    [string]$ZipHostSevenZip,
     [switch]$TemporaryDirectoryDeletionOnly,
     [switch]$UnicodeFindOnly,
     [ValidateSet('Baseline','Cancel','AdvancedInputs','ViewResults','ViewUnicode','ViewLong','ViewStale','ViewMixed','FocusUnicode','FocusLong','FocusStale','ShellClipboard','ShellOpen','ShellProperties','ExternalEditor','ExternalEditorNative','RecycleRestore',
@@ -99,6 +101,9 @@ if ($LargeUnicodeCopyOnly -and -not $IsolatedConfiguration) {
 }
 if ($LargeUnicodeCopyCase -ne 'Copy' -and -not $LargeUnicodeCopyOnly) {
     throw '-LargeUnicodeCopyCase requires -LargeUnicodeCopyOnly.'
+}
+if ($ZipHostEncryption -and (-not $ZipHostSevenZip -or $IsolatedConfiguration -or $ShortOperationsOnly -or $BaselineOnly -or $LegacyFindScenario)) {
+    throw 'ZIP host scenario requires a standalone ordinary host run and 7-Zip fixture tool.'
 }
 Add-Type -AssemblyName System.Windows.Forms
 Add-Type -AssemblyName System.Drawing
@@ -2128,7 +2133,7 @@ $oldClipboard = $null
 $nativeClipboardSnapshot = $null
 $clipboardSnapshotValid = $false
 try {
-    if ($IsolatedConfiguration) {
+    if ($IsolatedConfiguration -or $ZipHostEncryption) {
         Add-Type -Path (Join-Path $PSScriptRoot 'Clipboard-Snapshot.cs')
         $nativeClipboardSnapshot = [SalamanderClipboardSnapshot]::Capture()
     }
@@ -2141,7 +2146,7 @@ catch {
     Write-Warning ('Original clipboard could not be saved; will not overwrite unknown initial state. ' +
         $_.Exception.Message)
 }
-if ($IsolatedConfiguration -and -not $clipboardSnapshotValid) {
+if (($IsolatedConfiguration -or $ZipHostEncryption) -and -not $clipboardSnapshotValid) {
     throw 'Isolated desktop acceptance requires a complete clipboard snapshot.'
 }
 
@@ -4025,6 +4030,10 @@ try {
         $focusProbeName = 'focus-probe.txt'
         [IO.File]::WriteAllBytes((Join-Path $source $focusProbeName), $payload)
     }
+    if ($ZipHostEncryption) {
+        . (Join-Path $PSScriptRoot 'Zip-HostGuiCase.ps1')
+        $zipHostFixture = Initialize-ZipHostFixture
+    }
     if ($ShortOperationsOnly) {
         # Arrange an independent, short ASCII operation baseline before
         # migrating disk file operations. Never touch non-fixture files.
@@ -4034,7 +4043,7 @@ try {
         $asciiRenamedName = 'renamed-baseline.txt'
         [IO.File]::WriteAllBytes((Join-Path $source $asciiName), $payload)
     }
-    if (-not $BaselineOnly -and -not $ShortOperationsOnly -and -not $LegacyFindScenario -and
+    if (-not $ZipHostEncryption -and -not $BaselineOnly -and -not $ShortOperationsOnly -and -not $LegacyFindScenario -and
         -not $ShortUnicodeBestFitOnly) {
         # Independent Unicode-only fixture with a short total path.
         $unicodeShortFile = Join-Path $source $utfName
@@ -4102,7 +4111,7 @@ try {
         [IO.File]::WriteAllBytes($collisionFile, $collisionPayload)
         Assert-True ($collisionFile.Length -lt 260) 'Unicode collision fixture uses a short path'
     }
-    if (-not $BaselineOnly -and -not $ShortUnicodeOnly -and
+    if (-not $ZipHostEncryption -and -not $BaselineOnly -and -not $ShortUnicodeOnly -and
         -not $PluginLoadSmokeOnly -and
         -not $ShortUnicodeCollisionOnly -and -not $ShortUnicodeRowIdentityOnly -and
         -not $ShortUnicodeBestFitOnly -and -not $ShortUnicodeRenameOnly -and
@@ -4212,6 +4221,9 @@ try {
     # subsequently deleted. -p 2 makes the active test panel deterministic.
     # Quotes keep paths with spaces safe for Salamander's command-line parser.
     $startupArgs = '-l "{0}" -r "{0}" -p 2' -f $source
+    if ($ZipHostEncryption) {
+        $startupArgs = '-l "{0}" -r "{1}" -p 2' -f $destination, $source
+    }
     if ($LargeUnicodeCopyOnly) {
         $startupArgs = '-l "{0}" -r "{1}" -p 2' -f $largeCopyTargetDirectory, $source
     }
@@ -4626,6 +4638,12 @@ try {
         Assert-True ($focusedName -ceq $focusProbeName) 'Unattended keyboard focus reaches the test file panel'
         $passed = $true
         Write-Host 'PASS: GUI automation driver works with short ASCII paths and verified keyboard focus.'
+        return
+    }
+
+    if ($ZipHostEncryption) {
+        Test-ZipHostExtraction -Fixture $zipHostFixture
+        $passed = $true
         return
     }
 
@@ -5884,7 +5902,7 @@ finally {
     else {
         Write-Host "Diagnostic fixture retained: $root"
     }
-    if ($IsolatedConfiguration -and ($clipboardRestorationFailed -or -not $testConfigurationCleanupAllowed)) {
+    if (($IsolatedConfiguration -or $ZipHostEncryption) -and ($clipboardRestorationFailed -or -not $testConfigurationCleanupAllowed)) {
         throw ('Isolated GUI cleanup failed; acceptance cannot be reported as passed. Primary GUI failure: ' + $primaryGuiFailure)
     }
     if ($clipboardOwnerShutdownFailed -and [string]::IsNullOrEmpty($primaryGuiFailure)) {

@@ -542,6 +542,12 @@
       "Reason": ""
     },
     {
+      "Path": "tools/release/tests/Zip-HostGuiCase.ps1",
+      "Kind": "Helper",
+      "Owner": "tools/release/tests/Test-SalamanderGui-LongPaths.ps1",
+      "Reason": "ZIP host scenario helpers; executed only by the existing GUI driver."
+    },
+    {
       "Path": "tools/tests/plugin_unicode_sdk.cpp",
       "Kind": "Automatic",
       "Owner": "tools/Manage-Salamander.ps1",
@@ -551,6 +557,7 @@
   "AutomaticOptions": [
     "--test",
     "--test-zip-sfx",
+    "--test-gui-zip-host",
     "--test-gui-large-unicode-copy",
     "--test-gui-large-unicode-parent-copy",
     "--test-gui-long-history",
