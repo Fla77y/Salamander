@@ -191,6 +191,159 @@ public static class ZipHostDialogs
             throw new InvalidOperationException("ZIP host verified IDOK failed.");
         return true;
     }
+    [DllImport("user32.dll")] private static extern bool EnumChildWindows(IntPtr window, Callback callback, IntPtr arg);
+    [DllImport("user32.dll", EntryPoint="SendMessageTimeoutW", SetLastError=true)]
+    private static extern IntPtr SendNumber(IntPtr window, uint msg, UIntPtr w, IntPtr l,
+        uint flags, uint timeout, out UIntPtr result);
+    [DllImport("user32.dll")] private static extern short GetKeyState(int key);
+
+    private static ulong Number(IntPtr hwnd, uint msg, uint value)
+    {
+        UIntPtr result;
+        if (SendNumber(hwnd, msg, new UIntPtr(value), IntPtr.Zero, Flags, 2000, out result) == IntPtr.Zero)
+            throw new InvalidOperationException("ZIP mutation control message timed out.");
+        return result.ToUInt64();
+    }
+    private static void SetText(IntPtr hwnd, string value)
+    {
+        UIntPtr result;
+        if (WriteText(hwnd, 0x000C, UIntPtr.Zero, value, Flags, 2000, out result) == IntPtr.Zero ||
+            result == UIntPtr.Zero || Text(hwnd) != value)
+            throw new InvalidOperationException("ZIP mutation destination rejected.");
+    }
+    private static string Caption(IntPtr dialog)
+    {
+        return Text(dialog);
+    }
+    private static bool HasPrompt(IntPtr dialog, uint pid, string first, string second)
+    {
+        var controls = new List<IntPtr>();
+        EnumChildWindows(dialog, (hwnd, arg) => {
+            if (Owned(hwnd, pid) && !IsClass(hwnd, "Button") && IsWindowVisible(hwnd)) controls.Add(hwnd);
+            return true;
+        }, IntPtr.Zero);
+        foreach (var hwnd in controls)
+        {
+            string text = Text(hwnd);
+            if (text.Contains(first, StringComparison.Ordinal) && text.Contains(second, StringComparison.Ordinal))
+                return true;
+        }
+        return false;
+    }
+    private static bool SamePath(string a, string b)
+    {
+        return String.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+    }
+    public static void PostPack(IntPtr main, uint pid)
+    {
+        if (!Owned(main, pid) || !IsClass(main, "SalamanderMainWindowVer25") ||
+            !IsWindowEnabled(main) || !IsWindowVisible(main) ||
+            (GetKeyState(0x10) & 0x8000) != 0 || (GetKeyState(0x11) & 0x8000) != 0 ||
+            (GetKeyState(0x12) & 0x8000) != 0 ||
+            !PostMessage(main, 0x0111, new IntPtr(850), IntPtr.Zero))
+            throw new InvalidOperationException("Refusing unverified CM_PACK.");
+    }
+    // Each phase has distinct resources and text. Never acknowledge an
+    // unknown modal, an overwrite-whole-archive button, or a foreign PID.
+    private static bool MutationMatch(IntPtr dlg, IntPtr main, uint pid, string phase, string archive, string member, string disk)
+    {
+        if (!Dialog(dlg, main, pid)) return false;
+        if (phase == "Pack")
+        {
+            var subject = Control(dlg, 209, pid, "Static");
+            return subject != IntPtr.Zero && Control(dlg, 210, pid, "ComboBox") != IntPtr.Zero &&
+                Control(dlg, 511, pid, "ComboBox") != IntPtr.Zero &&
+                Control(dlg, 512, pid, "Button") != IntPtr.Zero &&
+                Text(subject).Contains(member, StringComparison.Ordinal);
+        }
+        if (phase == "Options")
+        {
+            var name = Control(dlg, 101, pid, "Static");
+            return name != IntPtr.Zero && SamePath(Text(name), archive) &&
+                Control(dlg, 102, pid, "Button") != IntPtr.Zero &&
+                Control(dlg, 104, pid, "Button") != IntPtr.Zero &&
+                Control(dlg, 106, pid, "Button") != IntPtr.Zero &&
+                Control(dlg, 110, pid, "Button") != IntPtr.Zero;
+        }
+        if (phase == "Add")
+        {
+            var yes = Control(dlg, 6, pid, "Button");
+            var no = Control(dlg, 7, pid, "Button");
+            return yes != IntPtr.Zero && no != IntPtr.Zero &&
+                Text(yes).Replace("&", "") == "Add" && Text(no).Replace("&", "") == "Overwrite" &&
+                HasPrompt(dlg, pid, System.IO.Path.GetFileName(archive), "into existing archive");
+        }
+        if (phase == "Replace")
+        {
+            var oldName = Control(dlg, 181, pid, "Static");
+            var newName = Control(dlg, 183, pid, "Static");
+            return oldName != IntPtr.Zero && newName != IntPtr.Zero &&
+                SamePath(Text(oldName), archive + "\\" + member) && SamePath(Text(newName), disk) &&
+                Control(dlg, 185, pid, "Button") != IntPtr.Zero &&
+                Control(dlg, 173, pid, "Button") != IntPtr.Zero;
+        }
+        if (phase == "Delete")
+            return Caption(dlg) == "Confirm Delete" && Control(dlg, 7, pid, "Button") != IntPtr.Zero &&
+                HasPrompt(dlg, pid, member, "from archive?");
+        throw new InvalidOperationException("Unknown ZIP mutation dialog phase.");
+    }
+    public static bool TryMutation(IntPtr main, uint pid, string phase, string archive, string member, string disk)
+    {
+        var candidates = new List<IntPtr>();
+        if (!EnumWindows((hwnd, arg) => {
+            if (Dialog(hwnd, main, pid)) candidates.Add(hwnd);
+            return true;
+        }, IntPtr.Zero)) throw new InvalidOperationException("ZIP mutation enumeration failed.");
+        IntPtr found = IntPtr.Zero;
+        foreach (var hwnd in candidates)
+        {
+            if (!MutationMatch(hwnd, main, pid, phase, archive, member, disk)) continue;
+            if (found != IntPtr.Zero) throw new InvalidOperationException("Ambiguous ZIP mutation dialog.");
+            found = hwnd;
+        }
+        if (found == IntPtr.Zero) return false;
+        if (!MutationMatch(found, main, pid, phase, archive, member, disk))
+            throw new InvalidOperationException("ZIP mutation dialog changed.");
+        int id = 1;
+        if (phase == "Pack")
+        {
+            var packer = Control(found, 511, pid, "ComboBox");
+            UIntPtr selected;
+            if (Text(packer) != "ZIP (Plugin)")
+            {
+                if (WriteText(packer, 0x0158, new UIntPtr(uint.MaxValue), "ZIP (Plugin)", Flags, 2000, out selected) == IntPtr.Zero ||
+                    selected.ToUInt64() > 10000)
+                    throw new InvalidOperationException("ZIP (Plugin) packer not available.");
+                Number(packer, 0x014E, (uint)selected.ToUInt64()); // CB_SETCURSEL
+                UIntPtr notification;
+                if (SendNumber(found, 0x0111, new UIntPtr(511u | (1u << 16)), packer, Flags, 2000, out notification) == IntPtr.Zero)
+                    throw new InvalidOperationException("ZIP packer selection notification failed.");
+            }
+            if (Text(packer) != "ZIP (Plugin)") throw new InvalidOperationException("Wrong selected packer.");
+            var move = Control(found, 512, pid, "Button");
+            Number(move, 0x00F1, 0); // BM_SETCHECK: never delete source files
+            if (Number(move, 0x00F0, 0) != 0) throw new InvalidOperationException("Pack move option is checked.");
+            SetText(Control(found, 210, pid, "ComboBox"), archive);
+        }
+        else if (phase == "Options")
+        {
+            // OnOK reads these exact checkbox states. Do not save preferences.
+            foreach (int check in new[] {102,104,106,110})
+            {
+                var control = Control(found, check, pid, "Button");
+                if (Number(control, 0x00F0, 0) != 0)
+                    throw new InvalidOperationException("Unexpected ZIP extended option; refusing to change archive type.");
+            }
+        }
+        else id = 6; // Add/Yes only; never Overwrite whole archive or All.
+        var button = Control(found, id, pid, "Button");
+        if (!MutationMatch(found, main, pid, phase, archive, member, disk) ||
+            button == IntPtr.Zero || !IsWindowEnabled(button) || !IsWindowVisible(button) ||
+            !PostMessage(found, 0x0111, new IntPtr(id), button))
+            throw new InvalidOperationException("ZIP mutation verified confirmation failed.");
+        return true;
+    }
+
 }
 '@
 

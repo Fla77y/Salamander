@@ -43,6 +43,7 @@ param(
     [switch]$ShortOperationsOnly,
     [ValidateSet('None','ZipCrypto')][string]$ZipHostEncryption,
     [string]$ZipHostSevenZip,
+    [ValidateSet('Create','Add','Replace','Delete')][string]$ZipHostMutation,
     [switch]$TemporaryDirectoryDeletionOnly,
     [switch]$UnicodeFindOnly,
     [ValidateSet('Baseline','Cancel','AdvancedInputs','ViewResults','ViewUnicode','ViewLong','ViewStale','ViewMixed','FocusUnicode','FocusLong','FocusStale','ShellClipboard','ShellOpen','ShellProperties','ExternalEditor','ExternalEditorNative','RecycleRestore',
@@ -102,6 +103,7 @@ if ($LargeUnicodeCopyOnly -and -not $IsolatedConfiguration) {
 if ($LargeUnicodeCopyCase -ne 'Copy' -and -not $LargeUnicodeCopyOnly) {
     throw '-LargeUnicodeCopyCase requires -LargeUnicodeCopyOnly.'
 }
+if ($ZipHostMutation -and $ZipHostEncryption -ne 'None') { throw 'ZIP mutation requires the unencrypted ZIP host scenario.' }
 if ($ZipHostEncryption -and (-not $ZipHostSevenZip -or $IsolatedConfiguration -or $ShortOperationsOnly -or $BaselineOnly -or $LegacyFindScenario)) {
     throw 'ZIP host scenario requires a standalone ordinary host run and 7-Zip fixture tool.'
 }
@@ -4032,7 +4034,11 @@ try {
     }
     if ($ZipHostEncryption) {
         . (Join-Path $PSScriptRoot 'Zip-HostGuiCase.ps1')
-        $zipHostFixture = Initialize-ZipHostFixture
+        if ($ZipHostMutation) {
+            . (Join-Path $PSScriptRoot 'Zip-HostMutationCases.ps1')
+            $zipHostFixture = Initialize-ZipHostMutation
+        }
+        else { $zipHostFixture = Initialize-ZipHostFixture }
     }
     if ($ShortOperationsOnly) {
         # Arrange an independent, short ASCII operation baseline before
@@ -4642,7 +4648,8 @@ try {
     }
 
     if ($ZipHostEncryption) {
-        Test-ZipHostExtraction -Fixture $zipHostFixture
+        if ($ZipHostMutation) { Test-ZipHostMutation -Fixture $zipHostFixture }
+        else { Test-ZipHostExtraction -Fixture $zipHostFixture }
         $passed = $true
         return
     }

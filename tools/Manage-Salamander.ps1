@@ -16,7 +16,7 @@ $configuration = 'Release'
 $validOptions = @('--update', '--build', '--test', '--setup', '--run',
                   '--test-gui-large-unicode-copy', '--test-gui-large-unicode-parent-copy', '--test-gui-long-history', '--test-gui-long-clipboard', '--test-gui-viewer-reliability', '--test-gui-legacy-find', '--test-clipboard-snapshot',
                   '--test-legacy-find-efs', '--test-legacy-find-near-limit', '--test-wer-build',
-                  '--debug', '--release', '--all', '--build-delta', '--build-clean', '--test-all', '--test-gui', '--test-gui-max-path', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-gui-unicode-permanent-delete', '--test-gui-unicode-parent', '--test-recycle-restore', '--test-plugin-exports', '--test-zip-sfx', '--test-gui-zip-host', '--test-plugin-load', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-unicode-find', '--test-gui-manual', '--test-gui-temp-delete', '--test-pictview', '--test-pictview-window', '--test-pictview-host', '--test-plugin-pictview', '--test-plugin-pictview-unicode', '--diagnose-gui', '--help', '-h', '/?')
+                  '--debug', '--release', '--all', '--build-delta', '--build-clean', '--test-all', '--test-gui', '--test-gui-max-path', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-gui-unicode-permanent-delete', '--test-gui-unicode-parent', '--test-recycle-restore', '--test-plugin-exports', '--test-zip-sfx', '--test-gui-zip-host', '--test-gui-zip-mutation', '--test-plugin-load', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-unicode-find', '--test-gui-manual', '--test-gui-temp-delete', '--test-pictview', '--test-pictview-window', '--test-pictview-host', '--test-plugin-pictview', '--test-plugin-pictview-unicode', '--diagnose-gui', '--help', '-h', '/?')
 $requestedSet = [System.Collections.Generic.HashSet[string]]::new(
     [StringComparer]::OrdinalIgnoreCase)
 
@@ -41,6 +41,7 @@ Open Salamander – Verwaltung für Visual Studio 2026
   manage.cmd --test-all     Alle registrierten automatischen Standardtests; Opt-ins als begründete SKIPs
   manage.cmd --test-zip-sfx  Store/Deflate, ohne/mit ZipCrypto, beide Buildvarianten (7-Zip, Windows-Desktop; Passwort automatisch)
   manage.cmd --test-gui-zip-host  ZIP-Archivpanel und Deflate-Extraktion ohne/mit ZipCrypto (7-Zip, Windows-Desktop)
+  manage.cmd --test-gui-zip-mutation  ZIP erstellen, hinzufügen, ersetzen, löschen (7-Zip, Windows-Desktop)
                             JSON-Bericht; Exitcode 1 bei FAIL oder erforderlichem SKIP
                             Geplante Scope-Ausschlüsse sind kein PASS und keine Release-Abnahme.
                             (Release und Debug x64; --release/--debug begrenzt die GUI-Modi)
@@ -955,6 +956,20 @@ try {
                         Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-NonInteractive', '-File', $guiTest,
                             '-SalamanderExe', $testedExe, '-ZipHostEncryption', $zipHostEncryption,
                             '-ZipHostSevenZip', $sevenZip)
+                    }
+                }
+            }
+            if ($requestedSet.Contains('--test-gui-zip-mutation')) {
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                foreach ($zipMutation in @('Create','Add','Replace','Delete')) {
+                    Invoke-TestCase -Name "ZIP plugin host $guiMode $zipMutation" -RequiresGuiSafety -Action {
+                        $sevenZip = Find-Executable '7z.exe' @(
+                            (Join-Path ([Environment]::GetFolderPath('ProgramFiles')) '7-Zip\7z.exe'),
+                            (Join-Path ([Environment]::GetFolderPath('ProgramFilesX86')) '7-Zip\7z.exe'))
+                        Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-NonInteractive', '-File', $guiTest,
+                            '-SalamanderExe', $testedExe, '-ZipHostEncryption', 'None',
+                            '-ZipHostSevenZip', $sevenZip, '-ZipHostMutation', $zipMutation)
                     }
                 }
             }
