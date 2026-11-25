@@ -1,0 +1,5 @@
+src/fileswn8.cpp	561-659,752-948	
+src/worker.cpp	8180-8247,8559-8590	
+src/common/win32_worker_copy_io.h	137-219	
+src/common/win32_unicode_file_ops.h	445-562	
+tools/tests/long_path_io.cpp	1207-1255	

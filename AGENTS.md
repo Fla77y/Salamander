@@ -11,13 +11,14 @@
 **Unbedingt vor jedem neuen Salamander-Auftrag und insbesondere nach einem
 Chat-/Agent-Wechsel:** Lies in dieser Reihenfolge die **aktuellen** Repository-
 Dateien: [`Anforderungen.md`](Anforderungen.md) (unveränderte Nutzervorgaben
-A0–A7), diese `AGENTS.md`,
+A0–A8), diese `AGENTS.md`,
 [`Arbeitsstand-und-Uebergabe.md`](docs/maintenance/Arbeitsstand-und-Uebergabe.md)
 (aktuelle Fehler, Testbelege, nächster Schritt),
 [`Testluecken-und-Abnahmeplan-5.2.md`](docs/maintenance/Testluecken-und-Abnahmeplan-5.2.md)
 (stabile, zentrale Aufgabenliste) sowie
 [`Entwicklungsjournal.md`](docs/maintenance/Entwicklungsjournal.md)
 (chronologische Aufträge, Entscheidungen und Nachweise).
+Vor jeder Entwicklungsaufgabe den [Aufgabenindex des Code-Audits](docs/maintenance/Code-Audit-und-Massnahmenkatalog-5.2.md) prüfen, die zugehörigen Audit-IDs und Gap-IDs lesen und ihren Quellstand mit HEAD vergleichen. Nach der Bearbeitung Status, tatsächliche SHA, Tests und Restrisiko bei der Karte und in der Übergabe fortschreiben.
 Danach die betroffenen Implementierungen, Aufrufstellen, Tests und weiteren
 Fachdokumente öffnen. **Nicht bloß den früheren Chat oder diese Zusammenfassung
 als aktuelle Quellenlage behandeln.**
@@ -56,7 +57,7 @@ als aktuelle Quellenlage behandeln.**
 **Automatik-Grenze:** Repository-`AGENTS.md` unterstützt Codex-/Agent-Tools,
 aber ChatGPT kann in einem neuen Chat **nicht garantiert ohne Repository-
 Verbindung/GitHub-Zugriff** diese Dateien laden. Im ChatGPT-Projekt deshalb
-eine feste Startanweisung verwenden: „Öffne zuerst die fünf obigen Dateien
+eine feste Startanweisung verwenden: „Öffne zuerst die Startdateien und den Audit-Aufgabenindex
 im Branch/HEAD und arbeite nach dem aktuellen Übergabestand weiter.“
 Die Dateien sind die portable fachliche Wahrheit, keine behauptete
 plattformübergreifende automatische Speicherfunktion.

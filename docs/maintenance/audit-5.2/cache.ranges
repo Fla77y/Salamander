@@ -1,0 +1,7 @@
+src/cache.h	501-535	AUD-CACHE-0001
+src/cache.cpp	126-137,1541-1650,1651-1709	AUD-CACHE-0001
+src/mainwnd3.cpp	1503-1510,5868-5874	AUD-CACHE-0001
+src/plugins1.cpp	3926-3934	AUD-CACHE-0001
+src/plugins/zip/zipdll.h	68-70	AUD-CACHE-0001
+src/plugins/7zip/7zip.h	73-75	AUD-CACHE-0001
+src/plugins/shared/spl_arc.h	144-172	AUD-CACHE-0001

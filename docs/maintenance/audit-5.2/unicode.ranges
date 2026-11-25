@@ -1,0 +1,10 @@
+src/common/legacy_find_query.h	1-142	AUD-FIND-0001
+src/common/utf16_disk_path.h	78-97	AUD-FIND-0001
+tools/tests/legacy_find_utf16_identity.cpp	1-215	AUD-FIND-0001
+src/finddlg1.cpp	1526-1526,1841-1849,1852-1867,1903-1924,3652-3662	AUD-FIND-0001,AUD-FIND-0003
+src/find.h	252-311	AUD-FIND-0002,AUD-FIND-0003
+src/find.cpp	177-206,437-667,1738-1760,2004-2027	AUD-FIND-0001,AUD-FIND-0002,AUD-FIND-0003
+src/finddlg2.cpp	975-1050,1701-1746,2096-2111	AUD-FIND-0002,AUD-FIND-0003
+src/edtlbwnd.h	30-45	AUD-FIND-0002
+tools/release/tests/LegacyFind-GuiCases.ps1	1400-1425	AUD-FIND-0002
+src/shellsup.cpp	707-774	

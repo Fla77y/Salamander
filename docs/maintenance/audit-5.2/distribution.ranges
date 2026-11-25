@@ -1,0 +1,4 @@
+tools/release/Package-Helpers.ps1	268-292,296-339,341-417,422-443	AUD-PKG-0001
+tools/release/Update-Build-Test-Package.ps1	139-158	AUD-PKG-0001
+tools/release/OpenSalamander.iss	44-45	AUD-PKG-0001
+tools/release/tests/Test-PortableManifest.ps1	1-71	AUD-PKG-0001

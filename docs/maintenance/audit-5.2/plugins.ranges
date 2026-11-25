@@ -1,0 +1,48 @@
+src/plugins/renamer/menu.cpp	1-69	AUD-PLUGIN-REN-0001
+src/plugins/renamer/crenamer.cpp	11-35	AUD-PLUGIN-REN-0001
+src/plugins/renamer/rendlg.cpp	1137-1167	AUD-PLUGIN-REN-0001
+src/plugins/renamer/rendlg3.cpp	6-46	AUD-PLUGIN-REN-0001
+src/plugins/zip/common.cpp	176-241,1389-1503	AUD-PLUGIN-ZIP-0001
+src/plugins/zip/list.cpp	28-210	AUD-PLUGIN-ZIP-0001
+src/plugins/7zip/7zclient.cpp	140-365	AUD-PLUGIN-7Z-0001,AUD-PLUGIN-7Z-0002
+src/plugins/7zip/7zip.cpp	633-661,890-919	AUD-PLUGIN-7Z-0001
+tools/Manage-Salamander.ps1	19-19,42-44,66-67,125-145,658-662,700-710,948-973	AUD-TEST-PLUGIN-0001
+tools/release/Test-Registry.json	563-567	AUD-TEST-PLUGIN-0001
+tools/release/plugin-source-inventory-baseline.json	1-79	
+tools/release/tests/Zip-HostMutationCases.ps1	29-69,115-126	AUD-TEST-PLUGIN-0001
+tools/release/tests/Zip-HostGuiCase.ps1	371-402	AUD-TEST-PLUGIN-0001
+tools/release/tests/Test-ZipSfxRoundtrip.ps1	250-262	AUD-TEST-PLUGIN-0001
+src/plugins/7zip/7zip.cpp	173-173	
+src/plugins/automation/entry.cpp	116-116	
+src/plugins/checksum/checksum.cpp	124-124	
+src/plugins/checkver/checkver.cpp	140-140	
+src/plugins/dbviewer/dbviewer.cpp	363-363	
+src/plugins/demoview/demoview.cpp	167-167	
+src/plugins/diskmap/DiskMapPlugin/DiskMapPlugin.cpp	306-306	
+src/plugins/filecomp/filecomp.cpp	95-95	
+src/plugins/folders/folders.cpp	99-99	
+src/plugins/ftp/ftp.cpp	336-336	
+src/plugins/ieviewer/ieviewer.cpp	224-224	
+src/plugins/mmviewer/mmviewer.cpp	299-299	
+src/plugins/nethood/entry.cpp	172-172	
+src/plugins/pak/spl/pak.cpp	139-139	
+src/plugins/peviewer/peviewer.cpp	112-112	
+src/plugins/pictview/pictview.cpp	528-528	
+src/plugins/portables/entry.cpp	112-112	
+src/plugins/regedt/regedt.cpp	252-252	
+src/plugins/renamer/renamer.cpp	219-219	
+src/plugins/splitcbn/splitcbn.cpp	101-101	
+src/plugins/tar/tardll.cpp	154-154	
+src/plugins/unarj/unarjspl.cpp	113-113	
+src/plugins/uncab/uncab.cpp	116-116	
+src/plugins/unchm/unchm.cpp	111-111	
+src/plugins/undelete/undelete.cpp	259-259	
+src/plugins/unfat/unfat.cpp	120-120	
+src/plugins/uniso/uniso.cpp	148-148	
+src/plugins/unlha/unlha.cpp	79-79	
+src/plugins/unmime/unmime.cpp	103-103	
+src/plugins/unole/unole2.cpp	115-115	
+src/plugins/unrar/unrar.cpp	109-109	
+src/plugins/wmobile/wmobile.cpp	154-154	
+src/plugins/zip/main.cpp	169-169	
+src/plugins/winscp/salamander/Salamand.cpp	409-409	
