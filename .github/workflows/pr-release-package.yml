@@ -69,7 +69,7 @@ jobs:
           $sevenZip = (Get-Command 7z.exe -ErrorAction Stop).Source
           & $sevenZip x '-y' "-o$target" (Join-Path $dist 'OpenSalamander-Release-x64.7z')
           if ($LASTEXITCODE -ne 0) { throw "Release extraction failed: $LASTEXITCODE" }
-          ./tools/release/tests/Test-PortableManifest.ps1 -ExtractedDirectory $target
+          ./tools/release/tests/Test-PortableManifest.ps1 -ExtractedDirectory $target -RequireReleasePayload
 
       - name: Verify redistributable Release SHA256 manifest
         shell: pwsh

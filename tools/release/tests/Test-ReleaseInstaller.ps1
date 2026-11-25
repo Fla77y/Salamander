@@ -29,6 +29,11 @@ if (-not [Environment]::Is64BitOperatingSystem) {
     throw 'Release installer smoke requires x64 Windows.'
 }
 
+. (Join-Path $PSScriptRoot '..\Package-Helpers.ps1')
+if (-not [string]::IsNullOrWhiteSpace($PortableDirectory)) {
+    & (Join-Path $PSScriptRoot 'Test-PortableManifest.ps1') -ExtractedDirectory $PortableDirectory -RequireReleasePayload
+}
+
 # Keep all paths under a new, test-owned root; never attempt to uninstall a
 # developer's installed Salamander or reuse an existing installation folder.
 $root = Join-Path ([IO.Path]::GetTempPath()) ('OpenSal-SetupSmoke-' + [Guid]::NewGuid().ToString('N'))
@@ -74,6 +79,8 @@ try {
             throw "Installed Release distribution is missing $required"
         }
     }
+
+    Assert-ReleasePayload -Root $target -ManifestState Present -Installed
 
     # A successful setup must install every portable payload file, not just
     # a small set of required EXEs and plugins. This comparison is read-only.

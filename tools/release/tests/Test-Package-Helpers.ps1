@@ -660,14 +660,112 @@ exit /b 0
         New-Item -ItemType Directory -Path (Split-Path -Parent $fixtureFile) -Force | Out-Null
         Set-Content -LiteralPath $fixtureFile -Value 'test fixture' -Encoding ascii
     }
+    # Extend the synthetic payload to satisfy the independent Release contract.
+    # Existing missing-file, safety and byte-identity assertions are unchanged.
+    $releaseRows = @(Get-ReleasePayloadEntries)
+    foreach ($row in $releaseRows) {
+        if ($row.Kind -eq 'Generated') { continue }
+        $fixtureFile = Join-Path $stage $row.Path
+        if (-not (Test-Path -LiteralPath $fixtureFile -PathType Leaf)) {
+            [void][IO.Directory]::CreateDirectory((Split-Path -Parent $fixtureFile))
+            Set-Content -LiteralPath $fixtureFile -Value 'test fixture' -Encoding ascii
+        }
+    }
     Test-DistributionStage -Stage $stage -Configuration Release -DumpbinExe $fakeDumpbin
+    $verifiedManifest = Join-Path $stage 'SHA256SUMS.txt'
+    $verifiedHash = (Get-FileHash -LiteralPath $verifiedManifest -Algorithm SHA256).Hash
+    function Assert-PayloadMismatch {
+        param([string]$ExpectedMessage)
+        $failure = $null
+        try { Test-DistributionStage -Stage $stage -Configuration Release -DumpbinExe $fakeDumpbin }
+        catch { $failure = $_.Exception.Message }
+        if ($null -eq $failure -or -not $failure.Contains($ExpectedMessage)) {
+            throw "Expected independent payload rejection '$ExpectedMessage', got '$failure'"
+        }
+        if ((Get-FileHash -LiteralPath $verifiedManifest -Algorithm SHA256).Hash -cne $verifiedHash) {
+            throw 'Rejected payload must not regenerate the previously verified manifest.'
+        }
+    }
+    $extraFile = Join-Path $stage 'audit-extra.txt'
+    Set-Content -LiteralPath $extraFile -Value 'harmless unapproved file' -Encoding ascii
+    Assert-PayloadMismatch 'Unexpected: audit-extra.txt'
+    Remove-Item -LiteralPath $extraFile
+    $hiddenExtra = Join-Path $stage 'audit-hidden.txt'
+    Set-Content -LiteralPath $hiddenExtra -Value 'hidden unapproved file' -Encoding ascii
+    [IO.File]::SetAttributes($hiddenExtra, [IO.FileAttributes]::Hidden)
+    Assert-PayloadMismatch 'Unexpected: audit-hidden.txt'
+    Remove-Item -LiteralPath $hiddenExtra -Force
+    $resource = Join-Path $stage 'toolbars/Copy.svg'
+    $resourceBytes = [IO.File]::ReadAllBytes($resource)
+    Remove-Item -LiteralPath $resource
+    Assert-PayloadMismatch 'Missing: toolbars/Copy.svg'
+    $misplaced = Join-Path $stage 'Copy.svg'
+    [IO.File]::WriteAllBytes($misplaced, $resourceBytes)
+    Assert-PayloadMismatch 'Missing: toolbars/Copy.svg; Unexpected: Copy.svg'
+    Remove-Item -LiteralPath $misplaced
+    [IO.File]::WriteAllBytes($resource, $resourceBytes)
+    Test-DistributionStage -Stage $stage -Configuration Release -DumpbinExe $fakeDumpbin
+    & (Join-Path $PSScriptRoot 'Test-PortableManifest.ps1') -ExtractedDirectory $stage -RequireReleasePayload
+    # An extra file and a perfectly matching checksum must still fail the
+    # independent Release contract, even outside the original staging step.
+    $manifestBytes = [IO.File]::ReadAllBytes($verifiedManifest)
+    Set-Content -LiteralPath $extraFile -Value 'self-consistent but unapproved file' -Encoding ascii
+    $extraHash = (Get-FileHash -LiteralPath $extraFile -Algorithm SHA256).Hash.ToLowerInvariant()
+    Add-Content -LiteralPath $verifiedManifest -Value ("$extraHash *audit-extra.txt") -Encoding utf8
+    & (Join-Path $PSScriptRoot 'Test-PortableManifest.ps1') -ExtractedDirectory $stage
+    Assert-Throws {
+        & (Join-Path $PSScriptRoot 'Test-PortableManifest.ps1') -ExtractedDirectory $stage -RequireReleasePayload
+    } 'Independent Release verifier must reject a self-consistent unapproved file'
+    Remove-Item -LiteralPath $extraFile
+    [IO.File]::WriteAllBytes($verifiedManifest, $manifestBytes)
+
+    # Only the explicitly paired, root-level Inno metadata is additional.
+    $uninstallExe = Join-Path $stage 'unins000.exe'
+    $uninstallDat = Join-Path $stage 'unins000.dat'
+    Set-Content -LiteralPath $uninstallExe -Value 'test fixture' -Encoding ascii
+    Assert-Throws { Assert-ReleasePayload -Root $stage -Installed } 'Incomplete Inno pair must fail'
+    Set-Content -LiteralPath $uninstallDat -Value 'test fixture' -Encoding ascii
+    Assert-ReleasePayload -Root $stage -Installed
+    Assert-Throws { Assert-ReleasePayload -Root $stage } 'Portable package must not include Inno uninstall metadata'
+    Remove-Item -LiteralPath $uninstallExe, $uninstallDat
+
+    # Verify declared origin identity against separate fixture roots.
+    $origins = @{
+        Source = Join-Path $root 'origin-source'
+        Build = Join-Path $root 'origin-build'
+        Runtime = Join-Path $root 'origin-runtime'
+    }
+    foreach ($row in $releaseRows) {
+        if ($row.Kind -eq 'Generated') { continue }
+        $originFile = Join-Path $origins[$row.Kind] $row.Origin
+        [void][IO.Directory]::CreateDirectory((Split-Path -Parent $originFile))
+        Copy-Item -LiteralPath (Join-Path $stage $row.Path) -Destination $originFile
+    }
+    $originArgs = @{
+        Stage = $stage
+        Repository = $origins.Source
+        BuiltDirectory = $origins.Build
+        RuntimeDirectory = $origins.Runtime
+    }
+    Remove-Item -LiteralPath $verifiedManifest
+    Assert-ReleasePayloadOrigins @originArgs
+    Set-Content -LiteralPath (Join-Path $origins.Source 'LICENSE') -Value 'different origin bytes' -Encoding ascii
+    Assert-Throws { Assert-ReleasePayloadOrigins @originArgs } 'Release payload must match its declared origin'
+    if (Test-Path -LiteralPath $verifiedManifest) { throw 'Origin validation must not generate a checksum manifest.' }
+    [IO.File]::WriteAllBytes($verifiedManifest, $manifestBytes)
+    Write-Host 'PASS: independent Release contract rejects added, missing, misplaced and hidden files; verifies origins and portable/installed file sets.'
     # Arrange: a test-owned reference build and its package stage must contain
     # the same plug-in files, not just matching names.
     $builtPlugins = Join-Path $root 'reference-build\plugins\pictview'
     [void][IO.Directory]::CreateDirectory($builtPlugins)
     $builtPictView = Join-Path $builtPlugins 'pictview.spl'
     $stagedPictView = Join-Path $stage 'plugins\pictview\pictview.spl'
-    Copy-Item -LiteralPath $stagedPictView -Destination $builtPictView
+    foreach ($module in (Get-ChildItem -LiteralPath (Join-Path $stage 'plugins') -Recurse -File -Filter '*.spl')) {
+        $relative = [IO.Path]::GetRelativePath($stage, $module.FullName)
+        $destination = Join-Path (Join-Path $root 'reference-build') $relative
+        [void][IO.Directory]::CreateDirectory((Split-Path -Parent $destination))
+        Copy-Item -LiteralPath $module.FullName -Destination $destination
+    }
     # Act / Assert
     Assert-StagedBuiltPlugins -BuiltDirectory (Join-Path $root 'reference-build') -Stage $stage
 

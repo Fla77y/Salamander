@@ -63,7 +63,7 @@ if (-not $SkipUpdate) {
     $afterUpdate = (& git -C $repository rev-parse HEAD).Trim()
     if ($LASTEXITCODE -ne 0) { throw 'Unable to read updated Git revision.' }
     if ($afterUpdate -ne $beforeUpdate) {
-        $changedPipeline = @(& git -C $repository diff --name-only $beforeUpdate $afterUpdate -- 'tools/release/Update-Build-Test-Package.ps1' 'tools/release/Package-Helpers.ps1' 'tools/release/Build-Helpers.ps1' 'tools/release/OpenSalamander.iss')
+        $changedPipeline = @(& git -C $repository diff --name-only $beforeUpdate $afterUpdate -- 'tools/release/Update-Build-Test-Package.ps1' 'tools/release/Package-Helpers.ps1' 'tools/release/Build-Helpers.ps1' 'tools/release/OpenSalamander.iss' 'tools/release/Release-Payload.tsv' 'tools/release/tests/Test-PortableManifest.ps1')
         if ($LASTEXITCODE -ne 0) { throw 'Unable to compare pipeline versions after Git update.' }
         if ($changedPipeline.Count -gt 0) {
             throw 'The update changed release pipeline scripts. Run the command again to load the new version safely.'
@@ -106,6 +106,12 @@ New-Item -ItemType Directory -Path $buildRootFull -Force | Out-Null
 New-Item -ItemType Directory -Path $artifactDir -Force | Out-Null
 New-Item -ItemType Directory -Path $stageRoot -Force | Out-Null
 
+$sourceHead = (& git -C $repository rev-parse --verify HEAD).Trim()
+if ($LASTEXITCODE -ne 0) { throw 'Unable to identify packaging source HEAD.' }
+$sourceStatus = @(& git -C $repository status --porcelain --untracked-files=normal)
+if ($LASTEXITCODE -ne 0) { throw 'Unable to identify packaging source status.' }
+Write-Host "Packaging source HEAD: $sourceHead; clean working tree: $($sourceStatus.Count -eq 0); SkipBuild: $SkipBuild"
+Write-Host "Release CRT origin: $($crt.Release); MSBuild: $msbuild; dumpbin: $dumpbinExe"
 Write-Host "Visual Studio: $vsDir"
 Write-Host "Build root: $env:OPENSAL_BUILD_DIR"
 Write-Host 'Rebuilding x64 Debug and Release...'
@@ -146,6 +152,9 @@ foreach ($configuration in @('Debug', 'Release')) {
         -StagedDirectory $stage -RequireMatchingPayloads -RequireSolutionPluginPayloads `
         -RequiredShippedModules @('7zip','checksum','filecomp','renamer','pictview')
     Assert-StagedZipSfx -BuiltDirectory $variantPaths[$configuration] -Stage $stage
+    if ($configuration -eq 'Release') {
+        Assert-ReleasePayloadOrigins -Stage $stage -Repository $repository -BuiltDirectory $variantPaths[$configuration] -RuntimeDirectory $crt.Release
+    }
     Test-DistributionStage -Stage $stage -Configuration $configuration -DumpbinExe $dumpbinExe
     Assert-StagedBuiltPlugins -BuiltDirectory $variantPaths[$configuration] -Stage $stage
 
@@ -159,6 +168,20 @@ foreach ($configuration in @('Debug', 'Release')) {
     Invoke-Checked $sevenZipExe @('t', '-y', $archive)
     if (-not (Test-Path -LiteralPath $archive -PathType Leaf)) {
         throw "Archive was not created: $archive"
+    }
+
+    if ($configuration -eq 'Release') {
+        $verifyRoot = Join-Path $stageRoot ('verify-release-' + [Guid]::NewGuid().ToString('N'))
+        New-Item -ItemType Directory -Path $verifyRoot | Out-Null
+        try {
+            Invoke-Checked $sevenZipExe @('x', '-y', "-o$verifyRoot", $archive)
+            & (Join-Path $PSScriptRoot 'tests\Test-PortableManifest.ps1') -ExtractedDirectory $verifyRoot -RequireReleasePayload
+            if ((Get-FileHash -LiteralPath (Join-Path $verifyRoot 'SHA256SUMS.txt') -Algorithm SHA256).Hash -cne
+                (Get-FileHash -LiteralPath (Join-Path $stage 'SHA256SUMS.txt') -Algorithm SHA256).Hash) {
+                throw 'Extracted Release manifest differs from the verified stage manifest.'
+            }
+        }
+        finally { Remove-Item -LiteralPath $verifyRoot -Recurse -Force }
     }
 
     if (-not $SkipInstaller) {

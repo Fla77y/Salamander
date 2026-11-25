@@ -1,0 +1,279 @@
+Path	Configuration	Kind	Origin	Purpose
+concrt140.dll	Release	Runtime	concrt140.dll	MSVC v143 x64 Release CRT redistributable
+convert/centeuro/1-1.tab	Release	Source	convert/centeuro/1-1.tab	Character conversion table or configuration
+convert/centeuro/1250asci.tab	Release	Source	convert/centeuro/1250asci.tab	Character conversion table or configuration
+convert/centeuro/1250c852.tab	Release	Source	convert/centeuro/1250c852.tab	Character conversion table or configuration
+convert/centeuro/1250cork.tab	Release	Source	convert/centeuro/1250cork.tab	Character conversion table or configuration
+convert/centeuro/1250ebcd.tab	Release	Source	convert/centeuro/1250ebcd.tab	Character conversion table or configuration
+convert/centeuro/1250iso1.tab	Release	Source	convert/centeuro/1250iso1.tab	Character conversion table or configuration
+convert/centeuro/1250iso2.tab	Release	Source	convert/centeuro/1250iso2.tab	Character conversion table or configuration
+convert/centeuro/1250kame.tab	Release	Source	convert/centeuro/1250kame.tab	Character conversion table or configuration
+convert/centeuro/1250koi8.tab	Release	Source	convert/centeuro/1250koi8.tab	Character conversion table or configuration
+convert/centeuro/1250mac.tab	Release	Source	convert/centeuro/1250mac.tab	Character conversion table or configuration
+convert/centeuro/c8521250.tab	Release	Source	convert/centeuro/c8521250.tab	Character conversion table or configuration
+convert/centeuro/c852asci.tab	Release	Source	convert/centeuro/c852asci.tab	Character conversion table or configuration
+convert/centeuro/c852kame.tab	Release	Source	convert/centeuro/c852kame.tab	Character conversion table or configuration
+convert/centeuro/convert.cfg	Release	Source	convert/centeuro/convert.cfg	Character conversion table or configuration
+convert/centeuro/cork1250.tab	Release	Source	convert/centeuro/cork1250.tab	Character conversion table or configuration
+convert/centeuro/corkasci.tab	Release	Source	convert/centeuro/corkasci.tab	Character conversion table or configuration
+convert/centeuro/ebcd1250.tab	Release	Source	convert/centeuro/ebcd1250.tab	Character conversion table or configuration
+convert/centeuro/ebcdasci.tab	Release	Source	convert/centeuro/ebcdasci.tab	Character conversion table or configuration
+convert/centeuro/iso11250.tab	Release	Source	convert/centeuro/iso11250.tab	Character conversion table or configuration
+convert/centeuro/iso1asci.tab	Release	Source	convert/centeuro/iso1asci.tab	Character conversion table or configuration
+convert/centeuro/iso21250.tab	Release	Source	convert/centeuro/iso21250.tab	Character conversion table or configuration
+convert/centeuro/iso2asci.tab	Release	Source	convert/centeuro/iso2asci.tab	Character conversion table or configuration
+convert/centeuro/kame1250.tab	Release	Source	convert/centeuro/kame1250.tab	Character conversion table or configuration
+convert/centeuro/kameasci.tab	Release	Source	convert/centeuro/kameasci.tab	Character conversion table or configuration
+convert/centeuro/kamec852.tab	Release	Source	convert/centeuro/kamec852.tab	Character conversion table or configuration
+convert/centeuro/koi81250.tab	Release	Source	convert/centeuro/koi81250.tab	Character conversion table or configuration
+convert/centeuro/koi8asci.tab	Release	Source	convert/centeuro/koi8asci.tab	Character conversion table or configuration
+convert/centeuro/mac1250.tab	Release	Source	convert/centeuro/mac1250.tab	Character conversion table or configuration
+convert/centeuro/macasci.tab	Release	Source	convert/centeuro/macasci.tab	Character conversion table or configuration
+convert/cyrillic/1-1.tab	Release	Source	convert/cyrillic/1-1.tab	Character conversion table or configuration
+convert/cyrillic/1251bmik.tab	Release	Source	convert/cyrillic/1251bmik.tab	Character conversion table or configuration
+convert/cyrillic/1251c855.tab	Release	Source	convert/cyrillic/1251c855.tab	Character conversion table or configuration
+convert/cyrillic/1251c866.tab	Release	Source	convert/cyrillic/1251c866.tab	Character conversion table or configuration
+convert/cyrillic/1251ebcd.tab	Release	Source	convert/cyrillic/1251ebcd.tab	Character conversion table or configuration
+convert/cyrillic/1251iso5.tab	Release	Source	convert/cyrillic/1251iso5.tab	Character conversion table or configuration
+convert/cyrillic/1251koir.tab	Release	Source	convert/cyrillic/1251koir.tab	Character conversion table or configuration
+convert/cyrillic/1251koiu.tab	Release	Source	convert/cyrillic/1251koiu.tab	Character conversion table or configuration
+convert/cyrillic/1251macc.tab	Release	Source	convert/cyrillic/1251macc.tab	Character conversion table or configuration
+convert/cyrillic/bmik1251.tab	Release	Source	convert/cyrillic/bmik1251.tab	Character conversion table or configuration
+convert/cyrillic/c8551251.tab	Release	Source	convert/cyrillic/c8551251.tab	Character conversion table or configuration
+convert/cyrillic/c8661251.tab	Release	Source	convert/cyrillic/c8661251.tab	Character conversion table or configuration
+convert/cyrillic/convert.cfg	Release	Source	convert/cyrillic/convert.cfg	Character conversion table or configuration
+convert/cyrillic/ebcd1251.tab	Release	Source	convert/cyrillic/ebcd1251.tab	Character conversion table or configuration
+convert/cyrillic/iso51251.tab	Release	Source	convert/cyrillic/iso51251.tab	Character conversion table or configuration
+convert/cyrillic/koir1251.tab	Release	Source	convert/cyrillic/koir1251.tab	Character conversion table or configuration
+convert/cyrillic/koiu1251.tab	Release	Source	convert/cyrillic/koiu1251.tab	Character conversion table or configuration
+convert/cyrillic/macc1251.tab	Release	Source	convert/cyrillic/macc1251.tab	Character conversion table or configuration
+convert/westeuro/1-1.tab	Release	Source	convert/westeuro/1-1.tab	Character conversion table or configuration
+convert/westeuro/10511252.tab	Release	Source	convert/westeuro/10511252.tab	Character conversion table or configuration
+convert/westeuro/1051asci.tab	Release	Source	convert/westeuro/1051asci.tab	Character conversion table or configuration
+convert/westeuro/12521051.tab	Release	Source	convert/westeuro/12521051.tab	Character conversion table or configuration
+convert/westeuro/1252c437.tab	Release	Source	convert/westeuro/1252c437.tab	Character conversion table or configuration
+convert/westeuro/1252c850.tab	Release	Source	convert/westeuro/1252c850.tab	Character conversion table or configuration
+convert/westeuro/1252c860.tab	Release	Source	convert/westeuro/1252c860.tab	Character conversion table or configuration
+convert/westeuro/1252ebcd.tab	Release	Source	convert/westeuro/1252ebcd.tab	Character conversion table or configuration
+convert/westeuro/1252is15.tab	Release	Source	convert/westeuro/1252is15.tab	Character conversion table or configuration
+convert/westeuro/1252iso1.tab	Release	Source	convert/westeuro/1252iso1.tab	Character conversion table or configuration
+convert/westeuro/1252macr.tab	Release	Source	convert/westeuro/1252macr.tab	Character conversion table or configuration
+convert/westeuro/c4371252.tab	Release	Source	convert/westeuro/c4371252.tab	Character conversion table or configuration
+convert/westeuro/c437asci.tab	Release	Source	convert/westeuro/c437asci.tab	Character conversion table or configuration
+convert/westeuro/c8501252.tab	Release	Source	convert/westeuro/c8501252.tab	Character conversion table or configuration
+convert/westeuro/c850asci.tab	Release	Source	convert/westeuro/c850asci.tab	Character conversion table or configuration
+convert/westeuro/c8601252.tab	Release	Source	convert/westeuro/c8601252.tab	Character conversion table or configuration
+convert/westeuro/c860asci.tab	Release	Source	convert/westeuro/c860asci.tab	Character conversion table or configuration
+convert/westeuro/convert.cfg	Release	Source	convert/westeuro/convert.cfg	Character conversion table or configuration
+convert/westeuro/ebcd1252.tab	Release	Source	convert/westeuro/ebcd1252.tab	Character conversion table or configuration
+convert/westeuro/ebcdasci.tab	Release	Source	convert/westeuro/ebcdasci.tab	Character conversion table or configuration
+convert/westeuro/is151252.tab	Release	Source	convert/westeuro/is151252.tab	Character conversion table or configuration
+convert/westeuro/is15asci.tab	Release	Source	convert/westeuro/is15asci.tab	Character conversion table or configuration
+convert/westeuro/iso11252.tab	Release	Source	convert/westeuro/iso11252.tab	Character conversion table or configuration
+convert/westeuro/iso1asci.tab	Release	Source	convert/westeuro/iso1asci.tab	Character conversion table or configuration
+convert/westeuro/macr1252.tab	Release	Source	convert/westeuro/macr1252.tab	Character conversion table or configuration
+convert/westeuro/macrasci.tab	Release	Source	convert/westeuro/macrasci.tab	Character conversion table or configuration
+help/english/7zip.chm	Release	Build	help/english/7zip.chm	Compiled HTML Help: src/plugins/7zip/help/7zip.hhp
+help/english/automation.chm	Release	Build	help/english/automation.chm	Compiled HTML Help: src/plugins/automation/help/automation.hhp
+help/english/checksum.chm	Release	Build	help/english/checksum.chm	Compiled HTML Help: src/plugins/checksum/help/checksum.hhp
+help/english/checkver.chm	Release	Build	help/english/checkver.chm	Compiled HTML Help: src/plugins/checkver/help/checkver.hhp
+help/english/dbviewer.chm	Release	Build	help/english/dbviewer.chm	Compiled HTML Help: src/plugins/dbviewer/help/dbviewer.hhp
+help/english/demoview.chm	Release	Build	help/english/demoview.chm	Compiled HTML Help: src/plugins/demoview/help/demoview.hhp
+help/english/diskmap.chm	Release	Build	help/english/diskmap.chm	Compiled HTML Help: src/plugins/diskmap/help/diskmap.hhp
+help/english/filecomp.chm	Release	Build	help/english/filecomp.chm	Compiled HTML Help: src/plugins/filecomp/help/filecomp.hhp
+help/english/ftp.chm	Release	Build	help/english/ftp.chm	Compiled HTML Help: src/plugins/ftp/help/ftp.hhp
+help/english/ieviewer.chm	Release	Build	help/english/ieviewer.chm	Compiled HTML Help: src/plugins/ieviewer/help/ieviewer.hhp
+help/english/mmviewer.chm	Release	Build	help/english/mmviewer.chm	Compiled HTML Help: src/plugins/mmviewer/help/mmviewer.hhp
+help/english/nethood.chm	Release	Build	help/english/nethood.chm	Compiled HTML Help: src/plugins/nethood/help/nethood.hhp
+help/english/pak.chm	Release	Build	help/english/pak.chm	Compiled HTML Help: src/plugins/pak/spl/help/pak.hhp
+help/english/peviewer.chm	Release	Build	help/english/peviewer.chm	Compiled HTML Help: src/plugins/peviewer/help/peviewer.hhp
+help/english/pictview.chm	Release	Build	help/english/pictview.chm	Compiled HTML Help: src/plugins/pictview/help/pictview.hhp
+help/english/regedt.chm	Release	Build	help/english/regedt.chm	Compiled HTML Help: src/plugins/regedt/help/regedt.hhp
+help/english/renamer.chm	Release	Build	help/english/renamer.chm	Compiled HTML Help: src/plugins/renamer/help/renamer.hhp
+help/english/salamand.chm	Release	Build	help/english/salamand.chm	Compiled HTML Help: help/src/salamand.hhp
+help/english/splitcbn.chm	Release	Build	help/english/splitcbn.chm	Compiled HTML Help: src/plugins/splitcbn/help/splitcbn.hhp
+help/english/tar.chm	Release	Build	help/english/tar.chm	Compiled HTML Help: src/plugins/tar/help/tar.hhp
+help/english/unarj.chm	Release	Build	help/english/unarj.chm	Compiled HTML Help: src/plugins/unarj/help/unarj.hhp
+help/english/uncab.chm	Release	Build	help/english/uncab.chm	Compiled HTML Help: src/plugins/uncab/help/uncab.hhp
+help/english/unchm.chm	Release	Build	help/english/unchm.chm	Compiled HTML Help: src/plugins/unchm/help/unchm.hhp
+help/english/undelete.chm	Release	Build	help/english/undelete.chm	Compiled HTML Help: src/plugins/undelete/help/undelete.hhp
+help/english/unfat.chm	Release	Build	help/english/unfat.chm	Compiled HTML Help: src/plugins/unfat/help/unfat.hhp
+help/english/uniso.chm	Release	Build	help/english/uniso.chm	Compiled HTML Help: src/plugins/uniso/help/uniso.hhp
+help/english/unlha.chm	Release	Build	help/english/unlha.chm	Compiled HTML Help: src/plugins/unlha/help/unlha.hhp
+help/english/unmime.chm	Release	Build	help/english/unmime.chm	Compiled HTML Help: src/plugins/unmime/help/unmime.hhp
+help/english/unrar.chm	Release	Build	help/english/unrar.chm	Compiled HTML Help: src/plugins/unrar/help/unrar.hhp
+help/english/winscp.chm	Release	Build	help/english/winscp.chm	Compiled HTML Help: src/plugins/winscp/help/winscp.hhp (existing help-only payload; no WinSCP SPL)
+help/english/wmobile.chm	Release	Build	help/english/wmobile.chm	Compiled HTML Help: src/plugins/wmobile/help/wmobile.hhp
+help/english/zip.chm	Release	Build	help/english/zip.chm	Compiled HTML Help: src/plugins/zip/help/zip.hhp
+lang/english.slg	Release	Build	lang/english.slg	Main English language resource; lang.vcxproj
+LICENSE	Release	Source	LICENSE	GPL license
+msvcp140_1.dll	Release	Runtime	msvcp140_1.dll	MSVC v143 x64 Release CRT redistributable
+msvcp140_2.dll	Release	Runtime	msvcp140_2.dll	MSVC v143 x64 Release CRT redistributable
+msvcp140_atomic_wait.dll	Release	Runtime	msvcp140_atomic_wait.dll	MSVC v143 x64 Release CRT redistributable
+msvcp140_codecvt_ids.dll	Release	Runtime	msvcp140_codecvt_ids.dll	MSVC v143 x64 Release CRT redistributable
+msvcp140.dll	Release	Runtime	msvcp140.dll	MSVC v143 x64 Release CRT redistributable
+plugins/7zip/7za.dll	Release	Build	plugins/7zip/7za.dll	7za.dll.vcxproj; archive engine
+plugins/7zip/7zip.spl	Release	Build	plugins/7zip/7zip.spl	7zip.vcxproj; Solution plugin
+plugins/7zip/7zwrapper.dll	Release	Build	plugins/7zip/7zwrapper.dll	7zwrapper.vcxproj; archive engine wrapper
+plugins/7zip/lang/english.slg	Release	Build	plugins/7zip/lang/english.slg	lang_7zip.vcxproj; plugin English language resource
+plugins/automation/automation.spl	Release	Build	plugins/automation/automation.spl	automation.vcxproj; Solution plugin
+plugins/automation/lang/english.slg	Release	Build	plugins/automation/lang/english.slg	lang_automation.vcxproj; plugin English language resource
+plugins/automation/scripts/Convert Images.js	Release	Source	src/plugins/automation/sample-scripts/Convert Images.js	Existing automation sample script
+plugins/automation/scripts/Count Lines.js	Release	Source	src/plugins/automation/sample-scripts/Count Lines.js	Existing automation sample script
+plugins/automation/scripts/Launch Elevated Command Prompt.vbs	Release	Source	src/plugins/automation/sample-scripts/Launch Elevated Command Prompt.vbs	Existing automation sample script
+plugins/automation/scripts/Make Link.js	Release	Source	src/plugins/automation/sample-scripts/Make Link.js	Existing automation sample script
+plugins/automation/scripts/Make List (JScript).js	Release	Source	src/plugins/automation/sample-scripts/Make List (JScript).js	Existing automation sample script
+plugins/automation/scripts/Make List (VBScript).vbs	Release	Source	src/plugins/automation/sample-scripts/Make List (VBScript).vbs	Existing automation sample script
+plugins/automation/scripts/Unpack Multiple Archives.js	Release	Source	src/plugins/automation/sample-scripts/Unpack Multiple Archives.js	Existing automation sample script
+plugins/checksum/checksum.spl	Release	Build	plugins/checksum/checksum.spl	checksum.vcxproj; Solution plugin
+plugins/checksum/lang/english.slg	Release	Build	plugins/checksum/lang/english.slg	lang_checksum.vcxproj; plugin English language resource
+plugins/checkver/checkver.spl	Release	Build	plugins/checkver/checkver.spl	checkver.vcxproj; Solution plugin
+plugins/checkver/lang/english.slg	Release	Build	plugins/checkver/lang/english.slg	lang_checkver.vcxproj; plugin English language resource
+plugins/dbviewer/dbviewer.spl	Release	Build	plugins/dbviewer/dbviewer.spl	dbviewer.vcxproj; Solution plugin
+plugins/dbviewer/lang/english.slg	Release	Build	plugins/dbviewer/lang/english.slg	lang_dbviewer.vcxproj; plugin English language resource
+plugins/demoview/demoview.spl	Release	Build	plugins/demoview/demoview.spl	demoview.vcxproj; Solution plugin
+plugins/demoview/lang/english.slg	Release	Build	plugins/demoview/lang/english.slg	lang_demoview.vcxproj; plugin English language resource
+plugins/diskmap/diskmap.spl	Release	Build	plugins/diskmap/diskmap.spl	diskmap.vcxproj; Solution plugin
+plugins/diskmap/lang/english.slg	Release	Build	plugins/diskmap/lang/english.slg	lang_diskmap.vcxproj; plugin English language resource
+plugins/filecomp/fcremote.exe	Release	Build	plugins/filecomp/fcremote.exe	fcremote.vcxproj; comparison helper
+plugins/filecomp/filecomp.spl	Release	Build	plugins/filecomp/filecomp.spl	filecomp.vcxproj; Solution plugin
+plugins/filecomp/lang/english.slg	Release	Build	plugins/filecomp/lang/english.slg	lang_filecomp.vcxproj; plugin English language resource
+plugins/folders/folders.spl	Release	Build	plugins/folders/folders.spl	folders.vcxproj; Solution plugin
+plugins/folders/lang/english.slg	Release	Build	plugins/folders/lang/english.slg	lang_folders.vcxproj; plugin English language resource
+plugins/ftp/ftp.spl	Release	Build	plugins/ftp/ftp.spl	ftp.vcxproj; Solution plugin
+plugins/ftp/lang/english.slg	Release	Build	plugins/ftp/lang/english.slg	lang_ftp.vcxproj; plugin English language resource
+plugins/ieviewer/css/githubmd.css	Release	Source	src/plugins/ieviewer/cmark-gfm/css/githubmd.css	Markdown viewer stylesheet
+plugins/ieviewer/ieviewer.spl	Release	Build	plugins/ieviewer/ieviewer.spl	ieviewer.vcxproj; Solution plugin
+plugins/ieviewer/lang/english.slg	Release	Build	plugins/ieviewer/lang/english.slg	lang_ieviewer.vcxproj; plugin English language resource
+plugins/mmviewer/lang/english.slg	Release	Build	plugins/mmviewer/lang/english.slg	lang_mmviewer.vcxproj; plugin English language resource
+plugins/mmviewer/mmviewer.spl	Release	Build	plugins/mmviewer/mmviewer.spl	mmviewer.vcxproj; Solution plugin
+plugins/nethood/lang/english.slg	Release	Build	plugins/nethood/lang/english.slg	lang_nethood.vcxproj; plugin English language resource
+plugins/nethood/nethood.spl	Release	Build	plugins/nethood/nethood.spl	nethood.vcxproj; Solution plugin
+plugins/pak/lang/english.slg	Release	Build	plugins/pak/lang/english.slg	lang_pak.vcxproj; plugin English language resource
+plugins/pak/pak.spl	Release	Build	plugins/pak/pak.spl	pak.vcxproj; Solution plugin
+plugins/peviewer/lang/english.slg	Release	Build	plugins/peviewer/lang/english.slg	lang_peviewer.vcxproj; plugin English language resource
+plugins/peviewer/peviewer.spl	Release	Build	plugins/peviewer/peviewer.spl	peviewer.vcxproj; Solution plugin
+plugins/pictview/exif.dll	Release	Build	plugins/pictview/exif.dll	exif.vcxproj; EXIF metadata helper
+plugins/pictview/lang/english.slg	Release	Build	plugins/pictview/lang/english.slg	lang_pictview.vcxproj; plugin English language resource
+plugins/pictview/pictview.spl	Release	Build	plugins/pictview/pictview.spl	pictview.vcxproj; Solution plugin
+plugins/portables/lang/english.slg	Release	Build	plugins/portables/lang/english.slg	lang_portables.vcxproj; plugin English language resource
+plugins/portables/portables.spl	Release	Build	plugins/portables/portables.spl	portables.vcxproj; Solution plugin
+plugins/regedt/lang/english.slg	Release	Build	plugins/regedt/lang/english.slg	lang_regedt.vcxproj; plugin English language resource
+plugins/regedt/regedt.spl	Release	Build	plugins/regedt/regedt.spl	regedt.vcxproj; Solution plugin
+plugins/renamer/lang/english.slg	Release	Build	plugins/renamer/lang/english.slg	lang_renamer.vcxproj; plugin English language resource
+plugins/renamer/renamer.spl	Release	Build	plugins/renamer/renamer.spl	renamer.vcxproj; Solution plugin
+plugins/splitcbn/lang/english.slg	Release	Build	plugins/splitcbn/lang/english.slg	lang_splitcbn.vcxproj; plugin English language resource
+plugins/splitcbn/splitcbn.spl	Release	Build	plugins/splitcbn/splitcbn.spl	splitcbn.vcxproj; Solution plugin
+plugins/tar/lang/english.slg	Release	Build	plugins/tar/lang/english.slg	lang_tar.vcxproj; plugin English language resource
+plugins/tar/tar.spl	Release	Build	plugins/tar/tar.spl	tar.vcxproj; Solution plugin
+plugins/unarj/lang/english.slg	Release	Build	plugins/unarj/lang/english.slg	lang_unarj.vcxproj; plugin English language resource
+plugins/unarj/unarj.spl	Release	Build	plugins/unarj/unarj.spl	unarj.vcxproj; Solution plugin
+plugins/uncab/lang/english.slg	Release	Build	plugins/uncab/lang/english.slg	lang_uncab.vcxproj; plugin English language resource
+plugins/uncab/uncab.spl	Release	Build	plugins/uncab/uncab.spl	uncab.vcxproj; Solution plugin
+plugins/unchm/chmlib.dll	Release	Build	plugins/unchm/chmlib.dll	chmlib.vcxproj; CHM archive engine
+plugins/unchm/lang/english.slg	Release	Build	plugins/unchm/lang/english.slg	lang_unchm.vcxproj; plugin English language resource
+plugins/unchm/unchm.spl	Release	Build	plugins/unchm/unchm.spl	unchm.vcxproj; Solution plugin
+plugins/undelete/lang/english.slg	Release	Build	plugins/undelete/lang/english.slg	lang_undelete.vcxproj; plugin English language resource
+plugins/undelete/undelete.spl	Release	Build	plugins/undelete/undelete.spl	undelete.vcxproj; Solution plugin
+plugins/unfat/lang/english.slg	Release	Build	plugins/unfat/lang/english.slg	lang_unfat.vcxproj; plugin English language resource
+plugins/unfat/unfat.spl	Release	Build	plugins/unfat/unfat.spl	unfat.vcxproj; Solution plugin
+plugins/uniso/lang/english.slg	Release	Build	plugins/uniso/lang/english.slg	lang_uniso.vcxproj; plugin English language resource
+plugins/uniso/uniso.spl	Release	Build	plugins/uniso/uniso.spl	uniso.vcxproj; Solution plugin
+plugins/unlha/lang/english.slg	Release	Build	plugins/unlha/lang/english.slg	lang_unlha.vcxproj; plugin English language resource
+plugins/unlha/unlha.spl	Release	Build	plugins/unlha/unlha.spl	unlha.vcxproj; Solution plugin
+plugins/unmime/lang/english.slg	Release	Build	plugins/unmime/lang/english.slg	lang_unmime.vcxproj; plugin English language resource
+plugins/unmime/unmime.spl	Release	Build	plugins/unmime/unmime.spl	unmime.vcxproj; Solution plugin
+plugins/unole/lang/english.slg	Release	Build	plugins/unole/lang/english.slg	lang_unole.vcxproj; plugin English language resource
+plugins/unole/unole.spl	Release	Build	plugins/unole/unole.spl	unole.vcxproj; Solution plugin
+plugins/unrar/lang/english.slg	Release	Build	plugins/unrar/lang/english.slg	lang_unrar.vcxproj; plugin English language resource
+plugins/unrar/unrar.spl	Release	Build	plugins/unrar/unrar.spl	unrar.vcxproj; Solution plugin
+plugins/wmobile/lang/english.slg	Release	Build	plugins/wmobile/lang/english.slg	lang_wmobile.vcxproj; plugin English language resource
+plugins/wmobile/wmobile.spl	Release	Build	plugins/wmobile/wmobile.spl	wmobile.vcxproj; Solution plugin
+plugins/zip/lang/english.slg	Release	Build	plugins/zip/lang/english.slg	lang_zip.vcxproj; plugin English language resource
+plugins/zip/sfx/chinesesimplified.sfx	Release	Build	plugins/zip/sfx/chinesesimplified.sfx	Version-5 ZIP SFX language package
+plugins/zip/sfx/czech.sfx	Release	Build	plugins/zip/sfx/czech.sfx	Version-5 ZIP SFX language package
+plugins/zip/sfx/dutch.sfx	Release	Build	plugins/zip/sfx/dutch.sfx	Version-5 ZIP SFX language package
+plugins/zip/sfx/english.sfx	Release	Build	plugins/zip/sfx/english.sfx	Version-5 ZIP SFX language package
+plugins/zip/sfx/french.sfx	Release	Build	plugins/zip/sfx/french.sfx	Version-5 ZIP SFX language package
+plugins/zip/sfx/german.sfx	Release	Build	plugins/zip/sfx/german.sfx	Version-5 ZIP SFX language package
+plugins/zip/sfx/hungarian.sfx	Release	Build	plugins/zip/sfx/hungarian.sfx	Version-5 ZIP SFX language package
+plugins/zip/sfx/romanian.sfx	Release	Build	plugins/zip/sfx/romanian.sfx	Version-5 ZIP SFX language package
+plugins/zip/sfx/russian.sfx	Release	Build	plugins/zip/sfx/russian.sfx	Version-5 ZIP SFX language package
+plugins/zip/sfx/slovak.sfx	Release	Build	plugins/zip/sfx/slovak.sfx	Version-5 ZIP SFX language package
+plugins/zip/sfx/spanish.sfx	Release	Build	plugins/zip/sfx/spanish.sfx	Version-5 ZIP SFX language package
+plugins/zip/zip.spl	Release	Build	plugins/zip/zip.spl	zip.vcxproj; Solution plugin
+plugins/zip/zip2sfx/readme.txt	Release	Source	src/plugins/zip/zip2sfx/readme.txt	ZIP SFX usage or settings example
+plugins/zip/zip2sfx/sam_cz.set	Release	Source	src/plugins/zip/zip2sfx/sam_cz.set	ZIP SFX usage or settings example
+plugins/zip/zip2sfx/sample.set	Release	Source	src/plugins/zip/zip2sfx/sample.set	ZIP SFX usage or settings example
+plugins/zip/zip2sfx/zip2sfx.exe	Release	Build	plugins/zip/zip2sfx/zip2sfx.exe	Win32 ZIP SFX converter
+salamand.exe	Release	Build	salamand.exe	Main application; salamand.vcxproj
+SHA256SUMS.txt	Release	Generated	SHA256SUMS.txt	Internal payload hash manifest generated by Test-DistributionStage
+THIRD_PARTY_LICENSES.txt	Release	Source	doc/third_party.txt	Third-party notices
+toolbars/Back.svg	Release	Source	src/res/toolbars/Back.svg	Toolbar image
+toolbars/CalculateDirectorySizes.svg	Release	Source	src/res/toolbars/CalculateDirectorySizes.svg	Toolbar image
+toolbars/CalculateOccupiedSpace.svg	Release	Source	src/res/toolbars/CalculateOccupiedSpace.svg	Toolbar image
+toolbars/ChangeAttributes.svg	Release	Source	src/res/toolbars/ChangeAttributes.svg	Toolbar image
+toolbars/ChangeCase.svg	Release	Source	src/res/toolbars/ChangeCase.svg	Toolbar image
+toolbars/ChangeDirectory.svg	Release	Source	src/res/toolbars/ChangeDirectory.svg	Toolbar image
+toolbars/CilpboardCut.svg	Release	Source	src/res/toolbars/CilpboardCut.svg	Toolbar image
+toolbars/ClipboardCopy.svg	Release	Source	src/res/toolbars/ClipboardCopy.svg	Toolbar image
+toolbars/ClipboardPaste.svg	Release	Source	src/res/toolbars/ClipboardPaste.svg	Toolbar image
+toolbars/CommandShell.svg	Release	Source	src/res/toolbars/CommandShell.svg	Toolbar image
+toolbars/CompareDirectories.svg	Release	Source	src/res/toolbars/CompareDirectories.svg	Toolbar image
+toolbars/Configuration.svg	Release	Source	src/res/toolbars/Configuration.svg	Toolbar image
+toolbars/ConnectNetworkDrive.svg	Release	Source	src/res/toolbars/ConnectNetworkDrive.svg	Toolbar image
+toolbars/Convert.svg	Release	Source	src/res/toolbars/Convert.svg	Toolbar image
+toolbars/Copy.svg	Release	Source	src/res/toolbars/Copy.svg	Toolbar image
+toolbars/CreateDirectory.svg	Release	Source	src/res/toolbars/CreateDirectory.svg	Toolbar image
+toolbars/Delete.svg	Release	Source	src/res/toolbars/Delete.svg	Toolbar image
+toolbars/Disconnect.svg	Release	Source	src/res/toolbars/Disconnect.svg	Toolbar image
+toolbars/DriveInformation.svg	Release	Source	src/res/toolbars/DriveInformation.svg	Toolbar image
+toolbars/Edit.svg	Release	Source	src/res/toolbars/Edit.svg	Toolbar image
+toolbars/EditNewFile.svg	Release	Source	src/res/toolbars/EditNewFile.svg	Toolbar image
+toolbars/Email.svg	Release	Source	src/res/toolbars/Email.svg	Toolbar image
+toolbars/Filter.svg	Release	Source	src/res/toolbars/Filter.svg	Toolbar image
+toolbars/FindFilesAndDirectories.svg	Release	Source	src/res/toolbars/FindFilesAndDirectories.svg	Toolbar image
+toolbars/FocusNameInOtherPanel.svg	Release	Source	src/res/toolbars/FocusNameInOtherPanel.svg	Toolbar image
+toolbars/Forward.svg	Release	Source	src/res/toolbars/Forward.svg	Toolbar image
+toolbars/GoToHotPath.svg	Release	Source	src/res/toolbars/GoToHotPath.svg	Toolbar image
+toolbars/GoToPathfromOtherPanel.svg	Release	Source	src/res/toolbars/GoToPathfromOtherPanel.svg	Toolbar image
+toolbars/GoToShortcutTarget.svg	Release	Source	src/res/toolbars/GoToShortcutTarget.svg	Toolbar image
+toolbars/HelpContents.svg	Release	Source	src/res/toolbars/HelpContents.svg	Toolbar image
+toolbars/HideSelectedNames.svg	Release	Source	src/res/toolbars/HideSelectedNames.svg	Toolbar image
+toolbars/HideUnselectedNames.svg	Release	Source	src/res/toolbars/HideUnselectedNames.svg	Toolbar image
+toolbars/Modify.svg	Release	Source	src/res/toolbars/Modify.svg	Toolbar image
+toolbars/Move.svg	Release	Source	src/res/toolbars/Move.svg	Toolbar image
+toolbars/MoveItemDown.svg	Release	Source	src/res/toolbars/MoveItemDown.svg	Toolbar image
+toolbars/MoveItemUp.svg	Release	Source	src/res/toolbars/MoveItemUp.svg	Toolbar image
+toolbars/New.svg	Release	Source	src/res/toolbars/New.svg	Toolbar image
+toolbars/NTFSCompress.svg	Release	Source	src/res/toolbars/NTFSCompress.svg	Toolbar image
+toolbars/NTFSUncompress.svg	Release	Source	src/res/toolbars/NTFSUncompress.svg	Toolbar image
+toolbars/OpenFolder.svg	Release	Source	src/res/toolbars/OpenFolder.svg	Toolbar image
+toolbars/OpenNameinOtherPanel.svg	Release	Source	src/res/toolbars/OpenNameinOtherPanel.svg	Toolbar image
+toolbars/Pack.svg	Release	Source	src/res/toolbars/Pack.svg	Toolbar image
+toolbars/ParentDirectory.svg	Release	Source	src/res/toolbars/ParentDirectory.svg	Toolbar image
+toolbars/PasteShortcut.svg	Release	Source	src/res/toolbars/PasteShortcut.svg	Toolbar image
+toolbars/Properties.svg	Release	Source	src/res/toolbars/Properties.svg	Toolbar image
+toolbars/QuickRename.svg	Release	Source	src/res/toolbars/QuickRename.svg	Toolbar image
+toolbars/Refresh.svg	Release	Source	src/res/toolbars/Refresh.svg	Toolbar image
+toolbars/RootDirectory.svg	Release	Source	src/res/toolbars/RootDirectory.svg	Toolbar image
+toolbars/Security.svg	Release	Source	src/res/toolbars/Security.svg	Toolbar image
+toolbars/SharedDirectories.svg	Release	Source	src/res/toolbars/SharedDirectories.svg	Toolbar image
+toolbars/ShowHiddenNames.svg	Release	Source	src/res/toolbars/ShowHiddenNames.svg	Toolbar image
+toolbars/SmartColumnMode.svg	Release	Source	src/res/toolbars/SmartColumnMode.svg	Toolbar image
+toolbars/SortByAttributes.svg	Release	Source	src/res/toolbars/SortByAttributes.svg	Toolbar image
+toolbars/SortByDate.svg	Release	Source	src/res/toolbars/SortByDate.svg	Toolbar image
+toolbars/SortByExtension.svg	Release	Source	src/res/toolbars/SortByExtension.svg	Toolbar image
+toolbars/SortByName.svg	Release	Source	src/res/toolbars/SortByName.svg	Toolbar image
+toolbars/SortBySize.svg	Release	Source	src/res/toolbars/SortBySize.svg	Toolbar image
+toolbars/SwapPanels.svg	Release	Source	src/res/toolbars/SwapPanels.svg	Toolbar image
+toolbars/Unpack.svg	Release	Source	src/res/toolbars/Unpack.svg	Toolbar image
+toolbars/UserMenu.svg	Release	Source	src/res/toolbars/UserMenu.svg	Toolbar image
+toolbars/View.svg	Release	Source	src/res/toolbars/View.svg	Toolbar image
+toolbars/Views.svg	Release	Source	src/res/toolbars/Views.svg	Toolbar image
+toolbars/WhatIsThis.svg	Release	Source	src/res/toolbars/WhatIsThis.svg	Toolbar image
+utils/sqlite.dll	Release	Build	utils/sqlite.dll	sqlite.vcxproj; SQLite runtime
+vccorlib140.dll	Release	Runtime	vccorlib140.dll	MSVC v143 x64 Release CRT redistributable
+vcruntime140_1.dll	Release	Runtime	vcruntime140_1.dll	MSVC v143 x64 Release CRT redistributable
+vcruntime140_threads.dll	Release	Runtime	vcruntime140_threads.dll	MSVC v143 x64 Release CRT redistributable
+vcruntime140.dll	Release	Runtime	vcruntime140.dll	MSVC v143 x64 Release CRT redistributable

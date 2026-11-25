@@ -9,7 +9,8 @@
     This verifier reads files only; it does not execute the distribution.
 #>
 [CmdletBinding()]
-param([Parameter(Mandatory)][string]$ExtractedDirectory)
+param([Parameter(Mandatory)][string]$ExtractedDirectory,
+      [switch]$RequireReleasePayload)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
@@ -17,6 +18,10 @@ $ErrorActionPreference = 'Stop'
 $root = [IO.Path]::GetFullPath($ExtractedDirectory)
 if (-not (Test-Path -LiteralPath $root -PathType Container)) {
     throw "Portable extraction directory does not exist: $root"
+}
+if ($RequireReleasePayload) {
+    . (Join-Path $PSScriptRoot '..\Package-Helpers.ps1')
+    Assert-ReleasePayload -Root $root -ManifestState Present
 }
 $manifestPath = Join-Path $root 'SHA256SUMS.txt'
 if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {

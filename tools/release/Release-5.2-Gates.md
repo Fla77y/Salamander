@@ -15,6 +15,7 @@ Status: **not yet approved for public release**. Keep the change set in Draft un
 - [ ] GitHub Actions **Product 5.2 and local PictView acceptance commands**: product/version/config-migration contracts; native WIC x86/x64 decoder, GDI, transforms, writer and clipboard.
 - [ ] GitHub Actions **Long path regression foundations** and **Package script checks**.
 - [ ] GitHub Actions **Release portability packages (Windows 2026)**: Debug/Release rebuilds, compiled help, recursive PE dependencies, runtime staging, 7z integrity checks, both Inno Setup outputs.
+- [ ] **Independent Release payload gate (AUD-PKG-0001):** compare the complete stage against `tools/release/Release-Payload.tsv` before generating its internal manifest, verify each non-generated file against its declared origin, and verify the extracted 7z with `Test-PortableManifest.ps1 -ExtractedDirectory <extracted-release> -RequireReleasePayload`. The installer smoke must also enforce the independent installed file set (only the paired Inno uninstaller EXE/DAT may be additional). No automatic expansion of the approved CRT or resource lists. Windows verification of the new gate remains pending.
 - [ ] **Public Release artifact gate**: the GitHub artifact contains exactly `OpenSalamander-Release-x64.7z`, `OpenSalamander-Release-x64-Setup.exe` and `SHA256SUMS-Release.txt`. Run `Test-ReleaseChecksumManifest.ps1 -DistributionDirectory <downloaded-directory> -RequirePublicOnly` after extracting the GitHub artifact ZIP. The new `Test-ReleasePublicArtifact.ps1` regression validates strict contents (including hidden entries) with synthetic payloads; the internal `dist` directory remains permitted to contain private Debug artifacts. Reject any staged `.pdb`, `.lib`, `.exp`, Debug CRTs, or missing `pictview.spl`, `lang/english.slg`, `exif.dll`.
 - [ ] The temporary Windows CI runner executes `Test-ReleaseInstaller.ps1` against the just-generated Release installer, installs the executable and required plugin files into a GUID-scoped directory, uninstalls, and confirms removal. **This runner contains development tools and is not a clean VM**.
 
@@ -36,6 +37,10 @@ notice source is `doc/third_party.txt`; the staged release file is
 `THIRD_PARTY_LICENSES.txt`. The stage now requires that file to exist.
 
 
+
+### Local evidence (25 November 2026)
+
+On `8c136b618abe727e92243bd215941afb40bbdbb2`, the full automated run reported 130 PASS / 0 FAIL / 35 SKIP, after 50 successful uninstrumented ShellClipboard runs per configuration. On the product-code-identical documentation commit `1d278190fb97fceb5f56669afe687dd521f4fe3a`, the clean-checkout Rebuild/Setup and the explicit plugin-load, native PictView window, six-format F3 host and RecycleRestore runs passed. See [handover](../../docs/maintenance/Arbeitsstand-und-Uebergabe.md#4-aktive-fehler-und-nächste-konkrete-arbeit) for logs, scope and exact results. These are historical results, not verification of the newly implemented independent Release gate or final-candidate CI/VM acceptance.
 
 ## 2. Interactive GUI and plugin acceptance on Windows x64
 

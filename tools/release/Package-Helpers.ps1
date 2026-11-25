@@ -338,6 +338,111 @@ function Assert-StagedBuiltPlugins {
     Write-Host "PASS: all $($built.Count) built SPL modules were staged with exact SHA-256 content."
 }
 
+# Independent, versioned Release file contract. Do not derive it from a
+# stage, a build tree, or an internal package checksum manifest.
+function Get-ReleasePayloadEntries {
+    $contract = Join-Path $PSScriptRoot 'Release-Payload.tsv'
+    $lines = [IO.File]::ReadAllLines($contract)
+    $header = @('Path', 'Configuration', 'Kind', 'Origin', 'Purpose') -join [char]9
+    if ($lines.Length -lt 2 -or $lines[0] -cne $header) {
+        throw 'Invalid Release payload contract header.'
+    }
+    $seen = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $entries = foreach ($line in $lines[1..($lines.Length - 1)]) {
+        $fields = $line.Split([char]9)
+        if ($fields.Length -ne 5 -or $fields[1] -cne 'Release' -or
+            $fields[2] -cnotin @('Build', 'Source', 'Runtime', 'Generated') -or
+            [string]::IsNullOrWhiteSpace($fields[4])) {
+            throw "Invalid Release payload contract row: $line"
+        }
+        foreach ($relative in @($fields[0], $fields[3])) {
+            if ($relative -notmatch '^[A-Za-z0-9_ .()/\-]+$' -or
+                @($relative.Split('/') | Where-Object {
+                    $_ -eq '' -or $_ -eq '.' -or $_ -eq '..' -or $_.EndsWith('.') -or $_.EndsWith(' ')
+                }).Count -ne 0) {
+                throw "Unsafe Release payload contract path: $relative"
+            }
+        }
+        if (-not $seen.Add($fields[0])) { throw "Duplicate Release payload contract path: $($fields[0])" }
+        [pscustomobject]@{ Path = $fields[0]; Kind = $fields[2]; Origin = $fields[3]; Purpose = $fields[4] }
+    }
+    $generated = @($entries | Where-Object { $_.Kind -eq 'Generated' })
+    if ($generated.Count -ne 1 -or $generated[0].Path -cne 'SHA256SUMS.txt' -or
+        $generated[0].Origin -cne 'SHA256SUMS.txt') {
+        throw 'Release payload contract must designate exactly the root SHA256SUMS.txt as generated.'
+    }
+    $entries
+}
+
+function Assert-ReleasePayload {
+    param([Parameter(Mandatory)][string]$Root,
+          [ValidateSet('Absent', 'Optional', 'Present')][string]$ManifestState = 'Present',
+          [switch]$Installed)
+    $Root = [IO.Path]::GetFullPath($Root)
+    $directory = Get-Item -LiteralPath $Root -Force -ErrorAction Stop
+    if (-not $directory.PSIsContainer -or ($directory.Attributes -band [IO.FileAttributes]::ReparsePoint)) {
+        throw "Unsafe Release payload root: $Root"
+    }
+    $expected = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    foreach ($row in (Get-ReleasePayloadEntries)) {
+        if ($row.Kind -eq 'Generated' -and $ManifestState -ne 'Present') { continue }
+        [void]$expected.Add($row.Path)
+    }
+    $actual = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $unexpected = [Collections.Generic.List[string]]::new()
+    $uninstall = [Collections.Generic.List[string]]::new()
+    foreach ($entry in (Get-ChildItem -LiteralPath $Root -Recurse -Force -ErrorAction Stop)) {
+        if ($entry.Attributes -band [IO.FileAttributes]::ReparsePoint) {
+            throw "Release payload contains a reparse point: $($entry.FullName)"
+        }
+        if ($entry.PSIsContainer) { continue }
+        $relative = [IO.Path]::GetRelativePath($Root, $entry.FullName).Replace('\', '/')
+        if (-not $actual.Add($relative)) { throw "Duplicate Release payload path: $relative" }
+        if ($expected.Contains($relative)) { continue }
+        if ($ManifestState -eq 'Optional' -and $relative -ieq 'SHA256SUMS.txt') { continue }
+        if ($Installed -and $relative -match '^unins[0-9]{3}\.(exe|dat)$') {
+            $uninstall.Add($relative)
+            continue
+        }
+        $unexpected.Add($relative)
+    }
+    $missing = @($expected | Where-Object { -not $actual.Contains($_) } | Sort-Object)
+    if ($missing.Count -ne 0 -or $unexpected.Count -ne 0) {
+        throw "Release payload path mismatch. Missing: $($missing -join '; '); Unexpected: $($unexpected -join '; ')"
+    }
+    if ($Installed) {
+        $exe = @($uninstall | Where-Object { $_ -match '\.exe$' })
+        if ($uninstall.Count -ne 2 -or $exe.Count -ne 1 -or
+            $uninstall -notcontains [IO.Path]::ChangeExtension($exe[0], '.dat')) {
+            throw 'Release installation must contain exactly one paired Inno Setup uninstaller EXE and DAT.'
+        }
+    }
+    Write-Host "PASS: independent Release payload path contract ($($actual.Count) files, manifest $ManifestState)."
+}
+
+function Assert-ReleasePayloadOrigins {
+    param([Parameter(Mandatory)][string]$Stage,
+          [Parameter(Mandatory)][string]$Repository,
+          [Parameter(Mandatory)][string]$BuiltDirectory,
+          [Parameter(Mandatory)][string]$RuntimeDirectory)
+    # A fresh stage may not import an already-generated manifest from a build.
+    Assert-ReleasePayload -Root $Stage -ManifestState Absent
+    $roots = @{ Source = $Repository; Build = $BuiltDirectory; Runtime = $RuntimeDirectory }
+    foreach ($row in (Get-ReleasePayloadEntries)) {
+        if ($row.Kind -eq 'Generated') { continue }
+        $source = Join-Path $roots[$row.Kind] $row.Origin
+        $target = Join-Path $Stage $row.Path
+        if (-not (Test-Path -LiteralPath $source -PathType Leaf)) {
+            throw "Required Release payload origin missing: $($row.Path) from $source"
+        }
+        if ((Get-FileHash -LiteralPath $source -Algorithm SHA256).Hash -cne
+            (Get-FileHash -LiteralPath $target -Algorithm SHA256).Hash) {
+            throw "Release payload differs from authorized origin: $($row.Path) from $source"
+        }
+    }
+    Write-Host 'PASS: every non-generated Release payload file matches its declared origin by SHA-256.'
+}
+
 function Test-DistributionStage {
     param([string]$Stage, [string]$Configuration, [string]$DumpbinExe)
     if (Test-Path -LiteralPath (Join-Path $Stage 'utils\salmon.exe') -PathType Leaf) {
@@ -381,6 +486,10 @@ function Test-DistributionStage {
         }
     }
 
+    if ($Configuration -eq 'Release') {
+        Assert-ReleasePayload -Root $Stage -ManifestState Optional
+    }
+
     # Check direct imports of every executable, DLL and Salamander plug-in against
     # the staged application and Windows system DLLs. An actual clean-VM test is
     # still required because this cannot validate delayed dynamic LoadLibrary calls.
@@ -406,8 +515,9 @@ function Test-DistributionStage {
     }
 
     $manifest = Join-Path $Stage 'SHA256SUMS.txt'
-    $files = @(Get-ChildItem -LiteralPath $Stage -File -Recurse |
-        Where-Object { $_.Name -ne 'SHA256SUMS.txt' } | Sort-Object FullName)
+    $manifestFullPath = [IO.Path]::GetFullPath($manifest)
+    $files = @(Get-ChildItem -LiteralPath $Stage -File -Recurse -Force |
+        Where-Object { $_.FullName -ine $manifestFullPath } | Sort-Object FullName)
     $entries = foreach ($file in $files) {
         $relative = [IO.Path]::GetRelativePath($Stage, $file.FullName).Replace('\', '/')
         '{0} *{1}' -f (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash.ToLowerInvariant(), $relative
