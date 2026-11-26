@@ -40,6 +40,8 @@ notice source is `doc/third_party.txt`; the staged release file is
 
 ### Local evidence (25 November 2026)
 
+Latest local rebuild/package evidence: `manage.cmd --setup` on clean tracked HEAD `1b803c7d87f1d786ee210f93213ecf41df62a02a`, transcript `manage-20261125-190523-943-78cea4.log`, 4:21.197. Debug/Release x64 rebuilds, 11 Win32 SFX language packages, 32 CHM projects, both stages with 33 SPLs and 40 sidecars, pinned UnRAR 7.2.7 DLL/license, exact independent Release payload (280 paths including manifest), origin hashes, extracted 7z validation and both installers passed. The previous full regression on `bf51d3a6` was 132 PASS / 0 FAIL / 33 SKIP, with 33 plugin initializations per configuration. The new UnRAR DLL has a different binary hash; no startup of the new package or installer execution is evidenced by this build. Outer artifact hashes, fresh VM acceptance, final-candidate CI, licensing and signing remain outstanding. No gate is closed. See [PKG-02](../../docs/maintenance/Testluecken-und-Abnahmeplan-5.2.md) and journal J-20261125-34.
+
 On `8c136b618abe727e92243bd215941afb40bbdbb2`, the full automated run reported 130 PASS / 0 FAIL / 35 SKIP, after 50 successful uninstrumented ShellClipboard runs per configuration. On the product-code-identical documentation commit `1d278190fb97fceb5f56669afe687dd521f4fe3a`, the clean-checkout Rebuild/Setup and the explicit plugin-load, native PictView window, six-format F3 host and RecycleRestore runs passed. See [handover](../../docs/maintenance/Arbeitsstand-und-Uebergabe.md#4-aktive-fehler-und-nächste-konkrete-arbeit) for logs, scope and exact results. These are historical results, not verification of the newly implemented independent Release gate or final-candidate CI/VM acceptance.
 
 ## 2. Interactive GUI and plugin acceptance on Windows x64
@@ -74,6 +76,8 @@ Stop running Salamander instances first; use the matching freshly-built Release 
 The original PictView/PVW32 engine is **not fully replaced feature-for-feature**. Legacy proprietary codecs, timed GIF playback, print/capture, and parts of the historical UI are outside the verified WIC scope. Do not claim full legacy equivalence. Document these limitations explicitly in the user-facing release notes or defer the public release if parity is a requirement.
 
 ## 3. Mandatory clean Windows 11 x64 release test
+
+**25 November 2026 — owner-reported functional PASS:** following the rebuild/setup on `1b803c7d87f1d786ee210f93213ecf41df62a02a`, the owner reported that all tests in a clean VM succeeded. This refers to the requested portable startup, installer, Plugin Manager Test All, RAR4/RAR5 open/extract, PictView, F1 and uninstall checks. The earlier missing UnRAR DLL error was not reported again. Exact tested artifact hashes, VM OS build, separate snapshot evidence, per-case logs/screenshots and uninstall cleanup details were not supplied. The final artifact gates, upgrade/rollback, and release approval remain open. See PKG-03/04 and J-20261125-35.
 
 Use two **fresh Windows 11 x64 VM snapshots** without Visual Studio, Windows SDK, or a separately installed VC++ redistributable. The GitHub-hosted Windows builder is **not** an acceptable substitute.
 
