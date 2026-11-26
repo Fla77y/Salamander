@@ -633,6 +633,8 @@ Technische Maßnahmen: [AUD-ARCH-0001](Code-Audit-und-Massnahmenkatalog-5.2.md#a
 
 ### [ ] UP-03 – Archive und externe/virtuelle Dateisysteme (**P0**, OFFEN)
 
+**26.11.2026 – Auftrag: Plugin-Funktionstestabdeckung erhöhen (AUD-TEST-PLUGIN-0001, UP-01/02/03, QA-01, MGMT-03; A0/A4/A8).** Ausgangs-HEAD `fe13441d15d8bb56f026f3c1d6f7a84b8cc50dd9`; zwei neuere Renamer-Audit-Dokumentationscommits gegenüber `df3880a2`, Produktstand unverändert. Erste Erweiterung: `--test-plugin-zip` gruppiert unverändert die drei vorhandenen ZIP-Aktionen; `--test-plugin-7z` expandiert auf `--test-gui-7zip-host`, automatisch in `--test-all`, je Debug/Release zwei unabhängige Fälle Extract/Cancel. Neue `SevenZip-HostCases.ps1` nutzt den bestehenden Archiv-GUI-Treiber, dessen GUID-Fixture, Prozess-/Panel-/Clipboard-/TEMP-Schutz und verifizierten nativen F5-Kopierdialog. Externes 7z.exe erzeugt und prüft LZMA2-Archiv mit exakt zwei ASCII-Mitgliedern und verschiedenen Nutzbytes; tatsächliche Archivpanel-/SPL-/Memberidentität, selektive Extraktion mit exakter Zielmenge und SHA-256 oder explizit bestätigter Dialogabbruch vor Kopierbeginn mit leerem Ziel; Quellarchiv und beide unabhängigen Eingaben unverändert. Additiver IDCANCEL-Dialoghelfer, keine bestehenden Assertions/Tests abgeschwächt, kein Produktcode geändert. Manager-Hilfe, Dispatch und Registry ergänzt; Alias keine zusätzliche unabhängige Prüfung. Statischer Quell-/Registry-Abgleich; kein Windows-/PowerShell-Lauf und keine RED/GREEN-Laufzeitverifikation in der Bearbeitungsumgebung. ASCII-Kurzpfadbaseline, kein 7z-Schreib-/Unicode-/Langpfad-/Passwort- oder Abbruch während laufender Extraktion; Renamer-Funktionssuite und weitere Plugins bleiben offen. Nächster Schritt `manage.cmd --test`, anschließend `manage.cmd --test-plugin-7z --debug` und `--release`, ZIP-Alias je Variante und `--test-all`. Bei RED Ursache am Testvertrag/Produktcode nach A8 prüfen, keine Abschwächung. Release NO-GO.
+
 **25.11.2026 – Clean-VM-Funktionsabnahme PASS laut Nutzer:** korrigierter Paketstand im unmittelbar vorangegangenen Prüfschritt erfolgreich; siehe PKG-03/04 und J-20261125-35. Kein unabhängiger finaler Artefaktnachweis und keine pauschale Schließung.
 
 **25.11.2026 – neuer Teilnachweis:** Vollregression `bf51d3a696bb3e6641ff9df5ded8053ef10bf836` 132/0/33; siehe QA-03 und Entwicklungsjournal J-20261125-33. Kein Abschluss dieser ID; bisherige offene Abnahmebedingungen bleiben bestehen.
@@ -1208,6 +1210,8 @@ Technische Maßnahmen: [AUD-MGMT-0001](Code-Audit-und-Massnahmenkatalog-5.2.md#a
   keine gefälschten PASS-Meldungen.
 
 ### [ ] MGMT-03 – Test-Registry gegen unbemerkte Auslassungen (**P2**, TEILBELEGT)
+
+**26.11.2026 – Erweiterung vorbereitet:** 7-Zip-Host Extract/Cancel automatisch registriert; ZIP-/7-Zip-Alias ohne zusätzliche unabhängige Fälle, Windows-Verifikation offen. Siehe UP-03 und Journal.
 
 **25.11.2026 – neuer Teilnachweis:** Vollregression `bf51d3a696bb3e6641ff9df5ded8053ef10bf836` 132/0/33; siehe QA-03 und Entwicklungsjournal J-20261125-33. Kein Abschluss dieser ID; bisherige offene Abnahmebedingungen bleiben bestehen.
 

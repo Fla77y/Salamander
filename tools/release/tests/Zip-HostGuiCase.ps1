@@ -191,6 +191,30 @@ public static class ZipHostDialogs
             throw new InvalidOperationException("ZIP host verified IDOK failed.");
         return true;
     }
+    // Shared native host copy dialog: cancel only a uniquely identified
+    // archive extraction with the exact fixture member and destination.
+    public static bool TryCancelCopy(IntPtr main, uint pid, string target)
+    {
+        var candidates = new List<IntPtr>();
+        if (!EnumWindows((hwnd, arg) => {
+            if (Dialog(hwnd, main, pid)) candidates.Add(hwnd);
+            return true;
+        }, IntPtr.Zero)) throw new InvalidOperationException("Archive copy window enumeration failed.");
+        IntPtr found = IntPtr.Zero;
+        foreach (var hwnd in candidates)
+        {
+            if (!Match(hwnd, main, pid, false, target)) continue;
+            if (found != IntPtr.Zero) throw new InvalidOperationException("Ambiguous archive copy dialog.");
+            found = hwnd;
+        }
+        if (found == IntPtr.Zero) return false;
+        var cancel = Control(found, 2, pid, "Button");
+        if (!Match(found, main, pid, false, target) || cancel == IntPtr.Zero ||
+            !IsWindowEnabled(cancel) || !IsWindowVisible(cancel) ||
+            !PostMessage(found, 0x0111, new IntPtr(2), cancel))
+            throw new InvalidOperationException("Verified archive copy cancel failed.");
+        return true;
+    }
     [DllImport("user32.dll")] private static extern bool EnumChildWindows(IntPtr window, Callback callback, IntPtr arg);
     [DllImport("user32.dll", EntryPoint="SendMessageTimeoutW", SetLastError=true)]
     private static extern IntPtr SendNumber(IntPtr window, uint msg, UIntPtr w, IntPtr l,

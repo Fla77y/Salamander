@@ -44,6 +44,7 @@ param(
     [ValidateSet('None','ZipCrypto')][string]$ZipHostEncryption,
     [string]$ZipHostSevenZip,
     [ValidateSet('Create','Add','Replace','Delete')][string]$ZipHostMutation,
+    [ValidateSet('Extract','Cancel')][string]$SevenZipHostCase,
     [switch]$TemporaryDirectoryDeletionOnly,
     [switch]$UnicodeFindOnly,
     [ValidateSet('Baseline','Cancel','AdvancedInputs','ViewResults','ViewUnicode','ViewLong','ViewStale','ViewMixed','FocusUnicode','FocusLong','FocusStale','ShellClipboard','ShellOpen','ShellProperties','ExternalEditor','ExternalEditorNative','RecycleRestore',
@@ -104,6 +105,9 @@ if ($LargeUnicodeCopyCase -ne 'Copy' -and -not $LargeUnicodeCopyOnly) {
     throw '-LargeUnicodeCopyCase requires -LargeUnicodeCopyOnly.'
 }
 if ($ZipHostMutation -and $ZipHostEncryption -ne 'None') { throw 'ZIP mutation requires the unencrypted ZIP host scenario.' }
+if ($SevenZipHostCase -and ($ZipHostEncryption -ne 'None' -or $ZipHostMutation)) {
+    throw '7-Zip host scenario requires the unencrypted archive host driver, without ZIP mutation.'
+}
 if ($ZipHostEncryption -and (-not $ZipHostSevenZip -or $IsolatedConfiguration -or $ShortOperationsOnly -or $BaselineOnly -or $LegacyFindScenario)) {
     throw 'ZIP host scenario requires a standalone ordinary host run and 7-Zip fixture tool.'
 }
@@ -4090,6 +4094,10 @@ try {
             . (Join-Path $PSScriptRoot 'Zip-HostMutationCases.ps1')
             $zipHostFixture = Initialize-ZipHostMutation
         }
+        elseif ($SevenZipHostCase) {
+            . (Join-Path $PSScriptRoot 'SevenZip-HostCases.ps1')
+            $zipHostFixture = Initialize-SevenZipHostFixture
+        }
         else { $zipHostFixture = Initialize-ZipHostFixture }
     }
     if ($ShortOperationsOnly) {
@@ -4706,6 +4714,7 @@ try {
 
     if ($ZipHostEncryption) {
         if ($ZipHostMutation) { Test-ZipHostMutation -Fixture $zipHostFixture }
+        elseif ($SevenZipHostCase) { Test-SevenZipHost -Fixture $zipHostFixture }
         else { Test-ZipHostExtraction -Fixture $zipHostFixture }
         $passed = $true
         return

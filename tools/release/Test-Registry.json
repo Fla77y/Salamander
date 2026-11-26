@@ -542,6 +542,12 @@
       "Reason": ""
     },
     {
+      "Path": "tools/release/tests/SevenZip-HostCases.ps1",
+      "Kind": "Helper",
+      "Owner": "tools/release/tests/Test-SalamanderGui-LongPaths.ps1",
+      "Reason": "Independent 7-Zip host extraction and pre-copy cancellation scenarios executed by GUI driver."
+    },
+    {
       "Path": "tools/release/tests/Zip-HostGuiCase.ps1",
       "Kind": "Helper",
       "Owner": "tools/release/tests/Test-SalamanderGui-LongPaths.ps1",
@@ -565,6 +571,7 @@
     "--test-zip-sfx",
     "--test-gui-zip-host",
     "--test-gui-zip-mutation",
+    "--test-gui-7zip-host",
     "--test-gui-large-unicode-copy",
     "--test-gui-large-unicode-parent-copy",
     "--test-gui-long-history",
@@ -703,6 +710,18 @@
       "Name": "Clean VM and full plugin functionality acceptance",
       "Option": "",
       "Reason": "Requires separate controlled environment and additional functional coverage.",
+      "PerVariant": false
+    },
+    {
+      "Name": "Grouped ZIP baseline (alias)",
+      "Option": "--test-plugin-zip",
+      "Reason": "Explicit alias for automatically selected ZIP actions; no additional independent scenario.",
+      "PerVariant": false
+    },
+    {
+      "Name": "Grouped 7-Zip baseline (alias)",
+      "Option": "--test-plugin-7z",
+      "Reason": "Explicit alias for automatically selected 7-Zip host cases; no additional independent scenario.",
       "PerVariant": false
     },
     {
