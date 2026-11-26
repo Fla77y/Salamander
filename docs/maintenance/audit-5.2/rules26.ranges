@@ -1,0 +1,7 @@
+src/plugins/renamer/crenamer.cpp	227-484,485-665	AUD-PLUGIN-REN-0010
+src/plugins/renamer/crename2.cpp	491-653	AUD-PLUGIN-REN-0011
+src/plugins/renamer/utils.cpp	404-451	AUD-PLUGIN-REN-0011
+src/plugins/renamer/preview.cpp	147-245	AUD-PLUGIN-REN-0010,AUD-PLUGIN-REN-0011
+src/plugins/renamer/rendlg2.cpp	253-278	AUD-PLUGIN-REN-0010,AUD-PLUGIN-REN-0011
+src/plugins/renamer/varstr.cpp	187-204	
+src/plugins/renamer/help/hh/renamer/dlgboxes_batchrename.htm	202-245	

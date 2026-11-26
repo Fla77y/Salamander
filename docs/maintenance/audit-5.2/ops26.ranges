@@ -1,0 +1,4 @@
+src/plugins/renamer/rendlg3.cpp	6-179,180-234,272-354,355-407	AUD-PLUGIN-REN-0002,AUD-PLUGIN-REN-0004,AUD-PLUGIN-REN-0006
+src/plugins/renamer/rendlg2.cpp	537-657,658-720	AUD-PLUGIN-REN-0004,AUD-PLUGIN-REN-0005
+src/plugins/renamer/rendlg.h	27-38,104-104	AUD-PLUGIN-REN-0005
+src/plugins/renamer/rendlg4.cpp	6-95	AUD-PLUGIN-REN-0003
