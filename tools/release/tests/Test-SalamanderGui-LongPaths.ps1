@@ -45,7 +45,7 @@ param(
     [string]$ZipHostSevenZip,
     [ValidateSet('Create','Add','Replace','Delete')][string]$ZipHostMutation,
     [ValidateSet('Extract','Cancel')][string]$SevenZipHostCase,
-    [ValidateSet('Prefix','Suffix','Extension','LiteralDollar','LowerName','UpperExtension','CaseSensitive','CaseInsensitive','ReplaceOnce','ReplaceAll','WholeWords','ExcludeExtension','RegexCapture','RegexLower','RegexUpper','RegexUpperCapital','RegexUpperMixed','RegexBrace','Counter','CounterDescending','CounterFraction','CounterMalformed','CounterMultipleDots','CounterDotOnly','InvalidVariable','InvalidRegex','InvalidReference','InvalidModifier','DuplicateCancel','CollisionCancel','Cancel','Undo','SingleSelection','MaskFilter','Manual')][string]$RenamerHostCase,
+    [ValidateSet('Prefix','Suffix','Extension','LiteralDollar','LowerName','UpperExtension','CaseSensitive','CaseInsensitive','ReplaceOnce','ReplaceAll','WholeWords','ExcludeExtension','RegexCapture','RegexLower','RegexUpper','RegexUpperCapital','RegexUpperMixed','RegexBrace','Counter','CounterDescending','CounterFraction','CounterMalformed','CounterMultipleDots','CounterDotOnly','InvalidVariable','InvalidRegex','InvalidReference','InvalidModifier','DuplicateCancel','CollisionCancel','Cancel','Undo','SingleSelection','MaskFilter','Manual','VariableLower','VariableUpper','VariableMixed','VariableCaseInsensitive','SubstringLeft','SubstringRight','SubstringMiddle','SubstringClamp','SubstringCase','MultipleDots','NoExtension','DotfileExtension','DeleteSubstring','ReplaceExtensionToo','RegexWholeMatch','RegexCaseInsensitive','RegexAll','RegexAnchored','RegexEscapedDollar','RegexEmptyReplacement','CounterDefault','CounterHexLower','CounterHexUpper','CounterLeftAlign','CounterZeroStep','CounterNegativeFraction','CounterTrailingPoint','CounterInvalidStart','CounterInvalidBase','CounterInvalidFill','TrailingDollar','UnclosedVariable','EmptyVariable','WrongRegexBracket','ManualSwap','ManualSwapUndo','ManualChainUndo','TreeDirectory','TreeDirectoryUndo','TreeEmptyDirectory','TreeRecursiveMask','TreeRecursiveUndo','TreeRelativeMove','TreeRelativeUndo','TreeFullPathMove','TreeFullPathUndo','TreeUnicodeNames','TreeUnicodeRoot','TreeNormalization','TreeLongRoot','TreeLongLeaf','TreeAds','TreeAdsUndo','TreeMetadataVariables')][string]$RenamerHostCase,
     [switch]$TemporaryDirectoryDeletionOnly,
     [switch]$UnicodeFindOnly,
     [ValidateSet('Baseline','Cancel','AdvancedInputs','ViewResults','ViewUnicode','ViewLong','ViewStale','ViewMixed','FocusUnicode','FocusLong','FocusStale','ShellClipboard','ShellOpen','ShellProperties','ExternalEditor','ExternalEditorNative','RecycleRestore',
@@ -4098,7 +4098,11 @@ try {
     }
     if ($RenamerHostCase) {
         . (Join-Path $PSScriptRoot 'Renamer-HostCases.ps1')
-        $renamerFixture = Initialize-RenamerFixture
+        if ($RenamerHostCase -in @('TreeDirectory','TreeDirectoryUndo','TreeEmptyDirectory','TreeRecursiveMask','TreeRecursiveUndo','TreeRelativeMove','TreeRelativeUndo','TreeFullPathMove','TreeFullPathUndo','TreeUnicodeNames','TreeUnicodeRoot','TreeNormalization','TreeLongRoot','TreeLongLeaf','TreeAds','TreeAdsUndo','TreeMetadataVariables')) {
+            . (Join-Path $PSScriptRoot 'Renamer-TreeCases.ps1')
+            $renamerFixture = Initialize-RenamerTreeFixture
+        }
+        else { $renamerFixture = Initialize-RenamerFixture }
     }
     if ($ZipHostEncryption) {
         . (Join-Path $PSScriptRoot 'Zip-HostGuiCase.ps1')
@@ -4725,7 +4729,10 @@ try {
     }
 
     if ($RenamerHostCase) {
-        Test-RenamerHost -Fixture $renamerFixture
+        if ($RenamerHostCase -in @('TreeDirectory','TreeDirectoryUndo','TreeEmptyDirectory','TreeRecursiveMask','TreeRecursiveUndo','TreeRelativeMove','TreeRelativeUndo','TreeFullPathMove','TreeFullPathUndo','TreeUnicodeNames','TreeUnicodeRoot','TreeNormalization','TreeLongRoot','TreeLongLeaf','TreeAds','TreeAdsUndo','TreeMetadataVariables')) {
+            Test-RenamerTreeHost -Fixture $renamerFixture
+        }
+        else { Test-RenamerHost -Fixture $renamerFixture }
         $passed = $true
         return
     }

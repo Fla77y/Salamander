@@ -548,6 +548,12 @@
       "Reason": "Independent Renamer rule, validation, cancellation, rename and Undo host cases."
     },
     {
+      "Path": "tools/release/tests/Renamer-TreeCases.ps1",
+      "Kind": "Helper",
+      "Owner": "tools/release/tests/Test-SalamanderGui-LongPaths.ps1",
+      "Reason": "Additional isolated Renamer tree, UTF-16/long-path, metadata, ADS and Undo host acceptance scenarios."
+    },
+    {
       "Path": "tools/release/tests/SevenZip-HostCases.ps1",
       "Kind": "Helper",
       "Owner": "tools/release/tests/Test-SalamanderGui-LongPaths.ps1",
