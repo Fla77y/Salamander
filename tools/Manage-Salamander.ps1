@@ -16,7 +16,7 @@ $configuration = 'Release'
 $validOptions = @('--update', '--build', '--test', '--setup', '--run',
                   '--test-gui-large-unicode-copy', '--test-gui-large-unicode-parent-copy', '--test-gui-long-history', '--test-gui-long-clipboard', '--test-gui-viewer-reliability', '--test-gui-legacy-find', '--test-clipboard-snapshot',
                   '--test-legacy-find-efs', '--test-legacy-find-near-limit', '--test-wer-build',
-                  '--debug', '--release', '--all', '--build-delta', '--build-clean', '--test-all', '--test-gui', '--test-gui-max-path', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-gui-unicode-permanent-delete', '--test-gui-unicode-parent', '--test-recycle-restore', '--test-plugin-exports', '--test-zip-sfx', '--test-gui-zip-host', '--test-gui-zip-mutation', '--test-gui-7zip-host', '--test-gui-renamer', '--test-plugin-renamer', '--test-plugin-zip', '--test-plugin-7z', '--test-plugin-load', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-unicode-find', '--test-gui-manual', '--test-gui-temp-delete', '--test-pictview', '--test-pictview-window', '--test-pictview-host', '--test-plugin-pictview', '--test-plugin-pictview-unicode', '--diagnose-gui', '--help', '-h', '/?')
+                  '--debug', '--release', '--all', '--build-delta', '--build-clean', '--test-all', '--test-gui', '--test-gui-max-path', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-gui-unicode-permanent-delete', '--test-gui-unicode-parent', '--test-recycle-restore', '--test-plugin-exports', '--test-zip-sfx', '--test-gui-zip-host', '--test-gui-zip-mutation', '--test-gui-7zip-host', '--test-gui-renamer', '--test-plugin-renamer', '--test-plugin-renamer-native', '--test-plugin-zip', '--test-plugin-7z', '--test-plugin-load', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-unicode-find', '--test-gui-manual', '--test-gui-temp-delete', '--test-pictview', '--test-pictview-window', '--test-pictview-host', '--test-plugin-pictview', '--test-plugin-pictview-unicode', '--diagnose-gui', '--help', '-h', '/?')
 $requestedSet = [System.Collections.Generic.HashSet[string]]::new(
     [StringComparer]::OrdinalIgnoreCase)
 
@@ -45,8 +45,9 @@ Open Salamander – Verwaltung für Visual Studio 2026
   manage.cmd --test-plugin-zip  Alle vorhandenen ZIP-SFX-/Host-/Mutationstests
   manage.cmd --test-plugin-7z  7-Zip-Host: selektives Entpacken und Abbruch (7-Zip, Windows-Desktop)
   manage.cmd --test-gui-7zip-host  Einzelaktion der 7-Zip-Hostbaseline
-  manage.cmd --test-plugin-renamer  120 Renamer-Regel-/Hostfälle je gewählter Variante (Windows-Desktop)
+  manage.cmd --test-plugin-renamer  Native Renamer-Verträge und 120 Hostfälle je gewählter Variante (Windows-Desktop für Hostfälle)
   manage.cmd --test-gui-renamer  Einzelaktion der Renamer-Funktionsmatrix
+  manage.cmd --test-plugin-renamer-native  Native Renamer-Regel-/Puffergrenztests ohne GUI (Debug/Release)
                             JSON-Bericht; Exitcode 1 bei FAIL oder erforderlichem SKIP
                             Geplante Scope-Ausschlüsse sind kein PASS und keine Release-Abnahme.
                             (Release und Debug x64; --release/--debug begrenzt die GUI-Modi)
@@ -675,6 +676,7 @@ try {
         }
         if ($requestedSet.Contains('--test-plugin-renamer')) {
             [void]$requestedSet.Add('--test-gui-renamer')
+            [void]$requestedSet.Add('--test-plugin-renamer-native')
         }
         if ($requestedSet.Contains('--test-plugin-pictview')) {
             [void]$requestedSet.Add('--test-pictview-window')
@@ -682,7 +684,7 @@ try {
         }
         if (@($requestedSet | Where-Object { $_ -like '--test*' }).Count -gt 0) {
             . (Join-Path $repository 'tools\release\Test-RunCollection.ps1')
-            Initialize-TestRun -CollectFailures:($requestedSet.Contains('--test-all') -or $requestedSet.Contains('--test-gui-renamer'))
+            Initialize-TestRun -CollectFailures:($requestedSet.Contains('--test-all') -or $requestedSet.Contains('--test-gui-renamer') -or $requestedSet.Contains('--test-plugin-renamer-native'))
         }
 
         if ($requestedSet.Contains('--test-all') -and $requestedSet.Contains('--test-gui-manual')) {
@@ -708,6 +710,19 @@ try {
         $buildMode = Get-BuildMode -RequestedSet $requestedSet
         if ($buildMode -ne 'None') { Build-Variants -Mode $buildMode }
         if ($requestedSet.Contains('--test')) { Run-Tests }
+        if ($requestedSet.Contains('--test-plugin-renamer-native')) {
+            $renamerNative = Join-Path $repository 'tools\release\tests\Invoke-RenamerNativeTests.ps1'
+            foreach ($nativeMode in @('Debug','Release')) {
+                if ($requestedSet.Contains('--debug') -and $nativeMode -ne 'Debug') { continue }
+                if ($requestedSet.Contains('--release') -and $nativeMode -ne 'Release') { continue }
+                Invoke-TestCase -Name "Renamer native contracts $nativeMode x64" -Action {
+                    $vs = Get-VisualStudio2026
+                    $vcvars = Join-Path $vs 'VC\Auxiliary\Build\vcvars64.bat'
+                    Invoke-Native 'pwsh.exe' @('-NoProfile','-NonInteractive','-File',$renamerNative,
+                        '-Vcvars64',$vcvars,'-BuildRoot',$buildRoot,'-Configuration',$nativeMode)
+                }
+            }
+        }
         if ($requestedSet.Contains('--test-wer-build')) {
             $werBuild = Join-Path $repository 'tools\release\tests\Invoke-WerBuildVerification.ps1'
             Invoke-TestCase -Name 'WER isolated core build matrix' -Action {
@@ -1217,7 +1232,7 @@ try {
             }
             Complete-TestRun -LogPath $logPath
         }
-        elseif ($requestedSet.Contains('--test-gui-renamer')) {
+        elseif ($requestedSet.Contains('--test-gui-renamer') -or $requestedSet.Contains('--test-plugin-renamer-native')) {
             # Publish every independently attempted Renamer case, including RED
             # outcomes, even without --test-all. A failure still blocks setup/run.
             Complete-TestRun -LogPath $logPath

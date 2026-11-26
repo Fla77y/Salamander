@@ -560,6 +560,18 @@
       "Reason": "Independent Renamer validation, manual clipboard exchange, sorted counter, locks/retry, overwrite and Undo contracts."
     },
     {
+      "Path": "tools/release/tests/Invoke-RenamerNativeTests.ps1",
+      "Kind": "Automatic",
+      "Owner": "tools/Manage-Salamander.ps1",
+      "Reason": ""
+    },
+    {
+      "Path": "tools/tests/renamer_native_contracts.cpp",
+      "Kind": "Helper",
+      "Owner": "tools/release/tests/Invoke-RenamerNativeTests.ps1",
+      "Reason": "Native C++ harness compiled with exact current product function bodies, using isolated character tables and capture fixtures."
+    },
+    {
       "Path": "tools/release/tests/SevenZip-HostCases.ps1",
       "Kind": "Helper",
       "Owner": "tools/release/tests/Test-SalamanderGui-LongPaths.ps1",
@@ -591,6 +603,7 @@
     "--test-gui-zip-mutation",
     "--test-gui-7zip-host",
     "--test-gui-renamer",
+    "--test-plugin-renamer-native",
     "--test-gui-large-unicode-copy",
     "--test-gui-large-unicode-parent-copy",
     "--test-gui-long-history",
@@ -746,7 +759,7 @@
     {
       "Name": "Grouped Renamer baseline (alias)",
       "Option": "--test-plugin-renamer",
-      "Reason": "Explicit alias for automatically selected Renamer host matrix; no additional independent scenario.",
+      "Reason": "Explicit alias for automatically selected Renamer native contracts and host matrix; no additional independent scenario.",
       "PerVariant": false
     },
     {
