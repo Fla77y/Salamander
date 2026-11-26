@@ -583,6 +583,8 @@ Nächste Prüfung: PowerShell-AST-Parser, dann isolierter
 
 ### [ ] UP-02 – Unicode-Plugin-/SDK-Grenzen (**P0**, BLOCKIERT/TEILBELEGT)
 
+**26.11.2026 – Renamer-Erweiterung vorbereitet:** 120 Hostfälle je Variante; zusätzliche Validierungs-, Clipboard-, Sperr-, Überschreib- und Undo-Verträge; siehe UP-03 und J-20261126-04. Kein Laufzeitnachweis, keine Schließung.
+
 **26.11.2026 – Renamer-Erweiterung vorbereitet:** 89 Fälle je Variante, zusätzliche Baum-, Unicode-/Langpfad-, Regel-, ADS- und Undo-Verträge; siehe UP-03 und J-20261126-03. Keine Laufzeitabnahme oder Schließung.
 
 **26.11.2026 – Renamer-Matrix vorbereitet:** 35 isolierte Hostfälle je Variante, echte Vorschau/Regeln/Rename/Undo und Validierungsnegativfälle; siehe UP-03 und J-20261126-02. Windows-Verifikation ausstehend; keine Schließung.
@@ -636,6 +638,8 @@ Technische Maßnahmen: [AUD-ARCH-0001](Code-Audit-und-Massnahmenkatalog-5.2.md#a
 - **Quellen:** `src/plugins/shared/`, `docs/pictview-wic-migration.md`.
 
 ### [ ] UP-03 – Archive und externe/virtuelle Dateisysteme (**P0**, OFFEN)
+
+**26.11.2026 – Dritte Renamer-Testausweitung (Nutzerauftrag; AUD-TEST-PLUGIN-0001, AUD-PLUGIN-REN-0004/0006/0009, UP-02/03/04, QA-01, MGMT-03; A0/A1/A4/A8).** Ausgangs-HEAD `a75b4ffdfb39f0371a2aa03e7dcf4d4f6c20db66`; keine neuen Windows-Laufnachweise. 31 zusätzliche eigenständige Hostfälle in `Renamer-AdvancedCases.ps1`: 8 Validierungs-/No-op-/Manual-Fälle, 7 Clipboard-Fälle (Original/Edited Export, Import, RoundTrip, Undo, Malformed, Unicode), 3 Sortier-/Zähler-Fälle (Größe, Zeit, Größengleichstand), 1 ReadOnly-Fall, 4 Dateisperrfälle (Cancel, SkipAll, Skip, Retry), 3 Undo-Fälle (LockCancel, LockRetry, Decline), 5 echte Überschreibfälle (Cancel, Success, LockedSource, LockedTarget, ReadOnlyTarget). Gesamt 120 Szenarien je x64-Variante (240 Debug+Release). Originaldialoge und echte Dateisperren mit Read-Sharing ohne Write/Delete; Retry erst nach beobachtetem Fehler und Freigabe der Sperre. Bei Sperrfehler vor Zielcommit müssen Quelle und altes Ziel erhalten bleiben (AUD-PLUGIN-REN-0009). Positivfall erwartet exakt ausgewählte Nutzdatei, keine behauptete Wiederherstellung eines überschriebenen Ziels durch Undo. Clipboard-Sequenz, exakter UTF-16-Text und Wiederherstellung durch vorhandenen Haupttreiber; sortierabhängige Zähler mit unabhängig gesetzten Größen und Zeiten; ordinaler Dateibaum, SHA-256, LastWriteUtc, Attribute, unabhängige Guard-Datei; Sperrhandles in finally freigegeben. PID-/HWND-/Text-/Button-verifizierte Originaldialoge; kein pauschales Bestätigen unbekannter Meldungen. Vorherige 89 Testverträge und Produktcode unverändert; bestehender Dialoghelfer additiv um Beobachtung ohne Klick, Manual-Lesen und vier Originalbefehle erweitert. Alle in `--test-plugin-renamer` und `--test-all` registriert. Statischer Abgleich, kein Windows-/PowerShell-Parser-/UIA-Lauf hier; insbesondere Sperrfehlerdialoge und Clipboard-Verhalten noch nicht laufzeitverifiziert; keine PASS-Attestierung, kein Gap geschlossen. Englische GUI, vorhandene UIA-Grid-Voraussetzung, kurze ASCII-Basis mit Unicode-Zieltest. Offen: Mehrvolumen-/Cross-Volume-ADS, deterministische Short-Write/Read-/Quelllöschfehler, Abbruch während Kopieren, externer Editor-Dateiimport/-export, Shell-Filter, native Unit-Tests. Nächster Schritt `manage.cmd --test` und getrennt `manage.cmd --test-plugin-renamer --debug` / `--release`; bei RED tatsächliche Ursache ermitteln und Produktfehler gemäß A8 im Produktcode korrigieren. Release NO-GO.
 
 **26.11.2026 – Zweite drastische Renamer-Testausweitung (Nutzerauftrag; AUD-TEST-PLUGIN-0001, AUD-PLUGIN-REN-0001/0005/0010/0011, UP-02/03/04, QA-01, MGMT-03; A0/A1/A2/A4/A8).** Ausgangs-HEAD `efce6bf1f93309ee314938c88e34ec006739ac7b`, 35 bestehende Hostfälle unverändert als Vertragsbasis, noch kein Windows-Laufbericht. 37 zusätzliche kurze ASCII-Regel-/Parser-/manuelle Abhängigkeitsfälle: VariableLower, VariableUpper, VariableMixed, VariableCaseInsensitive, SubstringLeft, SubstringRight, SubstringMiddle, SubstringClamp, SubstringCase, MultipleDots, NoExtension, DotfileExtension, DeleteSubstring, ReplaceExtensionToo, RegexWholeMatch, RegexCaseInsensitive, RegexAll, RegexAnchored, RegexEscapedDollar, RegexEmptyReplacement, CounterDefault, CounterHexLower, CounterHexUpper, CounterLeftAlign, CounterZeroStep, CounterNegativeFraction, CounterTrailingPoint, CounterInvalidStart, CounterInvalidBase, CounterInvalidFill, TrailingDollar, UnclosedVariable, EmptyVariable, WrongRegexBracket, ManualSwap, ManualSwapUndo, ManualChainUndo. 17 zusätzliche echte Baum-/Dateisystemfälle in `Renamer-TreeCases.ps1`: TreeDirectory, TreeDirectoryUndo, TreeEmptyDirectory, TreeRecursiveMask, TreeRecursiveUndo, TreeRelativeMove, TreeRelativeUndo, TreeFullPathMove, TreeFullPathUndo, TreeUnicodeNames, TreeUnicodeRoot, TreeNormalization, TreeLongRoot, TreeLongLeaf, TreeAds, TreeAdsUndo, TreeMetadataVariables. Insgesamt 89 unabhängige Szenarien je Debug/Release (178 bei beiden), +54 je Variante. Neuer Baumhelfer verlangt vor jeder Änderung exakte Panel- und SPL-Identität, unabhängige Original-/Zielvorschau und tatsächliche erfolgreiche nichtmutierende Validierung; kein Überschreiben oder Fehlerdialog wird automatisch akzeptiert. Nach Rename und ggf. Undo exakte ordinale Baumstruktur, Dateitypen, SHA-256, feste LastWrite-Zeiten, unabhängige Guard-Datei; ADS-Fälle auf streamfähigem temporärem Dateisystem mit leerem und nichtleerem benanntem Stream einschließlich exaktem Namen und Hash. Rekursive Maske erhält ausgeschlossene Datei und leeren Ordner; relative und absolute Zielpfade ausschließlich unter eigener GUID-Fixture. Unicode-CJK/Nicht-BMP, normalisierungsverschiedene Identitäten, Unicode-Root, Root >260 und 255 UTF-16-Einheiten Zielkomponente sind verbindliche A1/A2-Zielverträge, aktuelle ANSI-Grenzen dürfen RED ergeben. Alte 35 Assertions und Produktcode unverändert; nativer Dialoghelfer nur additiv um echte Pfadmodus-Kommandos 608/609 ergänzt; Registry, Dispatch und Hilfe aktualisiert, alle in bestehendem `--test-plugin-renamer` und `--test-all`. Keine gemessene Codeabdeckung oder Laufzeitfreigabe: statischer Konsistenz-/Quellabgleich, kein Windows-/PowerShell-Parser-/UIA-Lauf hier; englische Dialogressourcen, Dateisystem muss die benötigten Namen/Streams unterstützen. Nicht ausgeführt gilt nicht PASS. Die ursprüngliche UIA-Grid-Voraussetzung bleibt bestehen. Offene Mehrvolumen-/inkompatible ADS-Ziel-, Fehler-Injection-/Lock-/Teilfehler-/laufende Abbruch-, Import-/Export-, Shell- und native Unit-Testmatrix; keine Audit- oder Gap-ID geschlossen. Nächster Schritt `manage.cmd --test`, `manage.cmd --test-plugin-renamer --debug`, `manage.cmd --test-plugin-renamer --release`, RED anhand Logs diagnostizieren und Produktcode nach A8 korrigieren. Release NO-GO.
 
@@ -871,6 +875,8 @@ kompiliert und ausgeführt werden.
 und das echte zweite Volume sind noch ausstehend.**
 
 ### [ ] UP-04 – Kopieren/Bewegen über Volume- und Worker-Grenzen (**P0**, TEILBELEGT)
+
+**26.11.2026 – Renamer-Erweiterung vorbereitet:** 120 Hostfälle je Variante; zusätzliche Validierungs-, Clipboard-, Sperr-, Überschreib- und Undo-Verträge; siehe UP-03 und J-20261126-04. Kein Laufzeitnachweis, keine Schließung.
 
 **26.11.2026 – Renamer-Erweiterung vorbereitet:** 89 Fälle je Variante, zusätzliche Baum-, Unicode-/Langpfad-, Regel-, ADS- und Undo-Verträge; siehe UP-03 und J-20261126-03. Keine Laufzeitabnahme oder Schließung.
 
@@ -1220,6 +1226,8 @@ Technische Maßnahmen: [AUD-MGMT-0001](Code-Audit-und-Massnahmenkatalog-5.2.md#a
   keine gefälschten PASS-Meldungen.
 
 ### [ ] MGMT-03 – Test-Registry gegen unbemerkte Auslassungen (**P2**, TEILBELEGT)
+
+**26.11.2026 – Renamer-Erweiterung vorbereitet:** 120 Hostfälle je Variante; zusätzliche Validierungs-, Clipboard-, Sperr-, Überschreib- und Undo-Verträge; siehe UP-03 und J-20261126-04. Kein Laufzeitnachweis, keine Schließung.
 
 **26.11.2026 – Renamer-Erweiterung vorbereitet:** 89 Fälle je Variante, zusätzliche Baum-, Unicode-/Langpfad-, Regel-, ADS- und Undo-Verträge; siehe UP-03 und J-20261126-03. Keine Laufzeitabnahme oder Schließung.
 
@@ -1697,6 +1705,8 @@ Technische Maßnahmen: [AUD-TEST-PICTVIEW-0001](Code-Audit-und-Massnahmenkatalog
 ## 10. Weitere übergreifende Nachweise
 
 ### [ ] QA-01 – Fehler-/Abbruch- und Sicherheitsmatrix (**P0**, OFFEN)
+
+**26.11.2026 – Renamer-Erweiterung vorbereitet:** 120 Hostfälle je Variante; zusätzliche Validierungs-, Clipboard-, Sperr-, Überschreib- und Undo-Verträge; siehe UP-03 und J-20261126-04. Kein Laufzeitnachweis, keine Schließung.
 
 **26.11.2026 – Renamer-Erweiterung vorbereitet:** 89 Fälle je Variante, zusätzliche Baum-, Unicode-/Langpfad-, Regel-, ADS- und Undo-Verträge; siehe UP-03 und J-20261126-03. Keine Laufzeitabnahme oder Schließung.
 

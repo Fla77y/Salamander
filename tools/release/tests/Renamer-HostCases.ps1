@@ -132,6 +132,10 @@ public static class RenamerHostNative
         SetText(hwnd,text);
         Notify(dlg,pid,125,0x300,hwnd); // EN_CHANGE
     }
+    public static string ReadManual(IntPtr dlg,uint pid)
+    {
+        return Text(RequiredControl(dlg,pid,125,"Edit"));
+    }
     public static IntPtr Preview(IntPtr dlg,uint pid)
     {
         return RequiredControl(dlg,pid,104,"SysListView32");
@@ -143,10 +147,10 @@ public static class RenamerHostNative
     public static void Command(IntPtr dlg,uint pid,int command)
     {
         Require(dlg,pid);
-        if(command!=611 && command!=607 && command!=608 && command!=609 && command!=602 && command!=600 && command!=621 && command!=1)
+        if(command!=611 && command!=607 && command!=608 && command!=609 && command!=602 && command!=604 && command!=605 && command!=624 && command!=625 && command!=600 && command!=621 && command!=1)
             throw new InvalidOperationException("Unexpected Renamer command.");
         // Reset, filenames and sort are synchronous; potentially modal actions are posted.
-        if(command==611 || command==607 || command==608 || command==609 || command==602) Number(dlg,0x111,(uint)command,IntPtr.Zero);
+        if(command==611 || command==607 || command==608 || command==609 || command==602 || command==604 || command==605 || command==624 || command==625) Number(dlg,0x111,(uint)command,IntPtr.Zero);
         else if(!PostMessage(dlg,0x111,new IntPtr(command),IntPtr.Zero))
             throw new InvalidOperationException("Renamer command post failed.");
     }
@@ -156,6 +160,14 @@ public static class RenamerHostNative
         if(!PostMessage(dlg,0x10,IntPtr.Zero,IntPtr.Zero)) throw new InvalidOperationException("Renamer close failed.");
     }
     public static bool ModalAction(IntPtr renamer,uint pid,string[] required,int buttonId,string buttonText)
+    {
+        return MatchModal(renamer,pid,required,buttonId,buttonText,true);
+    }
+    public static bool ObserveModal(IntPtr renamer,uint pid,string[] required,int buttonId,string buttonText)
+    {
+        return MatchModal(renamer,pid,required,buttonId,buttonText,false);
+    }
+    private static bool MatchModal(IntPtr renamer,uint pid,string[] required,int buttonId,string buttonText,bool act)
     {
         if(!Match(renamer,pid)) throw new InvalidOperationException("Renamer dialog identity lost.");
         var candidates=new List<IntPtr>();
@@ -186,7 +198,7 @@ public static class RenamerHostNative
         var target=Control(found,pid,buttonId,"Button");
         if(!Owned(found,pid) || GetAncestor(found,3)!=renamer || !IsWindowEnabled(found) ||
            target==IntPtr.Zero || !IsWindowEnabled(target) || !IsWindowVisible(target) ||
-           Text(target).Replace("&","")!=buttonText || !PostMessage(found,0x111,new IntPtr(buttonId),target))
+           Text(target).Replace("&","")!=buttonText || (act && !PostMessage(found,0x111,new IntPtr(buttonId),target)))
             throw new InvalidOperationException("Verified Renamer modal action failed.");
         return true;
     }
