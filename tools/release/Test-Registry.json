@@ -542,6 +542,12 @@
       "Reason": ""
     },
     {
+      "Path": "tools/release/tests/Renamer-HostCases.ps1",
+      "Kind": "Helper",
+      "Owner": "tools/release/tests/Test-SalamanderGui-LongPaths.ps1",
+      "Reason": "Independent Renamer rule, validation, cancellation, rename and Undo host cases."
+    },
+    {
       "Path": "tools/release/tests/SevenZip-HostCases.ps1",
       "Kind": "Helper",
       "Owner": "tools/release/tests/Test-SalamanderGui-LongPaths.ps1",
@@ -572,6 +578,7 @@
     "--test-gui-zip-host",
     "--test-gui-zip-mutation",
     "--test-gui-7zip-host",
+    "--test-gui-renamer",
     "--test-gui-large-unicode-copy",
     "--test-gui-large-unicode-parent-copy",
     "--test-gui-long-history",
@@ -722,6 +729,12 @@
       "Name": "Grouped 7-Zip baseline (alias)",
       "Option": "--test-plugin-7z",
       "Reason": "Explicit alias for automatically selected 7-Zip host cases; no additional independent scenario.",
+      "PerVariant": false
+    },
+    {
+      "Name": "Grouped Renamer baseline (alias)",
+      "Option": "--test-plugin-renamer",
+      "Reason": "Explicit alias for automatically selected Renamer host matrix; no additional independent scenario.",
       "PerVariant": false
     },
     {

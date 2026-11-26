@@ -16,7 +16,7 @@ $configuration = 'Release'
 $validOptions = @('--update', '--build', '--test', '--setup', '--run',
                   '--test-gui-large-unicode-copy', '--test-gui-large-unicode-parent-copy', '--test-gui-long-history', '--test-gui-long-clipboard', '--test-gui-viewer-reliability', '--test-gui-legacy-find', '--test-clipboard-snapshot',
                   '--test-legacy-find-efs', '--test-legacy-find-near-limit', '--test-wer-build',
-                  '--debug', '--release', '--all', '--build-delta', '--build-clean', '--test-all', '--test-gui', '--test-gui-max-path', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-gui-unicode-permanent-delete', '--test-gui-unicode-parent', '--test-recycle-restore', '--test-plugin-exports', '--test-zip-sfx', '--test-gui-zip-host', '--test-gui-zip-mutation', '--test-gui-7zip-host', '--test-plugin-zip', '--test-plugin-7z', '--test-plugin-load', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-unicode-find', '--test-gui-manual', '--test-gui-temp-delete', '--test-pictview', '--test-pictview-window', '--test-pictview-host', '--test-plugin-pictview', '--test-plugin-pictview-unicode', '--diagnose-gui', '--help', '-h', '/?')
+                  '--debug', '--release', '--all', '--build-delta', '--build-clean', '--test-all', '--test-gui', '--test-gui-max-path', '--test-gui-baseline', '--test-gui-operations-baseline', '--test-gui-names', '--test-gui-unicode-rename', '--test-gui-unicode-recycle', '--test-gui-unicode-permanent-delete', '--test-gui-unicode-parent', '--test-recycle-restore', '--test-plugin-exports', '--test-zip-sfx', '--test-gui-zip-host', '--test-gui-zip-mutation', '--test-gui-7zip-host', '--test-gui-renamer', '--test-plugin-renamer', '--test-plugin-zip', '--test-plugin-7z', '--test-plugin-load', '--test-gui-row-identities', '--test-gui-unicode-multiselect', '--test-gui-unicode-directory-rename', '--test-gui-unicode-transfer', '--test-gui-unicode-transfer-collision', '--test-gui-bestfit', '--test-gui-name-collisions', '--test-gui-unsafe-unicode-operations', '--test-gui-unicode-find', '--test-gui-manual', '--test-gui-temp-delete', '--test-pictview', '--test-pictview-window', '--test-pictview-host', '--test-plugin-pictview', '--test-plugin-pictview-unicode', '--diagnose-gui', '--help', '-h', '/?')
 $requestedSet = [System.Collections.Generic.HashSet[string]]::new(
     [StringComparer]::OrdinalIgnoreCase)
 
@@ -45,6 +45,8 @@ Open Salamander – Verwaltung für Visual Studio 2026
   manage.cmd --test-plugin-zip  Alle vorhandenen ZIP-SFX-/Host-/Mutationstests
   manage.cmd --test-plugin-7z  7-Zip-Host: selektives Entpacken und Abbruch (7-Zip, Windows-Desktop)
   manage.cmd --test-gui-7zip-host  Einzelaktion der 7-Zip-Hostbaseline
+  manage.cmd --test-plugin-renamer  35 Renamer-Regel-/Hostfälle je gewählter Variante (Windows-Desktop)
+  manage.cmd --test-gui-renamer  Einzelaktion der Renamer-Funktionsmatrix
                             JSON-Bericht; Exitcode 1 bei FAIL oder erforderlichem SKIP
                             Geplante Scope-Ausschlüsse sind kein PASS und keine Release-Abnahme.
                             (Release und Debug x64; --release/--debug begrenzt die GUI-Modi)
@@ -671,13 +673,16 @@ try {
         if ($requestedSet.Contains('--test-plugin-7z')) {
             [void]$requestedSet.Add('--test-gui-7zip-host')
         }
+        if ($requestedSet.Contains('--test-plugin-renamer')) {
+            [void]$requestedSet.Add('--test-gui-renamer')
+        }
         if ($requestedSet.Contains('--test-plugin-pictview')) {
             [void]$requestedSet.Add('--test-pictview-window')
             [void]$requestedSet.Add('--test-pictview-host')
         }
         if (@($requestedSet | Where-Object { $_ -like '--test*' }).Count -gt 0) {
             . (Join-Path $repository 'tools\release\Test-RunCollection.ps1')
-            Initialize-TestRun -CollectFailures:($requestedSet.Contains('--test-all'))
+            Initialize-TestRun -CollectFailures:($requestedSet.Contains('--test-all') -or $requestedSet.Contains('--test-gui-renamer'))
         }
 
         if ($requestedSet.Contains('--test-all') -and $requestedSet.Contains('--test-gui-manual')) {
@@ -737,7 +742,7 @@ try {
         # still catch leaked test processes and unexpected new instances.
         # Do not wait when earlier --test-all failures already blocked GUI.
         if (Test-RequiresGuiIdleGate -RequestedSet $requestedSet) {
-            if (-not ($requestedSet.Contains('--test-all') -and $script:GuiTestsBlocked)) {
+            if (-not (($requestedSet.Contains('--test-all') -or $requestedSet.Contains('--test-gui-renamer')) -and $script:GuiTestsBlocked)) {
                 Wait-ForSalamanderGuiAvailability
             }
         }
@@ -975,6 +980,16 @@ try {
                     }
                 }
             }
+            if ($requestedSet.Contains('--test-gui-renamer')) {
+                $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
+                $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
+                foreach ($renamerCase in @('Prefix','Suffix','Extension','LiteralDollar','LowerName','UpperExtension','CaseSensitive','CaseInsensitive','ReplaceOnce','ReplaceAll','WholeWords','ExcludeExtension','RegexCapture','RegexLower','RegexUpper','RegexUpperCapital','RegexUpperMixed','RegexBrace','Counter','CounterDescending','CounterFraction','CounterMalformed','CounterMultipleDots','CounterDotOnly','InvalidVariable','InvalidRegex','InvalidReference','InvalidModifier','DuplicateCancel','CollisionCancel','Cancel','Undo','SingleSelection','MaskFilter','Manual')) {
+                    Invoke-TestCase -Name "Renamer plugin host $guiMode $renamerCase" -RequiresGuiSafety -Action {
+                        Invoke-Native 'pwsh.exe' @('-Sta', '-NoProfile', '-NonInteractive', '-File', $guiTest,
+                            '-SalamanderExe', $testedExe, '-RenamerHostCase', $renamerCase)
+                    }
+                }
+            }
             if ($requestedSet.Contains('--test-gui-7zip-host')) {
                 $guiTest = Join-Path $repository 'tools\release\tests\Test-SalamanderGui-LongPaths.ps1'
                 $testedExe = Join-Path (Get-VariantDirectory $guiMode) 'salamand.exe'
@@ -1200,6 +1215,11 @@ try {
                     $_.Exception -is [OperationCanceledException]) { throw }
                 Add-TestOutcome -Name 'Test registry scope reporting' -Status FAIL -Detail $_.Exception.Message
             }
+            Complete-TestRun -LogPath $logPath
+        }
+        elseif ($requestedSet.Contains('--test-gui-renamer')) {
+            # Publish every independently attempted Renamer case, including RED
+            # outcomes, even without --test-all. A failure still blocks setup/run.
             Complete-TestRun -LogPath $logPath
         }
         if ($requestedSet.Contains('--setup')) {

@@ -45,6 +45,7 @@ param(
     [string]$ZipHostSevenZip,
     [ValidateSet('Create','Add','Replace','Delete')][string]$ZipHostMutation,
     [ValidateSet('Extract','Cancel')][string]$SevenZipHostCase,
+    [ValidateSet('Prefix','Suffix','Extension','LiteralDollar','LowerName','UpperExtension','CaseSensitive','CaseInsensitive','ReplaceOnce','ReplaceAll','WholeWords','ExcludeExtension','RegexCapture','RegexLower','RegexUpper','RegexUpperCapital','RegexUpperMixed','RegexBrace','Counter','CounterDescending','CounterFraction','CounterMalformed','CounterMultipleDots','CounterDotOnly','InvalidVariable','InvalidRegex','InvalidReference','InvalidModifier','DuplicateCancel','CollisionCancel','Cancel','Undo','SingleSelection','MaskFilter','Manual')][string]$RenamerHostCase,
     [switch]$TemporaryDirectoryDeletionOnly,
     [switch]$UnicodeFindOnly,
     [ValidateSet('Baseline','Cancel','AdvancedInputs','ViewResults','ViewUnicode','ViewLong','ViewStale','ViewMixed','FocusUnicode','FocusLong','FocusStale','ShellClipboard','ShellOpen','ShellProperties','ExternalEditor','ExternalEditorNative','RecycleRestore',
@@ -105,6 +106,13 @@ if ($LargeUnicodeCopyCase -ne 'Copy' -and -not $LargeUnicodeCopyOnly) {
     throw '-LargeUnicodeCopyCase requires -LargeUnicodeCopyOnly.'
 }
 if ($ZipHostMutation -and $ZipHostEncryption -ne 'None') { throw 'ZIP mutation requires the unencrypted ZIP host scenario.' }
+if ($RenamerHostCase) {
+    foreach ($parameter in $PSBoundParameters.Keys) {
+        if ($parameter -notin @('SalamanderExe','RenamerHostCase','KeepFixture','TimeoutSeconds','StartupReadyTimeoutSeconds')) {
+            throw "Renamer host tests are standalone; incompatible parameter: $parameter"
+        }
+    }
+}
 if ($SevenZipHostCase -and ($ZipHostEncryption -ne 'None' -or $ZipHostMutation)) {
     throw '7-Zip host scenario requires the unencrypted archive host driver, without ZIP mutation.'
 }
@@ -2161,7 +2169,7 @@ $oldClipboard = $null
 $nativeClipboardSnapshot = $null
 $clipboardSnapshotValid = $false
 try {
-    if ($IsolatedConfiguration -or $ZipHostEncryption) {
+    if ($IsolatedConfiguration -or $ZipHostEncryption -or $RenamerHostCase) {
         Add-Type -Path (Join-Path $PSScriptRoot 'Clipboard-Snapshot.cs')
         $nativeClipboardSnapshot = [SalamanderClipboardSnapshot]::Capture()
     }
@@ -2174,7 +2182,7 @@ catch {
     Write-Warning ('Original clipboard could not be saved; will not overwrite unknown initial state. ' +
         $_.Exception.Message)
 }
-if (($IsolatedConfiguration -or $ZipHostEncryption) -and -not $clipboardSnapshotValid) {
+if (($IsolatedConfiguration -or $ZipHostEncryption -or $RenamerHostCase) -and -not $clipboardSnapshotValid) {
     throw 'Isolated desktop acceptance requires a complete clipboard snapshot.'
 }
 
@@ -4088,6 +4096,10 @@ try {
         $focusProbeName = 'focus-probe.txt'
         [IO.File]::WriteAllBytes((Join-Path $source $focusProbeName), $payload)
     }
+    if ($RenamerHostCase) {
+        . (Join-Path $PSScriptRoot 'Renamer-HostCases.ps1')
+        $renamerFixture = Initialize-RenamerFixture
+    }
     if ($ZipHostEncryption) {
         . (Join-Path $PSScriptRoot 'Zip-HostGuiCase.ps1')
         if ($ZipHostMutation) {
@@ -4109,7 +4121,7 @@ try {
         $asciiRenamedName = 'renamed-baseline.txt'
         [IO.File]::WriteAllBytes((Join-Path $source $asciiName), $payload)
     }
-    if (-not $ZipHostEncryption -and -not $BaselineOnly -and -not $ShortOperationsOnly -and -not $LegacyFindScenario -and
+    if (-not $RenamerHostCase -and -not $ZipHostEncryption -and -not $BaselineOnly -and -not $ShortOperationsOnly -and -not $LegacyFindScenario -and
         -not $ShortUnicodeBestFitOnly) {
         # Independent Unicode-only fixture with a short total path.
         $unicodeShortFile = Join-Path $source $utfName
@@ -4177,7 +4189,7 @@ try {
         [IO.File]::WriteAllBytes($collisionFile, $collisionPayload)
         Assert-True ($collisionFile.Length -lt 260) 'Unicode collision fixture uses a short path'
     }
-    if (-not $ZipHostEncryption -and -not $BaselineOnly -and -not $ShortUnicodeOnly -and
+    if (-not $RenamerHostCase -and -not $ZipHostEncryption -and -not $BaselineOnly -and -not $ShortUnicodeOnly -and
         -not $PluginLoadSmokeOnly -and
         -not $ShortUnicodeCollisionOnly -and -not $ShortUnicodeRowIdentityOnly -and
         -not $ShortUnicodeBestFitOnly -and -not $ShortUnicodeRenameOnly -and
@@ -4712,6 +4724,11 @@ try {
         return
     }
 
+    if ($RenamerHostCase) {
+        Test-RenamerHost -Fixture $renamerFixture
+        $passed = $true
+        return
+    }
     if ($ZipHostEncryption) {
         if ($ZipHostMutation) { Test-ZipHostMutation -Fixture $zipHostFixture }
         elseif ($SevenZipHostCase) { Test-SevenZipHost -Fixture $zipHostFixture }
@@ -6024,7 +6041,7 @@ finally {
     else {
         Write-Host "Diagnostic fixture retained: $root"
     }
-    if (($IsolatedConfiguration -or $ZipHostEncryption) -and ($clipboardRestorationFailed -or -not $testConfigurationCleanupAllowed)) {
+    if (($IsolatedConfiguration -or $ZipHostEncryption -or $RenamerHostCase) -and ($clipboardRestorationFailed -or -not $testConfigurationCleanupAllowed)) {
         throw ('Isolated GUI cleanup failed; acceptance cannot be reported as passed. Primary GUI failure: ' + $primaryGuiFailure)
     }
     if ($clipboardOwnerShutdownFailed -and [string]::IsNullOrEmpty($primaryGuiFailure)) {
