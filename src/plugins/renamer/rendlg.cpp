@@ -31,6 +31,74 @@ char* CommandHistory[MAX_HISTORY_ENTRIES];
 // CRenamerDialog
 //
 
+// Load the canonical clipboard text explicitly. The legacy editor still
+// accepts only ACP text, so do not allow a best-fit or replacement character
+// to silently turn a proposed filename into a different filename.
+static BOOL LoadManualClipboard(HWND parent, HWND edit)
+{
+    BOOL opened = FALSE;
+    for (int attempt = 0; attempt < 5; ++attempt)
+    {
+        if (OpenClipboard(parent))
+        {
+            opened = TRUE;
+            break;
+        }
+        if (attempt != 4)
+            Sleep(10);
+    }
+    if (!opened)
+        return Error(parent, "Cannot open the clipboard.");
+
+    TBuffer<char> ansi;
+    BOOL valid = FALSE;
+    HANDLE data = GetClipboardData(CF_UNICODETEXT);
+    if (data)
+    {
+        const SIZE_T bytes = GlobalSize(data);
+        const WCHAR* text = static_cast<const WCHAR*>(GlobalLock(data));
+        if (text)
+        {
+            const SIZE_T capacity = bytes / sizeof(WCHAR);
+            SIZE_T length = 0;
+            while (length < capacity && text[length] != 0)
+                ++length;
+            if (length < capacity && length < INT_MAX)
+            {
+                const int units = static_cast<int>(length + 1);
+                const UINT cp = GetACP();
+                const int count = WideCharToMultiByte(cp, 0, text, units,
+                                                      NULL, 0, NULL, NULL);
+                if (count > 0 && ansi.Reserve(count) &&
+                    WideCharToMultiByte(cp, 0, text, units, ansi.Get(), count,
+                                        NULL, NULL) == count)
+                {
+                    TBuffer<WCHAR> roundtrip;
+                    if (roundtrip.Reserve(units) &&
+                        MultiByteToWideChar(cp, 0, ansi.Get(), count,
+                                            roundtrip.Get(), units) == units &&
+                        memcmp(text, roundtrip.Get(), units * sizeof(WCHAR)) == 0 &&
+                        static_cast<SIZE_T>(count - 1) <=
+                            static_cast<SIZE_T>(SendMessage(edit, EM_GETLIMITTEXT, 0, 0)))
+                        valid = TRUE;
+                }
+            }
+            GlobalUnlock(data);
+        }
+    }
+    CloseClipboard();
+
+    if (!valid)
+    {
+        SetLastError(NO_ERROR);
+        return Error(parent, "The clipboard text cannot be loaded without loss into the legacy rename list.");
+    }
+
+    SendMessage(edit, EM_SETSEL, 0, -1);
+    SendMessageA(edit, EM_REPLACESEL, TRUE, reinterpret_cast<LPARAM>(ansi.Get()));
+    return TRUE;
+}
+
 MENU_TEMPLATE_ITEM MenuTemplate[] =
     {
         {MNTT_PB, -1, MNTS_ALL, 0, -1, 0, NULL},
@@ -1864,10 +1932,11 @@ CRenamerDialog::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
         {
             if (ManualMode)
             {
-                SendMessage(ManualEdit->HWindow, EM_SETSEL, 0, -1);
-                SendMessage(ManualEdit->HWindow, WM_PASTE, 0, 0);
-                Preview->Update(TRUE);
-                SendMessage(HWindow, WM_USER_CARETMOVE, 0, 0);
+                if (LoadManualClipboard(HWindow, ManualEdit->HWindow))
+                {
+                    Preview->Update(TRUE);
+                    SendMessage(HWindow, WM_USER_CARETMOVE, 0, 0);
+                }
                 return TRUE;
             }
             break;
