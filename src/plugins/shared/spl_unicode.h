@@ -56,4 +56,58 @@ inline bool NegotiateUnicodeViewerV1(QueryUnicodeViewer query, UnicodeViewerV1& 
     output = candidate;
     return true;
 }
+
+// Optional menu extension, independent of both SDK 103 and UnicodeViewerV1.
+// The plugin must only advertise commands that can consume the complete W
+// selection without subsequently retrieving filenames through the legacy ABI.
+constexpr DWORD UnicodeMenuVersion1 = 1;
+constexpr char UnicodeMenuExportName[] = "SalamanderPluginQueryUnicodeMenu";
+
+#pragma pack(push, 4)
+struct UnicodeMenuItemV1
+{
+    const WCHAR* Name; // exact leaf name, not an ACP alias
+    BOOL IsDirectory;
+};
+
+struct UnicodeMenuSelectionV1
+{
+    DWORD Size;
+    const WCHAR* Root; // exact absolute disk directory, no MAX_PATH limit
+    DWORD Count;
+    const UnicodeMenuItemV1* Items;
+};
+
+struct UnicodeMenuV1
+{
+    DWORD Size;
+    DWORD Version;
+    BOOL (WINAPI* CanExecuteMenuItemW)(int id);
+    // Return value has the same selection-clearing semantics as the legacy
+    // ExecuteMenuItem. Root, Items and every Name are borrowed for this
+    // synchronous call only. Copy all needed values before starting a thread.
+    // The plugin owns filesystem validation and user-visible error handling.
+    // No exceptions or ownership of allocations may cross the ABI.
+    BOOL (WINAPI* ExecuteMenuItemW)(HWND parent, int id, DWORD eventMask,
+                                   const UnicodeMenuSelectionV1* selection);
+};
+#pragma pack(pop)
+
+using QueryUnicodeMenu = BOOL (WINAPI*)(DWORD version, DWORD capacity,
+                                        UnicodeMenuV1* output);
+
+inline bool NegotiateUnicodeMenuV1(QueryUnicodeMenu query, UnicodeMenuV1& output)
+{
+    output = {};
+    if (!query)
+        return false;
+    UnicodeMenuV1 candidate{};
+    if (!query(UnicodeMenuVersion1, static_cast<DWORD>(sizeof(candidate)), &candidate) ||
+        candidate.Size != sizeof(candidate) ||
+        candidate.Version != UnicodeMenuVersion1 ||
+        !candidate.CanExecuteMenuItemW || !candidate.ExecuteMenuItemW)
+        return false;
+    output = candidate;
+    return true;
+}
 } // namespace SalamanderSdk

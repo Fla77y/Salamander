@@ -2572,6 +2572,9 @@ public:
     BOOL ExecuteMenuItem(CFilesWindow* panel, HWND parent, int index, int suid, BOOL& unselect);
     // 'id' is the internal command ID; ExecuteMenuItem2 is used for Last Command
     BOOL ExecuteMenuItem2(CFilesWindow* panel, HWND parent, int index, int id, BOOL& unselect);
+    // Returns TRUE only if the optional W menu callback was actually invoked.
+    BOOL TryExecuteUnicodeMenuItem(CFilesWindow* panel, HWND parent, int id,
+                                   DWORD eventMask, BOOL& unselect);
 
     // plugin call: HelpForMenuItem
     // shows help for the menu command with the identifier 'suid' (response to WM_COMMAND),

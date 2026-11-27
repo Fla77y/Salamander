@@ -3488,12 +3488,113 @@ void CPluginData::InitMenuItems(HWND parent, int index, CMenuPopup* menu)
     }
 }
 
+// Only an explicitly negotiated W callback can consume an unsafe legacy
+// selection. Keep all strings owned by the host for the synchronous call;
+// never pass panel row aliases or expose CFileData across this new ABI.
+BOOL CPluginData::TryExecuteUnicodeMenuItem(CFilesWindow* panel, HWND parent,
+                                           int id, DWORD eventMask, BOOL& unselect)
+{
+    if (!panel || !panel->Is(ptDisk) || !GetLoaded() || !PluginIfaceForMenuExt.NotEmpty())
+        return FALSE;
+    const auto query = reinterpret_cast<SalamanderSdk::QueryUnicodeMenu>(
+        GetProcAddress(DLL, SalamanderSdk::UnicodeMenuExportName));
+    if (!query)
+        return FALSE;
+
+    struct CallScope
+    {
+        CallScope() { EnterPlugin(); }
+        ~CallScope() { LeavePlugin(); }
+    } scope;
+    SalamanderSdk::UnicodeMenuV1 extension{};
+    if (!SalamanderSdk::NegotiateUnicodeMenuV1(query, extension) ||
+        !extension.CanExecuteMenuItemW(id))
+        return FALSE;
+
+    try
+    {
+        const std::wstring root = panel->GetDiskPathW();
+        if (root.empty() || !panel->Dirs || !panel->Files)
+            return FALSE;
+        const int selected = panel->GetSelCount();
+        if (selected < 0)
+            return FALSE;
+        const int count = selected ? selected : 1;
+        std::vector<int> indexes(static_cast<size_t>(count));
+        if (selected)
+        {
+            if (panel->GetSelItems(count, indexes.data()) != count)
+                return FALSE;
+        }
+        else
+            indexes[0] = panel->GetCaretIndex();
+
+        // Allocate all slots first so no vector reallocation invalidates the
+        // borrowed pointers assembled for the callback.
+        std::vector<std::wstring> names(static_cast<size_t>(count));
+        std::vector<SalamanderSdk::UnicodeMenuItemV1> items(static_cast<size_t>(count));
+        for (int i = 0; i < count; ++i)
+        {
+            const int row = indexes[i];
+            if (row < 0)
+                return FALSE;
+            const bool dir = row < panel->Dirs->Count;
+            const int offset = dir ? row : row - panel->Dirs->Count;
+            auto* entries = dir ? panel->Dirs : panel->Files;
+            if (offset >= entries->Count)
+                return FALSE;
+            const auto& entry = entries->At(offset);
+            auto& name = names[i];
+            if (!panel->UnicodeDiskNames.TryGetRow(entry.Name, name) ||
+                name.empty() || name == L"." || name == L".." ||
+                name.find_first_of(L"\\/:") != std::wstring::npos)
+                return FALSE;
+            items[i].Name = name.c_str();
+            items[i].IsDirectory = dir ? TRUE : FALSE;
+        }
+
+        const SalamanderSdk::UnicodeMenuSelectionV1 selection{
+            static_cast<DWORD>(sizeof(SalamanderSdk::UnicodeMenuSelectionV1)),
+            root.c_str(), static_cast<DWORD>(count), items.data()};
+        // No ABI exception is permitted. Even if a third-party callback
+        // violates the contract, the outer caller must never replay it.
+        try
+        {
+            unselect = extension.ExecuteMenuItemW(parent, id, eventMask, &selection);
+        }
+        catch (...)
+        {
+            unselect = FALSE;
+            TRACE_E("Unicode menu callback threw across the plugin ABI");
+        }
+        return TRUE; // callback invoked: never attempt the ANSI path
+    }
+    catch (const std::bad_alloc&)
+    {
+        // No complete snapshot means no command. The caller retains the
+        // existing refusal dialog. Plugins must not throw across the ABI.
+        return FALSE;
+    }
+}
+
 BOOL CPluginData::ExecuteMenuItem(CFilesWindow* panel, HWND parent, int index, int suid, BOOL& unselect)
 {
     CALL_STACK_MESSAGE5("CPluginData::ExecuteMenuItem(, , %d, %d, ) (%s v. %s)", index, suid, DLLName, Version);
     unselect = FALSE;
     if (panel != NULL && panel->HasUnsupportedLegacyPluginSelection())
     {
+        for (int i = 0; i < MenuItems.Count; ++i)
+            if (MenuItems[i]->SUID == suid)
+            {
+                const int command = MenuItems[i]->ID;
+                if (TryExecuteUnicodeMenuItem(panel, parent, command,
+                                              GetMaskForMenuItems(index), unselect))
+                {
+                    Plugins.SetLastPlgCmd(DLLName, command);
+                    return TRUE;
+                }
+                break;
+            }
         SalMessageBox(parent, "The legacy plugin interface cannot safely handle "
                       "this Unicode filename or long directory. No plugin command "
                       "was started.", LoadStr(IDS_ERRORTITLE), MB_OK | MB_ICONWARNING);
@@ -3525,6 +3626,14 @@ BOOL CPluginData::ExecuteMenuItem2(CFilesWindow* panel, HWND parent, int index, 
     unselect = FALSE;
     if (panel != NULL && panel->HasUnsupportedLegacyPluginSelection())
     {
+        for (int i = 0; i < MenuItems.Count; ++i)
+            if (MenuItems[i]->ID == id &&
+                TryExecuteUnicodeMenuItem(panel, parent, id,
+                                          GetMaskForMenuItems(index), unselect))
+            {
+                Plugins.SetLastPlgCmd(DLLName, id);
+                return TRUE;
+            }
         SalMessageBox(parent, "The legacy plugin interface cannot safely handle "
                       "this Unicode filename or long directory. No plugin command "
                       "was started.", LoadStr(IDS_ERRORTITLE), MB_OK | MB_ICONWARNING);
