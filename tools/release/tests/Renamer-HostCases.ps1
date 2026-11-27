@@ -144,6 +144,111 @@ public static class RenamerHostNative
     {
         return checked((int)Number(Preview(dlg,pid),0x1004,0,IntPtr.Zero)); // LVM_GETITEMCOUNT
     }
+
+    // LVM_GETITEMTEXT is unsupported for LVS_OWNERDATA. LVM_GETITEMW
+    // requests LVIF_TEXT from the real control, including its owner callback.
+    // Messages above WM_USER are not marshalled by USER32.
+    [StructLayout(LayoutKind.Sequential)]
+    private struct ListItem
+    {
+        public uint mask;
+        public int item, subItem;
+        public uint state, stateMask;
+        public IntPtr text;
+        public int textMax, image;
+        public IntPtr param;
+        public int indent, groupId;
+        public uint columns;
+        public IntPtr columnIndices, columnFormats;
+        public int group;
+    }
+    [DllImport("kernel32.dll", SetLastError=true)] private static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
+    [DllImport("kernel32.dll", SetLastError=true)] private static extern bool CloseHandle(IntPtr handle);
+    [DllImport("kernel32.dll", SetLastError=true)] private static extern bool IsWow64Process2(IntPtr handle, out ushort processMachine, out ushort nativeMachine);
+    [DllImport("kernel32.dll", SetLastError=true)] private static extern IntPtr VirtualAllocEx(IntPtr handle, IntPtr address, UIntPtr size, uint allocation, uint protection);
+    [DllImport("kernel32.dll", SetLastError=true)] private static extern bool VirtualFreeEx(IntPtr handle, IntPtr address, UIntPtr size, uint freeType);
+    [DllImport("kernel32.dll", SetLastError=true)] private static extern bool WriteProcessMemory(IntPtr handle, IntPtr address, byte[] bytes, UIntPtr size, out UIntPtr written);
+    [DllImport("kernel32.dll", SetLastError=true)] private static extern bool ReadProcessMemory(IntPtr handle, IntPtr address, byte[] bytes, UIntPtr size, out UIntPtr read);
+
+    public static string[][] ReadPreview(IntPtr dlg, uint pid, int expectedCount)
+    {
+        const int chars = 4096;
+        var hwnd = Preview(dlg,pid);
+        if (expectedCount < 0 || Count(dlg,pid) != expectedCount) return null;
+        var header = new IntPtr(checked((long)Number(hwnd,0x101F,0,IntPtr.Zero))); // LVM_GETHEADER
+        if (!Owned(header,pid) || GetParent(header)!=hwnd || !ClassIs(header,"SysHeader32") ||
+            Number(header,0x1200,0,IntPtr.Zero)<6) // HDM_GETITEMCOUNT
+            throw new InvalidOperationException("Renamer preview column identity not verified.");
+        if (IntPtr.Size!=8) throw new InvalidOperationException("Renamer preview reader requires x64 test host.");
+        var handle = OpenProcess(0x1038,false,pid); // QUERY_LIMITED_INFORMATION | VM_OPERATION | VM_READ | VM_WRITE
+        if (handle==IntPtr.Zero) throw new InvalidOperationException("Cannot open verified Renamer test process.");
+        IntPtr remote=IntPtr.Zero;
+        bool pending=false;
+        try
+        {
+            ushort machine,native;
+            if (!IsWow64Process2(handle,out machine,out native) || (machine!=0 && machine!=0x8664) ||
+                (machine==0 && native!=0x8664))
+                throw new InvalidOperationException("Renamer preview reader requires x64 target.");
+            int size=Marshal.SizeOf<ListItem>();
+            if(size!=88) throw new InvalidOperationException("Unexpected x64 LVITEM layout.");
+            var bytes=new byte[size+chars*2];
+            remote=VirtualAllocEx(handle,IntPtr.Zero,new UIntPtr((uint)bytes.Length),0x3000,0x04);
+            if(remote==IntPtr.Zero) throw new InvalidOperationException("Renamer preview buffer allocation failed.");
+            var buffer=IntPtr.Add(remote,size);
+            var rows=new string[expectedCount][];
+            int[] columns={0,1,5};
+            for(int row=0;row<expectedCount;row++)
+            {
+                rows[row]=new string[columns.Length];
+                for(int c=0;c<columns.Length;c++)
+                {
+                    if(Preview(dlg,pid)!=hwnd || Count(dlg,pid)!=expectedCount)
+                        return null;
+                    // Non-NUL sentinel detects an unwritten or unterminated reply.
+                    Array.Fill(bytes,(byte)0xFF);
+                    var item=new ListItem{mask=1,item=row,subItem=columns[c],text=buffer,textMax=chars};
+                    var local=Marshal.AllocHGlobal(size);
+                    try { Marshal.StructureToPtr(item,local,false); Marshal.Copy(local,bytes,0,size); }
+                    finally { Marshal.FreeHGlobal(local); }
+                    UIntPtr transferred;
+                    if(!WriteProcessMemory(handle,remote,bytes,new UIntPtr((uint)bytes.Length),out transferred) ||
+                       transferred.ToUInt64()!=(ulong)bytes.Length)
+                        throw new InvalidOperationException("Renamer preview request write failed.");
+                    // Do not free the remote allocation if a timed-out message might still use it.
+                    pending=true;
+                    UIntPtr result;
+                    if(SendNumber(hwnd,0x104B,UIntPtr.Zero,remote,Flags,2500,out result)==IntPtr.Zero)
+                        throw new InvalidOperationException("Renamer LVM_GETITEMW timed out or failed; buffer retained until test process exits.");
+                    pending=false;
+                    if(result==UIntPtr.Zero)
+                        throw new InvalidOperationException("Renamer LVM_GETITEMW rejected row "+row+", column "+columns[c]+".");
+                    if(!ReadProcessMemory(handle,remote,bytes,new UIntPtr((uint)bytes.Length),out transferred) ||
+                       transferred.ToUInt64()!=(ulong)bytes.Length)
+                        throw new InvalidOperationException("Renamer preview reply read failed.");
+                    // Never follow a returned pointer outside the test-owned allocation.
+                    if(BitConverter.ToInt64(bytes,24)!=buffer.ToInt64())
+                        throw new InvalidOperationException("Renamer list returned a different text pointer.");
+                    int end=size;
+                    while(end<bytes.Length && (bytes[end]!=0 || bytes[end+1]!=0)) end+=2;
+                    if(end==bytes.Length || end==bytes.Length-2)
+                        throw new InvalidOperationException("Renamer preview text missing terminator or truncated.");
+                    rows[row][c]=new UnicodeEncoding(false,false,true).GetString(bytes,size,end-size);
+                }
+            }
+            return Preview(dlg,pid)==hwnd && Count(dlg,pid)==expectedCount ? rows : null;
+        }
+        finally
+        {
+            try
+            {
+                if(remote!=IntPtr.Zero && !pending && !VirtualFreeEx(handle,remote,UIntPtr.Zero,0x8000))
+                    throw new InvalidOperationException("Renamer preview buffer release failed.");
+            }
+            finally { CloseHandle(handle); }
+        }
+    }
+
     public static void Command(IntPtr dlg,uint pid,int command)
     {
         Require(dlg,pid);
@@ -337,7 +442,15 @@ function Get-RenamerPreview {
     if ($element.Current.ProcessId -ne $PidExpected) { throw 'Preview automation element belongs to another process.' }
     $pattern = $null
     if (-not $element.TryGetCurrentPattern([System.Windows.Automation.GridPattern]::Pattern,[ref]$pattern)) {
-        throw 'The real owner-data Renamer list does not expose UI Automation GridPattern on this desktop; no preview acceptance possible.'
+        $nativeRows = [RenamerHostNative]::ReadPreview($Dialog,$PidExpected,$ExpectedCount)
+        if ($null -eq $nativeRows -or $nativeRows.Length -ne $ExpectedCount) { return $null }
+        $rows = [Collections.Generic.List[object]]::new()
+        for ($i=0; $i -lt $ExpectedCount; $i++) {
+            $values = $nativeRows[$i]
+            if ($null -eq $values -or $values.Length -ne 3) { throw 'Incomplete native Renamer preview row.' }
+            $rows.Add([pscustomobject]@{ Old=$values[0]; New=$values[1]; Path=$values[2] })
+        }
+        return ,($rows.ToArray())
     }
     if ($pattern.Current.RowCount -ne $ExpectedCount -or $pattern.Current.ColumnCount -lt 6) { return $null }
     $rows = [Collections.Generic.List[object]]::new()
