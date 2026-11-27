@@ -139,6 +139,7 @@ function Expand-AutomatedTestActions {
     [void]$RequestedSet.Add('--test-pictview')
     [void]$RequestedSet.Add('--test-pictview-window')
     [void]$RequestedSet.Add('--test-plugin-exports')
+    [void]$RequestedSet.Add('--test-plugin-renamer-native')
     [void]$RequestedSet.Add('--test-zip-sfx')
     [void]$RequestedSet.Add('--test-clipboard-snapshot')
     [void]$RequestedSet.Add('--test-wer-build')
