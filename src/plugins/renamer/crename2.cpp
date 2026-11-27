@@ -566,10 +566,13 @@ public:
                 {
                 case 2:
                     error = IDS_EXP_EXPECTBASEALIGNWIDTH;
+                    break;
                 case 3:
                     error = IDS_EXP_EXPECTALIGNWIDTH;
+                    break;
                 case 4:
                     error = IDS_EXP_EXPECTWIDTH;
+                    break;
                 }
                 errorPos1 = argStart;
                 errorPos2 = argEnd;

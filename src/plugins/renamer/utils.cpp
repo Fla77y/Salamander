@@ -404,7 +404,7 @@ StrQChr(const char* start, const char* end, char q, char c)
 BOOL IsValidInt(const char* begin, const char* end, BOOL isSigned)
 {
     CALL_STACK_MESSAGE_NONE
-    if (isSigned && *begin == '-' && begin < end)
+    if (begin < end && isSigned && *begin == '-')
         begin++;
     if (begin >= end)
         return FALSE;
@@ -420,10 +420,10 @@ BOOL IsValidInt(const char* begin, const char* end, BOOL isSigned)
 BOOL IsValidFloat(const char* begin, const char* end)
 {
     CALL_STACK_MESSAGE_NONE
-    if (*begin == '-' && begin < end)
+    if (begin < end && *begin == '-')
         begin++;
     if (begin >= end ||
-        end - begin == 1 && *begin == '.')
+        (end - begin == 1 && *begin == '.'))
         return FALSE;
 
     // cela cast
@@ -440,10 +440,11 @@ BOOL IsValidFloat(const char* begin, const char* end)
             return FALSE;
 
         // fractional part
+        ++begin; // consume the decimal point
         while (begin < end)
         {
             if (!IsDigit(*begin))
-                FALSE;
+                return FALSE;
             begin++;
         }
     }

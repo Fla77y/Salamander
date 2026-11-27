@@ -513,7 +513,6 @@ BOOL CRenamer::ValidetaReplacePattern()
                     i = i * 10 + *replace - '0';
                 } while (IsDigit(*++replace));
                 numberEnd = replace;
-                CChangeCase changeCase = ccDontChange;
                 if (paren)
                 {
                     if (*replace == ':')
@@ -625,7 +624,8 @@ BOOL CRenamer::SafeSubst(char* dest, int max, int& pos)
                 {
                     if (*replace++ == ':') // skip the closing bracket or ':'
                     {
-                        switch (*replace)
+                        // Validation accepts all case spellings of the modifier.
+                        switch (ToLower(*replace))
                         {
                         case 'l':
                             changeCase = ccLower;
