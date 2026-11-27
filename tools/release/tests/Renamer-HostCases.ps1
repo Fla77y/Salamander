@@ -20,6 +20,7 @@ public static class RenamerHostNative
     [DllImport("user32.dll")] private static extern IntPtr GetParent(IntPtr hwnd);
     [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr hwnd, uint flags);
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr hwnd);
+    [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr hwnd);
     [DllImport("user32.dll")] public static extern bool IsWindowEnabled(IntPtr hwnd);
     [DllImport("user32.dll", CharSet=CharSet.Unicode, EntryPoint="GetClassNameW")]
     private static extern int GetClassName(IntPtr hwnd, StringBuilder name, int size);
@@ -597,7 +598,9 @@ function Test-RenamerHost {
     [RenamerHostNative]::Close($dlg,$ownerPid)
     Wait-Until {
         if ($process.HasExited) { throw 'Salamander exited closing Renamer.' }
-        [RenamerHostNative]::Find($ownerPid) -eq [IntPtr]::Zero
+        # Do not send WM_GETTEXT to an HWND racing with DestroyWindow.
+        # The exact verified dialog must cease to exist; a hung dialog still fails.
+        -not [RenamerHostNative]::IsWindow($dlg)
     } 'Batch Rename window closed'
     $final = if ($case.Action -eq 'Rename') { $Fixture.After } else { $Fixture.Before }
     Assert-True (Test-RenamerDisk $final $Fixture) 'Exact final disk state after closing Renamer'

@@ -1915,30 +1915,33 @@ CRenamerDialog::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
         }
 
         case CMD_SORTOLD:
-        {
-            Preview->SortItems(CI_OLDNAME);
-            SortBy = CI_OLDNAME;
-            break;
-        }
-
         case CMD_SORTSIZE:
-        {
-            Preview->SortItems(CI_SIZE);
-            SortBy = CI_SIZE;
-            break;
-        }
-
         case CMD_SORTTIME:
-        {
-            Preview->SortItems(CI_TIME);
-            SortBy = CI_TIME;
-            break;
-        }
-
         case CMD_SORTPATH:
         {
-            Preview->SortItems(CI_PATH);
-            SortBy = CI_PATH;
+            // A mask change queues a source-list reload for OnEnterIdle.
+            // Sort the new list, not the old list that the reload would discard.
+            if (SourceFilesNeedUpdate || !SourceFilesValid)
+                ReloadSourceFiles();
+            if (!SourceFilesValid || SourceFilesNeedUpdate)
+                break;
+
+            switch (LOWORD(wParam))
+            {
+            case CMD_SORTOLD:
+                SortBy = CI_OLDNAME;
+                break;
+            case CMD_SORTSIZE:
+                SortBy = CI_SIZE;
+                break;
+            case CMD_SORTTIME:
+                SortBy = CI_TIME;
+                break;
+            case CMD_SORTPATH:
+                SortBy = CI_PATH;
+                break;
+            }
+            Preview->SortItems(SortBy);
             break;
         }
 
