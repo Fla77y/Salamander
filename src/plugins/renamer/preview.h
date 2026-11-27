@@ -39,6 +39,7 @@ protected:
     char TextBuffer[MAX_PATH];
     int CachedItem;
     char NewNameCache[MAX_PATH];
+    TBuffer<WCHAR> WideText; // callback-owned UTF-16 display buffer
     BOOL NewNameValid;
 
     HWND Static;
@@ -52,6 +53,7 @@ public:
     void SetDirty() { Dirty = TRUE; }
     void Update(BOOL force = FALSE);
     void GetDispInfo(LV_DISPINFO* info);
+    void GetDispInfoW(NMLVDISPINFOW* info);
     char* GetItemText(int index, int subItem);
     BOOL CustomDraw(LPNMLVCUSTOMDRAW cd, LRESULT& result);
 

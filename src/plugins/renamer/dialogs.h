@@ -89,16 +89,22 @@ protected:
 // Sends WM_USER_KEYDOWN when a key or mouse button is pressed
 //
 
-class CNotifyEdit : public CWindow
+class CNotifyEdit
 {
-protected:
-    BOOL SkipCharacter;
-
 public:
+    HWND HWindow;
     CNotifyEdit();
+    ~CNotifyEdit();
+    BOOL AttachToWindow(HWND original);
 
-protected:
-    virtual LRESULT WindowProc(UINT uMsg, WPARAM wParam, LPARAM lParam);
+    CNotifyEdit(const CNotifyEdit&) = delete;
+    CNotifyEdit& operator=(const CNotifyEdit&) = delete;
+
+private:
+    BOOL SkipCharacter;
+    static LRESULT CALLBACK SubclassProc(HWND hwnd, UINT uMsg, WPARAM wParam,
+                                         LPARAM lParam, UINT_PTR id, DWORD_PTR data);
+    LRESULT WindowProc(UINT uMsg, WPARAM wParam, LPARAM lParam);
 };
 
 // ****************************************************************************

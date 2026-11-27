@@ -569,11 +569,11 @@ LBUILD_SCRIPT_ERROR:
         // position the cursor on the line with the error
         if (ManualMode)
         {
-            int charIndex = (int)SendMessage(ManualEdit->HWindow, EM_LINEINDEX, i, 0);
+            int charIndex = (int)SendMessage(ManualEdit.HWindow, EM_LINEINDEX, i, 0);
             if (charIndex >= 0)
             {
                 HWND wnd = GetFocus();
-                if (wnd != ManualEdit->HWindow)
+                if (wnd != ManualEdit.HWindow)
                 {
                     if (Progress) // so the focus can be set to the edit control
                     {
@@ -582,10 +582,10 @@ LBUILD_SCRIPT_ERROR:
                         Progress = NULL;
                     }
 
-                    SendMessage(HWindow, WM_NEXTDLGCTL, (WPARAM)ManualEdit->HWindow, TRUE);
+                    SendMessage(HWindow, WM_NEXTDLGCTL, (WPARAM)ManualEdit.HWindow, TRUE);
                 }
-                SendMessage(ManualEdit->HWindow, EM_SETSEL, charIndex, charIndex);
-                SendMessage(ManualEdit->HWindow, EM_SCROLLCARET, 0, 0);
+                SendMessage(ManualEdit.HWindow, EM_SETSEL, charIndex, charIndex);
+                SendMessage(ManualEdit.HWindow, EM_SCROLLCARET, 0, 0);
             }
         }
     }
@@ -607,12 +607,16 @@ int CRenamerDialog::GetManualModeNewName(CSourceFile* file, int index, char* new
     case rsFileName:
     {
         pathLen = (int)(file->Name - file->FullName);
+        if (pathLen < 0 || pathLen >= MAX_PATH)
+            return -1;
         memcpy(newName, file->FullName, pathLen);
         break;
     }
     case rsRelativePath:
     {
         pathLen = RootLen;
+        if (pathLen <= 0 || pathLen >= MAX_PATH)
+            return -1;
         memcpy(newName, Root, pathLen);
         if (newName[pathLen - 1] != '\\')
             newName[pathLen++] = '\\';
@@ -621,30 +625,11 @@ int CRenamerDialog::GetManualModeNewName(CSourceFile* file, int index, char* new
     case rsFullPath:
         break;
     }
+    if (pathLen < 0 || pathLen >= MAX_PATH)
+        return -1;
     newName += pathLen;
     newPart = newName;
-
-    int charIndex = (int)SendMessage(ManualEdit->HWindow, EM_LINEINDEX, index, 0);
-    if (charIndex < 0) // this should not happen -- CRenamerDialog::Validate would fail
-    {
-        *newName = 0;
-        return 0;
-    }
-    else
-    {
-        int l = (int)SendMessage(ManualEdit->HWindow, EM_LINELENGTH, charIndex, 0);
-        if (l >= MAX_PATH - pathLen)
-        {
-            return -1;
-        }
-        else
-        {
-            *LPWORD(newName) = MAX_PATH - pathLen;
-            int l2 = (int)SendMessage(ManualEdit->HWindow, EM_GETLINE, index, (LPARAM)newName);
-            newName[l2] = 0; // just to be sure
-        }
-        return l;
-    }
+    return ReadManualLineAnsi(ManualEdit.HWindow, index, newName, MAX_PATH - pathLen);
 }
 
 // Exchange only the owned pathname and its interior pointers. The replacement

@@ -7,6 +7,11 @@ BOOL CRenamerDialog::ExportToTempFile()
 {
     CALL_STACK_MESSAGE1("CRenamerDialog::ExportToTempFile()");
 
+    TBuffer<char> buffer;
+    DWORD len = 0;
+    if (!ReadManualTextAnsi(ManualEdit.HWindow, buffer, len))
+        return Error(HWindow, "The rename list cannot be exported to the legacy editor without loss.");
+
     // create the name of the tmp file
     if (!SG->SalGetTempFileName(NULL, "SAL", TempFile, FALSE, NULL) ||
         !SG->SalPathAppend(TempFile, "list.txt", MAX_PATH))
@@ -22,18 +27,8 @@ BOOL CRenamerDialog::ExportToTempFile()
         return Error(IDS_CREATETEMP);
     }
 
-    // nacteme text z controlu
-    TBuffer<char> buffer;
-    if (!buffer.Reserve(GetWindowTextLength(ManualEdit->HWindow) + 1))
-    {
-        SG->CutDirectory(TempFile);
-        SG->RemoveTemporaryDir(TempFile);
-        return Error(IDS_LOWMEM);
-    }
-    DWORD len = GetWindowText(ManualEdit->HWindow, buffer.Get(), (int)buffer.GetSize());
-
-    DWORD written;
-    BOOL b = WriteFile(file, buffer.Get(), len, &written, NULL) || written != len;
+    DWORD written = 0;
+    BOOL b = WriteFile(file, buffer.Get(), len, &written, NULL) && written == len;
 
     CloseHandle(file);
 
@@ -64,7 +59,7 @@ BOOL CRenamerDialog::ImportFromTempFile()
         return ErrorL(err, IDS_SIZEOFTEMP);
     }
 
-    if (size.HiDWord > 0)
+    if (size.HiDWord > 0 || size.LoDWord >= INT_MAX / sizeof(WCHAR))
     {
         CloseHandle(file);
         return Error(IDS_LONGDATA);
@@ -77,19 +72,18 @@ BOOL CRenamerDialog::ImportFromTempFile()
         return Error(IDS_LOWMEM);
     }
 
-    DWORD read;
-    BOOL b = ReadFile(file, buffer.Get(), size.LoDWord, &read, NULL) || read != size.LoDWord;
+    DWORD read = 0;
+    BOOL b = ReadFile(file, buffer.Get(), size.LoDWord, &read, NULL) && read == size.LoDWord;
 
     CloseHandle(file);
 
     if (b)
     {
         buffer.Get()[size.LoDWord] = 0;
-        SendMessage(ManualEdit->HWindow, EM_SETSEL, 0, -1);
-        SendMessage(ManualEdit->HWindow, EM_REPLACESEL, FALSE, LPARAM(buffer.Get()));
-        // SendMessage(ManualEdit->HWindow, WM_SETTEXT, 0, LPARAM(buffer.Get()));
+        b = SetManualTextFromAnsi(ManualEdit.HWindow, buffer.Get(),
+                                  size.LoDWord, TRUE, FALSE);
     }
-    else
+    if (!b)
         Error(IDS_READTEMP);
 
     return b;
@@ -157,6 +151,9 @@ BOOL CRenamerDialog::ExecuteCommand(const char* command)
     TBuffer<char> buffer;
     CQuadWord size;
     BOOL ret = TRUE;
+    DWORD len = 0;
+    if (!ReadManualTextAnsi(ManualEdit.HWindow, buffer, len))
+        return Error(HWindow, "The rename list cannot be passed to the legacy filter without loss.");
 
     // so the handles can be inherited
     saAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
@@ -198,17 +195,6 @@ BOOL CRenamerDialog::ExecuteCommand(const char* command)
         ret = Error(IDS_CREATETEMP);
         goto LERROR;
     }
-
-    // nacteme text z controlu
-    if (!buffer.Reserve(GetWindowTextLength(ManualEdit->HWindow) + 1))
-    {
-        SG->CutDirectory(TempFile);
-        SG->RemoveTemporaryDir(TempFile);
-        ret = Error(IDS_LOWMEM);
-        goto LERROR;
-    }
-    DWORD len;
-    len = GetWindowText(ManualEdit->HWindow, buffer.Get(), (int)buffer.GetSize());
 
     STARTUPINFO si;
     PROCESS_INFORMATION pi;
@@ -287,7 +273,7 @@ BOOL CRenamerDialog::ExecuteCommand(const char* command)
     size.HiDWord = 0;
     size.LoDWord = SetFilePointer(outFile, 0, LPLONG(&size.HiDWord), FILE_END);
 
-    if (size.HiDWord > 0)
+    if (size.HiDWord > 0 || size.LoDWord >= INT_MAX / sizeof(WCHAR))
     {
         ret = Error(IDS_LONGDATA);
         goto LERROR;
@@ -307,9 +293,12 @@ BOOL CRenamerDialog::ExecuteCommand(const char* command)
     if (ReadFile(outFile, buffer.Get(), size.LoDWord, &read, NULL) && read == size.LoDWord)
     {
         buffer.Get()[size.LoDWord] = 0;
-        SendMessage(ManualEdit->HWindow, EM_SETSEL, 0, -1);
-        SendMessage(ManualEdit->HWindow, EM_REPLACESEL, TRUE, LPARAM(buffer.Get()));
-        //SendMessage(ManualEdit->HWindow, WM_SETTEXT, 0, LPARAM(buffer.Get()));
+        if (!SetManualTextFromAnsi(ManualEdit.HWindow, buffer.Get(),
+                                    size.LoDWord, TRUE, TRUE))
+        {
+            ret = Error(IDS_READTEMP);
+            goto LERROR;
+        }
     }
     else
     {

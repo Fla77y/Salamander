@@ -144,6 +144,58 @@ void CPreviewWindow::GetDispInfo(LV_DISPINFO* info)
     }
 }
 
+void CPreviewWindow::GetDispInfoW(NMLVDISPINFOW* info)
+{
+    auto& request = info->item;
+    const bool inRange = request.iItem >= 0 && request.iItem < SourceFiles.Count;
+    if (request.mask & LVIF_IMAGE)
+    {
+        if (inRange && CachedItem != request.iItem)
+            GetItemText(request.iItem, CI_NEWNAME);
+        request.iImage = inRange && !NewNameValid ? ILS_WARNING :
+            (inRange && SourceFiles[request.iItem]->IsDir ? ILS_DIRECTORY : ILS_FILE);
+    }
+    if (!(request.mask & LVIF_TEXT))
+        return;
+
+    static WCHAR empty[] = L"";
+    const WCHAR* text = empty;
+    if (inRange)
+    {
+        // Keep the same owner-data list and legacy validity/colour logic.
+        // Manual proposals must be displayed as entered, even if the still
+        // ANSI execution engine cannot address them yet.
+        if (request.iSubItem == CI_NEWNAME && RenamerDialog->ManualMode &&
+            ReadManualLineWide(RenamerDialog->ManualEdit.HWindow, request.iItem, WideText) >= 0)
+        {
+            text = WideText.Get();
+        }
+        else
+        {
+            const char* ansi = GetItemText(request.iItem, request.iSubItem);
+            const int units = MultiByteToWideChar(GetACP(), 0, ansi, -1, NULL, 0);
+            if (units > 0 && WideText.Reserve(units) &&
+                MultiByteToWideChar(GetACP(), 0, ansi, -1, WideText.Get(), units) == units)
+                text = WideText.Get();
+        }
+    }
+    if (request.pszText && request.pszText != LPSTR_TEXTCALLBACKW && request.cchTextMax > 0)
+    {
+        size_t count = wcslen(text);
+        const size_t limit = static_cast<size_t>(request.cchTextMax - 1);
+        if (count > limit)
+        {
+            count = limit;
+            if (count && text[count - 1] >= 0xD800 && text[count - 1] <= 0xDBFF)
+                --count; // do not leave half a surrogate pair in the display buffer
+        }
+        memmove(request.pszText, text, count * sizeof(WCHAR));
+        request.pszText[count] = 0;
+    }
+    else
+        request.pszText = const_cast<WCHAR*>(text);
+}
+
 char* CPreviewWindow::GetItemText(int index, int subItem)
 {
     CALL_STACK_MESSAGE3("CPreviewWindow::GetItemText(%d, %d)", index, subItem);
@@ -173,30 +225,14 @@ char* CPreviewWindow::GetItemText(int index, int subItem)
             NewNameValid = FALSE;
             if (RenamerDialog->ManualMode)
             {
-                // optimization
-                // int pos = SendDlgItemMessage(RenamerDialog->HWindow, IDE_MANUAL, EM_LINEINDEX, index, 0);
-                // if (pos < 0)
-                // {
-                //   SalPrintf(NewNameCache, MAX_PATH, LoadStr(IDS_GENERICERR), LoadStr(IDS_MISLINES));
-                // }
-                // else
-                // {
-                //   int l = SendDlgItemMessage(RenamerDialog->HWindow, IDE_MANUAL, EM_LINELENGTH, pos, 0);
-
-                //   if (l >= MAX_PATH)
-                //   {
-                //     SalPrintf(NewNameCache, MAX_PATH, LoadStr(IDS_GENERICERR), LoadStr(IDS_EXP_SMALLBUFFER));
-                //   }
-                //   else
-                //   {
-                *LPWORD(NewNameCache) = MAX_PATH;
-                int l = (int)SendMessage(RenamerDialog->ManualEdit->HWindow, EM_GETLINE,
-                                         index, (LPARAM)NewNameCache);
-                NewNameCache[l] = 0; // just to be sure
-
-                NewNameValid = ValidateFileName(NewNameCache, l, RenamerOptions.Spec, NULL, NULL);
-                //  }
-                // }
+                const int l = ReadManualLineAnsi(RenamerDialog->ManualEdit.HWindow,
+                                                     index, NewNameCache, MAX_PATH);
+                if (l == -2)
+                    strcpy(NewNameCache, "<Name requires Unicode rename engine>");
+                else if (l < 0)
+                    SalPrintf(NewNameCache, MAX_PATH, LoadStr(IDS_GENERICERR), LoadStr(IDS_EXP_SMALLBUFFER));
+                else
+                    NewNameValid = ValidateFileName(NewNameCache, l, RenamerOptions.Spec, NULL, NULL);
             }
             else
             {

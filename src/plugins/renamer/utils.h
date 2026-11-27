@@ -64,6 +64,13 @@ public:
 
 // ****************************************************************************
 
+// Exact bridges for the still-ANSI rename script and external text formats.
+BOOL ReadManualTextAnsi(HWND edit, TBuffer<char>& result, DWORD& length);
+int ReadManualLineWide(HWND edit, int index, TBuffer<WCHAR>& result);
+int ReadManualLineAnsi(HWND edit, int index, char* result, int capacity);
+BOOL SetManualTextFromAnsi(HWND edit, const char* text, size_t length,
+                           BOOL replaceSelection, BOOL undo);
+
 struct CVarStrHelpMenuItem
 {
     int MenuItemStringID;

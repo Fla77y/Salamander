@@ -470,8 +470,85 @@ void CComboboxEdit::ReplaceText(const char* text)
 //
 
 CNotifyEdit::CNotifyEdit()
+    : HWindow(NULL), SkipCharacter(FALSE)
 {
-    SkipCharacter = FALSE;
+}
+
+CNotifyEdit::~CNotifyEdit()
+{
+    if (HWindow)
+        RemoveWindowSubclass(HWindow, SubclassProc, 1);
+}
+
+BOOL CNotifyEdit::AttachToWindow(HWND original)
+{
+    if (!original || HWindow)
+        return FALSE;
+    if (IsWindowUnicode(original))
+    {
+        HWindow = original;
+        if (SetWindowSubclass(HWindow, SubclassProc, 1, reinterpret_cast<DWORD_PTR>(this)))
+            return TRUE;
+        HWindow = NULL;
+        return FALSE;
+    }
+
+    // Keep the original resource, control ID, geometry, styles, font and
+    // tab order. Only the empty edit control's window encoding changes.
+    HWND parent = GetParent(original);
+    RECT rect{};
+    if (!GetWindowRect(original, &rect))
+        return FALSE;
+    MapWindowPoints(NULL, parent, reinterpret_cast<POINT*>(&rect), 2);
+    const DWORD style = static_cast<DWORD>(GetWindowLongPtr(original, GWL_STYLE));
+    const DWORD exStyle = static_cast<DWORD>(GetWindowLongPtr(original, GWL_EXSTYLE));
+    const int id = GetDlgCtrlID(original);
+    const HFONT font = reinterpret_cast<HFONT>(SendMessage(original, WM_GETFONT, 0, 0));
+    HWND edit = CreateWindowExW(exStyle, L"EDIT", L"", style & ~WS_VISIBLE,
+                               rect.left, rect.top, rect.right - rect.left,
+                               rect.bottom - rect.top, parent, NULL, DLLInstance, NULL);
+    if (!edit)
+        return FALSE;
+    HWindow = edit;
+    if (!SetWindowSubclass(edit, SubclassProc, 1, reinterpret_cast<DWORD_PTR>(this)) ||
+        !SetWindowPos(edit, original, 0, 0, 0, 0,
+                      SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE))
+    {
+        DestroyWindow(edit);
+        HWindow = NULL;
+        return FALSE;
+    }
+    SendMessageW(edit, WM_SETFONT, reinterpret_cast<WPARAM>(font), FALSE);
+    if (!DestroyWindow(original))
+    {
+        DestroyWindow(edit);
+        HWindow = NULL;
+        return FALSE;
+    }
+    SetLastError(ERROR_SUCCESS);
+    if (SetWindowLongPtrW(edit, GWLP_ID, id) == 0 && GetLastError() != ERROR_SUCCESS)
+    {
+        DestroyWindow(edit);
+        HWindow = NULL;
+        return FALSE;
+    }
+    if (style & WS_VISIBLE)
+        ShowWindow(edit, SW_SHOWNA);
+    return TRUE;
+}
+
+LRESULT CALLBACK
+CNotifyEdit::SubclassProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam,
+                          UINT_PTR id, DWORD_PTR data)
+{
+    auto* edit = reinterpret_cast<CNotifyEdit*>(data);
+    if (uMsg == WM_NCDESTROY)
+    {
+        RemoveWindowSubclass(hwnd, SubclassProc, id);
+        edit->HWindow = NULL;
+        return DefSubclassProc(hwnd, uMsg, wParam, lParam);
+    }
+    return edit->WindowProc(uMsg, wParam, lParam);
 }
 
 LRESULT
@@ -509,7 +586,7 @@ CNotifyEdit::WindowProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
     case WM_RBUTTONUP:
     case WM_MBUTTONUP:
     {
-        LRESULT ret = CWindow::WindowProc(uMsg, wParam, lParam);
+        LRESULT ret = DefSubclassProc(HWindow, uMsg, wParam, lParam);
         SendMessage(GetParent(HWindow), WM_USER_CARETMOVE, 0, 0);
         return ret;
     }
@@ -528,7 +605,7 @@ CNotifyEdit::WindowProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
         break;
     }
     }
-    return CWindow::WindowProc(uMsg, wParam, lParam);
+    return DefSubclassProc(HWindow, uMsg, wParam, lParam);
 }
 //******************************************************************************
 //

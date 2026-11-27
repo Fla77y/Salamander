@@ -3,6 +3,121 @@
 
 #include "precomp.h"
 
+// Transitional boundary: the manual editor is UTF-16, but the original
+// rule/rename script and external command formats are still ACP. Never let
+// best-fit, substitution, invalid input or truncation produce another name.
+static BOOL ManualWideToAnsi(const WCHAR* text, int units, TBuffer<char>& result,
+                             int& bytes)
+{
+    if (!text || units <= 0)
+        return FALSE;
+    const UINT cp = GetACP();
+    bytes = WideCharToMultiByte(cp, 0, text, units, NULL, 0, NULL, NULL);
+    if (bytes <= 0 || !result.Reserve(bytes) ||
+        WideCharToMultiByte(cp, 0, text, units, result.Get(), bytes, NULL, NULL) != bytes)
+        return FALSE;
+    TBuffer<WCHAR> roundtrip;
+    return roundtrip.Reserve(units) &&
+           MultiByteToWideChar(cp, 0, result.Get(), bytes, roundtrip.Get(), units) == units &&
+           memcmp(text, roundtrip.Get(), static_cast<size_t>(units) * sizeof(WCHAR)) == 0;
+}
+
+BOOL ReadManualTextAnsi(HWND edit, TBuffer<char>& result, DWORD& length)
+{
+    if (!IsWindowUnicode(edit))
+        return FALSE;
+    const int units = GetWindowTextLengthW(edit);
+    if (units < 0 || units >= INT_MAX / static_cast<int>(sizeof(WCHAR)))
+        return FALSE;
+    TBuffer<WCHAR> text;
+    if (!text.Reserve(units + 1) ||
+        GetWindowTextW(edit, text.Get(), units + 1) != units)
+        return FALSE;
+    text.Get()[units] = 0;
+    int bytes = 0;
+    if (!ManualWideToAnsi(text.Get(), units + 1, result, bytes))
+        return FALSE;
+    length = static_cast<DWORD>(bytes - 1);
+    return TRUE;
+}
+
+int ReadManualLineWide(HWND edit, int index, TBuffer<WCHAR>& result)
+{
+    if (!IsWindowUnicode(edit))
+        return -1;
+    const LRESULT pos = SendMessageW(edit, EM_LINEINDEX, index, 0);
+    const LRESULT units = pos < 0 ? 0 : SendMessageW(edit, EM_LINELENGTH, pos, 0);
+    // EM_GETLINE takes a WORD capacity; the Windows extended path bound is
+    // smaller than that. Do not wrap the capacity or show a truncated name.
+    if (units < 0 || units > 32767 || !result.Reserve(static_cast<size_t>(units + 1)))
+        return -1;
+    if (units)
+    {
+        result.Get()[0] = static_cast<WCHAR>(units + 1);
+        if (SendMessageW(edit, EM_GETLINE, index, reinterpret_cast<LPARAM>(result.Get())) != units)
+            return -1;
+    }
+    result.Get()[units] = 0;
+    return static_cast<int>(units);
+}
+
+int ReadManualLineAnsi(HWND edit, int index, char* result, int capacity)
+{
+    if (!result || capacity <= 0 || capacity > MAX_PATH)
+        return -1;
+    result[0] = 0;
+    if (!IsWindowUnicode(edit))
+        return -1;
+    const LRESULT pos = SendMessageW(edit, EM_LINEINDEX, index, 0);
+    if (pos < 0)
+        return 0;
+    const LRESULT units = SendMessageW(edit, EM_LINELENGTH, pos, 0);
+    if (units < 0 || units >= MAX_PATH)
+        return -1;
+    if (units == 0)
+        return 0;
+    WCHAR line[MAX_PATH]{};
+    line[0] = MAX_PATH;
+    if (SendMessageW(edit, EM_GETLINE, index, reinterpret_cast<LPARAM>(line)) != units)
+        return -1;
+    line[units] = 0;
+    TBuffer<char> ansi;
+    int bytes = 0;
+    if (!ManualWideToAnsi(line, static_cast<int>(units + 1), ansi, bytes))
+        return -2;
+    if (bytes > capacity)
+        return -1;
+    memcpy(result, ansi.Get(), bytes);
+    return bytes - 1;
+}
+
+BOOL SetManualTextFromAnsi(HWND edit, const char* text, size_t length,
+                           BOOL replaceSelection, BOOL undo)
+{
+    if (!IsWindowUnicode(edit) || !text || length >= INT_MAX / sizeof(WCHAR) ||
+        memchr(text, 0, length) || text[length] != 0)
+        return FALSE;
+    const int bytes = static_cast<int>(length + 1);
+    const int units = MultiByteToWideChar(GetACP(), 0, text, bytes, NULL, 0);
+    TBuffer<WCHAR> wide;
+    if (units <= 0 || !wide.Reserve(units) ||
+        MultiByteToWideChar(GetACP(), 0, text, bytes, wide.Get(), units) != units ||
+        static_cast<size_t>(units - 1) >
+            static_cast<size_t>(SendMessageW(edit, EM_GETLIMITTEXT, 0, 0)))
+        return FALSE;
+    TBuffer<char> roundtrip;
+    int roundtripBytes = 0;
+    if (!ManualWideToAnsi(wide.Get(), units, roundtrip, roundtripBytes) ||
+        roundtripBytes != bytes || memcmp(text, roundtrip.Get(), bytes) != 0)
+        return FALSE;
+    if (!replaceSelection)
+        return static_cast<BOOL>(SendMessageW(edit, WM_SETTEXT, 0,
+                                               reinterpret_cast<LPARAM>(wide.Get())));
+    SendMessageW(edit, EM_SETSEL, 0, -1);
+    SendMessageW(edit, EM_REPLACESEL, undo, reinterpret_cast<LPARAM>(wide.Get()));
+    return TRUE;
+}
+
 void LoadHistory(HKEY regKey, const char* keyPattern, char** history,
                  char* buffer, int bufferSize, CSalamanderRegistryAbstract* registry)
 {

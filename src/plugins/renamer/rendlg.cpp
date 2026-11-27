@@ -31,9 +31,9 @@ char* CommandHistory[MAX_HISTORY_ENTRIES];
 // CRenamerDialog
 //
 
-// Load the canonical clipboard text explicitly. The legacy editor still
-// accepts only ACP text, so do not allow a best-fit or replacement character
-// to silently turn a proposed filename into a different filename.
+// The original manual edit is a real Unicode window. Copy the bounded
+// canonical CF_UNICODETEXT while locked, then publish after releasing the
+// clipboard. The legacy execution boundary is checked independently.
 static BOOL LoadManualClipboard(HWND parent, HWND edit)
 {
     BOOL opened = FALSE;
@@ -50,10 +50,10 @@ static BOOL LoadManualClipboard(HWND parent, HWND edit)
     if (!opened)
         return Error(parent, "Cannot open the clipboard.");
 
-    TBuffer<char> ansi;
+    TBuffer<WCHAR> wide;
     BOOL valid = FALSE;
     HANDLE data = GetClipboardData(CF_UNICODETEXT);
-    if (data)
+    if (data && IsWindowUnicode(edit))
     {
         const SIZE_T bytes = GlobalSize(data);
         const WCHAR* text = static_cast<const WCHAR*>(GlobalLock(data));
@@ -63,25 +63,12 @@ static BOOL LoadManualClipboard(HWND parent, HWND edit)
             SIZE_T length = 0;
             while (length < capacity && text[length] != 0)
                 ++length;
-            if (length < capacity && length < INT_MAX)
+            if (length < capacity && length < INT_MAX / sizeof(WCHAR) &&
+                length <= static_cast<SIZE_T>(SendMessageW(edit, EM_GETLIMITTEXT, 0, 0)) &&
+                wide.Reserve(length + 1))
             {
-                const int units = static_cast<int>(length + 1);
-                const UINT cp = GetACP();
-                const int count = WideCharToMultiByte(cp, 0, text, units,
-                                                      NULL, 0, NULL, NULL);
-                if (count > 0 && ansi.Reserve(count) &&
-                    WideCharToMultiByte(cp, 0, text, units, ansi.Get(), count,
-                                        NULL, NULL) == count)
-                {
-                    TBuffer<WCHAR> roundtrip;
-                    if (roundtrip.Reserve(units) &&
-                        MultiByteToWideChar(cp, 0, ansi.Get(), count,
-                                            roundtrip.Get(), units) == units &&
-                        memcmp(text, roundtrip.Get(), units * sizeof(WCHAR)) == 0 &&
-                        static_cast<SIZE_T>(count - 1) <=
-                            static_cast<SIZE_T>(SendMessage(edit, EM_GETLIMITTEXT, 0, 0)))
-                        valid = TRUE;
-                }
+                memcpy(wide.Get(), text, (length + 1) * sizeof(WCHAR));
+                valid = TRUE;
             }
             GlobalUnlock(data);
         }
@@ -91,11 +78,11 @@ static BOOL LoadManualClipboard(HWND parent, HWND edit)
     if (!valid)
     {
         SetLastError(NO_ERROR);
-        return Error(parent, "The clipboard text cannot be loaded without loss into the legacy rename list.");
+        return Error(parent, "The clipboard text cannot be loaded into the rename list.");
     }
 
-    SendMessage(edit, EM_SETSEL, 0, -1);
-    SendMessageA(edit, EM_REPLACESEL, TRUE, reinterpret_cast<LPARAM>(ansi.Get()));
+    SendMessageW(edit, EM_SETSEL, 0, -1);
+    SendMessageW(edit, EM_REPLACESEL, TRUE, reinterpret_cast<LPARAM>(wide.Get()));
     return TRUE;
 }
 
@@ -804,14 +791,14 @@ BOOL CRenamerDialog::Init()
     NewName = new CComboboxEdit(TRUE);
     SearchFor = new CComboboxEdit(TRUE);
     ReplaceWith = new CComboboxEdit(TRUE);
-    ManualEdit = new CNotifyEdit();
-    if (!NewName || !SearchFor || !ReplaceWith || !ManualEdit)
+    if (!NewName || !SearchFor || !ReplaceWith)
         return FALSE;
     MaskEdit->AttachToWindow(GetWindow(GetDlgItem(HWindow, IDC_MASK), GW_CHILD));
     NewName->AttachToWindow(GetWindow(GetDlgItem(HWindow, IDC_NEWNAME), GW_CHILD));
     SearchFor->AttachToWindow(GetWindow(GetDlgItem(HWindow, IDC_SEARCH), GW_CHILD));
     ReplaceWith->AttachToWindow(GetWindow(GetDlgItem(HWindow, IDC_REPLACE), GW_CHILD));
-    ManualEdit->AttachToWindow(GetDlgItem(HWindow, IDE_MANUAL));
+    if (!ManualEdit.AttachToWindow(GetDlgItem(HWindow, IDE_MANUAL)))
+        return FALSE;
 
     // list view construction
     Preview = new CPreviewWindow(this);
@@ -822,6 +809,7 @@ BOOL CRenamerDialog::Init()
     }
 
     Preview->AttachToControl(HWindow, IDL_PREVIEW);
+    SendMessageW(Preview->HWindow, CCM_SETUNICODEFORMAT, TRUE, 0);
     ListView_SetExtendedListViewStyle(Preview->HWindow, LVS_EX_FULLROWSELECT);
 
     // create the menu
@@ -858,8 +846,8 @@ BOOL CRenamerDialog::Init()
     SalGUI->ChangeToArrowButton(HWindow, IDB_REPLACE);
 
     UpdateManualModeFont();
-    SendMessage(ManualEdit->HWindow, EM_LIMITTEXT, 0, 0);
-    SendMessage(ManualEdit->HWindow, EM_FMTLINES, FALSE, 0);
+    SendMessage(ManualEdit.HWindow, EM_LIMITTEXT, 0, 0);
+    SendMessage(ManualEdit.HWindow, EM_FMTLINES, FALSE, 0);
 
     SG->MultiMonCenterWindow(HWindow, SG->GetMainWindowHWND(), FALSE);
 
@@ -1083,7 +1071,7 @@ void CRenamerDialog::LayoutControls()
                               SWP_NOZORDER | SWP_NOSIZE);
 
         // size the manual edit control
-        hdwp = DeferWindowPos(hdwp, ManualEdit->HWindow, NULL,
+        hdwp = DeferWindowPos(hdwp, ManualEdit.HWindow, NULL,
                               0, 0, cr.right - ManualLX - RuleRX, ManualDY,
                               SWP_NOZORDER | SWP_NOMOVE);
 
@@ -1144,13 +1132,13 @@ void CRenamerDialog::UpdateMenuItems()
 void CRenamerDialog::UpdateManualModeFont()
 {
     CALL_STACK_MESSAGE1("CRenamerDialog::UpdateManualModeFont()");
-    SendMessage(ManualEdit->HWindow, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), !UseCustomFont);
+    SendMessage(ManualEdit.HWindow, WM_SETFONT, (WPARAM)GetStockObject(DEFAULT_GUI_FONT), !UseCustomFont);
     if (UseCustomFont)
     {
         if (ManualModeHFont)
             DeleteObject(ManualModeHFont);
         ManualModeHFont = CreateFontIndirect(&ManualModeLogFont);
-        SendMessage(ManualEdit->HWindow, WM_SETFONT, (WPARAM)ManualModeHFont, UseCustomFont);
+        SendMessage(ManualEdit.HWindow, WM_SETFONT, (WPARAM)ManualModeHFont, UseCustomFont);
     }
 }
 
@@ -1546,9 +1534,7 @@ BOOL CRenamerDialog::ReloadManualModeEdit()
         return Error(IDS_LOWMEM);
     buf.Get()[size] = 0;
 
-    SendMessage(ManualEdit->HWindow, WM_SETTEXT, 0, (LPARAM)buf.Get());
-
-    return TRUE;
+    return SetManualTextFromAnsi(ManualEdit.HWindow, buf.Get(), size, FALSE, FALSE);
 }
 
 void CRenamerDialog::OnEnterIdle()
@@ -1634,11 +1620,11 @@ void CRenamerDialog::Validate(CTransferInfo& ti)
     if (ManualMode)
     {
         // ignore empty lines at the end
-        int lines = (int)SendMessage(ManualEdit->HWindow, EM_GETLINECOUNT, 0, 0);
+        int lines = (int)SendMessage(ManualEdit.HWindow, EM_GETLINECOUNT, 0, 0);
         while (lines > 0)
         {
-            int index = (int)SendMessage(ManualEdit->HWindow, EM_LINEINDEX, lines - 1, 0);
-            if (SendMessage(ManualEdit->HWindow, EM_LINELENGTH, index, 0) <= 0)
+            int index = (int)SendMessage(ManualEdit.HWindow, EM_LINEINDEX, lines - 1, 0);
+            if (SendMessage(ManualEdit.HWindow, EM_LINELENGTH, index, 0) <= 0)
                 lines--;
             else
                 break;
@@ -1647,6 +1633,19 @@ void CRenamerDialog::Validate(CTransferInfo& ti)
         {
             SG->SalMessageBox(HWindow, LoadStr(IDS_BADLINECOUNT), LoadStr(IDS_ERROR),
                               MB_OK | MB_ICONEXCLAMATION);
+            ti.ErrorOn(IDE_MANUAL);
+            return;
+        }
+
+        // The W editor may contain names that the legacy script cannot yet
+        // address. Refuse the complete operation before building any script.
+        TBuffer<char> ansi;
+        DWORD length = 0;
+        if (!ReadManualTextAnsi(ManualEdit.HWindow, ansi, length))
+        {
+            SG->SalMessageBox(HWindow,
+                              "The rename list cannot be represented without loss by the legacy rename engine. No files were changed.",
+                              LoadStr(IDS_ERROR), MB_OK | MB_ICONEXCLAMATION);
             ti.ErrorOn(IDE_MANUAL);
             return;
         }
@@ -1866,7 +1865,7 @@ CRenamerDialog::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
 
         case IDE_MANUAL:
         {
-            if (HIWORD(wParam) == EN_CHANGE)
+            if (HIWORD(wParam) == EN_CHANGE && Preview)
                 Preview->SetDirty();
             break;
         }
@@ -1918,10 +1917,10 @@ CRenamerDialog::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
             if (ManualMode)
             {
                 DWORD start = 0, end = -1;
-                SendMessage(ManualEdit->HWindow, EM_GETSEL, WPARAM(&start), LPARAM(&end));
-                SendMessage(ManualEdit->HWindow, EM_SETSEL, 0, -1);
-                SendMessage(ManualEdit->HWindow, WM_COPY, 0, 0);
-                SendMessage(ManualEdit->HWindow, EM_SETSEL, start, end);
+                SendMessage(ManualEdit.HWindow, EM_GETSEL, WPARAM(&start), LPARAM(&end));
+                SendMessage(ManualEdit.HWindow, EM_SETSEL, 0, -1);
+                SendMessage(ManualEdit.HWindow, WM_COPY, 0, 0);
+                SendMessage(ManualEdit.HWindow, EM_SETSEL, start, end);
                 Preview->Update(TRUE);
                 return TRUE;
             }
@@ -1932,7 +1931,7 @@ CRenamerDialog::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
         {
             if (ManualMode)
             {
-                if (LoadManualClipboard(HWindow, ManualEdit->HWindow))
+                if (LoadManualClipboard(HWindow, ManualEdit.HWindow))
                 {
                     Preview->Update(TRUE);
                     SendMessage(HWindow, WM_USER_CARETMOVE, 0, 0);
@@ -2153,9 +2152,15 @@ CRenamerDialog::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
                 break;
             }
 
-            case LVN_GETDISPINFO:
+            case LVN_GETDISPINFOA:
             {
                 Preview->GetDispInfo((LV_DISPINFO*)lParam);
+                break;
+            }
+
+            case LVN_GETDISPINFOW:
+            {
+                Preview->GetDispInfoW(reinterpret_cast<NMLVDISPINFOW*>(lParam));
                 break;
             }
 
@@ -2264,8 +2269,10 @@ CRenamerDialog::DialogProc(UINT uMsg, WPARAM wParam, LPARAM lParam)
 
     case WM_USER_CARETMOVE:
     {
-        int i = (int)SendMessage(ManualEdit->HWindow, EM_LINEINDEX, -1, 0);
-        i = (int)SendMessage(ManualEdit->HWindow, EM_LINEFROMCHAR, i, 0);
+        if (!ManualEdit.HWindow || !Preview)
+            return 0;
+        int i = (int)SendMessage(ManualEdit.HWindow, EM_LINEINDEX, -1, 0);
+        i = (int)SendMessage(ManualEdit.HWindow, EM_LINEFROMCHAR, i, 0);
         TRACE_I("I = " << i);
         int count = ListView_GetItemCount(Preview->HWindow);
         if (i >= count)
@@ -2395,17 +2402,17 @@ CRenamerDialogThread::Body()
     MSG msg;
     while (IsWindow(wnd))
     {
-        if (PeekMessage(&msg, NULL, 0, 0, PM_REMOVE))
+        if (PeekMessageW(&msg, NULL, 0, 0, PM_REMOVE))
         {
             if (msg.message == WM_QUIT)
                 break; // equivalent to the situation where GetMessage() returns FALSE
 
             if (!dlg->IsMenuBarMessage(&msg) &&
-                !TranslateAccelerator(wnd, HAccels, &msg) &&
-                !IsDialogMessage(wnd, &msg))
+                !TranslateAcceleratorW(wnd, HAccels, &msg) &&
+                !IsDialogMessageW(wnd, &msg))
             {
                 TranslateMessage(&msg);
-                DispatchMessage(&msg);
+                DispatchMessageW(&msg);
             }
         }
         else

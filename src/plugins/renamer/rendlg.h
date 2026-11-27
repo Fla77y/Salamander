@@ -73,7 +73,7 @@ protected:
 
     CPreviewWindow* Preview;
     CComboboxEdit *MaskEdit, *NewName, *SearchFor, *ReplaceWith;
-    CNotifyEdit* ManualEdit;
+    CNotifyEdit ManualEdit;
     CGUIMenuPopupAbstract* MainMenu;
     CGUIMenuBarAbstract* MenuBar;
 
