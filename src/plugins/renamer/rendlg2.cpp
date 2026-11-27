@@ -13,6 +13,8 @@ struct CRenameScriptEntry
     CSourceFile* Source;
     char* NewName;
     char* NewPart;
+    char* CycleTemp; // owned only by the first entry of a closed cycle
+    int CycleLength;
     int Blocks : 28;            // script construction: index of an item depending on this one
                                 // script processing: the following item depends on this entry
     unsigned int Overwrite : 1; // the user confirmed overwriting the existing file
@@ -26,6 +28,8 @@ struct CRenameScriptEntry
     {
         Source = NULL;
         NewName = NULL;
+        CycleTemp = NULL;
+        CycleLength = 0;
         Blocks = -1;
         Overwrite = 0;
         Skip = 0;
@@ -36,6 +40,8 @@ struct CRenameScriptEntry
     {
         if (NewName)
             free(NewName);
+        if (CycleTemp)
+            free(CycleTemp);
     }
     static int __cdecl CompareOldNames(const void* elem1, const void* elem2)
     {
@@ -84,6 +90,9 @@ CUndoStackEntry::CUndoStackEntry(char* source, char* target, CSourceFile* rename
     IsDir = isDir ? 1 : 0;
     Blocks = blocks ? 1 : 0;
     Independent = 0;
+    CycleMove = 0;
+    CycleStage = 0;
+    Intermediate = 0;
 }
 
 CUndoStackEntry::~CUndoStackEntry()
@@ -104,6 +113,23 @@ void CRenamerDialog::Rename(BOOL validate)
 {
     CALL_STACK_MESSAGE2("CRenamerDialog::Rename(%d)", validate);
     Progress = NULL;
+
+    // A partial cycle still owns a temporary filename. Do not discard the
+    // only in-dialog recovery mapping when starting another rename.
+    if (!validate)
+    {
+        for (int i = 0; i < UndoStack.Count; ++i)
+        {
+            CUndoStackEntry* entry = UndoStack[i];
+            if (entry->CycleStage && entry->RenamedFile &&
+                strcmp(entry->RenamedFile->FullName, entry->Source) == 0)
+            {
+                SG->SalMessageBox(HWindow, LoadStr(IDS_DEPENDENCE),
+                                  LoadStr(IDS_ERROR), MB_ICONERROR);
+                return;
+            }
+        }
+    }
 
     CRenameScriptEntry* script;
     int count;
@@ -155,6 +181,11 @@ void CRenamerDialog::Rename(BOOL validate)
 
             ProcessRenamed = FALSE;
             ProcessNotRenamed = TRUE;
+            // Also expose actual temporary names if a cycle was interrupted.
+            for (int j = 0; j < UndoStack.Count; ++j)
+                if (UndoStack[j]->CycleStage &&
+                    strcmp(UndoStack[j]->RenamedFile->FullName, UndoStack[j]->Source) == 0)
+                    ProcessRenamed = TRUE;
         }
         else
         {
@@ -425,6 +456,88 @@ BOOL CRenamerDialog::BuildScript(CRenameScriptEntry*& script, int& count,
         }
     }
 
+    // A remaining closed dependency cycle can be rotated via a vacant
+    // temporary name. Restrict this path to regular files in one directory:
+    // no directory creation, directory moves or cross-volume copy/delete.
+    for (i = 0; i < SourceFiles.Count; ++i)
+    {
+        if (tmpScript[i].Skip || tmpScript[i].Done)
+            continue;
+        CSourceFile* first = tmpScript[i].Source;
+        const int parentLen = (int)(first->Name - first->FullName);
+        int length = 0;
+        int current = i;
+        do
+        {
+            if (current < 0 || current >= SourceFiles.Count ||
+                tmpScript[current].Skip || tmpScript[current].Done ||
+                !tmpScript[current].Blocked || !tmpScript[current].NewName)
+                break;
+            CSourceFile* file = tmpScript[current].Source;
+            if (file->IsDir || (file->Attr & FILE_ATTRIBUTE_REPARSE_POINT) ||
+                file->Name - file->FullName != parentLen ||
+                SG->StrNICmp(file->FullName, first->FullName, parentLen) != 0)
+                break;
+            ++length;
+            current = tmpScript[current].Blocks;
+        } while (current != i && length < SourceFiles.Count);
+        if (current != i || length < 2)
+            continue;
+
+        char temp[MAX_PATH];
+        if (parentLen + sizeof("~osren-00000000-00.tmp") > sizeof(temp))
+            continue;
+        bool vacant = false;
+        for (unsigned int attempt = 0; attempt < 256; ++attempt)
+        {
+            const int len = sprintf_s(temp, sizeof(temp), "%.*s~osren-%08lX-%02X.tmp",
+                                      parentLen, first->FullName, GetTickCount(), attempt);
+            if (len <= 0)
+                break;
+            bool conflicts = false;
+            for (int j = 0; j < SourceFiles.Count && !conflicts; ++j)
+                conflicts = SG->StrICmp(temp, tmpScript[j].Source->FullName) == 0 ||
+                            (tmpScript[j].NewName && SG->StrICmp(temp, tmpScript[j].NewName) == 0);
+            if (!validate)
+                for (int j = 0; j < count && !conflicts; ++j)
+                    conflicts = SG->StrICmp(temp, script[j].NewName) == 0 ||
+                                (script[j].CycleTemp && SG->StrICmp(temp, script[j].CycleTemp) == 0);
+            if (!conflicts && GetFileAttributesA(temp) == INVALID_FILE_ATTRIBUTES &&
+                GetLastError() == ERROR_FILE_NOT_FOUND)
+            {
+                vacant = true;
+                break;
+            }
+        }
+        if (!vacant)
+            continue;
+
+        if (!validate)
+        {
+            script[count].CycleTemp = SG->DupStr(temp);
+            if (!script[count].CycleTemp)
+                goto LBUILD_SCRIPT_ERROR;
+            script[count].CycleLength = length;
+        }
+        // Move the entries which depend on the staged file first. The
+        // staged file itself is moved from its temporary name last.
+        current = tmpScript[i].Blocks;
+        for (int j = 0; j < length; ++j)
+        {
+            if (!validate)
+            {
+                script[count].Source = tmpScript[current].Source;
+                script[count].NewName = tmpScript[current].NewName;
+                script[count].NewPart = tmpScript[current].NewPart;
+                script[count].Blocks = j + 1 < length;
+                tmpScript[current].NewName = NULL;
+            }
+            tmpScript[current].Done = 1;
+            ++count;
+            current = tmpScript[current].Blocks;
+        }
+    }
+
     // if there are items that cannot be renamed, display them
     if (count < SourceFiles.Count - skipped)
     {
@@ -534,6 +647,135 @@ int CRenamerDialog::GetManualModeNewName(CSourceFile* file, int index, char* new
     }
 }
 
+// Exchange only the owned pathname and its interior pointers. The replacement
+// is allocated before touching the filesystem; its destructor frees the old name.
+static void SwapCycleName(CSourceFile* file, CSourceFile* replacement)
+{
+    char* full = file->FullName;
+    char* name = file->Name;
+    char* ext = file->Ext;
+    unsigned int len = file->NameLen;
+    file->FullName = replacement->FullName;
+    file->Name = replacement->Name;
+    file->Ext = replacement->Ext;
+    file->NameLen = replacement->NameLen;
+    replacement->FullName = full;
+    replacement->Name = name;
+    replacement->Ext = ext;
+    replacement->NameLen = len;
+}
+
+BOOL CRenamerDialog::MoveCycleFile(const char* source, const char* target)
+{
+    // Never replace a destination, even if it appeared after planning.
+    // MOVEFILE_COPY_ALLOWED is deliberately not set.
+    while (true)
+    {
+        DWORD attr = GetFileAttributesA(source);
+        if (attr != INVALID_FILE_ATTRIBUTES)
+        {
+            if (attr & (FILE_ATTRIBUTE_DIRECTORY | FILE_ATTRIBUTE_REPARSE_POINT))
+                SetLastError(ERROR_ACCESS_DENIED);
+            else if (MoveFileExA(source, target, 0))
+                return TRUE;
+        }
+        BOOL skip;
+        if (!FileError(HWindow, source, IDS_MOVEERROR,
+                       TRUE, &skip, &SkipAllMove, IDS_ERROR))
+            return FALSE;
+    }
+}
+
+BOOL CRenamerDialog::ExecuteCycleMove(CSourceFile* source, CSourceFile*& renamed,
+                                      const char* target, BOOL stage, BOOL blocks)
+{
+    char* oldName = renamed ? renamed->FullName : source->FullName;
+    CSourceFile* result = new CSourceFile(source, target);
+    CUndoStackEntry* undo = new CUndoStackEntry(result->FullName, oldName,
+                                               renamed ? renamed : result, FALSE, blocks);
+    undo->CycleMove = 1;
+    undo->CycleStage = stage ? 1 : 0;
+    undo->Intermediate = renamed != NULL;
+
+    // Publish bookkeeping before the physical move. On failure remove only
+    // the tentative entries; previous successful steps remain undoable.
+    const int added = renamed ? -1 : RenamedFiles.Add(result);
+    if ((!renamed && added < 0) || !undo->Source || !undo->Target)
+    {
+        if (added >= 0)
+            RenamedFiles.Detach(added);
+        if (!RenamedFiles.IsGood())
+            RenamedFiles.ResetState();
+        delete undo;
+        delete result;
+        return Error(IDS_LOWMEM);
+    }
+    const int undoIndex = UndoStack.Add(undo);
+    if (undoIndex < 0)
+    {
+        UndoStack.ResetState();
+        if (added >= 0)
+            RenamedFiles.Detach(added);
+        delete undo;
+        delete result;
+        return Error(IDS_LOWMEM);
+    }
+    if (!MoveCycleFile(oldName, target))
+    {
+        UndoStack.Delete(undoIndex);
+        if (added >= 0)
+            RenamedFiles.Detach(added);
+        delete result;
+        return FALSE;
+    }
+    if (renamed)
+    {
+        SwapCycleName(renamed, result);
+        delete result;
+    }
+    else
+        renamed = result;
+    source->State = 1;
+    return TRUE;
+}
+
+BOOL CRenamerDialog::UndoCycleMove(CUndoStackEntry* entry)
+{
+    int index = RenamedFiles.Count - 1;
+    while (index >= 0 && RenamedFiles[index] != entry->RenamedFile)
+        --index;
+    if (index < 0 || strcmp(entry->RenamedFile->FullName, entry->Source) != 0)
+        return Error(IDS_DEPENDENCE);
+
+    CSourceFile* restored = new CSourceFile(entry->RenamedFile, entry->Target);
+    int added = -1;
+    if (!entry->Intermediate)
+    {
+        added = NotRenamedFiles.Add(restored);
+        if (added < 0)
+        {
+            NotRenamedFiles.ResetState();
+            delete restored;
+            return Error(IDS_LOWMEM);
+        }
+    }
+    if (!MoveCycleFile(entry->Source, entry->Target))
+    {
+        if (added >= 0)
+            NotRenamedFiles.Detach(added);
+        delete restored;
+        return FALSE;
+    }
+    if (entry->Intermediate)
+    {
+        SwapCycleName(entry->RenamedFile, restored);
+        delete restored;
+    }
+    else
+        RenamedFiles.Delete(index);
+    return TRUE;
+}
+
 void CRenamerDialog::ExecuteScript(CRenameScriptEntry* script, int count)
 {
     CALL_STACK_MESSAGE2("CRenamerDialog::ExecuteScript(, %d)", count);
@@ -550,6 +792,39 @@ void CRenamerDialog::ExecuteScript(CRenameScriptEntry* script, int count)
     int i;
     for (i = 0; i < count; i++)
     {
+        if (script[i].CycleLength)
+        {
+            const int end = i + script[i].CycleLength - 1;
+            CSourceFile* staged = NULL;
+            if (!ExecuteCycleMove(script[end].Source, staged, script[i].CycleTemp, TRUE, FALSE))
+            {
+                Errors = TRUE;
+                break;
+            }
+            for (; i <= end; ++i)
+            {
+                if (Progress->Update(i * 1000 / count))
+                {
+                    Errors = TRUE;
+                    return;
+                }
+                CSourceFile* renamed = i == end ? staged : NULL;
+                if (!ExecuteCycleMove(script[i].Source, renamed, script[i].NewName, FALSE, TRUE))
+                {
+                    Errors = TRUE;
+                    return;
+                }
+            }
+            i = end;
+            success = TRUE;
+            blocked = FALSE;
+            if (Progress->Update((i + 1) * 1000 / count))
+            {
+                Errors = TRUE;
+                break;
+            }
+            continue;
+        }
         if (success || !blocked)
         {
             success = MoveFile(script[i].Source->FullName, script[i].NewName, script[i].NewPart,
@@ -624,6 +899,20 @@ void CRenamerDialog::Undo()
             if (Progress->Update(done * 1000 / total))
                 break;
 
+            // Save dependency metadata before deleting an owning array entry.
+            const BOOL nextBlocked = entry->Blocks;
+            if (entry->CycleMove)
+            {
+                // A failed/declined cycle step must not release its predecessor.
+                // Stop even on Skip; the remaining stack can be retried later.
+                if ((!success && blocked) || !UndoCycleMove(entry))
+                    goto LUNDONE;
+                UndoStack.Delete(i);
+                blocked = nextBlocked;
+                success = pathSuccess = TRUE;
+                continue;
+            }
+
             // undo move file
             if (success || !blocked)
             {
@@ -654,7 +943,7 @@ void CRenamerDialog::Undo()
                 if (!skip)
                     goto LUNDONE;
             }
-            blocked = entry->Blocks;
+            blocked = nextBlocked;
             pathSuccess = success;
         }
         else
@@ -730,5 +1019,9 @@ LUNDONE:
         ProcessRenamed = FALSE;
         ProcessNotRenamed = TRUE;
     }
+    for (int j = 0; j < UndoStack.Count; ++j)
+        if (UndoStack[j]->CycleStage &&
+            strcmp(UndoStack[j]->RenamedFile->FullName, UndoStack[j]->Source) == 0)
+            ProcessRenamed = TRUE;
     ReloadSourceFiles();
 }

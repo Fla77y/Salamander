@@ -31,6 +31,9 @@ struct CUndoStackEntry
     CSourceFile* RenamedFile;
     unsigned int IsDir : 1;
     unsigned int Blocks : 1;
+    unsigned int CycleMove : 1;   // physical cycle step: never overwrite
+    unsigned int CycleStage : 1;  // original name -> temporary name
+    unsigned int Intermediate : 1; // undo returns to temporary name, not original
     unsigned int Independent : 1; // for path components so the undo operation can be reattached
                                   // later
     CUndoStackEntry(char* source, char* target, CSourceFile* renamedFile,
@@ -147,6 +150,10 @@ public:
     int GetManualModeNewName(CSourceFile* file, int index,
                              char* newName, char*& newPart);
     void ExecuteScript(CRenameScriptEntry* script, int count);
+    BOOL MoveCycleFile(const char* source, const char* target);
+    BOOL ExecuteCycleMove(CSourceFile* source, CSourceFile*& renamed,
+                          const char* target, BOOL stage, BOOL blocks);
+    BOOL UndoCycleMove(CUndoStackEntry* entry);
     void Undo();
 
     BOOL MoveFile(char* sourceName, char* targetName, char* newPart,
